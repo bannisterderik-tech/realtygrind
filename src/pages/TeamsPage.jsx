@@ -241,7 +241,7 @@ export default function TeamsPage({ onBack }) {
   const { user, profile, refreshProfile } = useAuth()
   const [mode, setMode]           = useState('menu')
   const [teamName, setTeamName]   = useState('')
-  const [maxMembers, setMaxMembers] = useState(4)
+
   const [inviteCode, setInviteCode] = useState('')
   const [members, setMembers]     = useState([])
   const [loading, setLoading]     = useState(false)
@@ -280,7 +280,7 @@ export default function TeamsPage({ onBack }) {
     try {
       const { data: team, error: e } = await supabase
         .from('teams')
-        .insert({ name: teamName.trim(), created_by: user.id, max_members: maxMembers })
+        .insert({ name: teamName.trim(), created_by: user.id, max_members: 999 })
         .select().single()
       if (e) throw e
       await supabase.from('team_members').insert({ team_id: team.id, user_id: user.id, role: 'owner' })
@@ -301,9 +301,6 @@ export default function TeamsPage({ onBack }) {
         .from('teams').select('*')
         .eq('invite_code', inviteCode.trim().toUpperCase()).single()
       if (e || !team) throw new Error('Team not found. Check your invite code.')
-      const { count } = await supabase
-        .from('team_members').select('*', { count:'exact', head:true }).eq('team_id', team.id)
-      if (count >= team.max_members) throw new Error(`This team is full (max ${team.max_members} members).`)
       await supabase.from('team_members').insert({ team_id: team.id, user_id: user.id, role: 'member' })
       await supabase.from('profiles').update({ team_id: team.id }).eq('id', user.id)
       await refreshProfile()
@@ -436,16 +433,6 @@ export default function TeamsPage({ onBack }) {
                 <label style={{ fontSize:11, color:'#64748b', fontWeight:600, letterSpacing:0.5, display:'block', marginBottom:6 }}>TEAM NAME</label>
                 <input value={teamName} onChange={e=>setTeamName(e.target.value)} placeholder="e.g. The A-Team..."
                   style={{ width:'100%', border:'1.5px solid #e2e8f0', borderRadius:10, padding:'10px 14px', fontSize:13, fontFamily:"'DM Mono',monospace", color:'#1e293b', boxSizing:'border-box' }} />
-              </div>
-              <div>
-                <label style={{ fontSize:11, color:'#64748b', fontWeight:600, letterSpacing:0.5, display:'block', marginBottom:10 }}>TEAM SIZE (max members)</label>
-                <div style={{ display:'flex', gap:8 }}>
-                  {[2,3,4].map(n => (
-                    <button key={n} onClick={()=>setMaxMembers(n)} style={{ flex:1, padding:'12px 0', border:`2px solid ${maxMembers===n?'#16a34a':'#e2e8f0'}`, borderRadius:10, background:maxMembers===n?'#f0fdf4':'white', color:maxMembers===n?'#16a34a':'#64748b', fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:18, cursor:'pointer' }}>
-                      {n}<div style={{ fontSize:9, fontWeight:400, marginTop:2 }}>agents</div>
-                    </button>
-                  ))}
-                </div>
               </div>
               <div style={{ display:'flex', gap:10 }}>
                 <button onClick={()=>setMode('menu')} style={{ flex:1, background:'#f1f5f9', border:'1px solid #e2e8f0', borderRadius:10, padding:'11px 0', cursor:'pointer', fontSize:13, fontFamily:"'Syne',sans-serif", fontWeight:700, color:'#64748b' }}>Cancel</button>

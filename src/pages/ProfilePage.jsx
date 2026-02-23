@@ -1,394 +1,409 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-
-const RANKS = [
-  { name: 'Rookie Agent',  min: 0,    max: 500,      color: '#94a3b8', bg: '#f1f5f9', icon: '🏅' },
-  { name: 'Associate',     min: 500,  max: 1500,     color: '#16a34a', bg: '#dcfce7', icon: '🥈' },
-  { name: 'Senior Agent',  min: 1500, max: 3000,     color: '#ca8a04', bg: '#fef9c3', icon: '🥇' },
-  { name: 'Top Producer',  min: 3000, max: 6000,     color: '#ea580c', bg: '#ffedd5', icon: '🏆' },
-  { name: 'Elite Broker',  min: 6000, max: Infinity, color: '#7c3aed', bg: '#ede9fe', icon: '💎' },
-]
-function getRank(xp) { return [...RANKS].reverse().find(r => xp >= r.min) || RANKS[0] }
-
-function fmtVal(v) {
-  const n = parseFloat(String(v||'').replace(/[^0-9.]/g,''))
-  if (isNaN(n)||n===0) return null
-  return n>=1000000?'$'+(n/1000000).toFixed(2)+'M':n>=1000?'$'+(n/1000).toFixed(0)+'K':'$'+n.toFixed(0)
-}
+import { CSS, Loader, Wordmark, PageNav, ThemeToggle, Ring, getRank, fmtMoney, RANKS } from '../design'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-const CURRENT_YEAR = new Date().getFullYear()
+const CUR_YEAR = new Date().getFullYear()
 
-export default function ProfilePage({ onBack }) {
+export default function ProfilePage({ onBack, theme, onToggleTheme }) {
   const { user, profile, refreshProfile } = useAuth()
-  const rank = getRank(profile?.xp || 0)
-  const nextRank = RANKS[RANKS.indexOf(rank)+1]
+  const rank     = getRank(profile?.xp||0)
+  const nextRank = RANKS.find(r => r.min > (profile?.xp||0))
+  const rankPct  = nextRank ? Math.round(((profile?.xp||0)-rank.min)/(nextRank.min-rank.min)*100) : 100
 
-  // Edit state
-  const [fullName, setFullName]     = useState(profile?.full_name || '')
-  const [saving, setSaving]         = useState(false)
-  const [saveMsg, setSaveMsg]       = useState('')
+  const [name,       setName]       = useState(profile?.full_name||'')
+  const [saving,     setSaving]     = useState(false)
+  const [saveMsg,    setSaveMsg]    = useState('')
+  const [pw,         setPw]         = useState('')
+  const [pwSaving,   setPwSaving]   = useState(false)
+  const [pwMsg,      setPwMsg]      = useState('')
+  const [year,       setYear]       = useState(CUR_YEAR)
+  const [annual,     setAnnual]     = useState(null)
+  const [annLoad,    setAnnLoad]    = useState(true)
+  const [members,    setMembers]    = useState([])
+  const [showDel,    setShowDel]    = useState(false)
+  const [delText,    setDelText]    = useState('')
+  const [delLoading, setDelLoading] = useState(false)
+  const [activeTab,  setActiveTab]  = useState('profile')
 
-  // Password change
-  const [newPassword, setNewPassword] = useState('')
-  const [pwSaving, setPwSaving]       = useState(false)
-  const [pwMsg, setPwMsg]             = useState('')
+  useEffect(()=>{ fetchAnnual(year) },[year])
+  useEffect(()=>{ if(profile?.team_id) fetchMembers(profile.team_id) },[profile])
 
-  // Team data
-  const [members, setMembers]   = useState([])
-  const [isOwner, setIsOwner]   = useState(false)
-
-  // Annual data
-  const [annualData, setAnnualData]   = useState(null)
-  const [annualLoading, setAnnualLoading] = useState(true)
-  const [selectedYear, setSelectedYear]   = useState(CURRENT_YEAR)
-
-  // Delete
-  const [showDelete, setShowDelete]     = useState(false)
-  const [deleteConfirm, setDeleteConfirm] = useState('')
-  const [deleteLoading, setDeleteLoading] = useState(false)
-
-  useEffect(() => {
-    if (profile?.team_id) fetchTeam(profile.team_id)
-    fetchAnnualData(selectedYear)
-  }, [profile, selectedYear])
-
-  async function fetchTeam(teamId) {
-    const { data: mems } = await supabase
-      .from('profiles').select('id,full_name,email,xp,streak')
-      .eq('team_id', teamId).order('xp', { ascending: false })
-    setMembers(mems || [])
-    const { data: team } = await supabase.from('teams').select('created_by').eq('id', teamId).single()
-    if (team) setIsOwner(team.created_by === user.id)
+  async function fetchMembers(tid) {
+    const {data} = await supabase.from('profiles').select('id,full_name,xp,streak').eq('team_id',tid).order('xp',{ascending:false})
+    setMembers(data||[])
   }
 
-  async function fetchAnnualData(year) {
-    setAnnualLoading(true)
-    const yearStr = String(year)
-
-    // All 12 months
-    const monthKeys = Array.from({length:12},(_,i)=>`${year}-${String(i+1).padStart(2,'0')}`)
-
-    const [habitsRes, txRes, listRes] = await Promise.all([
-      supabase.from('habit_completions').select('month_year,habit_id,counter_value,xp_earned')
-        .eq('user_id', user.id).like('month_year', `${yearStr}-%`),
-      supabase.from('transactions').select('month_year,type,price,commission')
-        .eq('user_id', user.id).like('month_year', `${yearStr}-%`),
-      supabase.from('listings').select('month_year,unit_count')
-        .eq('user_id', user.id).like('month_year', `${yearStr}-%`),
+  async function fetchAnnual(yr) {
+    setAnnLoad(true)
+    const mks = Array.from({length:12},(_,i)=>`${yr}-${String(i+1).padStart(2,'0')}`)
+    const [h,t,l] = await Promise.all([
+      supabase.from('habit_completions').select('month_year,habit_id,counter_value,xp_earned').eq('user_id',user.id).like('month_year',`${yr}-%`),
+      supabase.from('transactions').select('month_year,type,price,commission').eq('user_id',user.id).like('month_year',`${yr}-%`),
+      supabase.from('listings').select('month_year,unit_count').eq('user_id',user.id).like('month_year',`${yr}-%`),
     ])
-
-    const habits   = habitsRes.data  || []
-    const txs      = txRes.data      || []
-    const listings = listRes.data    || []
-
-    // Build per-month breakdown
-    const byMonth = monthKeys.map((mk, i) => {
-      const mHabits   = habits.filter(h => h.month_year === mk)
-      const mTxs      = txs.filter(t => t.month_year === mk)
-      const mListings = listings.filter(l => l.month_year === mk)
-
-      const habitDays    = mHabits.length
-      const totalXp      = mHabits.reduce((a,h)=>a+(h.xp_earned||0),0)
-      const appointments = mHabits.filter(h=>h.habit_id==='appointments').reduce((a,h)=>a+(h.counter_value||1),0)
-      const showings     = mHabits.filter(h=>h.habit_id==='showing').reduce((a,h)=>a+(h.counter_value||1),0)
-      const closedTxs    = mTxs.filter(t=>t.type==='closed')
-      const closedCount  = closedTxs.length
-      const closedVolume = closedTxs.reduce((a,t)=>{ const n=parseFloat(String(t.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
-      const commission   = closedTxs.reduce((a,t)=>{ const n=parseFloat(String(t.commission||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
-      const offersMade   = mTxs.filter(t=>t.type==='offer_made').length
-      const pending      = mTxs.filter(t=>t.type==='pending').length
-      const listed       = mListings.reduce((a,l)=>a+(l.unit_count||0),0)
-
-      return { month: MONTHS[i], mk, habitDays, totalXp, appointments, showings, closedCount, closedVolume, commission, offersMade, pending, listed }
+    const habs=h.data||[], txs=t.data||[], lists=l.data||[]
+    const byMonth = mks.map((mk,i)=>{
+      const mh=habs.filter(x=>x.month_year===mk)
+      const mt=txs.filter(x=>x.month_year===mk)
+      const ml=lists.filter(x=>x.month_year===mk)
+      const closed=mt.filter(x=>x.type==='closed')
+      const vol  = closed.reduce((a,x)=>{ const n=parseFloat(String(x.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
+      const comm = closed.reduce((a,x)=>{ const n=parseFloat(String(x.commission||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
+      return { m:MONTHS[i], mk, days:mh.length, xp:mh.reduce((a,x)=>a+(x.xp_earned||0),0),
+        appts:mh.filter(x=>x.habit_id==='appointments').reduce((a,x)=>a+(x.counter_value||1),0),
+        shows:mh.filter(x=>x.habit_id==='showing').reduce((a,x)=>a+(x.counter_value||1),0),
+        listed:ml.reduce((a,x)=>a+(x.unit_count||0),0),
+        offers:mt.filter(x=>x.type==='offer_made').length,
+        pending:mt.filter(x=>x.type==='pending').length,
+        closed:closed.length, vol, comm }
     })
-
-    // Annual totals
-    const totals = byMonth.reduce((acc, m) => ({
-      habitDays:    acc.habitDays    + m.habitDays,
-      totalXp:      acc.totalXp      + m.totalXp,
-      appointments: acc.appointments + m.appointments,
-      showings:     acc.showings     + m.showings,
-      closedCount:  acc.closedCount  + m.closedCount,
-      closedVolume: acc.closedVolume + m.closedVolume,
-      commission:   acc.commission   + m.commission,
-      offersMade:   acc.offersMade   + m.offersMade,
-      pending:      acc.pending      + m.pending,
-      listed:       acc.listed       + m.listed,
-    }), { habitDays:0, totalXp:0, appointments:0, showings:0, closedCount:0, closedVolume:0, commission:0, offersMade:0, pending:0, listed:0 })
-
-    setAnnualData({ byMonth, totals })
-    setAnnualLoading(false)
+    const tot = byMonth.reduce((a,m)=>({
+      days:a.days+m.days, xp:a.xp+m.xp, appts:a.appts+m.appts, shows:a.shows+m.shows,
+      listed:a.listed+m.listed, offers:a.offers+m.offers, pending:a.pending+m.pending,
+      closed:a.closed+m.closed, vol:a.vol+m.vol, comm:a.comm+m.comm,
+    }),{days:0,xp:0,appts:0,shows:0,listed:0,offers:0,pending:0,closed:0,vol:0,comm:0})
+    setAnnual({byMonth,tot}); setAnnLoad(false)
   }
 
   async function saveName() {
-    if (!fullName.trim()) return
-    setSaving(true); setSaveMsg('')
-    await supabase.from('profiles').update({ full_name: fullName.trim() }).eq('id', user.id)
+    if(!name.trim()) return
+    setSaving(true)
+    await supabase.from('profiles').update({full_name:name.trim()}).eq('id',user.id)
     await refreshProfile()
-    setSaveMsg('✅ Name updated!')
-    setTimeout(()=>setSaveMsg(''),3000)
-    setSaving(false)
+    setSaveMsg('Saved ✓'); setTimeout(()=>setSaveMsg(''),3000); setSaving(false)
   }
 
   async function savePassword() {
-    if (newPassword.length < 6) { setPwMsg('❌ Min 6 characters'); return }
-    setPwSaving(true); setPwMsg('')
-    const { error } = await supabase.auth.updateUser({ password: newPassword })
-    setPwMsg(error ? `❌ ${error.message}` : '✅ Password updated!')
-    setTimeout(()=>setPwMsg(''),4000)
-    setNewPassword('')
-    setPwSaving(false)
+    if(pw.length<6){setPwMsg('Min 6 characters'); return}
+    setPwSaving(true)
+    const {error} = await supabase.auth.updateUser({password:pw})
+    setPwMsg(error?`Error: ${error.message}`:'Password updated ✓')
+    setTimeout(()=>setPwMsg(''),4000); setPw(''); setPwSaving(false)
   }
 
   async function deleteAccount() {
-    if (deleteConfirm !== 'DELETE') return
-    setDeleteLoading(true)
-    try {
-      await supabase.from('habit_completions').delete().eq('user_id', user.id)
-      await supabase.from('listings').delete().eq('user_id', user.id)
-      await supabase.from('transactions').delete().eq('user_id', user.id)
-      await supabase.from('team_members').delete().eq('user_id', user.id)
-      await supabase.from('profiles').delete().eq('id', user.id)
-      await supabase.auth.signOut()
-    } catch(e){ console.error(e) }
-    setDeleteLoading(false)
+    if(delText!=='DELETE') return
+    setDelLoading(true)
+    await supabase.from('habit_completions').delete().eq('user_id',user.id)
+    await supabase.from('listings').delete().eq('user_id',user.id)
+    await supabase.from('transactions').delete().eq('user_id',user.id)
+    await supabase.from('team_members').delete().eq('user_id',user.id)
+    await supabase.from('profiles').delete().eq('id',user.id)
+    await supabase.auth.signOut()
   }
 
-  const rankProg = nextRank ? Math.round(((profile?.xp||0)-rank.min)/(nextRank.min-rank.min)*100) : 100
+  const curMonth = new Date().toISOString().slice(0,7)
+  const tabs = [{id:'profile',l:'Profile'},{id:'annual',l:'Annual Summary'},{id:'settings',l:'Settings'}]
 
   return (
-    <div style={{minHeight:'100vh',background:'linear-gradient(135deg,#f0f9ff,#f0fdf4,#fefce8)',fontFamily:"'DM Mono',monospace"}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Mono:wght@400;500&display=swap');*{box-sizing:border-box;margin:0;padding:0;}input:focus{outline:2px solid #86efac;outline-offset:1px;}`}</style>
+    <>
+      <style>{CSS}</style>
+      <div className="page">
+        <PageNav
+          left={<>
+            <button className="nav-btn" onClick={onBack}>← Back</button>
+            <Wordmark light/>
+          </>}
+          right={<>
+            <ThemeToggle theme={theme} onToggle={onToggleTheme}/>
+            <span style={{ fontSize:12, color:'var(--nav-sub)', fontStyle:'italic' }}>Profile</span>
+          </>}
+        />
 
-      {/* Header */}
-      <div style={{background:'white',borderBottom:'1px solid #e2e8f0',padding:'14px 24px',display:'flex',alignItems:'center',gap:16,boxShadow:'0 1px 8px rgba(0,0,0,0.06)'}}>
-        <button onClick={onBack} style={{background:'#f1f5f9',border:'1px solid #e2e8f0',borderRadius:8,padding:'6px 16px',cursor:'pointer',fontSize:12,color:'#64748b',fontFamily:"'Syne',sans-serif",fontWeight:700}}>← Back</button>
-        <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:20,color:'#1e293b'}}>👤 My Profile</div>
-      </div>
+        <div className="page-inner" style={{ maxWidth:880 }}>
 
-      <div style={{maxWidth:860,margin:'0 auto',padding:'24px 16px',display:'flex',flexDirection:'column',gap:16}}>
-
-        {/* ── Rank Card ── */}
-        <div style={{background:`linear-gradient(135deg,${rank.color}22,${rank.color}08)`,border:`2px solid ${rank.color}44`,borderRadius:20,padding:'24px 28px',display:'flex',gap:20,alignItems:'center',flexWrap:'wrap',boxShadow:'0 4px 20px rgba(0,0,0,0.07)'}}>
-          <div style={{fontSize:56}}>{rank.icon}</div>
-          <div style={{flex:1,minWidth:220}}>
-            <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:22,color:'#1e293b'}}>{profile?.full_name||'Agent'}</div>
-            <div style={{fontSize:12,color:'#64748b',marginBottom:10}}>{user?.email}</div>
-            <div style={{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14,color:rank.color,marginBottom:6}}>{rank.icon} {rank.name}</div>
-            <div style={{height:8,background:'#e2e8f0',borderRadius:4,marginBottom:4,maxWidth:300}}>
-              <div style={{height:'100%',background:rank.color,borderRadius:4,width:`${rankProg}%`,transition:'width 0.5s'}} />
+          {/* Rank banner */}
+          <div className="card" style={{ padding:24, marginBottom:20, borderTop:`3px solid ${rank.color}`, display:'flex', gap:20, alignItems:'center', flexWrap:'wrap' }}>
+            <div style={{ width:58, height:58, borderRadius:14, background:`${rank.color}15`, border:`1.5px solid ${rank.color}33`,
+              display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, flexShrink:0 }}>
+              {rank.icon}
             </div>
-            <div style={{fontSize:10,color:'#94a3b8'}}>{(profile?.xp||0).toLocaleString()} XP{nextRank?` → ${nextRank.min.toLocaleString()} for ${nextRank.icon} ${nextRank.name}`:' — MAX RANK!'}</div>
-          </div>
-          <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
-            <div style={{background:'white',borderRadius:14,padding:'12px 18px',textAlign:'center',border:'1px solid #e2e8f0',minWidth:80}}>
-              <div style={{fontSize:10,color:'#94a3b8',letterSpacing:1}}>TOTAL XP</div>
-              <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:22,color:rank.color}}>{(profile?.xp||0).toLocaleString()}</div>
-            </div>
-            <div style={{background:'white',borderRadius:14,padding:'12px 18px',textAlign:'center',border:'1px solid #e2e8f0',minWidth:80}}>
-              <div style={{fontSize:10,color:'#94a3b8',letterSpacing:1}}>STREAK</div>
-              <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:22,color:'#ea580c'}}>🔥 {profile?.streak||0}</div>
-            </div>
-          </div>
-        </div>
-
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
-
-          {/* ── Edit Name ── */}
-          <div style={{background:'white',border:'1px solid #e2e8f0',borderRadius:16,padding:22,boxShadow:'0 1px 6px rgba(0,0,0,0.05)'}}>
-            <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:15,color:'#1e293b',marginBottom:16}}>✏️ Edit Name</div>
-            <div style={{marginBottom:12}}>
-              <label style={{fontSize:11,color:'#64748b',fontWeight:600,letterSpacing:0.5,display:'block',marginBottom:6}}>DISPLAY NAME</label>
-              <input value={fullName} onChange={e=>setFullName(e.target.value)}
-                style={{width:'100%',border:'1.5px solid #e2e8f0',borderRadius:10,padding:'10px 14px',fontSize:13,fontFamily:"'DM Mono',monospace",color:'#1e293b'}} />
-            </div>
-            {saveMsg && <div style={{fontSize:11,color:'#16a34a',marginBottom:8,fontWeight:700}}>{saveMsg}</div>}
-            <button onClick={saveName} disabled={saving||!fullName.trim()} style={{background:'#16a34a',color:'white',border:'none',borderRadius:10,padding:'10px 20px',cursor:'pointer',fontSize:12,fontFamily:"'Syne',sans-serif",fontWeight:700,width:'100%'}}>
-              {saving?'Saving...':'Save Name'}
-            </button>
-          </div>
-
-          {/* ── Change Password ── */}
-          <div style={{background:'white',border:'1px solid #e2e8f0',borderRadius:16,padding:22,boxShadow:'0 1px 6px rgba(0,0,0,0.05)'}}>
-            <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:15,color:'#1e293b',marginBottom:16}}>🔒 Change Password</div>
-            <div style={{marginBottom:12}}>
-              <label style={{fontSize:11,color:'#64748b',fontWeight:600,letterSpacing:0.5,display:'block',marginBottom:6}}>NEW PASSWORD</label>
-              <input type="password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} placeholder="Min 6 characters"
-                style={{width:'100%',border:'1.5px solid #e2e8f0',borderRadius:10,padding:'10px 14px',fontSize:13,fontFamily:"'DM Mono',monospace",color:'#1e293b'}} />
-            </div>
-            {pwMsg && <div style={{fontSize:11,color:pwMsg.startsWith('✅')?'#16a34a':'#dc2626',marginBottom:8,fontWeight:700}}>{pwMsg}</div>}
-            <button onClick={savePassword} disabled={pwSaving||newPassword.length<6} style={{background:'#0369a1',color:'white',border:'none',borderRadius:10,padding:'10px 20px',cursor:'pointer',fontSize:12,fontFamily:"'Syne',sans-serif",fontWeight:700,width:'100%'}}>
-              {pwSaving?'Updating...':'Update Password'}
-            </button>
-          </div>
-        </div>
-
-        {/* ── Team Section ── */}
-        {profile?.teams ? (
-          <div style={{background:'white',border:'1px solid #e2e8f0',borderRadius:16,padding:22,boxShadow:'0 1px 6px rgba(0,0,0,0.05)'}}>
-            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
-              <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:15,color:'#1e293b'}}>👥 {profile.teams.name}</div>
-              {isOwner && <span style={{fontSize:9,background:'#fef9c3',color:'#ca8a04',border:'1px solid #fde047',borderRadius:5,padding:'2px 8px',fontWeight:700}}>👑 OWNER</span>}
-              <div style={{marginLeft:'auto',background:'#f0fdf4',border:'2px dashed #86efac',borderRadius:10,padding:'6px 14px',textAlign:'center'}}>
-                <div style={{fontSize:9,color:'#94a3b8',letterSpacing:1}}>INVITE CODE</div>
-                <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:18,color:'#16a34a',letterSpacing:4}}>{profile.teams.invite_code}</div>
+            <div style={{ flex:1, minWidth:180 }}>
+              <div className="serif" style={{ fontSize:28, color:'var(--text)', lineHeight:1, marginBottom:3 }}>{profile?.full_name||'Agent'}</div>
+              <div style={{ fontSize:12, color:'var(--muted)', marginBottom:10 }}>{user?.email}</div>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <span style={{ fontSize:12, fontWeight:600, color:rank.color }}>{rank.icon} {rank.name}</span>
+                <div style={{ flex:1, maxWidth:200, height:5, background:'var(--bg3)', borderRadius:3 }}>
+                  <div style={{ height:'100%', background:rank.color, borderRadius:3, width:`${rankPct}%`, transition:'width .6s' }}/>
+                </div>
+                <span className="mono" style={{ fontSize:11, color:'var(--muted)' }}>{(profile?.xp||0).toLocaleString()} XP</span>
               </div>
+              {nextRank && <div style={{ fontSize:11, color:'var(--dim)', marginTop:4 }}>
+                {(nextRank.min-(profile?.xp||0)).toLocaleString()} XP to {nextRank.name}
+              </div>}
             </div>
-            <div style={{display:'flex',flexDirection:'column',gap:8}}>
-              {members.map((m,i)=>{
-                const r=getRank(m.xp||0)
-                const isMe=m.id===user.id
-                return (
-                  <div key={m.id} style={{display:'flex',alignItems:'center',gap:12,background:isMe?'#f0fdf4':'#f8fafc',border:`1px solid ${isMe?'#86efac':'#e2e8f0'}`,borderRadius:12,padding:'10px 16px'}}>
-                    <div style={{width:32,height:32,borderRadius:'50%',background:r.color+'22',border:`2px solid ${r.color}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,flexShrink:0}}>{r.icon}</div>
-                    <div style={{flex:1}}>
-                      <div style={{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:13,color:'#1e293b',display:'flex',alignItems:'center',gap:6}}>
-                        {m.full_name||m.email}
-                        {isMe&&<span style={{fontSize:9,background:'#dcfce7',color:'#16a34a',borderRadius:4,padding:'1px 6px'}}>YOU</span>}
-                      </div>
-                      <div style={{fontSize:10,color:'#94a3b8'}}>{r.icon} {r.name}</div>
-                    </div>
-                    <div style={{textAlign:'right'}}>
-                      <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:15,color:r.color}}>{(m.xp||0).toLocaleString()} XP</div>
-                      <div style={{fontSize:10,color:'#ea580c'}}>🔥 {m.streak||0}d</div>
-                    </div>
-                    <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:16,color:'#cbd5e1',width:24,textAlign:'center'}}>#{i+1}</div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        ) : (
-          <div style={{background:'white',border:'1px solid #e2e8f0',borderRadius:16,padding:22,textAlign:'center',color:'#94a3b8',fontSize:12,boxShadow:'0 1px 6px rgba(0,0,0,0.05)'}}>
-            👥 You're not on a team yet. Go to <strong>Teams</strong> to create or join one.
-          </div>
-        )}
-
-        {/* ── Annual Summary ── */}
-        <div style={{background:'white',border:'1px solid #e2e8f0',borderRadius:16,padding:22,boxShadow:'0 1px 6px rgba(0,0,0,0.05)'}}>
-          <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16,flexWrap:'wrap'}}>
-            <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:15,color:'#1e293b'}}>📆 Annual Summary</div>
-            <div style={{display:'flex',gap:6}}>
-              {[CURRENT_YEAR, CURRENT_YEAR-1, CURRENT_YEAR-2].map(y=>(
-                <button key={y} onClick={()=>setSelectedYear(y)} style={{background:selectedYear===y?'#1e293b':'#f1f5f9',color:selectedYear===y?'white':'#64748b',border:'1px solid #e2e8f0',borderRadius:8,padding:'5px 12px',cursor:'pointer',fontSize:11,fontFamily:"'Syne',sans-serif",fontWeight:700}}>{y}</button>
+            <div style={{ display:'flex', gap:10 }}>
+              {[{l:'Total XP',v:(profile?.xp||0).toLocaleString(),c:rank.color},{l:'Streak',v:`🔥 ${profile?.streak||0}`,c:'#f97316'}].map((s,i)=>(
+                <div key={i} className="card-inset" style={{ padding:'10px 16px', textAlign:'center', minWidth:80 }}>
+                  <div className="label" style={{ marginBottom:4 }}>{s.l}</div>
+                  <div className="serif" style={{ fontSize:22, color:s.c, fontWeight:700 }}>{s.v}</div>
+                </div>
               ))}
             </div>
           </div>
 
-          {annualLoading ? (
-            <div style={{textAlign:'center',padding:30,color:'#94a3b8',fontSize:12}}>Loading {selectedYear} data...</div>
-          ) : annualData && (
-            <>
-              {/* Annual totals row */}
-              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))',gap:10,marginBottom:20}}>
-                {[
-                  {label:'Habit Days',     val:annualData.totals.habitDays,                         color:'#16a34a', bg:'#f0fdf4', border:'#86efac',      icon:'✅'},
-                  {label:'Total XP',       val:annualData.totals.totalXp.toLocaleString(),           color:'#7c3aed', bg:'#ede9fe', border:'#c4b5fd',      icon:'🏆'},
-                  {label:'Appointments',   val:annualData.totals.appointments,                       color:'#15803d', bg:'#dcfce7', border:'#86efac',      icon:'📅'},
-                  {label:'Showings',       val:annualData.totals.showings,                           color:'#0369a1', bg:'#e0f2fe', border:'#7dd3fc',      icon:'🔑'},
-                  {label:'Listed',         val:annualData.totals.listed,                             color:'#0f766e', bg:'#f0fdfa', border:'#5eead4',      icon:'🏡'},
-                  {label:'Offers Made',    val:annualData.totals.offersMade,                         color:'#0369a1', bg:'#e0f2fe', border:'#7dd3fc',      icon:'📤'},
-                  {label:'Went Pending',   val:annualData.totals.pending,                            color:'#ca8a04', bg:'#fef9c3', border:'#fde047',      icon:'⏳'},
-                  {label:'Closed Deals',   val:annualData.totals.closedCount,                        color:'#15803d', bg:'#dcfce7', border:'#86efac',      icon:'🎉'},
-                  ...(annualData.totals.closedVolume>0?[{label:'Closed Volume', val:fmtVal(annualData.totals.closedVolume)||'$0', color:'#15803d', bg:'#f0fdf4', border:'#86efac', icon:'💵'}]:[]),
-                  ...(annualData.totals.commission>0?[{label:'Commission',      val:fmtVal(annualData.totals.commission)||'$0',  color:'#16a34a', bg:'#dcfce7', border:'#86efac', icon:'💰'}]:[]),
-                ].map((s,i)=>(
-                  <div key={i} style={{background:s.bg,border:`1px solid ${s.border}`,borderRadius:12,padding:'10px 12px',textAlign:'center'}}>
-                    <div style={{fontSize:9,color:'#64748b',marginBottom:3}}>{s.icon} {s.label}</div>
-                    <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:18,color:s.color}}>{s.val}</div>
-                  </div>
-                ))}
+          {/* Tabs */}
+          <div className="tabs">
+            {tabs.map(t=>(
+              <button key={t.id} className={`tab-item${activeTab===t.id?' on':''}`} onClick={()=>setActiveTab(t.id)}>{t.l}</button>
+            ))}
+          </div>
+
+          {/* ── Profile tab ── */}
+          {activeTab==='profile' && (
+            <div style={{ display:'flex', flexDirection:'column', gap:16, animation:'fadeUp .25s ease' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+                <div className="card" style={{ padding:22 }}>
+                  <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:14 }}>Display Name</div>
+                  <div className="label" style={{ marginBottom:6 }}>Name</div>
+                  <input className="field-input" value={name} onChange={e=>setName(e.target.value)} placeholder="Full name" style={{ marginBottom:12 }}/>
+                  {saveMsg && <div style={{ fontSize:12, color:'var(--green)', marginBottom:8 }}>{saveMsg}</div>}
+                  <button className="btn-primary" onClick={saveName} disabled={saving||!name.trim()} style={{ width:'100%' }}>
+                    {saving?'Saving…':'Save Name'}
+                  </button>
+                </div>
+                <div className="card" style={{ padding:22 }}>
+                  <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:14 }}>Change Password</div>
+                  <div className="label" style={{ marginBottom:6 }}>New Password</div>
+                  <input className="field-input" type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 6 chars" style={{ marginBottom:12 }}/>
+                  {pwMsg && <div style={{ fontSize:12, color:pwMsg.includes('Error')?'var(--red)':'var(--green)', marginBottom:8 }}>{pwMsg}</div>}
+                  <button className="btn-primary" onClick={savePassword} disabled={pwSaving||pw.length<6} style={{ width:'100%' }}>
+                    {pwSaving?'Updating…':'Update Password'}
+                  </button>
+                </div>
               </div>
 
-              {/* Monthly breakdown table */}
-              <div style={{overflowX:'auto'}}>
-                <table style={{width:'100%',borderCollapse:'collapse',fontSize:11,minWidth:700}}>
-                  <thead>
-                    <tr style={{background:'#f8fafc',borderBottom:'2px solid #e2e8f0'}}>
-                      {['Month','Habit Days','Appts','Showings','Listed','Offers','Pending','Closed','Volume','Commission'].map(h=>(
-                        <th key={h} style={{padding:'8px 10px',textAlign:h==='Month'?'left':'center',fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:9,color:'#64748b',letterSpacing:1,whiteSpace:'nowrap'}}>{h.toUpperCase()}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {annualData.byMonth.map((m,i)=>{
-                      const hasActivity = m.habitDays>0||m.closedCount>0||m.appointments>0||m.showings>0
-                      const isCurrent = m.mk === new Date().toISOString().slice(0,7)
+              {/* Team */}
+              {profile?.teams ? (
+                <div className="card" style={{ padding:22 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:10 }}>
+                    <div className="serif" style={{ fontSize:18, color:'var(--text)' }}>{profile.teams.name}</div>
+                    <div className="card-inset" style={{ padding:'8px 18px', textAlign:'center' }}>
+                      <div className="label" style={{ marginBottom:3 }}>Invite Code</div>
+                      <div className="mono" style={{ fontSize:20, fontWeight:700, color:'var(--gold)', letterSpacing:5 }}>{profile.teams.invite_code}</div>
+                    </div>
+                  </div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+                    {members.map((m,i)=>{
+                      const r=getRank(m.xp||0); const isMe=m.id===user.id
                       return (
-                        <tr key={m.mk} style={{borderBottom:'1px solid #f1f5f9',background:isCurrent?'#f0fdf4':i%2===0?'white':'#fafcff',opacity:hasActivity?1:0.5}}>
-                          <td style={{padding:'8px 10px',fontFamily:"'Syne',sans-serif",fontWeight:isCurrent?800:600,fontSize:12,color:isCurrent?'#16a34a':'#334155'}}>
-                            {m.month} {isCurrent&&<span style={{fontSize:8,background:'#dcfce7',color:'#16a34a',borderRadius:3,padding:'1px 4px',marginLeft:4}}>NOW</span>}
-                          </td>
-                          <td style={{padding:'8px 10px',textAlign:'center',color:m.habitDays>0?'#16a34a':'#cbd5e1',fontWeight:700}}>{m.habitDays||'—'}</td>
-                          <td style={{padding:'8px 10px',textAlign:'center',color:m.appointments>0?'#15803d':'#cbd5e1',fontWeight:700}}>{m.appointments||'—'}</td>
-                          <td style={{padding:'8px 10px',textAlign:'center',color:m.showings>0?'#0369a1':'#cbd5e1',fontWeight:700}}>{m.showings||'—'}</td>
-                          <td style={{padding:'8px 10px',textAlign:'center',color:m.listed>0?'#0f766e':'#cbd5e1',fontWeight:700}}>{m.listed||'—'}</td>
-                          <td style={{padding:'8px 10px',textAlign:'center',color:m.offersMade>0?'#0369a1':'#cbd5e1',fontWeight:700}}>{m.offersMade||'—'}</td>
-                          <td style={{padding:'8px 10px',textAlign:'center',color:m.pending>0?'#ca8a04':'#cbd5e1',fontWeight:700}}>{m.pending||'—'}</td>
-                          <td style={{padding:'8px 10px',textAlign:'center',color:m.closedCount>0?'#15803d':'#cbd5e1',fontWeight:700}}>{m.closedCount||'—'}</td>
-                          <td style={{padding:'8px 10px',textAlign:'center',color:m.closedVolume>0?'#15803d':'#cbd5e1',fontWeight:600,fontSize:10}}>{m.closedVolume>0?fmtVal(m.closedVolume):'—'}</td>
-                          <td style={{padding:'8px 10px',textAlign:'center',color:m.commission>0?'#16a34a':'#cbd5e1',fontWeight:600,fontSize:10}}>{m.commission>0?fmtVal(m.commission):'—'}</td>
-                        </tr>
+                        <div key={m.id} className={`member-row${isMe?' me':''}`}>
+                          <div className="mono" style={{ width:24, fontSize:11, color:'var(--dim)', textAlign:'center' }}>{i+1}</div>
+                          <div style={{ width:30, height:30, borderRadius:'50%', background:`${r.color}15`, border:`1px solid ${r.color}30`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>{r.icon}</div>
+                          <div style={{ flex:1 }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                              <span style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{m.full_name||'Agent'}</span>
+                              {isMe && <span style={{ fontSize:9, padding:'1px 6px', borderRadius:4, background:'rgba(5,150,105,.1)', color:'var(--green)', border:'1px solid rgba(5,150,105,.2)', fontWeight:700 }}>YOU</span>}
+                            </div>
+                            <div style={{ fontSize:11, color:'var(--muted)' }}>{r.name}</div>
+                          </div>
+                          <div style={{ textAlign:'right' }}>
+                            <div className="serif" style={{ fontSize:20, color:r.color, fontWeight:700 }}>{(m.xp||0).toLocaleString()}</div>
+                            <div style={{ fontSize:11, color:'#f97316' }}>🔥 {m.streak||0}</div>
+                          </div>
+                        </div>
                       )
                     })}
-                  </tbody>
-                  <tfoot>
-                    <tr style={{borderTop:'2px solid #e2e8f0',background:'#f8fafc'}}>
-                      <td style={{padding:'8px 10px',fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:11,color:'#1e293b'}}>TOTAL {selectedYear}</td>
-                      <td style={{padding:'8px 10px',textAlign:'center',fontFamily:"'Syne',sans-serif",fontWeight:800,color:'#16a34a'}}>{annualData.totals.habitDays}</td>
-                      <td style={{padding:'8px 10px',textAlign:'center',fontFamily:"'Syne',sans-serif",fontWeight:800,color:'#15803d'}}>{annualData.totals.appointments}</td>
-                      <td style={{padding:'8px 10px',textAlign:'center',fontFamily:"'Syne',sans-serif",fontWeight:800,color:'#0369a1'}}>{annualData.totals.showings}</td>
-                      <td style={{padding:'8px 10px',textAlign:'center',fontFamily:"'Syne',sans-serif",fontWeight:800,color:'#0f766e'}}>{annualData.totals.listed}</td>
-                      <td style={{padding:'8px 10px',textAlign:'center',fontFamily:"'Syne',sans-serif",fontWeight:800,color:'#0369a1'}}>{annualData.totals.offersMade}</td>
-                      <td style={{padding:'8px 10px',textAlign:'center',fontFamily:"'Syne',sans-serif",fontWeight:800,color:'#ca8a04'}}>{annualData.totals.pending}</td>
-                      <td style={{padding:'8px 10px',textAlign:'center',fontFamily:"'Syne',sans-serif",fontWeight:800,color:'#15803d'}}>{annualData.totals.closedCount}</td>
-                      <td style={{padding:'8px 10px',textAlign:'center',fontFamily:"'Syne',sans-serif",fontWeight:800,color:'#15803d',fontSize:10}}>{annualData.totals.closedVolume>0?fmtVal(annualData.totals.closedVolume):'—'}</td>
-                      <td style={{padding:'8px 10px',textAlign:'center',fontFamily:"'Syne',sans-serif",fontWeight:800,color:'#16a34a',fontSize:10}}>{annualData.totals.commission>0?fmtVal(annualData.totals.commission):'—'}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </>
-          )}
-        </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="card" style={{ padding:22, textAlign:'center', color:'var(--muted)', fontSize:13 }}>
+                  Not on a team. Go to <strong>Teams</strong> to create or join one.
+                </div>
+              )}
 
-        {/* ── Danger Zone ── */}
-        <div style={{background:'white',border:'1.5px solid #fecaca',borderRadius:16,padding:22,boxShadow:'0 1px 6px rgba(0,0,0,0.05)'}}>
-          <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:15,color:'#dc2626',marginBottom:4}}>⚠️ Danger Zone</div>
-          <div style={{fontSize:11,color:'#94a3b8',marginBottom:14}}>Permanently delete your account and all associated data. This cannot be undone.</div>
-
-          {!showDelete ? (
-            <button onClick={()=>setShowDelete(true)} style={{background:'#fef2f2',border:'1.5px solid #fecaca',color:'#dc2626',borderRadius:10,padding:'10px 20px',cursor:'pointer',fontSize:12,fontFamily:"'Syne',sans-serif",fontWeight:700}}>
-              🗑️ Delete My Account
-            </button>
-          ) : (
-            <div style={{background:'#fef2f2',border:'1.5px solid #fecaca',borderRadius:12,padding:'18px 20px'}}>
-              <div style={{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14,color:'#dc2626',marginBottom:8}}>This will permanently delete:</div>
-              <div style={{fontSize:11,color:'#64748b',marginBottom:14,lineHeight:1.8}}>
-                • All your habit completion history<br/>
-                • All listings and transactions<br/>
-                • Your profile and XP progress<br/>
-                • Your team membership
-              </div>
-              <div style={{marginBottom:14}}>
-                <label style={{fontSize:11,color:'#dc2626',fontWeight:700,display:'block',marginBottom:6}}>Type DELETE to confirm:</label>
-                <input value={deleteConfirm} onChange={e=>setDeleteConfirm(e.target.value)} placeholder="DELETE"
-                  style={{border:'1.5px solid #fecaca',borderRadius:8,padding:'8px 14px',fontSize:13,fontFamily:"'DM Mono',monospace",color:'#dc2626',fontWeight:700,width:'100%',maxWidth:200}} />
-              </div>
-              <div style={{display:'flex',gap:10}}>
-                <button onClick={()=>{setShowDelete(false);setDeleteConfirm('')}} style={{background:'white',border:'1px solid #e2e8f0',color:'#64748b',borderRadius:9,padding:'9px 20px',cursor:'pointer',fontSize:12,fontFamily:"'Syne',sans-serif",fontWeight:700}}>Cancel</button>
-                <button onClick={deleteAccount} disabled={deleteLoading||deleteConfirm!=='DELETE'} style={{background:deleteConfirm==='DELETE'?'#dc2626':'#fca5a5',color:'white',border:'none',borderRadius:9,padding:'9px 20px',cursor:deleteConfirm==='DELETE'?'pointer':'not-allowed',fontSize:12,fontFamily:"'Syne',sans-serif",fontWeight:700}}>
-                  {deleteLoading?'Deleting everything...':'Yes, Delete My Account'}
-                </button>
+              {/* Danger zone */}
+              <div className="card" style={{ padding:22, borderTop:'3px solid var(--red)' }}>
+                <div className="serif" style={{ fontSize:18, color:'var(--red)', marginBottom:4 }}>Danger Zone</div>
+                <div style={{ fontSize:13, color:'var(--muted)', marginBottom:14 }}>
+                  Permanently delete your account and all data. Cannot be undone.
+                </div>
+                {!showDel ? (
+                  <button onClick={()=>setShowDel(true)} style={{
+                    background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.25)',
+                    color:'var(--red)', borderRadius:8, padding:'9px 18px', cursor:'pointer', fontSize:13, fontWeight:600
+                  }}>Delete Account</button>
+                ) : (
+                  <div style={{ background:'rgba(220,38,38,.04)', border:'1px solid rgba(220,38,38,.15)', borderRadius:10, padding:18 }}>
+                    <div style={{ fontSize:13, color:'var(--text2)', marginBottom:14, lineHeight:1.7 }}>
+                      This will permanently erase all habits, listings, transactions and profile data.
+                    </div>
+                    <div className="label" style={{ marginBottom:6 }}>Type DELETE to confirm</div>
+                    <input className="field-input" value={delText} onChange={e=>setDelText(e.target.value)} placeholder="DELETE"
+                      style={{ marginBottom:14, maxWidth:200, fontWeight:700, letterSpacing:3, color:'var(--red)' }}/>
+                    <div style={{ display:'flex', gap:8 }}>
+                      <button className="btn-outline" onClick={()=>{setShowDel(false);setDelText('')}}>Cancel</button>
+                      <button onClick={deleteAccount} disabled={delLoading||delText!=='DELETE'}
+                        style={{ background:delText==='DELETE'?'var(--red)':'rgba(220,38,38,.15)', border:'none',
+                          color:delText==='DELETE'?'#fff':'rgba(220,38,38,.4)', borderRadius:8, padding:'9px 20px',
+                          cursor:delText==='DELETE'?'pointer':'not-allowed', fontWeight:600, fontSize:13 }}>
+                        {delLoading?'Deleting…':'Yes, Delete Everything'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
-        </div>
 
-        <div style={{textAlign:'center',padding:'4px 0 12px',fontSize:9,color:'#cbd5e1',letterSpacing:2}}>REALTYGRIND — YOUR CAREER, YOUR DATA</div>
+          {/* ── Annual tab ── */}
+          {activeTab==='annual' && (
+            <div style={{ animation:'fadeUp .25s ease' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20, flexWrap:'wrap' }}>
+                <div className="serif" style={{ fontSize:18, color:'var(--text)' }}>Annual Summary</div>
+                <div style={{ display:'flex', gap:6 }}>
+                  {[CUR_YEAR,CUR_YEAR-1,CUR_YEAR-2].map(y=>(
+                    <button key={y} onClick={()=>setYear(y)} style={{
+                      padding:'5px 14px', borderRadius:7, border:'1.5px solid', cursor:'pointer', fontSize:12, fontWeight:600, transition:'all .15s',
+                      background:year===y?'var(--text)':'transparent',
+                      borderColor:year===y?'var(--text)':'var(--b3)',
+                      color:year===y?'var(--bg)':'var(--text2)',
+                    }}>{y}</button>
+                  ))}
+                </div>
+              </div>
+
+              {annLoad ? <Loader/> : annual && (
+                <>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(100px,1fr))', gap:8, marginBottom:20 }}>
+                    {[
+                      {l:'Habit Days',v:annual.tot.days,          c:'var(--green)'},
+                      {l:'Total XP',  v:annual.tot.xp.toLocaleString(),c:rank.color},
+                      {l:'Appts',     v:annual.tot.appts,         c:'var(--green)'},
+                      {l:'Showings',  v:annual.tot.shows,         c:'#0ea5e9'},
+                      {l:'Listed',    v:annual.tot.listed,        c:'#10b981'},
+                      {l:'Offers',    v:annual.tot.offers,        c:'#0ea5e9'},
+                      {l:'Pending',   v:annual.tot.pending,       c:'var(--gold2)'},
+                      {l:'Closed',    v:annual.tot.closed,        c:'var(--green)'},
+                      ...(annual.tot.vol>0  ?[{l:'Volume',    v:fmtMoney(annual.tot.vol),  c:'var(--green)'}]:[]),
+                      ...(annual.tot.comm>0 ?[{l:'Commission',v:fmtMoney(annual.tot.comm), c:'var(--green)'}]:[]),
+                    ].map((s,i)=>(
+                      <div key={i} className="card-inset" style={{ padding:'10px 12px', textAlign:'center' }}>
+                        <div className="label" style={{ marginBottom:4 }}>{s.l}</div>
+                        <div className="serif" style={{ fontSize:20, color:s.c, fontWeight:700 }}>{s.v}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="card" style={{ overflowX:'auto' }}>
+                    <table style={{ width:'100%', borderCollapse:'collapse', minWidth:640, fontSize:13 }}>
+                      <thead>
+                        <tr style={{ borderBottom:'1.5px solid var(--b1)' }}>
+                          {['','Days','Appts','Shows','Listed','Offers','Pending','Closed','Volume','Comm'].map((h,i)=>(
+                            <th key={i} style={{ padding:'10px', textAlign:i===0?'left':'center' }}>
+                              <span className="label">{h}</span>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {annual.byMonth.map((m,i)=>{
+                          const isCur = m.mk===curMonth
+                          const hasData = m.days>0||m.closed>0
+                          return (
+                            <tr key={m.mk} style={{ borderBottom:'1px solid var(--b1)', opacity:hasData?1:.4,
+                              background:isCur?'var(--gold3)':'transparent' }}>
+                              <td style={{ padding:'8px 10px', fontWeight:isCur?700:500,
+                                color:isCur?'var(--gold)':'var(--text)', fontSize:13 }}>
+                                {m.m}
+                                {isCur && <span style={{ fontSize:9, marginLeft:6, padding:'1px 5px', borderRadius:3,
+                                  background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>NOW</span>}
+                              </td>
+                              {[m.days,m.appts,m.shows,m.listed,m.offers,m.pending,m.closed].map((v,j)=>(
+                                <td key={j} style={{ padding:'8px 10px', textAlign:'center', fontFamily:"'JetBrains Mono',monospace", fontSize:12,
+                                  color:v>0?['var(--green)','var(--green)','#0ea5e9','#10b981','#0ea5e9','var(--gold2)','var(--green)'][j]:'var(--dim)',
+                                  fontWeight:v>0?700:400 }}>
+                                  {v||'—'}
+                                </td>
+                              ))}
+                              <td style={{ padding:'8px 10px', textAlign:'center', fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:m.vol>0?'var(--green)':'var(--dim)' }}>{m.vol>0?fmtMoney(m.vol):'—'}</td>
+                              <td style={{ padding:'8px 10px', textAlign:'center', fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:m.comm>0?'var(--green)':'var(--dim)' }}>{m.comm>0?fmtMoney(m.comm):'—'}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr style={{ borderTop:'2px solid var(--b2)' }}>
+                          <td style={{ padding:'8px 10px', fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:700, color:'var(--gold)' }}>{year}</td>
+                          {[annual.tot.days,annual.tot.appts,annual.tot.shows,annual.tot.listed,annual.tot.offers,annual.tot.pending,annual.tot.closed].map((v,i)=>(
+                            <td key={i} style={{ padding:'8px 10px', textAlign:'center', fontFamily:"'JetBrains Mono',monospace", fontSize:12, fontWeight:700,
+                              color:['var(--green)','var(--green)','#0ea5e9','#10b981','#0ea5e9','var(--gold2)','var(--green)'][i] }}>{v}</td>
+                          ))}
+                          <td style={{ padding:'8px 10px', textAlign:'center', fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:700, color:'var(--green)' }}>{annual.tot.vol>0?fmtMoney(annual.tot.vol):'—'}</td>
+                          <td style={{ padding:'8px 10px', textAlign:'center', fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:700, color:'var(--green)' }}>{annual.tot.comm>0?fmtMoney(annual.tot.comm):'—'}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── Settings tab ── */}
+          {activeTab==='settings' && (
+            <div style={{ display:'flex', flexDirection:'column', gap:14, animation:'fadeUp .25s ease' }}>
+
+              {/* Theme */}
+              <div className="card" style={{ padding:24 }}>
+                <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:4 }}>Appearance</div>
+                <div style={{ fontSize:13, color:'var(--muted)', marginBottom:20 }}>Choose how RealtyGrind looks for you.</div>
+                <div style={{ display:'flex', gap:12 }}>
+                  {['light','dark'].map(t => (
+                    <button key={t} onClick={()=>{ if(theme!==t) onToggleTheme() }} style={{
+                      flex:1, padding:'18px 16px', borderRadius:10, cursor:'pointer', transition:'all .15s',
+                      border:`2px solid ${theme===t?'var(--gold)':'var(--b2)'}`,
+                      background: theme===t ? 'var(--gold3)' : 'var(--surface2)',
+                      display:'flex', flexDirection:'column', alignItems:'center', gap:8,
+                    }}>
+                      <span style={{ fontSize:28 }}>{t==='light'?'☀️':'🌙'}</span>
+                      <span style={{ fontSize:13, fontWeight:600, color:theme===t?'var(--gold)':'var(--text2)',
+                        textTransform:'capitalize' }}>{t} Mode</span>
+                      {theme===t && <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, background:'var(--gold4)',
+                        color:'var(--gold)', fontWeight:700, letterSpacing:.8 }}>ACTIVE</span>}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ marginTop:16, display:'flex', alignItems:'center', justifyContent:'space-between',
+                  padding:'12px 16px', borderRadius:9, background:'var(--bg2)', border:'1px solid var(--b1)' }}>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>Quick Toggle</div>
+                    <div style={{ fontSize:11, color:'var(--muted)' }}>Also available in the top nav bar</div>
+                  </div>
+                  <ThemeToggle theme={theme} onToggle={onToggleTheme}/>
+                </div>
+              </div>
+
+              {/* Account info */}
+              <div className="card" style={{ padding:24 }}>
+                <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:14 }}>Account</div>
+                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                  {[
+                    {l:'Email', v:user?.email},
+                    {l:'Member since', v:user?.created_at?new Date(user.created_at).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'}):'—'},
+                    {l:'Rank', v:`${rank.icon} ${rank.name}`},
+                    {l:'Total XP', v:(profile?.xp||0).toLocaleString()},
+                  ].map((row,i)=>(
+                    <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
+                      padding:'10px 14px', borderRadius:8, background:'var(--bg2)', border:'1px solid var(--b1)' }}>
+                      <span className="label">{row.l}</span>
+                      <span style={{ fontSize:13, fontWeight:500, color:'var(--text)', fontFamily:"'JetBrains Mono',monospace" }}>{row.v}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+          )}
+
+          <div style={{ height:32 }}/>
+          <div style={{ textAlign:'center', fontSize:10, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", letterSpacing:2, paddingBottom:24 }}>
+            REALTYGRIND — YOUR CAREER, YOUR DATA
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   )
 }

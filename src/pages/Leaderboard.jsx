@@ -1,148 +1,120 @@
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
+import { CSS, Loader, Wordmark, PageNav, ThemeToggle, getRank, fmtMoney } from '../design'
 
-const RANKS = [
-  { name: 'Rookie Agent',  min: 0,    color: '#94a3b8', icon: '🏅' },
-  { name: 'Associate',     min: 500,  color: '#16a34a', icon: '🥈' },
-  { name: 'Senior Agent',  min: 1500, color: '#ca8a04', icon: '🥇' },
-  { name: 'Top Producer',  min: 3000, color: '#ea580c', icon: '🏆' },
-  { name: 'Elite Broker',  min: 6000, color: '#7c3aed', icon: '💎' },
-]
-function getRank(xp) {
-  return [...RANKS].reverse().find(r => xp >= r.min) || RANKS[0]
-}
-
-export default function Leaderboard({ onBack }) {
+export default function Leaderboard({ onBack, theme, onToggleTheme }) {
   const { profile } = useAuth()
-  const [global, setGlobal] = useState([])
-  const [team, setTeam] = useState([])
-  const [tab, setTab] = useState('global')
+  const [tab,     setTab]     = useState('global')
+  const [global,  setGlobal]  = useState([])
+  const [team,    setTeam]    = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetchLeaderboards()
-  }, [])
+  useEffect(()=>{ load() },[])
 
-  async function fetchLeaderboards() {
+  async function load() {
     setLoading(true)
-
-    // Global leaderboard
-    const { data: globalData } = await supabase
-      .from('profiles')
-      .select('id, full_name, xp, streak, team_id, teams(name)')
-      .order('xp', { ascending: false })
-      .limit(50)
-    setGlobal(globalData || [])
-
-    // Team leaderboard (if user is in a team)
+    const {data:g} = await supabase.from('profiles').select('id,full_name,xp,streak,teams(name)')
+      .order('xp',{ascending:false}).limit(50)
+    setGlobal(g||[])
     if (profile?.team_id) {
-      const { data: teamData } = await supabase
-        .from('profiles')
-        .select('id, full_name, xp, streak, team_id')
-        .eq('team_id', profile.team_id)
-        .order('xp', { ascending: false })
-      setTeam(teamData || [])
+      const {data:t} = await supabase.from('profiles').select('id,full_name,xp,streak')
+        .eq('team_id',profile.team_id).order('xp',{ascending:false})
+      setTeam(t||[])
     }
-
     setLoading(false)
   }
 
-  const data = tab === 'global' ? global : team
-  const medalColors = ['#f59e0b', '#94a3b8', '#cd7c32']
+  const rows   = tab==='global' ? global : team
+  const medals = ['#d4a017','#9ca3af','#cd7c32']
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg,#f0f9ff,#f0fdf4,#fefce8)', fontFamily: "'DM Mono',monospace" }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Mono:wght@400;500&display=swap');`}</style>
+    <>
+      <style>{CSS}</style>
+      <div className="page">
+        <PageNav
+          left={<>
+            <button className="nav-btn" onClick={onBack}>← Back</button>
+            <Wordmark light/>
+          </>}
+          right={<>
+            <ThemeToggle theme={theme} onToggle={onToggleTheme}/>
+            <span style={{ fontSize:12, color:'var(--nav-sub)', fontStyle:'italic' }}>Leaderboard</span>
+          </>}
+        />
 
-      {/* Header */}
-      <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 1px 8px rgba(0,0,0,0.06)' }}>
-        <button onClick={onBack} style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 12, color: '#64748b', fontFamily: "'Syne',sans-serif", fontWeight: 700 }}>← Back</button>
-        <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 20, color: '#1e293b' }}>🏆 Leaderboard</div>
-      </div>
+        <div className="page-inner" style={{ maxWidth:720 }}>
+          {/* Tabs */}
+          <div className="tabs">
+            {[{id:'global',l:'🌎 Global'},{id:'team',l:'👥 My Team'}].map(t=>(
+              <button key={t.id} className={`tab-item${tab===t.id?' on':''}`} onClick={()=>setTab(t.id)}>{t.l}</button>
+            ))}
+          </div>
 
-      <div style={{ maxWidth: 700, margin: '0 auto', padding: '24px 16px' }}>
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-          {['global', 'team'].map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{
-              background: tab === t ? '#1e293b' : 'white',
-              border: `1.5px solid ${tab === t ? '#1e293b' : '#e2e8f0'}`,
-              color: tab === t ? 'white' : '#64748b',
-              borderRadius: 9, padding: '8px 20px', fontSize: 11, cursor: 'pointer',
-              fontFamily: "'Syne',sans-serif", fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1,
-            }}>
-              {t === 'global' ? '🌎 Global' : '👥 My Team'}
-            </button>
-          ))}
+          {tab==='team' && !profile?.team_id && (
+            <div className="card" style={{ padding:48, textAlign:'center' }}>
+              <div style={{ fontSize:44, marginBottom:14 }}>👥</div>
+              <div className="serif" style={{ fontSize:22, color:'var(--text)', marginBottom:8 }}>Not on a team yet</div>
+              <div style={{ fontSize:13, color:'var(--muted)' }}>Go back and join or create a team first.</div>
+            </div>
+          )}
+
+          {loading ? <Loader/> : (
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {rows.map((a,i)=>{
+                const rank  = getRank(a.xp||0)
+                const isMe  = a.id===profile?.id
+                const pos   = i+1
+                return (
+                  <div key={a.id} className={`lb-row${isMe?' me':''}`}
+                    style={pos<=3?{borderColor:`${medals[i]}44`}:{}}>
+                    <div style={{
+                      width:36, height:36, borderRadius:8, flexShrink:0,
+                      background:pos<=3?`${medals[i]}18`:'var(--bg2)',
+                      border:`1px solid ${pos<=3?medals[i]+'44':'var(--b2)'}`,
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      fontFamily:"'JetBrains Mono',monospace", fontWeight:700, fontSize:13,
+                      color:pos<=3?medals[i]:'var(--muted)',
+                    }}>{pos}</div>
+
+                    <div style={{
+                      width:34, height:34, borderRadius:'50%', flexShrink:0,
+                      background:`${rank.color}15`, border:`1px solid ${rank.color}30`,
+                      display:'flex', alignItems:'center', justifyContent:'center', fontSize:16,
+                    }}>{rank.icon}</div>
+
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:7, flexWrap:'wrap' }}>
+                        <span style={{ fontSize:14, fontWeight:600, color:'var(--text)' }}>{a.full_name||'Agent'}</span>
+                        {isMe && <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700,
+                          background:'var(--gold4)', color:'var(--gold2)', border:'1px solid var(--gold4)' }}>YOU</span>}
+                      </div>
+                      <div style={{ fontSize:11, color:'var(--muted)', marginTop:1 }}>
+                        {rank.name}{a.teams?.name&&` · ${a.teams.name}`}
+                      </div>
+                    </div>
+
+                    <div style={{ textAlign:'right', flexShrink:0 }}>
+                      <div className="label" style={{ marginBottom:2 }}>Streak</div>
+                      <div className="mono" style={{ fontWeight:700, fontSize:15, color:'#f97316' }}>🔥 {a.streak||0}</div>
+                    </div>
+
+                    <div style={{ textAlign:'right', minWidth:90, flexShrink:0 }}>
+                      <div className="label" style={{ marginBottom:2 }}>XP</div>
+                      <div className="serif" style={{ fontSize:24, color:rank.color, lineHeight:1, fontWeight:700 }}>
+                        {(a.xp||0).toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+              {rows.length===0 && (
+                <div style={{ textAlign:'center', padding:48, color:'var(--muted)', fontSize:13 }}>No data yet.</div>
+              )}
+            </div>
+          )}
         </div>
-
-        {tab === 'team' && !profile?.team_id && (
-          <div style={{ background: 'white', borderRadius: 16, padding: 32, textAlign: 'center', border: '1px solid #e2e8f0' }}>
-            <div style={{ fontSize: 32, marginBottom: 12 }}>👥</div>
-            <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 16, color: '#1e293b', marginBottom: 8 }}>You're not on a team yet</div>
-            <div style={{ fontSize: 12, color: '#94a3b8' }}>Go back and join or create a team to see your team leaderboard</div>
-          </div>
-        )}
-
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8', fontSize: 13 }}>Loading...</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {data.map((agent, i) => {
-              const rank = getRank(agent.xp || 0)
-              const isMe = agent.id === profile?.id
-              const pos = i + 1
-              return (
-                <div key={agent.id} style={{
-                  background: isMe ? '#f0fdf4' : 'white',
-                  border: `1.5px solid ${isMe ? '#86efac' : pos <= 3 ? medalColors[i] + '44' : '#e2e8f0'}`,
-                  borderRadius: 14, padding: '14px 18px',
-                  display: 'flex', alignItems: 'center', gap: 14,
-                  boxShadow: isMe ? '0 0 0 3px #86efac44' : '0 1px 4px rgba(0,0,0,0.05)',
-                }}>
-                  {/* Position */}
-                  <div style={{
-                    width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-                    background: pos <= 3 ? medalColors[i] : '#f1f5f9',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: pos <= 3 ? 16 : 13,
-                    color: pos <= 3 ? 'white' : '#94a3b8',
-                  }}>
-                    {pos === 1 ? '🥇' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : pos}
-                  </div>
-
-                  {/* Name & team */}
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 14, color: '#1e293b' }}>
-                        {agent.full_name || agent.email || 'Agent'}
-                      </span>
-                      {isMe && <span style={{ fontSize: 9, background: '#dcfce7', color: '#16a34a', border: '1px solid #86efac', borderRadius: 4, padding: '1px 6px', fontWeight: 700 }}>YOU</span>}
-                    </div>
-                    <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
-                      {rank.icon} {rank.name}
-                      {agent.teams?.name && ` · 👥 ${agent.teams.name}`}
-                    </div>
-                  </div>
-
-                  {/* Streak */}
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 9, color: '#94a3b8' }}>STREAK</div>
-                    <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 16, color: '#ea580c' }}>🔥 {agent.streak || 0}</div>
-                  </div>
-
-                  {/* XP */}
-                  <div style={{ textAlign: 'center', minWidth: 70 }}>
-                    <div style={{ fontSize: 9, color: '#94a3b8' }}>XP</div>
-                    <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 18, color: rank.color }}>{(agent.xp || 0).toLocaleString()}</div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
       </div>
-    </div>
+    </>
   )
 }

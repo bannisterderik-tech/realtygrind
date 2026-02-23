@@ -6,266 +6,290 @@ import Leaderboard from './pages/Leaderboard'
 import TeamsPage from './pages/TeamsPage'
 import ProfilePage from './pages/ProfilePage'
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-// xpPerIncrement = XP awarded each time + is pressed (counter habits)
-// xp = base XP for checking the habit at all
 const HABITS = [
-  { id: 'prospecting',  label: 'Prospecting Calls',    icon: '📞', xp: 25, category: 'leads',     hasCounter: true, xpPerIncrement: 10 },
-  { id: 'followup',     label: 'Follow-Up Emails',     icon: '✉️', xp: 15, category: 'leads',     hasCounter: true, xpPerIncrement: 8  },
-  { id: 'appointments', label: 'Booked Appointments',  icon: '📅', xp: 30, category: 'leads',     hasCounter: true, xpPerIncrement: 25 },
-  { id: 'showing',      label: 'Property Showings',    icon: '🔑', xp: 30, category: 'leads',     hasCounter: true, xpPerIncrement: 20 },
-  { id: 'listings',     label: 'New Listings Taken',   icon: '🏠', xp: 25, category: 'market',    hasCounter: true, xpPerIncrement: 30 },
-  { id: 'social',       label: 'Social Media Posts',   icon: '📱', xp: 10, category: 'marketing', hasCounter: true, xpPerIncrement: 8  },
-  { id: 'crm',          label: 'CRM Updates',          icon: '💾', xp: 15, category: 'admin',     hasCounter: true, xpPerIncrement: 5  },
-  { id: 'market',       label: 'Market Analysis',      icon: '📊', xp: 35, category: 'market' },
-  { id: 'networking',   label: 'Network/Referrals',    icon: '🤝', xp: 20, category: 'leads',     hasCounter: true, xpPerIncrement: 15 },
-  { id: 'training',     label: 'Training/Learning',    icon: '📚', xp: 20, category: 'growth' },
-  { id: 'review',       label: 'Client Reviews Asked', icon: '⭐', xp: 20, category: 'marketing', hasCounter: true, xpPerIncrement: 15 },
+  { id:'prospecting',  label:'Prospecting Calls',   icon:'📞', xp:25, cat:'leads',     counter:true, xpEach:10 },
+  { id:'followup',     label:'Follow-Up Emails',    icon:'✉️', xp:15, cat:'leads',     counter:true, xpEach:8  },
+  { id:'appointments', label:'Appointments Booked', icon:'📅', xp:30, cat:'leads',     counter:true, xpEach:25 },
+  { id:'showing',      label:'Property Showings',   icon:'🔑', xp:30, cat:'leads',     counter:true, xpEach:20 },
+  { id:'newlisting',   label:'Listings Taken',      icon:'🏠', xp:25, cat:'listings',  counter:true, xpEach:30 },
+  { id:'social',       label:'Social Posts',        icon:'📱', xp:10, cat:'marketing', counter:true, xpEach:8  },
+  { id:'crm',          label:'CRM Updates',         icon:'💾', xp:15, cat:'admin',     counter:true, xpEach:5  },
+  { id:'market',       label:'Market Analysis',     icon:'📊', xp:35, cat:'market' },
+  { id:'networking',   label:'Networking',          icon:'🤝', xp:20, cat:'leads',     counter:true, xpEach:15 },
+  { id:'training',     label:'Training',            icon:'📚', xp:20, cat:'growth' },
+  { id:'review',       label:'Review Requests',     icon:'⭐', xp:20, cat:'marketing', counter:true, xpEach:15 },
 ]
 
-// XP awarded for pipeline events (on top of habit XP)
-const PIPELINE_XP = {
-  offer_made:     75,
-  offer_received: 75,
-  went_pending:   150,
-  closed:         300,
-}
+const PIPELINE_XP = { offer_made:75, offer_received:75, went_pending:150, closed:300 }
 
-const DAYS      = ['Su','Mo','Tu','We','Th','Fr','Sa']
-const FULL_DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
-const WEEKS     = 4
+const DAYS       = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+const FULL_DAYS  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+const WEEKS      = 4
+const MONTH_YEAR = new Date().toISOString().slice(0,7)
 
 const RANKS = [
-  { name: 'Rookie Agent',  min: 0,    max: 500,      color: '#94a3b8', bg: '#f1f5f9', icon: '🏅' },
-  { name: 'Associate',     min: 500,  max: 1500,     color: '#16a34a', bg: '#dcfce7', icon: '🥈' },
-  { name: 'Senior Agent',  min: 1500, max: 3000,     color: '#ca8a04', bg: '#fef9c3', icon: '🥇' },
-  { name: 'Top Producer',  min: 3000, max: 6000,     color: '#ea580c', bg: '#ffedd5', icon: '🏆' },
-  { name: 'Elite Broker',  min: 6000, max: Infinity, color: '#7c3aed', bg: '#ede9fe', icon: '💎' },
+  { name:'Rookie',       min:0,    max:500,      color:'#94a3b8', icon:'🏅' },
+  { name:'Associate',    min:500,  max:1500,     color:'#34d399', icon:'🥈' },
+  { name:'Senior Agent', min:1500, max:3000,     color:'#fbbf24', icon:'🥇' },
+  { name:'Top Producer', min:3000, max:6000,     color:'#fb923c', icon:'🏆' },
+  { name:'Elite Broker', min:6000, max:Infinity, color:'#c084fc', icon:'💎' },
 ]
 
-const CATEGORY_COLORS = {
-  leads:     { text: '#15803d', bg: '#dcfce7', border: '#86efac' },
-  market:    { text: '#0369a1', bg: '#e0f2fe', border: '#7dd3fc' },
-  marketing: { text: '#be185d', bg: '#fce7f3', border: '#f9a8d4' },
-  admin:     { text: '#c2410c', bg: '#ffedd5', border: '#fdba74' },
-  growth:    { text: '#6d28d9', bg: '#ede9fe', border: '#c4b5fd' },
+const CAT_STYLE = {
+  leads:     { color:'#34d399', bg:'rgba(52,211,153,0.12)',   border:'rgba(52,211,153,0.25)'   },
+  listings:  { color:'#60a5fa', bg:'rgba(96,165,250,0.12)',   border:'rgba(96,165,250,0.25)'   },
+  marketing: { color:'#f472b6', bg:'rgba(244,114,182,0.12)',  border:'rgba(244,114,182,0.25)'  },
+  admin:     { color:'#fb923c', bg:'rgba(251,146,60,0.12)',   border:'rgba(251,146,60,0.25)'   },
+  market:    { color:'#38bdf8', bg:'rgba(56,189,248,0.12)',   border:'rgba(56,189,248,0.25)'   },
+  growth:    { color:'#c084fc', bg:'rgba(192,132,252,0.12)',  border:'rgba(192,132,252,0.25)'  },
 }
 
-const MONTH_YEAR = new Date().toISOString().slice(0, 7)
-
-function getRank(xp) {
-  return RANKS.find(r => xp >= r.min && xp < r.max) || RANKS[RANKS.length - 1]
-}
-function getToday() {
-  const d = new Date()
-  return { week: Math.min(Math.floor((d.getDate()-1)/7),3), day: d.getDay() }
-}
-function fmtVal(v) {
-  const n = parseFloat(String(v||'').replace(/[^0-9.]/g,''))
-  if (isNaN(n)||n===0) return null
-  return n>=1000000 ? '$'+(n/1000000).toFixed(2)+'M' : n>=1000 ? '$'+(n/1000).toFixed(0)+'K' : '$'+n.toFixed(0)
-}
-function fmtFull(v) {
-  const n = parseFloat(String(v||'').replace(/[^0-9.]/g,''))
-  if (isNaN(n)||n===0) return '$0'
-  return '$'+n.toLocaleString('en-US', { minimumFractionDigits:0, maximumFractionDigits:0 })
+function getRank(xp) { return [...RANKS].reverse().find(r=>xp>=r.min)||RANKS[0] }
+function getToday()  { const d=new Date(); return { week:Math.min(Math.floor((d.getDate()-1)/7),3), day:d.getDay() } }
+function fmtMoney(v) {
+  const n=parseFloat(String(v||'').replace(/[^0-9.]/g,''))
+  if(!n) return null
+  return n>=1e6?'$'+(n/1e6).toFixed(2)+'M':n>=1e3?'$'+(n/1e3).toFixed(0)+'K':'$'+Math.round(n).toLocaleString()
 }
 
-// ─── UI Helpers ───────────────────────────────────────────────────────────────
+// ─── CSS ──────────────────────────────────────────────────────────────────────
 
-function CircleProgress({ percent, size=80, color='#16a34a', trackColor='#e2e8f0', label, sublabel, textColor='#1e293b' }) {
-  const r=( size-10)/2, circ=2*Math.PI*r, dash=circ*(Math.min(percent,100)/100)
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root {
+  --bg:       #09090b;
+  --s1:       #111115;
+  --s2:       #18181d;
+  --s3:       #1e1e25;
+  --b1:       rgba(255,255,255,0.06);
+  --b2:       rgba(255,255,255,0.10);
+  --b3:       rgba(255,255,255,0.16);
+  --text:     #f4f4f5;
+  --sub:      #a1a1aa;
+  --dim:      #52525b;
+  --gold:     #d4a853;
+  --gold2:    rgba(212,168,83,0.14);
+  --gold3:    rgba(212,168,83,0.06);
+  --green:    #34d399;
+  --red:      #f87171;
+  --r:        13px;
+}
+
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;}
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-thumb{background:#2a2a32;border-radius:2px;}
+::-webkit-scrollbar-track{background:transparent;}
+
+@keyframes fadeUp  {from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes floatXp {0%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-52px) scale(1.15)}}
+@keyframes pop     {0%{transform:scale(1)}45%{transform:scale(1.4)}100%{transform:scale(1)}}
+@keyframes glow    {0%,100%{box-shadow:0 0 8px rgba(212,168,83,0.3)}50%{box-shadow:0 0 18px rgba(212,168,83,0.6)}}
+
+.card  {background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);}
+.card2 {background:var(--s2);border:1px solid var(--b1);border-radius:10px;}
+
+.nav-btn{background:transparent;border:1px solid var(--b2);color:var(--sub);border-radius:8px;
+  padding:7px 14px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;
+  transition:all .15s;white-space:nowrap;}
+.nav-btn:hover{background:var(--s2);border-color:var(--b3);color:var(--text);}
+.nav-btn.active{background:var(--gold2);border-color:var(--gold);color:var(--gold);}
+
+.tab{background:transparent;border:none;border-bottom:2px solid transparent;padding:10px 18px;
+  cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--sub);transition:all .15s;}
+.tab:hover{color:var(--text);}
+.tab.active{color:var(--gold);border-bottom-color:var(--gold);}
+
+.habit-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:9px;
+  border:1px solid transparent;transition:all .15s;cursor:default;}
+.habit-row:hover{background:var(--s2);border-color:var(--b1);}
+.habit-row.done{background:var(--s3);border-color:var(--b2);}
+
+.chk{width:26px;height:26px;border-radius:7px;border:1.5px solid var(--b3);background:transparent;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;}
+.chk:hover{border-color:var(--b3);background:var(--s3);}
+.chk.done{border-color:transparent;animation:pop .25s ease;}
+
+.cnt-btn{width:22px;height:22px;border-radius:6px;border:1px solid;background:transparent;
+  cursor:pointer;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;
+  transition:all .15s;font-family:'DM Sans',sans-serif;flex-shrink:0;}
+.cnt-btn:hover{opacity:.75;transform:scale(1.1);}
+
+.pipe-input{background:transparent;border:none;color:var(--text);font-family:'JetBrains Mono',monospace;
+  font-size:12px;width:100%;min-width:0;}
+.pipe-input:focus{outline:none;}
+.pipe-select{background:var(--s2);border:1px solid var(--b2);color:var(--sub);border-radius:7px;
+  padding:5px 8px;font-family:'DM Sans',sans-serif;font-size:11px;cursor:pointer;width:100%;}
+.pipe-select:focus{outline:none;border-color:var(--gold);}
+.pipe-row{display:grid;gap:8px;align-items:center;padding:8px 12px;border-radius:9px;
+  border:1px solid var(--b1);background:var(--s2);transition:border-color .15s;}
+.pipe-row:hover{border-color:var(--b2);}
+
+.del-btn{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);color:#f87171;
+  border-radius:7px;padding:5px 9px;cursor:pointer;font-size:12px;flex-shrink:0;transition:all .15s;}
+.del-btn:hover{background:rgba(248,113,113,.18);}
+
+.input{background:var(--s2);border:1px solid var(--b2);color:var(--text);border-radius:8px;
+  padding:9px 13px;font-family:'JetBrains Mono',monospace;font-size:12px;width:100%;transition:border-color .15s;}
+.input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,168,83,.1);}
+
+.btn-primary{background:var(--gold);border:none;color:#09090b;border-radius:8px;padding:9px 20px;
+  cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;transition:all .15s;}
+.btn-primary:hover{background:#e6bc6a;}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed;}
+.btn-ghost{background:transparent;border:1px solid var(--b2);color:var(--sub);border-radius:8px;
+  padding:8px 16px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;transition:all .15s;}
+.btn-ghost:hover{background:var(--s2);color:var(--text);border-color:var(--b3);}
+
+.stat{border-radius:11px;padding:14px 16px;cursor:default;transition:transform .15s;}
+.stat:hover{transform:translateY(-2px);}
+`
+
+// ─── UI Atoms ─────────────────────────────────────────────────────────────────
+
+function Ring({ pct, size=72, color='#d4a853', track='rgba(255,255,255,0.06)', sw=5, label, sub }) {
+  const r=(size-sw*2)/2, c=2*Math.PI*r, d=c*(Math.min(pct,100)/100)
   return (
-    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
-      <svg width={size} height={size} style={{ transform:'rotate(-90deg)' }}>
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={trackColor} strokeWidth={7} />
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={7}
-          strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
-          style={{ transition:'stroke-dasharray 0.6s cubic-bezier(.4,2,.6,1)' }} />
+    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
+      <svg width={size} height={size} style={{transform:'rotate(-90deg)',flexShrink:0}}>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={track} strokeWidth={sw}/>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={sw}
+          strokeDasharray={`${d} ${c}`} strokeLinecap="round"
+          style={{transition:'stroke-dasharray .7s cubic-bezier(.4,2,.55,1)',filter:`drop-shadow(0 0 5px ${color}55)`}}/>
         <text x={size/2} y={size/2+1} textAnchor="middle" dominantBaseline="middle"
-          fill={textColor} fontSize={size>70?15:11} fontWeight="700" fontFamily="'Syne',sans-serif"
-          style={{ transform:'rotate(90deg)', transformOrigin:`${size/2}px ${size/2}px` }}>
-          {Math.round(percent)}%
+          fill={color} fontSize={size>64?13:10} fontWeight="700" fontFamily="'DM Sans',sans-serif"
+          style={{transform:'rotate(90deg)',transformOrigin:`${size/2}px ${size/2}px`}}>
+          {Math.round(pct)}%
         </text>
       </svg>
-      {label    && <span style={{ fontSize:11, color:'#64748b', fontFamily:"'DM Mono',monospace", textAlign:'center' }}>{label}</span>}
-      {sublabel && <span style={{ fontSize:10, color, fontFamily:"'DM Mono',monospace" }}>{sublabel}</span>}
+      {label && <div style={{fontSize:10,color:'var(--sub)',textAlign:'center'}}>{label}</div>}
+      {sub   && <div style={{fontSize:10,color,fontFamily:"'JetBrains Mono',monospace"}}>{sub}</div>}
     </div>
   )
 }
 
-function XpBadge({ xp, color }) {
-  return <span style={{ fontSize:9, background: color+'22', color, border:`1px solid ${color}44`, borderRadius:5, padding:'1px 6px', fontWeight:700, fontFamily:"'Syne',sans-serif" }}>+{xp} XP</span>
-}
-
-// ─── Counter Cell (for habits with hasCounter) ────────────────────────────────
-
-function CounterCell({ hid, wi, di, checked, isToday, catCol, animCell, onToggle, onIncrement, count }) {
+function StatCard({ icon, label, value, color='#d4a853', sub, border }) {
   return (
-    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
-      <button onClick={()=>onToggle(hid,wi,di)} style={{ width:21, height:21, borderRadius:5, border:`1.5px solid ${checked?catCol.text:isToday?'#94a3b8':'#e2e8f0'}`, background:checked?catCol.bg:isToday?'#f0fdf4':'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:checked?`0 0 0 2px ${catCol.border}`:'none', animation:animCell===`${hid}-${wi}-${di}`?'pop 0.3s ease':'none' }}>
-        {checked && <span style={{ color:catCol.text, fontSize:11, fontWeight:700 }}>✓</span>}
-        {isToday&&!checked && <span style={{ width:6, height:6, borderRadius:'50%', background:'#86efac', display:'block' }} />}
-      </button>
-      {checked && (
-        <div style={{ display:'flex', alignItems:'center', gap:1 }}>
-          <span style={{ fontSize:9, color:catCol.text, fontWeight:800, fontFamily:"'Syne',sans-serif" }}>{count||1}</span>
-          <button onClick={()=>onIncrement(hid,wi,di)} style={{ width:13, height:13, borderRadius:3, border:`1px solid ${catCol.border}`, background:catCol.bg, cursor:'pointer', fontSize:10, lineHeight:1, color:catCol.text, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center' }}>+</button>
-        </div>
-      )}
+    <div className="stat" style={{background:'var(--s2)',border:`1px solid ${border||'var(--b1)'}`}}>
+      <div style={{fontSize:10,color:'var(--sub)',marginBottom:6,display:'flex',alignItems:'center',gap:5}}>
+        <span>{icon}</span><span style={{letterSpacing:.5}}>{label}</span>
+      </div>
+      <div style={{fontFamily:"'Instrument Serif',serif",fontSize:24,color,lineHeight:1,fontWeight:400}}>{value}</div>
+      {sub && <div style={{fontSize:10,color:'var(--sub)',marginTop:4,fontFamily:"'JetBrains Mono',monospace"}}>{sub}</div>}
     </div>
   )
 }
 
-// ─── Transaction Tracker ──────────────────────────────────────────────────────
+// ─── Pipeline Tracker ─────────────────────────────────────────────────────────
 
-function TransactionTracker({ title, icon, color, bg, border, placeholder, priceLabel='Price', rows, setRows, onMarkClosed, onMoveToPending, showStatusDropdown=true, showCommission=false, commissionPct, onCommissionChange, showCommissionInSummary, onToggleShowCommission }) {
-
-  const [newAddr, setNewAddr]   = useState('')
-  const [newPrice, setNewPrice] = useState('')
+function PipelineSection({ title, icon, accentColor, rows, setRows, onStatusChange, showSource=false, onAddNew }) {
+  const [addr, setAddr]   = useState('')
+  const [price, setPrice] = useState('')
+  const [comm, setComm]   = useState('')
 
   function add() {
-    if (!newAddr.trim()) return
-    setRows(prev => [...prev, { id:Date.now(), address:newAddr.trim(), price:newPrice.trim(), status:'active', commission:'' }])
-    setNewAddr(''); setNewPrice('')
+    if (!addr.trim()) return
+    const newRow = { id:Date.now(), address:addr.trim(), price:price.trim(), commission:comm.trim(), status:'active' }
+    setRows(prev=>[...prev, newRow])
+    if (onAddNew) onAddNew(newRow)
+    setAddr(''); setPrice(''); setComm('')
   }
+
   function remove(id)             { setRows(prev=>prev.filter(r=>r.id!==id)) }
-  function update(id, field, val) { setRows(prev=>prev.map(r=>r.id===id?{...r,[field]:val}:r)) }
+  function update(id, f, v)       { setRows(prev=>prev.map(r=>r.id===id?{...r,[f]:v}:r)) }
 
-  function handleStatusChange(row, newStatus) {
-    if (newStatus==='closed' && onMarkClosed)       { onMarkClosed({...row, closedFrom:title}); remove(row.id) }
-    else if (newStatus==='pending' && onMoveToPending) { onMoveToPending({...row}); remove(row.id) }
-    else update(row.id, 'status', newStatus)
-  }
+  const totalVol  = rows.reduce((a,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
+  const totalComm = rows.reduce((a,r)=>{ const n=parseFloat(String(r.commission||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
 
-  const totalValue = rows.reduce((acc,r)=>{ const n=parseFloat(String(r.price).replace(/[^0-9.]/g,'')); return acc+(isNaN(n)?0:n) }, 0)
-  const totalCommission = showCommission && commissionPct > 0
-    ? rows.reduce((acc,r)=>{ const n=parseFloat(String(r.price).replace(/[^0-9.]/g,'')); return acc+(isNaN(n)?0:n*(commissionPct/100)) }, 0)
-    : 0
+  const xpKey = title.toLowerCase().includes('closed') ? 'closed'
+              : title.toLowerCase().includes('pending') ? 'went_pending'
+              : 'offer_made'
 
-  const statusOptions = [
-    { value:'active',  label:'🟢 Active' },
-    { value:'pending', label:'⏳ Move to Pending' },
-    { value:'closed',  label:'🎉 Mark as Closed' },
+  const statusOpts = showSource ? [] : [
+    { v:'active',  l:'Active' },
+    { v:'pending', l:'Move to Pending' },
+    { v:'closed',  l:'Mark Closed' },
   ]
-  const cols = showStatusDropdown
-    ? (showCommission ? '24px 1fr 130px 110px 120px 36px' : '24px 1fr 150px 140px 36px')
-    : (showCommission ? '24px 1fr 130px 120px 36px' : '24px 1fr 150px 100px 36px')
+
+  const cols = showSource
+    ? '1fr 110px 110px 36px'
+    : '1fr 110px 110px 160px 36px'
 
   return (
-    <div style={{ background:'white', border:`1px solid ${border}`, borderRadius:16, padding:22, marginTop:16, boxShadow:'0 1px 6px rgba(0,0,0,0.05)' }}>
+    <div className="card" style={{padding:20}}>
       {/* Header */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16, flexWrap:'wrap', gap:10 }}>
-        <div>
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <div style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:15, color:'#1e293b' }}>{icon} {title}</div>
-            {showCommission && <XpBadge xp={PIPELINE_XP.closed} color="#15803d" />}
-            {title.includes('Offers Made') && <XpBadge xp={PIPELINE_XP.offer_made} color="#0369a1" />}
-            {title.includes('Offers Received') && <XpBadge xp={PIPELINE_XP.offer_received} color="#7c3aed" />}
-            {title.includes('Went Pending') && <XpBadge xp={PIPELINE_XP.went_pending} color="#ca8a04" />}
-          </div>
-          <div style={{ fontSize:10, color:'#94a3b8', marginTop:3 }}>{rows.length} {rows.length===1?'entry':'entries'} this month</div>
-        </div>
-        <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
-          {totalValue>0 && (
-            <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:12, padding:'6px 14px', textAlign:'center' }}>
-              <div style={{ fontSize:9, color:'#94a3b8', letterSpacing:1 }}>TOTAL VALUE</div>
-              <div style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:16, color:'#334155' }}>{fmtVal(totalValue)}</div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:14,flexWrap:'wrap',gap:8}}>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <span style={{fontSize:18}}>{icon}</span>
+          <div>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <span style={{fontFamily:"'DM Sans',sans-serif",fontWeight:600,fontSize:14,color:'var(--text)'}}>{title}</span>
+              <span style={{fontFamily:"'Instrument Serif',serif",fontSize:20,color:accentColor}}>{rows.length}</span>
+              <span style={{fontSize:9,padding:'2px 6px',borderRadius:4,background:`${accentColor}18`,
+                color:accentColor,border:`1px solid ${accentColor}33`,fontFamily:"'JetBrains Mono',monospace",fontWeight:700}}>
+                +{PIPELINE_XP[xpKey]} XP/deal
+              </span>
             </div>
-          )}
-          {showCommission && totalCommission>0 && (
-            <div style={{ background:'#f0fdf4', border:'1px solid #86efac', borderRadius:12, padding:'6px 14px', textAlign:'center' }}>
-              <div style={{ fontSize:9, color:'#94a3b8', letterSpacing:1 }}>EST. COMMISSION</div>
-              <div style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:16, color:'#16a34a' }}>{fmtVal(totalCommission)}</div>
-            </div>
-          )}
-          <div style={{ background:bg, border:`1px solid ${border}`, borderRadius:12, padding:'6px 14px', textAlign:'center' }}>
-            <div style={{ fontSize:9, color:'#94a3b8', letterSpacing:1 }}>COUNT</div>
-            <div style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:24, color }}>{rows.length}</div>
+            {totalVol>0 && <div style={{fontSize:10,color:'var(--sub)',marginTop:2}}>
+              Vol: <span style={{color:accentColor,fontFamily:"'JetBrains Mono',monospace"}}>{fmtMoney(totalVol)}</span>
+              {totalComm>0 && <> · Comm: <span style={{color:'#34d399',fontFamily:"'JetBrains Mono',monospace"}}>{fmtMoney(totalComm)}</span></>}
+            </div>}
           </div>
         </div>
       </div>
-
-      {/* Commission settings (closed only) */}
-      {showCommission && (
-        <div style={{ background:'#f0fdf4', border:'1px solid #86efac', borderRadius:10, padding:'10px 16px', marginBottom:14, display:'flex', alignItems:'center', gap:16, flexWrap:'wrap' }}>
-          <span style={{ fontSize:11, color:'#15803d', fontWeight:700 }}>💰 Commission %</span>
-          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-            <input type="number" min="0" max="100" step="0.1" value={commissionPct||''} onChange={e=>onCommissionChange(parseFloat(e.target.value)||0)}
-              placeholder="e.g. 2.5"
-              style={{ width:70, border:'1.5px solid #86efac', borderRadius:8, padding:'5px 8px', fontSize:13, fontFamily:"'Syne',sans-serif", fontWeight:800, color:'#15803d', textAlign:'center', background:'white' }} />
-            <span style={{ fontSize:12, color:'#15803d', fontWeight:700 }}>%</span>
-          </div>
-          <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:'#64748b', cursor:'pointer' }}>
-            <input type="checkbox" checked={showCommissionInSummary||false} onChange={e=>onToggleShowCommission(e.target.checked)}
-              style={{ width:14, height:14, cursor:'pointer' }} />
-            Show in dashboard summary
-          </label>
-          {commissionPct>0 && totalValue>0 && (
-            <span style={{ fontSize:11, color:'#15803d', fontWeight:700, marginLeft:'auto' }}>
-              {commissionPct}% of {fmtVal(totalValue)} = {fmtFull(totalValue*(commissionPct/100))}
-            </span>
-          )}
-        </div>
-      )}
 
       {/* Column headers */}
-      <div style={{ display:'grid', gridTemplateColumns:cols, gap:8, padding:'4px 0', borderBottom:'1px solid #f1f5f9', marginBottom:8 }}>
-        <span style={{ fontSize:9, color:'#cbd5e1', textAlign:'center' }}>#</span>
-        <span style={{ fontSize:9, color:'#94a3b8', letterSpacing:1 }}>PROPERTY ADDRESS</span>
-        <span style={{ fontSize:9, color:'#94a3b8', letterSpacing:1 }}>{priceLabel.toUpperCase()}</span>
-        {showStatusDropdown && <span style={{ fontSize:9, color:'#94a3b8', letterSpacing:1 }}>STATUS</span>}
-        {!showStatusDropdown && <span style={{ fontSize:9, color:'#94a3b8', letterSpacing:1 }}>SOURCE</span>}
-        {showCommission && <span style={{ fontSize:9, color:'#94a3b8', letterSpacing:1 }}>COMMISSION</span>}
-        <span />
+      <div style={{display:'grid',gridTemplateColumns:cols,gap:8,padding:'4px 12px',marginBottom:6}}>
+        <span style={{fontSize:9,color:'var(--dim)',letterSpacing:.8}}>ADDRESS</span>
+        <span style={{fontSize:9,color:'var(--dim)',letterSpacing:.8}}>PRICE</span>
+        <span style={{fontSize:9,color:'var(--dim)',letterSpacing:.8}}>COMMISSION</span>
+        {showSource
+          ? <span style={{fontSize:9,color:'var(--dim)',letterSpacing:.8}}>SOURCE</span>
+          : <span style={{fontSize:9,color:'var(--dim)',letterSpacing:.8}}>STATUS</span>}
+        <span/>
       </div>
 
-      {rows.length===0 && <div style={{ textAlign:'center', padding:'18px 0', color:'#cbd5e1', fontSize:11 }}>No entries yet — add one below</div>}
+      {rows.length===0 && (
+        <div style={{textAlign:'center',padding:'16px 0',color:'var(--dim)',fontSize:12}}>No entries yet</div>
+      )}
 
-      <div style={{ display:'flex', flexDirection:'column', gap:7, marginBottom:12 }}>
-        {rows.map((r,i) => (
-          <div key={r.id} style={{ display:'grid', gridTemplateColumns:cols, gap:8, alignItems:'center', background:r.status==='pending'?'#fffbeb':'transparent', borderRadius:8, padding:r.status==='pending'?'4px 6px':'0' }}>
-            <span style={{ fontSize:10, color:'#cbd5e1', textAlign:'center' }}>{i+1}</span>
-            <input value={r.address} onChange={e=>update(r.id,'address',e.target.value)} placeholder={placeholder}
-              style={{ border:'1px solid #e2e8f0', borderRadius:8, padding:'7px 11px', fontSize:12, color:'#334155', background:'#f8fafc', fontFamily:"'DM Mono',monospace", width:'100%' }} />
-            <input value={r.price} onChange={e=>update(r.id,'price',e.target.value)} placeholder="e.g. $450,000"
-              style={{ border:`1px solid ${border}`, borderRadius:8, padding:'7px 11px', fontSize:12, color, background:bg, fontFamily:"'DM Mono',monospace", width:'100%', fontWeight:600 }} />
-            {showStatusDropdown ? (
-              <select value={r.status||'active'} onChange={e=>handleStatusChange(r,e.target.value)}
-                style={{ border:`1.5px solid ${r.status==='pending'?'#fde047':'#e2e8f0'}`, borderRadius:8, padding:'7px 8px', fontSize:11, cursor:'pointer', background:r.status==='pending'?'#fef9c3':'#f8fafc', color:r.status==='pending'?'#ca8a04':'#64748b', fontFamily:"'DM Mono',monospace", fontWeight:600, width:'100%' }}>
-                {statusOptions.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            ) : (
-              <div style={{ background:'#dcfce7', border:'1px solid #86efac', borderRadius:6, padding:'4px 8px', fontSize:9, color:'#15803d', fontWeight:700, textAlign:'center', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                {r.closedFrom||'Manual'}
-              </div>
-            )}
-            {showCommission && (
-              <div style={{ display:'flex', alignItems:'center', gap:3 }}>
-                <span style={{ fontSize:10, color:'#94a3b8' }}>$</span>
-                <input value={r.commission||''} onChange={e=>update(r.id,'commission',e.target.value)}
-                  placeholder="optional"
-                  style={{ border:'1px solid #86efac', borderRadius:8, padding:'5px 8px', fontSize:11, color:'#15803d', background:'#f0fdf4', fontFamily:"'DM Mono',monospace", width:'100%', fontWeight:600 }} />
-              </div>
-            )}
-            <button onClick={()=>remove(r.id)} style={{ background:'#fef2f2', border:'1px solid #fecaca', color:'#dc2626', borderRadius:8, padding:'7px', cursor:'pointer', fontSize:12, lineHeight:1 }}>✕</button>
+      <div style={{display:'flex',flexDirection:'column',gap:5,marginBottom:10}}>
+        {rows.map(r=>(
+          <div key={r.id} className="pipe-row" style={{gridTemplateColumns:cols}}>
+            <input className="pipe-input" value={r.address||''} onChange={e=>update(r.id,'address',e.target.value)} placeholder="Property address…"/>
+            <input className="pipe-input" value={r.price||''} onChange={e=>update(r.id,'price',e.target.value)}
+              placeholder="$0" style={{color:accentColor,fontWeight:600}}/>
+            <input className="pipe-input" value={r.commission||''} onChange={e=>update(r.id,'commission',e.target.value)}
+              placeholder="$0 optional" style={{color:'#34d399',fontWeight:600}}/>
+            {showSource
+              ? <span style={{fontSize:10,color:'var(--sub)',fontFamily:"'JetBrains Mono',monospace",padding:'0 2px'}}>{r.closedFrom||'—'}</span>
+              : <select className="pipe-select" value={r.status||'active'} onChange={e=>onStatusChange(r,e.target.value)}
+                  style={{color:r.status==='pending'?'#fbbf24':r.status==='closed'?'#34d399':'var(--sub)'}}>
+                  {statusOpts.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
+                </select>
+            }
+            <button className="del-btn" onClick={()=>remove(r.id)}>✕</button>
           </div>
         ))}
       </div>
 
       {/* Add row */}
-      <div style={{ display:'grid', gridTemplateColumns:cols, gap:8, alignItems:'center', borderTop:'1px dashed #e2e8f0', paddingTop:10 }}>
-        <span style={{ fontSize:13, color:'#94a3b8', textAlign:'center' }}>+</span>
-        <input value={newAddr} onChange={e=>setNewAddr(e.target.value)} onKeyDown={e=>e.key==='Enter'&&add()} placeholder="New property address..."
-          style={{ border:'1.5px dashed #cbd5e1', borderRadius:8, padding:'7px 11px', fontSize:12, color:'#334155', background:'#fafcff', fontFamily:"'DM Mono',monospace", width:'100%' }} />
-        <input value={newPrice} onChange={e=>setNewPrice(e.target.value)} onKeyDown={e=>e.key==='Enter'&&add()} placeholder="e.g. $450,000"
-          style={{ border:`1.5px dashed ${border}`, borderRadius:8, padding:'7px 11px', fontSize:12, color:'#64748b', background:'#fafcff', fontFamily:"'DM Mono',monospace", width:'100%' }} />
-        {showStatusDropdown && <div />}
-        {!showStatusDropdown && <div />}
-        {showCommission && <div />}
-        <button onClick={add} style={{ background:color, color:'white', border:'none', borderRadius:8, padding:'8px', cursor:'pointer', fontSize:16, lineHeight:1, fontWeight:700 }}>+</button>
-      </div>
+      {!showSource && (
+        <div style={{display:'grid',gridTemplateColumns:cols,gap:8,borderTop:'1px solid var(--b1)',paddingTop:10,alignItems:'center'}}>
+          <input className="input" value={addr} onChange={e=>setAddr(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&add()} placeholder="New address…" style={{padding:'7px 11px'}}/>
+          <input className="input" value={price} onChange={e=>setPrice(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&add()} placeholder="Price" style={{padding:'7px 11px',color:accentColor}}/>
+          <input className="input" value={comm} onChange={e=>setComm(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&add()} placeholder="Commission" style={{padding:'7px 11px',color:'#34d399'}}/>
+          <div/>
+          <button onClick={add} style={{background:accentColor,border:'none',color:'#09090b',borderRadius:8,
+            padding:'8px',cursor:'pointer',fontSize:16,fontWeight:700,lineHeight:1}}>+</button>
+        </div>
+      )}
     </div>
   )
 }
@@ -275,438 +299,612 @@ function TransactionTracker({ title, icon, color, bg, border, placeholder, price
 function Dashboard() {
   const { user, profile, refreshProfile } = useAuth()
   const today = getToday()
-  const [page, setPage]   = useState('dashboard')
-  const [tab, setTab]     = useState('monthly')
+
+  // Navigation
+  const [page, setPage] = useState('dashboard')
+  // Default to 'today' view
+  const [tab,  setTab]  = useState('today')
   const [dbLoading, setDbLoading] = useState(true)
-  const [motivationIdx] = useState(Math.floor(Math.random()*8))
 
-  const motivations = [
-    "Every call you don't make, someone else does. 📞",
-    "Top producers didn't get lucky — they got consistent. 🔑",
-    "Your pipeline today is your paycheck next month. 💰",
-    "Make the call. Send the email. Show the house. Repeat. 🏡",
-    "Discipline is choosing what you want most over what you want now.",
-    "Your competition is working right now. Are you? 💪",
-    "The best time to follow up was yesterday. The second best is now. ⚡",
-    "Every showing is a chance. Every call is a chance. Take them. 🎯",
-  ]
-
-  // Habits grid
-  const [habits, setHabits] = useState(() => {
+  // Habit state
+  const [habits, setHabits] = useState(()=>{
     const g={}; HABITS.forEach(h=>{g[h.id]=Array(WEEKS).fill(null).map(()=>Array(7).fill(false))}); return g
   })
-  // Counters for habits with hasCounter: { "habitId-week-day": number }
-  const [counters, setCounters] = useState({})
-  const [xp, setXp]             = useState(0)
-  const [streak, setStreak]     = useState(0)
+  const [counters, setCounters] = useState({}) // "hid-week-day" -> number
+  const [xp,  setXp]    = useState(0)
+  const [streak, setStreak] = useState(0)
+  const [xpPop, setXpPop]   = useState(null)
   const [animCell, setAnimCell] = useState(null)
-  const [xpPop, setXpPop]       = useState(null)
 
   // Listings
-  const [listings, setListings]     = useState([])
-  const [newAddress, setNewAddress] = useState('')
-  const [newCount, setNewCount]     = useState('1')
+  const [listings, setListings]   = useState([])
+  const [newAddr,  setNewAddr]    = useState('')
+  const [newUnits, setNewUnits]   = useState('1')
 
-  // Transactions — counts are PRESERVED when items move between sections
-  const [offersMade, setOffersMade]         = useState([])
+  // Pipeline
+  const [offersMade,     setOffersMade]     = useState([])
   const [offersReceived, setOffersReceived] = useState([])
-  const [pendingDeals, setPendingDeals]     = useState([])
-  const [closedDeals, setClosedDeals]       = useState([])
+  const [pendingDeals,   setPendingDeals]   = useState([])
+  const [closedDeals,    setClosedDeals]    = useState([])
 
-  // Commission settings
-  const [commissionPct, setCommissionPct]               = useState(0)
-  const [showCommissionInSummary, setShowCommissionInSummary] = useState(false)
+  // Commission summary opt-in
+  const [showCommSummary, setShowCommSummary] = useState(false)
 
-  // Historical counts (never decrease when items move)
-  const [historicalCounts, setHistoricalCounts] = useState({
-    offersMade: 0, offersReceived: 0, pending: 0, closed: 0
-  })
-
-  useEffect(() => { loadAll() }, [user])
+  // ── Load ────────────────────────────────────────────────────────────────────
+  useEffect(()=>{ loadAll() },[user])
 
   async function loadAll() {
     if (!user) return
     setDbLoading(true)
 
-    const { data: completions } = await supabase.from('habit_completions').select('*')
-      .eq('user_id', user.id).eq('month_year', MONTH_YEAR)
+    const [habRes, listRes, txRes, profRes] = await Promise.all([
+      supabase.from('habit_completions').select('*').eq('user_id',user.id).eq('month_year',MONTH_YEAR),
+      supabase.from('listings').select('*').eq('user_id',user.id).eq('month_year',MONTH_YEAR),
+      supabase.from('transactions').select('*').eq('user_id',user.id).eq('month_year',MONTH_YEAR),
+      supabase.from('profiles').select('*').eq('id',user.id).single(),
+    ])
 
-    if (completions?.length) {
+    if (habRes.data?.length) {
       const g={}; HABITS.forEach(h=>{g[h.id]=Array(WEEKS).fill(null).map(()=>Array(7).fill(false))})
       const cnts={}
-      completions.forEach(c=>{
-        if (g[c.habit_id]) g[c.habit_id][c.week_index][c.day_index]=true
-        if (c.counter_value>0) cnts[`${c.habit_id}-${c.week_index}-${c.day_index}`]=c.counter_value
+      habRes.data.forEach(c=>{
+        if(g[c.habit_id]) g[c.habit_id][c.week_index][c.day_index]=true
+        if(c.counter_value>0) cnts[`${c.habit_id}-${c.week_index}-${c.day_index}`]=c.counter_value
       })
       setHabits(g); setCounters(cnts)
     }
 
-    const { data: listData } = await supabase.from('listings').select('*').eq('user_id',user.id).eq('month_year',MONTH_YEAR)
-    if (listData) setListings(listData.map(l=>({id:l.id,address:l.address,count:String(l.unit_count),status:l.status})))
+    if (listRes.data) setListings(listRes.data.map(l=>({id:l.id,address:l.address,units:String(l.unit_count||1),status:l.status})))
 
-    const { data: txData } = await supabase.from('transactions').select('*').eq('user_id',user.id).eq('month_year',MONTH_YEAR)
-    if (txData) {
-      setOffersMade(txData.filter(t=>t.type==='offer_made').map(t=>({id:t.id,address:t.address,price:t.price||'',status:t.status||'active',closedFrom:t.closed_from,commission:t.commission||''})))
-      setOffersReceived(txData.filter(t=>t.type==='offer_received').map(t=>({id:t.id,address:t.address,price:t.price||'',status:t.status||'active',closedFrom:t.closed_from,commission:t.commission||''})))
-      setPendingDeals(txData.filter(t=>t.type==='pending').map(t=>({id:t.id,address:t.address,price:t.price||'',status:t.status||'active',closedFrom:t.closed_from,commission:t.commission||''})))
-      setClosedDeals(txData.filter(t=>t.type==='closed').map(t=>({id:t.id,address:t.address,price:t.price||'',status:'closed',closedFrom:t.closed_from,commission:t.commission||''})))
-      // Historical counts = total ever entered regardless of current status
-      setHistoricalCounts({
-        offersMade:     txData.filter(t=>['offer_made','pending','closed'].includes(t.type)||t.closed_from==='Offers Made').length + txData.filter(t=>t.type==='offer_made').length,
-        offersReceived: txData.filter(t=>t.type==='offer_received').length,
-        pending:        txData.filter(t=>t.type==='pending').length,
-        closed:         txData.filter(t=>t.type==='closed').length,
-      })
+    if (txRes.data) {
+      const m = t => ({ id:t.id, address:t.address, price:t.price||'', commission:t.commission||'', status:t.status||'active', closedFrom:t.closed_from||'' })
+      setOffersMade(    txRes.data.filter(t=>t.type==='offer_made').map(m))
+      setOffersReceived(txRes.data.filter(t=>t.type==='offer_received').map(m))
+      setPendingDeals(  txRes.data.filter(t=>t.type==='pending').map(m))
+      setClosedDeals(   txRes.data.filter(t=>t.type==='closed').map(m))
     }
 
-    // Load commission settings from profile metadata
-    const { data: prof } = await supabase.from('profiles').select('*').eq('id',user.id).single()
-    if (prof) {
-      setXp(prof.xp||0); setStreak(prof.streak||0)
-      if (prof.commission_pct) setCommissionPct(prof.commission_pct)
-      if (prof.show_commission) setShowCommissionInSummary(prof.show_commission)
+    if (profRes.data) {
+      setXp(profRes.data.xp||0)
+      setStreak(profRes.data.streak||0)
+      setShowCommSummary(profRes.data.show_commission||false)
     }
     setDbLoading(false)
   }
 
-  // ── Habit toggle ──────────────────────────────────────────────────────────
+  // ── XP helper ───────────────────────────────────────────────────────────────
+  async function addXp(amount, color='#d4a853') {
+    const nxp = xp + amount
+    setXp(nxp)
+    setXpPop({ val:`+${amount} XP`, color })
+    setTimeout(()=>setXpPop(null), 1400)
+    await supabase.from('profiles').update({xp:nxp}).eq('id',user.id)
+    return nxp
+  }
+
+  // ── Habit toggle ─────────────────────────────────────────────────────────
   async function toggleHabit(hid, week, day) {
     const newVal = !habits[hid][week][day]
     setHabits(prev=>{ const n={...prev}; n[hid]=n[hid].map((w,wi)=>wi===week?w.map((d,di)=>di===day?newVal:d):w); return n })
-    const habit = HABITS.find(h=>h.id===hid)
-    const newXp = Math.max(0, xp+(newVal?habit.xp:-habit.xp))
-    setXp(newXp)
+    const h = HABITS.find(x=>x.id===hid)
+    const cat = CAT_STYLE[h.cat]
     if (newVal) {
-      setXpPop({val:`+${habit.xp} XP`, color:CATEGORY_COLORS[habit.category].text})
-      setTimeout(()=>setXpPop(null),1200)
+      await addXp(h.xp, cat.color)
       const ckey = `${hid}-${week}-${day}`
       await supabase.from('habit_completions').upsert({
         user_id:user.id, habit_id:hid, week_index:week, day_index:day,
-        month_year:MONTH_YEAR, xp_earned:habit.xp,
-        counter_value: habit.hasCounter ? (counters[ckey]||1) : 0
+        month_year:MONTH_YEAR, xp_earned:h.xp,
+        counter_value: h.counter ? (counters[ckey]||1) : 0
       },{onConflict:'user_id,habit_id,week_index,day_index,month_year'})
     } else {
+      const lost = h.xp + (counters[`${hid}-${week}-${day}`]||0)*(h.xpEach||0)
+      const nxp = Math.max(0, xp-lost)
+      setXp(nxp)
+      await supabase.from('profiles').update({xp:nxp}).eq('id',user.id)
       await supabase.from('habit_completions').delete()
         .eq('user_id',user.id).eq('habit_id',hid).eq('week_index',week).eq('day_index',day).eq('month_year',MONTH_YEAR)
-      if (habit.hasCounter) setCounters(prev=>{const n={...prev};delete n[`${hid}-${week}-${day}`];return n})
+      if (h.counter) setCounters(prev=>{ const n={...prev}; delete n[`${hid}-${week}-${day}`]; return n })
     }
-    await supabase.from('profiles').update({xp:newXp}).eq('id',user.id)
     setAnimCell(`${hid}-${week}-${day}`)
     setTimeout(()=>setAnimCell(null),300)
   }
 
   async function incrementCounter(hid, week, day) {
-    const ckey   = `${hid}-${week}-${day}`
-    const newCnt = (counters[ckey]||0)+1
+    const ckey  = `${hid}-${week}-${day}`
+    const newCnt = (counters[ckey]||0) + 1
     setCounters(prev=>({...prev,[ckey]:newCnt}))
-
-    const habit = HABITS.find(h=>h.id===hid)
-    const perXp = habit?.xpPerIncrement || 0
-
-    // If not yet checked, toggle first (awards base XP)
-    if (!habits[hid][week][day]) {
-      await toggleHabit(hid, week, day)
-      return
-    }
-
-    // Award per-increment XP
-    if (perXp > 0) {
-      const newXp = xp + perXp
-      setXp(newXp)
-      setXpPop({ val: `+${perXp} XP`, color: CATEGORY_COLORS[habit.category].text })
-      setTimeout(()=>setXpPop(null), 1000)
-      await supabase.from('profiles').update({ xp: newXp }).eq('id', user.id)
-    }
-
+    const h   = HABITS.find(x=>x.id===hid)
+    const cat = CAT_STYLE[h.cat]
+    if (!habits[hid][week][day]) { await toggleHabit(hid,week,day); return }
+    if (h.xpEach) await addXp(h.xpEach, cat.color)
     await supabase.from('habit_completions').upsert({
       user_id:user.id, habit_id:hid, week_index:week, day_index:day,
-      month_year:MONTH_YEAR, xp_earned:(habit?.xp||0)+(newCnt-1)*perXp, counter_value:newCnt
+      month_year:MONTH_YEAR, xp_earned:(h.xp||0)+newCnt*(h.xpEach||0), counter_value:newCnt
     },{onConflict:'user_id,habit_id,week_index,day_index,month_year'})
   }
 
-  // ── Pipeline XP helper ────────────────────────────────────────────────────
-  async function awardPipelineXp(type) {
-    const bonus = PIPELINE_XP[type] || 0
-    if (!bonus) return
-    const newXp = xp + bonus
-    setXp(newXp)
-    setXpPop({val:`+${bonus} XP`, color:'#15803d'})
-    setTimeout(()=>setXpPop(null),1500)
-    await supabase.from('profiles').update({xp:newXp}).eq('id',user.id)
-  }
-
-  // ── Listings ──────────────────────────────────────────────────────────────
-  async function addListing() {
-    if (!newAddress.trim()) return
-    const {data} = await supabase.from('listings').insert({
-      user_id:user.id, address:newAddress.trim(), unit_count:parseInt(newCount)||1, status:'active', month_year:MONTH_YEAR
-    }).select().single()
-    if (data) setListings(prev=>[...prev,{id:data.id,address:data.address,count:String(data.unit_count),status:data.status}])
-    setNewAddress(''); setNewCount('1')
-  }
-  function removeListing(id) { setListings(prev=>prev.filter(l=>l.id!==id)); supabase.from('listings').delete().eq('id',id) }
-  async function updateListing(id,field,val) {
-    setListings(prev=>prev.map(l=>l.id===id?{...l,[field]:val}:l))
-    if (field==='count')   await supabase.from('listings').update({unit_count:parseInt(val)||1}).eq('id',id)
-    if (field==='address') await supabase.from('listings').update({address:val}).eq('id',id)
-    if (field==='status')  await supabase.from('listings').update({status:val}).eq('id',id)
-  }
-  async function handleListingMarkClosed(listing) {
-    await supabase.from('listings').update({status:'closed'}).eq('id',listing.id)
-    const {data} = await supabase.from('transactions').insert({
-      user_id:user.id, type:'closed', address:listing.address, price:'', status:'closed', closed_from:'Listing', month_year:MONTH_YEAR
-    }).select().single()
-    if (data) { setClosedDeals(prev=>[...prev,{id:data.id,address:data.address,price:'',status:'closed',closedFrom:'Listing',commission:''}]); setHistoricalCounts(p=>({...p,closed:p.closed+1})) }
-    removeListing(listing.id)
-    await awardPipelineXp('closed')
-  }
-
-  // ── Transactions ──────────────────────────────────────────────────────────
-  async function addTransaction(type, item) {
+  // ── Pipeline helpers ─────────────────────────────────────────────────────
+  async function dbInsertTx(type, item, closedFrom='') {
     const {data} = await supabase.from('transactions').insert({
       user_id:user.id, type, address:item.address, price:item.price||'',
-      status: type==='closed'?'closed':'active', closed_from:item.closedFrom||null, month_year:MONTH_YEAR
+      commission:item.commission||'', status:type==='closed'?'closed':'active',
+      closed_from:closedFrom||item.closedFrom||null, month_year:MONTH_YEAR
     }).select().single()
     return data
   }
-
-  async function handleMarkClosed(item) {
-    // Remove from source if it has a DB id
-    if (item.id && typeof item.id !== 'number') await supabase.from('transactions').delete().eq('id',item.id)
-    const data = await addTransaction('closed', {...item})
-    if (data) { setClosedDeals(prev=>[...prev,{id:data.id,address:data.address,price:data.price||'',status:'closed',closedFrom:item.closedFrom,commission:''}]); setHistoricalCounts(p=>({...p,closed:p.closed+1})) }
-    await awardPipelineXp('closed')
+  async function dbDeleteTx(id) {
+    if (id && typeof id !== 'number') await supabase.from('transactions').delete().eq('id',id)
   }
 
-  async function handleMoveToPending(item) {
-    // Remove from source section but KEEP the historical count for that section
-    if (item.id && typeof item.id !== 'number') await supabase.from('transactions').delete().eq('id',item.id)
-    const data = await addTransaction('pending', {...item, closedFrom: item.closedFrom || 'Offers'})
-    if (data) { setPendingDeals(prev=>[...prev,{id:data.id,address:data.address,price:data.price||'',status:'active',closedFrom:item.closedFrom||'Offers',commission:''}]); setHistoricalCounts(p=>({...p,pending:p.pending+1})) }
-    await awardPipelineXp('went_pending')
+  // Status change on Offers Made / Offers Received
+  async function handleOfferStatus(row, newStatus, srcSetter) {
+    if (newStatus === 'pending') {
+      srcSetter(prev=>prev.filter(r=>r.id!==row.id))
+      const data = await dbInsertTx('pending', row, row.closedFrom||'Offers')
+      if (data) setPendingDeals(prev=>[...prev,{...row,id:data.id,status:'active',closedFrom:'Offers'}])
+      await dbDeleteTx(row.id)
+      await addXp(PIPELINE_XP.went_pending, '#fbbf24')
+    } else if (newStatus === 'closed') {
+      srcSetter(prev=>prev.filter(r=>r.id!==row.id))
+      const data = await dbInsertTx('closed', row, 'Offers')
+      if (data) setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:'Offers'}])
+      await dbDeleteTx(row.id)
+      await addXp(PIPELINE_XP.closed, '#34d399')
+    }
   }
 
-  // When a new offer is added manually via the TransactionTracker component,
-  // we also need to persist to DB and award XP
-  async function handleOfferMadeAdded() {
-    setHistoricalCounts(p=>({...p,offersMade:p.offersMade+1}))
-    await awardPipelineXp('offer_made')
-    // Persist the newest row (last one added)
-    // The TransactionTracker adds locally; we sync on next load
-    // For now just award XP — full sync happens on reload
-  }
-  async function handleOfferReceivedAdded() {
-    setHistoricalCounts(p=>({...p,offersReceived:p.offersReceived+1}))
-    await awardPipelineXp('offer_received')
+  // Status change on Pending
+  async function handlePendingStatus(row, newStatus) {
+    if (newStatus === 'closed') {
+      // Remove from pending visually BUT keep the pending count (don't delete DB row — instead update type to closed)
+      setPendingDeals(prev=>prev.filter(r=>r.id!==row.id))
+      // Insert a closed record; original pending record stays in DB for count preservation
+      const data = await dbInsertTx('closed', row, row.closedFrom||'Pending')
+      if (data) setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:row.closedFrom||'Pending'}])
+      await addXp(PIPELINE_XP.closed, '#34d399')
+    }
   }
 
-  // Commission settings
-  async function saveCommissionPct(pct) {
-    setCommissionPct(pct)
-    await supabase.from('profiles').update({commission_pct:pct}).eq('id',user.id)
+  // ── Listings ─────────────────────────────────────────────────────────────
+  async function addListing() {
+    if (!newAddr.trim()) return
+    const {data} = await supabase.from('listings').insert({
+      user_id:user.id, address:newAddr.trim(), unit_count:parseInt(newUnits)||1, status:'active', month_year:MONTH_YEAR
+    }).select().single()
+    if (data) setListings(prev=>[...prev,{id:data.id,address:data.address,units:String(data.unit_count),status:'active'}])
+    setNewAddr(''); setNewUnits('1')
   }
-  async function toggleShowCommission(val) {
-    setShowCommissionInSummary(val)
+  async function updateListing(id, field, val) {
+    setListings(prev=>prev.map(l=>l.id===id?{...l,[field]:val}:l))
+    if (field==='units')   await supabase.from('listings').update({unit_count:parseInt(val)||1}).eq('id',id)
+    if (field==='address') await supabase.from('listings').update({address:val}).eq('id',id)
+    if (field==='status')  await supabase.from('listings').update({status:val}).eq('id',id)
+  }
+  function removeListing(id) {
+    setListings(prev=>prev.filter(l=>l.id!==id))
+    supabase.from('listings').delete().eq('id',id)
+  }
+
+  // When listing → pending: auto-create a pending deal
+  async function handleListingStatus(listing, newStatus) {
+    await updateListing(listing.id, 'status', newStatus)
+    if (newStatus === 'pending') {
+      // Auto-add to Went Pending pipeline
+      const data = await dbInsertTx('pending', { address:listing.address, price:'', commission:'' }, 'Listing')
+      if (data) setPendingDeals(prev=>[...prev,{id:data.id,address:listing.address,price:'',commission:'',status:'active',closedFrom:'Listing'}])
+      await addXp(PIPELINE_XP.went_pending, '#fbbf24')
+    } else if (newStatus === 'closed') {
+      // If there's already a pending deal for this listing, move that to closed (preserving pending count)
+      const existingPending = pendingDeals.find(p=>p.address===listing.address&&p.closedFrom==='Listing')
+      if (existingPending) {
+        setPendingDeals(prev=>prev.filter(r=>r.id!==existingPending.id))
+        const data = await dbInsertTx('closed', existingPending, 'Listing')
+        if (data) setClosedDeals(prev=>[...prev,{...existingPending,id:data.id,status:'closed',closedFrom:'Listing'}])
+        // Keep the pending DB row for count — just add a closed record
+      } else {
+        // Direct to closed with no prior pending
+        const data = await dbInsertTx('closed', { address:listing.address, price:'', commission:'' }, 'Listing')
+        if (data) setClosedDeals(prev=>[...prev,{id:data.id,address:listing.address,price:'',commission:'',status:'closed',closedFrom:'Listing'}])
+      }
+      removeListing(listing.id)
+      await addXp(PIPELINE_XP.closed, '#34d399')
+    }
+  }
+
+  // ── Commission toggle ─────────────────────────────────────────────────────
+  async function toggleCommSummary(val) {
+    setShowCommSummary(val)
     await supabase.from('profiles').update({show_commission:val}).eq('id',user.id)
   }
 
   // ── Derived stats ─────────────────────────────────────────────────────────
-  const totalChecks   = HABITS.reduce((acc,h)=>acc+habits[h.id].flat().filter(Boolean).length,0)
-  const totalPossible = HABITS.length*WEEKS*7
-  const monthPercent  = Math.round((totalChecks/totalPossible)*100)
-  const todayChecks   = HABITS.filter(h=>habits[h.id][today.week][today.day]).length
-  const todayPercent  = Math.round((todayChecks/HABITS.length)*100)
-  const totalListings = listings.reduce((a,l)=>a+(parseInt(l.count)||0),0)
-  const totalAppts    = Object.entries(counters).filter(([k])=>k.startsWith('appointments')).reduce((a,[,v])=>a+v,0)
-  const totalShowings = Object.entries(counters).filter(([k])=>k.startsWith('showing')).reduce((a,[,v])=>a+v,0)
-  const totalClosed   = closedDeals.length
-  const totalClosedValue = closedDeals.reduce((acc,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return acc+(isNaN(n)?0:n) },0)
-  // Use per-row commission override, fallback to pct
-  const totalCommission = closedDeals.reduce((acc,r)=>{
-    if (r.commission) { const n=parseFloat(String(r.commission).replace(/[^0-9.]/g,'')); return acc+(isNaN(n)?0:n) }
-    if (commissionPct>0) { const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return acc+(isNaN(n)?0:n*(commissionPct/100)) }
-    return acc
-  },0)
-  const rank        = getRank(xp)
-  const nextRank    = RANKS[RANKS.indexOf(rank)+1]
-  const rankProg    = nextRank ? Math.round(((xp-rank.min)/(nextRank.min-rank.min))*100) : 100
-  const weekColors  = ['#16a34a','#0369a1','#be185d','#ca8a04']
-  const dailyCounts = Array(WEEKS).fill(null).map((_,wi)=>Array(7).fill(null).map((__,di)=>HABITS.filter(h=>habits[h.id][wi][di]).length))
+  const rank     = getRank(xp)
+  const nextRank = RANKS[RANKS.indexOf(rank)+1]
+  const rankPct  = nextRank ? Math.round((xp-rank.min)/(nextRank.min-rank.min)*100) : 100
 
-  const summaryStats = [
-    { label:'Monthly Habits',      val:`${monthPercent}%`,         color:'#16a34a', bg:'#f0fdf4', border:'#86efac',      icon:'📅' },
-    { label:"Today's Score",       val:`${todayPercent}%`,         color:'#0369a1', bg:'#f0f9ff', border:'#7dd3fc',      icon:'⚡' },
-    { label:'Total XP',            val:xp.toLocaleString(),        color:rank.color,bg:rank.bg,   border:rank.color+'55', icon:'🏆' },
-    { label:'Streak',              val:`🔥 ${streak}d`,            color:'#ea580c', bg:'#fff7ed', border:'#fdba74',      icon:'🔥' },
-    { label:'Appointments',        val:totalAppts,                 color:'#15803d', bg:'#dcfce7', border:'#86efac',      icon:'📅' },
-    { label:'Total Showings',      val:totalShowings,              color:'#0369a1', bg:'#e0f2fe', border:'#7dd3fc',      icon:'🔑' },
-    { label:'Properties Listed',   val:totalListings,              color:'#0f766e', bg:'#f0fdfa', border:'#5eead4',      icon:'🏡' },
-    { label:'Offers Made',         val:offersMade.length,          color:'#0369a1', bg:'#e0f2fe', border:'#7dd3fc',      icon:'📤' },
-    { label:'Offers Received',     val:offersReceived.length,      color:'#7c3aed', bg:'#ede9fe', border:'#c4b5fd',      icon:'📥' },
-    { label:'Went Pending',        val:pendingDeals.length,        color:'#ca8a04', bg:'#fef9c3', border:'#fde047',      icon:'⏳' },
-    { label:'Closed',              val:totalClosed,                color:'#15803d', bg:'#dcfce7', border:'#86efac',      icon:'🎉' },
-    ...(totalClosedValue>0 ? [{ label:'Closed Volume', val:fmtVal(totalClosedValue), color:'#15803d', bg:'#f0fdf4', border:'#86efac', icon:'💵' }] : []),
-    ...(showCommissionInSummary&&totalCommission>0 ? [{ label:'Est. Commission', val:fmtVal(totalCommission), color:'#16a34a', bg:'#dcfce7', border:'#86efac', icon:'💰' }] : []),
+  const totalHabitChecks = HABITS.reduce((a,h)=>a+habits[h.id].flat().filter(Boolean).length,0)
+  const totalPossible    = HABITS.length*WEEKS*7
+  const monthPct         = Math.round(totalHabitChecks/totalPossible*100)
+  const todayChecks      = HABITS.filter(h=>habits[h.id][today.week][today.day]).length
+  const todayPct         = Math.round(todayChecks/HABITS.length*100)
+  const totalAppts       = Object.entries(counters).filter(([k])=>k.startsWith('appointments')).reduce((a,[,v])=>a+v,0)
+  const totalShowings    = Object.entries(counters).filter(([k])=>k.startsWith('showing')).reduce((a,[,v])=>a+v,0)
+  const totalListings    = listings.reduce((a,l)=>a+(parseInt(l.units)||0),0)
+
+  const closedVol  = closedDeals.reduce((a,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
+  const closedComm = closedDeals.reduce((a,r)=>{ const n=parseFloat(String(r.commission||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
+
+  const weekColors = ['#34d399','#60a5fa','#f472b6','#fbbf24']
+
+  if (page==='leaderboard') return <Leaderboard onBack={()=>setPage('dashboard')}/>
+  if (page==='teams')       return <TeamsPage   onBack={()=>setPage('dashboard')}/>
+  if (page==='profile')     return <ProfilePage onBack={()=>setPage('dashboard')}/>
+
+  const todayName = FULL_DAYS[today.day]
+  const dateStr   = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})
+
+  // motivational quote rotates daily
+  const quotes = [
+    "The market rewards consistency.",
+    "Every call is a door. Open more doors.",
+    "Top producers aren't born — they're built one habit at a time.",
+    "Your pipeline today is your commission next quarter.",
+    "Make the uncomfortable call. Every time.",
+    "Discipline is the bridge between goals and achievement.",
+    "Listings don't find agents. Agents find listings.",
   ]
-
-  if (page==='leaderboard') return <Leaderboard onBack={()=>setPage('dashboard')} />
-  if (page==='teams')       return <TeamsPage   onBack={()=>setPage('dashboard')} />
-  if (page==='profile')     return <ProfilePage onBack={()=>setPage('dashboard')} />
+  const quote = quotes[new Date().getDay()]
 
   return (
     <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap');
-        *{box-sizing:border-box;margin:0;padding:0;}
-        body{background:#f0f4f8;color:#1e293b;font-family:'DM Mono',monospace;}
-        ::-webkit-scrollbar{width:5px;height:5px;}
-        ::-webkit-scrollbar-track{background:#f1f5f9;}
-        ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px;}
-        @keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.4)}100%{transform:scale(1)}}
-        @keyframes floatUp{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-40px)}}
-        @keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
-        input:focus{outline:2px solid #86efac;outline-offset:1px;}
-        select:focus{outline:2px solid #86efac;}
-        .stat-card:hover{transform:translateY(-2px);box-shadow:0 4px 16px rgba(0,0,0,0.10)!important;}
-      `}</style>
+      <style>{CSS}</style>
 
-      <div style={{minHeight:'100vh',background:'linear-gradient(135deg,#f0f9ff 0%,#f0fdf4 50%,#fefce8 100%)'}}>
+      {xpPop && <div style={{position:'fixed',top:68,right:28,zIndex:9999,pointerEvents:'none',
+        fontFamily:"'Instrument Serif',serif",fontSize:24,color:xpPop.color,
+        animation:'floatXp 1.4s ease forwards',textShadow:`0 0 24px ${xpPop.color}66`}}>
+        {xpPop.val}
+      </div>}
 
-        {xpPop && <div style={{position:'fixed',top:80,right:28,fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:20,color:xpPop.color,animation:'floatUp 1.5s ease forwards',zIndex:9999,pointerEvents:'none',textShadow:'0 2px 8px rgba(0,0,0,0.15)'}}>{xpPop.val}</div>}
+      <div style={{minHeight:'100vh',background:'var(--bg)'}}>
 
-        {/* Header */}
-        <div style={{background:'white',borderBottom:'1px solid #e2e8f0',padding:'14px 24px',display:'flex',justifyContent:'space-between',alignItems:'center',boxShadow:'0 1px 8px rgba(0,0,0,0.06)',flexWrap:'wrap',gap:10}}>
-          <div>
-            <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:22,letterSpacing:-0.5,color:'#1e293b'}}>🏡 <span style={{color:'#16a34a'}}>REALTY</span>GRIND</div>
-            <div style={{fontSize:10,color:'#94a3b8',marginTop:2,letterSpacing:1}}>Welcome back, {profile?.full_name?.split(' ')[0]||'Agent'} · {MONTH_YEAR}</div>
+        {/* ── Top Nav ── */}
+        <nav style={{background:'rgba(9,9,11,0.95)',backdropFilter:'blur(12px)',borderBottom:'1px solid var(--b1)',
+          padding:'0 24px',display:'flex',justifyContent:'space-between',alignItems:'center',height:56,
+          position:'sticky',top:0,zIndex:100}}>
+
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <span style={{fontFamily:"'Instrument Serif',serif",fontSize:20,color:'var(--gold)'}}>RealtyGrind</span>
+            <span style={{fontSize:10,color:'var(--dim)',borderLeft:'1px solid var(--b2)',paddingLeft:10,fontFamily:"'JetBrains Mono',monospace"}}>
+              {MONTH_YEAR}
+            </span>
           </div>
-          <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-            <button onClick={()=>setPage('leaderboard')} style={{background:'#f1f5f9',border:'1px solid #e2e8f0',borderRadius:10,padding:'8px 14px',cursor:'pointer',fontSize:12,fontFamily:"'Syne',sans-serif",fontWeight:700,color:'#1e293b'}}>🏆 Leaderboard</button>
-            <button onClick={()=>setPage('teams')} style={{background:'#f1f5f9',border:'1px solid #e2e8f0',borderRadius:10,padding:'8px 14px',cursor:'pointer',fontSize:12,fontFamily:"'Syne',sans-serif",fontWeight:700,color:'#1e293b'}}>
-              👥 {profile?.teams?profile.teams.name:'Teams'}
+
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <button className="nav-btn" onClick={()=>setPage('leaderboard')}>🏆 Board</button>
+            <button className="nav-btn" onClick={()=>setPage('teams')}>
+              👥 {profile?.teams?.name||'Teams'}
             </button>
-            <button onClick={()=>setPage('profile')} style={{background:'#f8fafc',border:'1.5px solid #e2e8f0',borderRadius:10,padding:'8px 14px',cursor:'pointer',fontSize:12,fontFamily:"'Syne',sans-serif",fontWeight:700,color:'#334155',display:'flex',alignItems:'center',gap:6}}>
+
+            {/* Rank pill */}
+            <div style={{background:'var(--s2)',border:`1px solid ${rank.color}33`,borderRadius:9,
+              padding:'6px 14px',display:'flex',alignItems:'center',gap:10}}>
+              <div>
+                <div style={{fontSize:9,color:'var(--dim)',letterSpacing:.8}}>RANK</div>
+                <div style={{fontFamily:"'DM Sans',sans-serif",fontWeight:600,fontSize:12,color:rank.color}}>
+                  {rank.icon} {rank.name}
+                </div>
+              </div>
+              <div style={{width:52,height:5,background:'var(--b1)',borderRadius:3,overflow:'hidden'}}>
+                <div style={{height:'100%',background:rank.color,borderRadius:3,width:`${rankPct}%`,
+                  transition:'width .6s ease',boxShadow:`0 0 6px ${rank.color}88`}}/>
+              </div>
+              <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:rank.color,fontWeight:700}}>
+                {xp.toLocaleString()}
+              </div>
+            </div>
+
+            <div style={{background:'var(--s2)',border:'1px solid var(--b1)',borderRadius:9,padding:'6px 12px',
+              textAlign:'center',minWidth:56}}>
+              <div style={{fontSize:9,color:'var(--dim)'}}>STREAK</div>
+              <div style={{fontFamily:"'Instrument Serif',serif",fontSize:18,color:'#fb923c'}}>🔥 {streak}</div>
+            </div>
+
+            <button className="nav-btn" onClick={()=>setPage('profile')}
+              style={{background:'var(--gold2)',borderColor:'var(--gold)',color:'var(--gold)'}}>
               👤 {profile?.full_name?.split(' ')[0]||'Profile'}
             </button>
-            <div style={{background:rank.bg,border:`1.5px solid ${rank.color}55`,borderRadius:12,padding:'8px 14px',minWidth:155}}>
-              <div style={{fontSize:9,color:'#94a3b8',letterSpacing:1}}>RANK</div>
-              <div style={{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:13,color:rank.color,marginBottom:4}}>{rank.icon} {rank.name}</div>
-              <div style={{height:5,background:'#e2e8f0',borderRadius:3}}>
-                <div style={{height:'100%',background:rank.color,borderRadius:3,width:`${rankProg}%`,transition:'width 0.5s ease'}} />
-              </div>
-              <div style={{fontSize:9,color:'#94a3b8',marginTop:3}}>{xp.toLocaleString()} XP{nextRank?` / ${nextRank.min.toLocaleString()}`:' — MAX!'}</div>
-            </div>
-            <button onClick={()=>supabase.auth.signOut()} style={{background:'#fef2f2',border:'1px solid #fecaca',borderRadius:10,padding:'8px 12px',cursor:'pointer',fontSize:11,fontFamily:"'Syne',sans-serif",fontWeight:700,color:'#dc2626'}}>Sign Out</button>
+            <button className="btn-ghost" onClick={()=>supabase.auth.signOut()} style={{fontSize:11}}>Sign out</button>
           </div>
-        </div>
-
-        {/* Motivation banner */}
-        <div style={{background:'linear-gradient(90deg,#15803d,#0369a1)',padding:'10px 24px',textAlign:'center'}}>
-          <span style={{color:'white',fontSize:12,fontFamily:"'Syne',sans-serif",fontWeight:700,letterSpacing:0.5}}>{motivations[motivationIdx]}</span>
-        </div>
+        </nav>
 
         {dbLoading ? (
-          <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'60vh',fontSize:14,color:'#94a3b8'}}>Loading your data...</div>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'70vh',
+            color:'var(--sub)',fontSize:14,gap:10}}>
+            <div style={{width:16,height:16,border:'2px solid var(--gold)',borderTopColor:'transparent',
+              borderRadius:'50%',animation:'spin 1s linear infinite'}}/>
+            Loading your dashboard…
+          </div>
         ) : (
-        <div style={{maxWidth:1180,margin:'0 auto',padding:'20px 16px'}}>
+        <div style={{maxWidth:1200,margin:'0 auto',padding:'24px 20px'}}>
 
-          {/* ── Summary Stats Grid ── */}
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:10,marginBottom:20}}>
-            {summaryStats.map((s,i)=>(
-              <div key={i} className="stat-card" style={{background:s.bg,border:`1px solid ${s.border}`,borderRadius:14,padding:'12px 14px',boxShadow:'0 1px 4px rgba(0,0,0,0.05)',transition:'all 0.2s',cursor:'default'}}>
-                <div style={{fontSize:10,color:'#64748b',marginBottom:3}}>{s.icon} {s.label}</div>
-                <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:20,color:s.color}}>{s.val}</div>
+          {/* ── Today Banner ── */}
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:20,flexWrap:'wrap',gap:10}}>
+            <div>
+              <div style={{fontFamily:"'Instrument Serif',serif",fontSize:32,color:'var(--text)',lineHeight:1,marginBottom:4}}>
+                {todayName}
+                <span style={{color:'var(--gold)'}}> —</span>
               </div>
-            ))}
-          </div>
-
-          {/* ── Pipeline XP Info Bar ── */}
-          <div style={{background:'white',border:'1px solid #e2e8f0',borderRadius:12,padding:'10px 20px',marginBottom:16,display:'flex',gap:16,flexWrap:'wrap',alignItems:'center',boxShadow:'0 1px 3px rgba(0,0,0,0.04)'}}>
-            <span style={{fontSize:10,color:'#94a3b8',letterSpacing:1,fontWeight:600}}>PIPELINE XP:</span>
-            {[
-              {label:'Offer Made/Received',  xp:PIPELINE_XP.offer_made,     color:'#0369a1'},
-              {label:'Went Pending',          xp:PIPELINE_XP.went_pending,   color:'#ca8a04'},
-              {label:'Closed Deal',           xp:PIPELINE_XP.closed,         color:'#15803d'},
-            ].map((p,i)=>(
-              <div key={i} style={{display:'flex',alignItems:'center',gap:5}}>
-                <span style={{fontSize:9,background:p.color+'22',color:p.color,border:`1px solid ${p.color}44`,borderRadius:5,padding:'2px 7px',fontWeight:700,fontFamily:"'Syne',sans-serif"}}>+{p.xp} XP</span>
-                <span style={{fontSize:10,color:'#64748b'}}>{p.label}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* ── Weekly Circles ── */}
-          <div style={{background:'white',border:'1px solid #e2e8f0',borderRadius:16,padding:'20px 24px',marginBottom:16,boxShadow:'0 1px 6px rgba(0,0,0,0.05)'}}>
-            <div style={{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:10,color:'#94a3b8',marginBottom:16,letterSpacing:2,textTransform:'uppercase'}}>Weekly Breakdown</div>
-            <div style={{display:'flex',gap:20,flexWrap:'wrap',justifyContent:'space-around',alignItems:'center'}}>
-              {Array(WEEKS).fill(null).map((_,wi)=>{
-                const wTotal=HABITS.reduce((acc,h)=>acc+habits[h.id][wi].filter(Boolean).length,0)
-                return <CircleProgress key={wi} percent={Math.round((wTotal/(HABITS.length*7))*100)} size={90} color={weekColors[wi]} trackColor="#f1f5f9" textColor="#1e293b" label={`Week ${wi+1}`} sublabel={`${wTotal}/${HABITS.length*7}`} />
-              })}
-              <div style={{width:1,height:80,background:'#e2e8f0'}} />
-              <CircleProgress percent={monthPercent} size={104} color={rank.color} trackColor="#f1f5f9" textColor="#1e293b" label="Monthly Total" sublabel={`${totalChecks}/${totalPossible}`} />
+              <div style={{fontSize:12,color:'var(--sub)',fontFamily:"'JetBrains Mono',monospace"}}>{dateStr}</div>
+            </div>
+            <div style={{fontFamily:"'Instrument Serif',serif",fontStyle:'italic',fontSize:15,color:'var(--dim)',maxWidth:380,textAlign:'right',lineHeight:1.5}}>
+              "{quote}"
             </div>
           </div>
 
-          {/* Category Legend */}
-          <div style={{background:'white',border:'1px solid #e2e8f0',borderRadius:12,padding:'10px 20px',marginBottom:16,display:'flex',gap:16,flexWrap:'wrap',alignItems:'center'}}>
-            <span style={{fontSize:10,color:'#94a3b8',letterSpacing:1,fontWeight:600}}>CATEGORIES:</span>
-            {Object.entries(CATEGORY_COLORS).map(([cat,col])=>(
-              <div key={cat} style={{display:'flex',alignItems:'center',gap:5}}>
-                <div style={{width:12,height:12,borderRadius:3,background:col.bg,border:`2px solid ${col.border}`}} />
-                <span style={{fontSize:10,color:col.text,fontWeight:600,textTransform:'capitalize'}}>{cat}</span>
-              </div>
-            ))}
+          {/* ── Summary Stats ── */}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(128px,1fr))',gap:10,marginBottom:20}}>
+            <StatCard icon="⚡" label="TODAY" value={`${todayPct}%`} color={todayPct>=80?'#34d399':todayPct>=50?'#fbbf24':'#f87171'}
+              sub={`${todayChecks}/${HABITS.length} habits`} border={todayPct>=80?'rgba(52,211,153,.2)':'var(--b1)'}/>
+            <StatCard icon="📅" label="THIS MONTH" value={`${monthPct}%`} color='#d4a853'
+              sub={`${totalHabitChecks}/${totalPossible}`}/>
+            <StatCard icon="📅" label="APPOINTMENTS" value={totalAppts} color='#34d399'
+              sub="this month"/>
+            <StatCard icon="🔑" label="SHOWINGS" value={totalShowings} color='#60a5fa'
+              sub="this month"/>
+            <StatCard icon="🏡" label="LISTED" value={totalListings} color='#38bdf8'
+              sub="units this month"/>
+            <StatCard icon="📤" label="OFFERS MADE" value={offersMade.length} color='#60a5fa'/>
+            <StatCard icon="📥" label="OFFERS REC'D" value={offersReceived.length} color='#c084fc'/>
+            <StatCard icon="⏳" label="WENT PENDING" value={pendingDeals.length} color='#fbbf24'/>
+            <StatCard icon="🎉" label="CLOSED" value={closedDeals.length} color='#34d399'
+              sub={closedVol>0?fmtMoney(closedVol):null}/>
+            {showCommSummary && closedComm>0 && (
+              <StatCard icon="💰" label="COMMISSION" value={fmtMoney(closedComm)||'$0'} color='#34d399'
+                border='rgba(52,211,153,.2)'/>
+            )}
           </div>
 
-          {/* View Tabs */}
-          <div style={{display:'flex',gap:8,marginBottom:16}}>
-            {['monthly','weekly'].map(t=>(
-              <button key={t} onClick={()=>setTab(t)} style={{background:tab===t?'#1e293b':'white',border:`1.5px solid ${tab===t?'#1e293b':'#e2e8f0'}`,color:tab===t?'white':'#64748b',borderRadius:9,padding:'8px 20px',fontSize:11,cursor:'pointer',fontFamily:"'Syne',sans-serif",fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>
-                {t==='monthly'?'📅 Monthly Grid':'📊 Weekly View'}
+          {/* ── Pipeline XP bar ── */}
+          <div className="card2" style={{padding:'10px 18px',marginBottom:20,display:'flex',gap:20,alignItems:'center',flexWrap:'wrap'}}>
+            <span style={{fontSize:10,color:'var(--dim)',letterSpacing:.8}}>PIPELINE XP</span>
+            {[
+              {l:'Offer Submitted/Received', xp:PIPELINE_XP.offer_made,    c:'#60a5fa'},
+              {l:'Went Pending',             xp:PIPELINE_XP.went_pending,  c:'#fbbf24'},
+              {l:'Closed',                   xp:PIPELINE_XP.closed,        c:'#34d399'},
+            ].map((p,i)=>(
+              <div key={i} style={{display:'flex',alignItems:'center',gap:6}}>
+                <span style={{fontSize:9,padding:'2px 7px',borderRadius:4,background:`${p.c}18`,
+                  color:p.c,border:`1px solid ${p.c}33`,fontFamily:"'JetBrains Mono',monospace",fontWeight:700}}>
+                  +{p.xp} XP
+                </span>
+                <span style={{fontSize:11,color:'var(--sub)'}}>{p.l}</span>
+              </div>
+            ))}
+            <label style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,fontSize:11,color:'var(--sub)',cursor:'pointer'}}>
+              <input type="checkbox" checked={showCommSummary} onChange={e=>toggleCommSummary(e.target.checked)} style={{accentColor:'var(--gold)'}}/>
+              Show commission in summary
+            </label>
+          </div>
+
+          {/* ── View Tabs ── */}
+          <div style={{display:'flex',borderBottom:'1px solid var(--b1)',marginBottom:24,gap:4}}>
+            {[
+              {id:'today',   label:`Today — ${todayName}`},
+              {id:'monthly', label:'Monthly Grid'},
+              {id:'weekly',  label:'Weekly View'},
+            ].map(t=>(
+              <button key={t.id} className={`tab${tab===t.id?' active':''}`} onClick={()=>setTab(t.id)}>
+                {t.label}
               </button>
             ))}
           </div>
 
-          {/* ── Monthly Grid ── */}
+          {/* ══════════════════════════════════════════════════════════════════
+              TODAY VIEW (default)
+          ══════════════════════════════════════════════════════════════════ */}
+          {tab==='today' && (
+            <div style={{animation:'fadeUp .3s ease'}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 220px',gap:20,alignItems:'start'}}>
+
+                {/* Habits list */}
+                <div className="card" style={{padding:24}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+                    <div style={{fontFamily:"'Instrument Serif',serif",fontSize:18,color:'var(--text)'}}>
+                      Daily Habits
+                    </div>
+                    <div style={{display:'flex',alignItems:'center',gap:10}}>
+                      <Ring pct={todayPct} size={52} color={todayPct>=80?'#34d399':todayPct>=50?'#fbbf24':'#f87171'}/>
+                      <div>
+                        <div style={{fontFamily:"'Instrument Serif',serif",fontSize:22,color:'var(--text)',lineHeight:1}}>{todayChecks}/{HABITS.length}</div>
+                        <div style={{fontSize:10,color:'var(--sub)'}}>completed</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                    {HABITS.map(h=>{
+                      const done = habits[h.id][today.week][today.day]
+                      const cs   = CAT_STYLE[h.cat]
+                      const ckey = `${h.id}-${today.week}-${today.day}`
+                      const cnt  = counters[ckey]||0
+
+                      return (
+                        <div key={h.id} className={`habit-row${done?' done':''}`}>
+                          {/* Checkbox */}
+                          <button className={`chk${done?' done':''}`}
+                            onClick={()=>toggleHabit(h.id,today.week,today.day)}
+                            style={done?{background:cs.bg,borderColor:cs.color,boxShadow:`0 0 8px ${cs.color}44`}:{}}>
+                            {done && <svg width="12" height="9" viewBox="0 0 12 9" fill="none">
+                              <path d="M1 4.5L4.5 8L11 1" stroke={cs.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>}
+                          </button>
+
+                          {/* Icon + label */}
+                          <span style={{fontSize:16,flexShrink:0}}>{h.icon}</span>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:13,color:done?'var(--sub)':'var(--text)',
+                              textDecoration:done?'line-through':'none',fontWeight:done?400:500,
+                              transition:'all .15s'}}>
+                              {h.label}
+                            </div>
+                            <div style={{fontSize:10,color:'var(--dim)'}}>
+                              +{h.xp} XP{h.xpEach?` · +${h.xpEach} per extra`:''}
+                            </div>
+                          </div>
+
+                          {/* Category tag */}
+                          <span style={{fontSize:9,padding:'2px 7px',borderRadius:4,background:cs.bg,
+                            color:cs.color,border:`1px solid ${cs.border}`,fontWeight:500,flexShrink:0}}>
+                            {h.cat}
+                          </span>
+
+                          {/* Counter */}
+                          {h.counter && done && (
+                            <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
+                              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:14,
+                                color:cs.color,fontWeight:700,minWidth:20,textAlign:'center'}}>{cnt||1}</span>
+                              <button className="cnt-btn"
+                                onClick={()=>incrementCounter(h.id,today.week,today.day)}
+                                style={{borderColor:cs.color,color:cs.color,background:cs.bg}}>
+                                +
+                              </button>
+                            </div>
+                          )}
+                          {h.counter && !done && (
+                            <button className="cnt-btn"
+                              onClick={()=>incrementCounter(h.id,today.week,today.day)}
+                              style={{borderColor:'var(--b3)',color:'var(--dim)',background:'transparent'}}>
+                              +
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Today sidebar */}
+                <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                  {/* Day progress */}
+                  <div className="card" style={{padding:20,textAlign:'center'}}>
+                    <Ring pct={todayPct} size={100}
+                      color={todayPct>=80?'#34d399':todayPct>=50?'#fbbf24':'#f87171'}
+                      track='rgba(255,255,255,0.05)' sw={8}/>
+                    <div style={{marginTop:12,fontFamily:"'Instrument Serif',serif",fontSize:15,color:'var(--text)'}}>
+                      {todayPct===100?'Perfect day! 🎉':todayPct>=80?'Almost there!':todayPct>=50?'Good progress':'Keep going'}
+                    </div>
+                    <div style={{fontSize:11,color:'var(--sub)',marginTop:4}}>
+                      {HABITS.length-todayChecks} habits remaining
+                    </div>
+                  </div>
+
+                  {/* Today counters */}
+                  {HABITS.filter(h=>h.counter && habits[h.id][today.week][today.day]).length > 0 && (
+                    <div className="card" style={{padding:16}}>
+                      <div style={{fontSize:10,color:'var(--dim)',letterSpacing:.8,marginBottom:10}}>TODAY'S COUNTS</div>
+                      {HABITS.filter(h=>h.counter).map(h=>{
+                        const ckey = `${h.id}-${today.week}-${today.day}`
+                        const cnt  = counters[ckey]||0
+                        if (!cnt && !habits[h.id][today.week][today.day]) return null
+                        const cs = CAT_STYLE[h.cat]
+                        return (
+                          <div key={h.id} style={{display:'flex',justifyContent:'space-between',
+                            alignItems:'center',marginBottom:8,padding:'6px 8px',borderRadius:7,
+                            background:habits[h.id][today.week][today.day]?cs.bg:'transparent'}}>
+                            <span style={{fontSize:12,color:'var(--sub)'}}>{h.icon} {h.label}</span>
+                            <span style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,
+                              fontSize:16,color:cs.color}}>{cnt||0}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* XP earned today */}
+                  <div className="card" style={{padding:16,textAlign:'center',background:'var(--gold3)',border:'1px solid rgba(212,168,83,.2)'}}>
+                    <div style={{fontSize:10,color:'var(--gold)',letterSpacing:.8,marginBottom:4}}>XP EARNED TODAY</div>
+                    <div style={{fontFamily:"'Instrument Serif',serif",fontSize:32,color:'var(--gold)'}}>
+                      {HABITS.reduce((acc,h)=>{
+                        if(!habits[h.id][today.week][today.day]) return acc
+                        const ckey=`${h.id}-${today.week}-${today.day}`
+                        const cnt=counters[ckey]||0
+                        return acc + h.xp + (cnt>0?Math.max(0,cnt-1)*(h.xpEach||0):0)
+                      },0).toLocaleString()}
+                    </div>
+                    <div style={{fontSize:10,color:'var(--dim)'}}>total XP: {xp.toLocaleString()}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════════
+              MONTHLY GRID
+          ══════════════════════════════════════════════════════════════════ */}
           {tab==='monthly' && (
-            <div style={{background:'white',border:'1px solid #e2e8f0',borderRadius:16,overflow:'hidden',boxShadow:'0 2px 10px rgba(0,0,0,0.06)'}}>
-              <div style={{overflowX:'auto'}}>
-                <table style={{width:'100%',borderCollapse:'collapse',minWidth:760}}>
+            <div style={{animation:'fadeUp .3s ease'}}>
+
+              {/* Week rings */}
+              <div className="card" style={{padding:20,marginBottom:16}}>
+                <div style={{fontSize:10,color:'var(--dim)',letterSpacing:.8,marginBottom:16}}>WEEKLY COMPLETION</div>
+                <div style={{display:'flex',gap:24,flexWrap:'wrap',justifyContent:'space-around',alignItems:'center'}}>
+                  {Array(WEEKS).fill(null).map((_,wi)=>{
+                    const wTotal=HABITS.reduce((a,h)=>a+habits[h.id][wi].filter(Boolean).length,0)
+                    return <Ring key={wi} pct={Math.round(wTotal/(HABITS.length*7)*100)} size={88}
+                      color={weekColors[wi]} label={`Week ${wi+1}`} sub={`${wTotal}/${HABITS.length*7}`}/>
+                  })}
+                  <div style={{width:1,height:72,background:'var(--b1)'}}/>
+                  <Ring pct={monthPct} size={104} color='var(--gold)' label="Monthly" sub={`${totalHabitChecks}/${totalPossible}`}/>
+                </div>
+              </div>
+
+              {/* Grid table */}
+              <div className="card" style={{overflowX:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',minWidth:780}}>
                   <thead>
-                    <tr style={{borderBottom:'1px solid #e2e8f0',background:'#f8fafc'}}>
-                      <th style={{padding:'12px 16px',textAlign:'left',fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:10,color:'#64748b',letterSpacing:2,minWidth:230}}>HABIT</th>
+                    <tr style={{borderBottom:'1px solid var(--b1)'}}>
+                      <th style={{padding:'12px 16px',textAlign:'left',fontSize:10,color:'var(--dim)',
+                        letterSpacing:.8,fontWeight:500,minWidth:220}}>HABIT</th>
                       {Array(WEEKS).fill(null).map((_,wi)=>(
-                        <th key={wi} colSpan={7} style={{padding:'12px 4px',textAlign:'center',fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:10,color:weekColors[wi],letterSpacing:1,borderLeft:'2px solid #e2e8f0'}}>WEEK {wi+1}</th>
+                        <th key={wi} colSpan={7} style={{padding:'10px 4px',textAlign:'center',
+                          fontSize:10,color:weekColors[wi],letterSpacing:.8,fontWeight:600,
+                          borderLeft:'1px solid var(--b1)'}}>WK {wi+1}</th>
                       ))}
-                      <th style={{padding:'12px 8px',textAlign:'center',fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:10,color:'#64748b',borderLeft:'2px solid #e2e8f0',whiteSpace:'nowrap'}}>XP</th>
-                      <th style={{padding:'12px 8px',textAlign:'center',fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:10,color:'#64748b'}}>%</th>
+                      <th style={{padding:'10px 12px',textAlign:'center',fontSize:10,color:'var(--dim)',
+                        letterSpacing:.8,fontWeight:500,borderLeft:'1px solid var(--b1)',whiteSpace:'nowrap'}}>XP</th>
+                      <th style={{padding:'10px 12px',textAlign:'center',fontSize:10,color:'var(--dim)',
+                        letterSpacing:.8,fontWeight:500}}>%</th>
                     </tr>
-                    <tr style={{borderBottom:'2px solid #e2e8f0',background:'#f8fafc'}}>
-                      <td style={{padding:'4px 16px',fontSize:9,color:'#cbd5e1'}}>{MONTH_YEAR}</td>
+                    <tr style={{borderBottom:'1px solid var(--b1)',background:'var(--s2)'}}>
+                      <td style={{padding:'4px 16px',fontSize:9,color:'var(--dim)',fontFamily:"'JetBrains Mono',monospace"}}>{MONTH_YEAR}</td>
                       {Array(WEEKS).fill(null).map((_,wi)=>DAYS.map((d,di)=>(
-                        <td key={`${wi}-${di}`} style={{padding:'4px 2px',textAlign:'center',fontSize:9,color:wi===today.week&&di===today.day?'#16a34a':'#94a3b8',fontWeight:wi===today.week&&di===today.day?700:400,borderLeft:di===0?'2px solid #e2e8f0':'none'}}>{d}</td>
+                        <td key={`${wi}-${di}`} style={{padding:'4px 2px',textAlign:'center',
+                          fontSize:9,fontWeight:600,borderLeft:di===0?'1px solid var(--b1)':'none',
+                          color:wi===today.week&&di===today.day?'var(--gold)':'var(--dim)'}}>
+                          {d[0]}
+                        </td>
                       )))}
-                      <td /><td />
+                      <td/><td/>
                     </tr>
                   </thead>
                   <tbody>
                     {HABITS.map((h,hi)=>{
                       const done=habits[h.id].flat().filter(Boolean).length
-                      const pct=Math.round((done/(WEEKS*7))*100)
-                      const catCol=CATEGORY_COLORS[h.category]
-                      const habitTotal = h.hasCounter ? Object.entries(counters).filter(([k])=>k.startsWith(h.id)).reduce((a,[,v])=>a+v,0) : 0
-                      const habitXpEarned = h.hasCounter
-                        ? done*h.xp + Math.max(0,habitTotal-done)*(h.xpPerIncrement||0)
-                        : done*h.xp
+                      const pct=Math.round(done/(WEEKS*7)*100)
+                      const cs=CAT_STYLE[h.cat]
+                      const habitTotal=h.counter?Object.entries(counters).filter(([k])=>k.startsWith(h.id)).reduce((a,[,v])=>a+v,0):0
+                      const xpEarned=done*h.xp+(habitTotal>0?habitTotal*(h.xpEach||0):0)
                       return (
-                        <tr key={h.id} style={{borderBottom:'1px solid #f1f5f9',background:hi%2===0?'white':'#fafcff'}}>
-                          <td style={{padding:'9px 16px'}}>
+                        <tr key={h.id} style={{borderBottom:'1px solid var(--b1)',
+                          background:hi%2===0?'transparent':'rgba(255,255,255,0.01)'}}>
+                          <td style={{padding:'8px 16px'}}>
                             <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                              <span style={{fontSize:15}}>{h.icon}</span>
-                              <span style={{fontSize:12,color:'#334155'}}>{h.label}</span>
-                              <span style={{fontSize:9,color:catCol.text,background:catCol.bg,border:`1px solid ${catCol.border}`,borderRadius:4,padding:'1px 6px'}}>{h.category}</span>
-                              {h.hasCounter && habitTotal>0 && <span style={{fontSize:9,color:'#0369a1',background:'#e0f2fe',borderRadius:5,padding:'1px 6px',border:'1px solid #7dd3fc',fontWeight:700}}>×{habitTotal} total</span>}
+                              <span style={{fontSize:14}}>{h.icon}</span>
+                              <span style={{fontSize:12,color:'var(--text)',fontWeight:500}}>{h.label}</span>
+                              <span style={{fontSize:9,padding:'1px 6px',borderRadius:4,background:cs.bg,
+                                color:cs.color,border:`1px solid ${cs.border}`}}>{h.cat}</span>
+                              {habitTotal>0&&<span style={{fontSize:9,padding:'1px 6px',borderRadius:4,
+                                background:`${cs.color}18`,color:cs.color,fontFamily:"'JetBrains Mono',monospace",fontWeight:700}}>×{habitTotal}</span>}
                             </div>
                           </td>
                           {Array(WEEKS).fill(null).map((_,wi)=>Array(7).fill(null).map((__,di)=>{
@@ -714,94 +912,126 @@ function Dashboard() {
                             const isToday=wi===today.week&&di===today.day
                             const ckey=`${h.id}-${wi}-${di}`
                             return (
-                              <td key={`${wi}-${di}`} style={{textAlign:'center',borderLeft:di===0?'2px solid #e2e8f0':'none',padding:'4px 2px'}}>
-                                {h.hasCounter ? (
-                                  <CounterCell hid={h.id} wi={wi} di={di} checked={checked} isToday={isToday} catCol={catCol} animCell={animCell} onToggle={toggleHabit} onIncrement={incrementCounter} count={counters[ckey]||0} />
+                              <td key={`${wi}-${di}`} style={{textAlign:'center',padding:'6px 2px',
+                                borderLeft:di===0?'1px solid var(--b1)':'none'}}>
+                                {h.counter ? (
+                                  <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+                                    <button onClick={()=>toggleHabit(h.id,wi,di)}
+                                      style={{width:20,height:20,borderRadius:5,border:`1.5px solid ${checked?cs.color:isToday?'rgba(212,168,83,.4)':'var(--b2)'}`,
+                                        background:checked?cs.bg:'transparent',cursor:'pointer',
+                                        display:'flex',alignItems:'center',justifyContent:'center',
+                                        animation:animCell===ckey?'pop .25s ease':'none',
+                                        boxShadow:checked?`0 0 6px ${cs.color}44`:'none'}}>
+                                      {checked&&<span style={{fontSize:9,color:cs.color,fontWeight:700}}>✓</span>}
+                                      {isToday&&!checked&&<span style={{width:5,height:5,borderRadius:'50%',background:'var(--gold)',display:'block'}}/>}
+                                    </button>
+                                    {checked&&(
+                                      <div style={{display:'flex',alignItems:'center',gap:1}}>
+                                        <span style={{fontSize:8,color:cs.color,fontWeight:700,fontFamily:"'JetBrains Mono',monospace"}}>{counters[ckey]||1}</span>
+                                        <button onClick={()=>incrementCounter(h.id,wi,di)}
+                                          style={{width:12,height:12,borderRadius:3,border:`1px solid ${cs.color}`,
+                                            background:'transparent',cursor:'pointer',fontSize:9,lineHeight:1,
+                                            color:cs.color,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                          +
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
                                 ) : (
-                                  <button onClick={()=>toggleHabit(h.id,wi,di)} style={{width:21,height:21,borderRadius:5,border:`1.5px solid ${checked?catCol.text:isToday?'#94a3b8':'#e2e8f0'}`,background:checked?catCol.bg:isToday?'#f0fdf4':'white',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:checked?`0 0 0 2px ${catCol.border}`:'none',animation:animCell===ckey?'pop 0.3s ease':'none',transition:'all 0.15s ease'}}>
-                                    {checked&&<span style={{color:catCol.text,fontSize:11,lineHeight:1,fontWeight:700}}>✓</span>}
-                                    {isToday&&!checked&&<span style={{width:6,height:6,borderRadius:'50%',background:'#86efac',display:'block'}} />}
+                                  <button onClick={()=>toggleHabit(h.id,wi,di)}
+                                    style={{width:20,height:20,borderRadius:5,
+                                      border:`1.5px solid ${checked?cs.color:isToday?'rgba(212,168,83,.4)':'var(--b2)'}`,
+                                      background:checked?cs.bg:'transparent',cursor:'pointer',
+                                      display:'flex',alignItems:'center',justifyContent:'center',
+                                      animation:animCell===ckey?'pop .25s ease':'none',
+                                      boxShadow:checked?`0 0 6px ${cs.color}44`:'none',transition:'all .15s'}}>
+                                    {checked&&<span style={{fontSize:9,color:cs.color,fontWeight:700}}>✓</span>}
+                                    {isToday&&!checked&&<span style={{width:5,height:5,borderRadius:'50%',background:'var(--gold)',display:'block'}}/>}
                                   </button>
                                 )}
                               </td>
                             )
                           }))}
-                          <td style={{textAlign:'center',fontSize:11,color:catCol.text,fontFamily:"'Syne',sans-serif",fontWeight:700,borderLeft:'2px solid #e2e8f0',padding:'0 10px',whiteSpace:'nowrap'}}>+{habitXpEarned.toLocaleString()}</td>
+                          <td style={{padding:'0 12px',textAlign:'center',fontSize:11,color:cs.color,
+                            fontFamily:"'JetBrains Mono',monospace",fontWeight:700,
+                            borderLeft:'1px solid var(--b1)',whiteSpace:'nowrap'}}>
+                            +{xpEarned.toLocaleString()}
+                          </td>
                           <td style={{padding:'0 14px'}}>
                             <div style={{display:'flex',alignItems:'center',gap:6}}>
-                              <div style={{flex:1,height:6,background:'#f1f5f9',borderRadius:3,minWidth:50,overflow:'hidden'}}>
-                                <div style={{height:'100%',background:catCol.text,borderRadius:3,width:`${pct}%`,transition:'width 0.4s ease'}} />
+                              <div style={{flex:1,height:5,background:'var(--b1)',borderRadius:3,overflow:'hidden',minWidth:40}}>
+                                <div style={{height:'100%',background:cs.color,borderRadius:3,width:`${pct}%`,transition:'width .4s'}}/>
                               </div>
-                              <span style={{fontSize:10,color:'#94a3b8',width:32}}>{pct}%</span>
+                              <span style={{fontSize:10,color:'var(--dim)',width:28,fontFamily:"'JetBrains Mono',monospace"}}>{pct}%</span>
                             </div>
                           </td>
                         </tr>
                       )
                     })}
                   </tbody>
-                  <tfoot>
-                    <tr style={{borderTop:'2px solid #e2e8f0',background:'#f8fafc'}}>
-                      <td style={{padding:'10px 16px',fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:10,color:'#64748b',letterSpacing:1}}>DAILY TOTALS</td>
-                      {Array(WEEKS).fill(null).map((_,wi)=>Array(7).fill(null).map((__,di)=>{
-                        const cnt=dailyCounts[wi][di],pct=cnt/HABITS.length
-                        const col=pct>=0.8?'#16a34a':pct>=0.5?'#ca8a04':pct>0?'#ea580c':'#e2e8f0'
-                        return (<td key={`${wi}-${di}`} style={{textAlign:'center',borderLeft:di===0?'2px solid #e2e8f0':'none',padding:'8px 2px'}}>{cnt>0&&<span style={{fontSize:10,fontFamily:"'Syne',sans-serif",fontWeight:700,color:col}}>{cnt}</span>}</td>)
-                      }))}
-                      <td colSpan={2} style={{textAlign:'center',borderLeft:'2px solid #e2e8f0',padding:'0 14px'}}>
-                        <span style={{fontSize:12,color:'#16a34a',fontFamily:"'Syne',sans-serif",fontWeight:800}}>{xp.toLocaleString()} XP</span>
-                      </td>
-                    </tr>
-                  </tfoot>
                 </table>
               </div>
             </div>
           )}
 
-          {/* ── Weekly View ── */}
+          {/* ══════════════════════════════════════════════════════════════════
+              WEEKLY VIEW
+          ══════════════════════════════════════════════════════════════════ */}
           {tab==='weekly' && (
-            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:12}}>
-              {DAYS.map((_,di)=>{
-                const dayTasks=HABITS.filter(h=>habits[h.id][today.week][di])
-                const pct=Math.round((dayTasks.length/HABITS.length)*100)
-                const isToday=di===today.day
-                const dc=['#0369a1','#16a34a','#be185d','#ca8a04','#ea580c','#7c3aed','#0f766e'][di]
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))',gap:12,animation:'fadeUp .3s ease'}}>
+              {DAYS.map((dayName,di)=>{
+                const done   = HABITS.filter(h=>habits[h.id][today.week][di])
+                const pct    = Math.round(done.length/HABITS.length*100)
+                const isToday= di===today.day
+                const dc     = ['#60a5fa','#34d399','#f472b6','#fbbf24','#fb923c','#c084fc','#38bdf8'][di]
                 return (
-                  <div key={di} style={{background:'white',border:`1.5px solid ${isToday?dc+'55':'#e2e8f0'}`,borderRadius:16,padding:14,boxShadow:isToday?`0 0 0 3px ${dc}18,0 4px 16px rgba(0,0,0,0.08)`:'0 1px 4px rgba(0,0,0,0.05)'}}>
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+                  <div key={di} className="card" style={{padding:16,border:isToday?`1px solid ${dc}44`:'1px solid var(--b1)',
+                    boxShadow:isToday?`0 0 0 2px ${dc}22`:'none'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
                       <div>
-                        <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:14,color:isToday?dc:'#1e293b'}}>{FULL_DAYS[di]}</div>
-                        {isToday&&<div style={{fontSize:9,color:dc,letterSpacing:2,fontWeight:700}}>● TODAY</div>}
+                        <div style={{fontFamily:"'DM Sans',sans-serif",fontWeight:600,fontSize:13,
+                          color:isToday?dc:'var(--text)'}}>{dayName}</div>
+                        {isToday&&<div style={{fontSize:9,color:dc,fontWeight:600,letterSpacing:.8}}>TODAY</div>}
                       </div>
-                      <CircleProgress percent={pct} size={52} color={dc} trackColor="#f1f5f9" textColor="#1e293b" />
+                      <Ring pct={pct} size={46} color={dc} sw={4}/>
                     </div>
-                    <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                    <div style={{display:'flex',flexDirection:'column',gap:4}}>
                       {HABITS.map(h=>{
                         const checked=habits[h.id][today.week][di]
-                        const catCol=CATEGORY_COLORS[h.category]
+                        const cs=CAT_STYLE[h.cat]
                         const ckey=`${h.id}-${today.week}-${di}`
                         return (
                           <div key={h.id}>
-                            <button onClick={()=>toggleHabit(h.id,today.week,di)} style={{display:'flex',alignItems:'center',gap:7,background:checked?catCol.bg:'#fafafa',border:`1px solid ${checked?catCol.border:'#f1f5f9'}`,borderRadius:7,padding:'5px 8px',cursor:'pointer',textAlign:'left',transition:'all 0.15s',width:'100%'}}>
-                              <div style={{width:13,height:13,borderRadius:3,border:`1.5px solid ${checked?catCol.text:'#cbd5e1'}`,background:checked?catCol.bg:'white',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                                {checked&&<span style={{color:catCol.text,fontSize:8,fontWeight:700}}>✓</span>}
+                            <button onClick={()=>toggleHabit(h.id,today.week,di)}
+                              style={{display:'flex',alignItems:'center',gap:6,width:'100%',background:checked?cs.bg:'transparent',
+                                border:`1px solid ${checked?cs.border:'transparent'}`,borderRadius:7,padding:'5px 7px',cursor:'pointer',textAlign:'left'}}>
+                              <div style={{width:12,height:12,borderRadius:3,border:`1.5px solid ${checked?cs.color:'var(--b3)'}`,
+                                background:checked?cs.bg:'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                                {checked&&<span style={{fontSize:7,color:cs.color,fontWeight:700}}>✓</span>}
                               </div>
-                              <span style={{fontSize:9.5,color:checked?'#334155':'#94a3b8',textDecoration:checked?'line-through':'none',flex:1}}>{h.icon} {h.label}</span>
-                              <span style={{fontSize:9,color:catCol.text,fontWeight:700}}>+{h.xp}{h.xpPerIncrement?` / +${h.xpPerIncrement}ea`:''}</span>
+                              <span style={{fontSize:10,flex:1,color:checked?'var(--sub)':'var(--text)',
+                                textDecoration:checked?'line-through':'none'}}>{h.icon} {h.label}</span>
+                              <span style={{fontSize:9,color:cs.color,fontFamily:"'JetBrains Mono',monospace",fontWeight:600}}>
+                                +{h.xp}
+                              </span>
                             </button>
-                            {h.hasCounter&&checked&&(
-                              <div style={{display:'flex',alignItems:'center',gap:8,marginTop:4,paddingLeft:20}}>
-                                <span style={{fontSize:10,color:'#64748b'}}>Count:</span>
-                                <span style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:14,color:catCol.text}}>{counters[ckey]||1}</span>
-                                <button onClick={()=>incrementCounter(h.id,today.week,di)} style={{background:catCol.text,color:'white',border:'none',borderRadius:6,width:22,height:22,cursor:'pointer',fontSize:14,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
+                            {h.counter&&checked&&(
+                              <div style={{display:'flex',alignItems:'center',gap:6,paddingLeft:24,marginTop:3}}>
+                                <span style={{fontSize:10,color:'var(--sub)'}}>Count:</span>
+                                <span style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:13,color:cs.color}}>{counters[ckey]||1}</span>
+                                <button onClick={()=>incrementCounter(h.id,today.week,di)}
+                                  style={{width:18,height:18,borderRadius:5,border:`1px solid ${cs.color}`,background:cs.bg,
+                                    cursor:'pointer',fontSize:12,fontWeight:700,color:cs.color,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
                               </div>
                             )}
                           </div>
                         )
                       })}
                     </div>
-                    <div style={{marginTop:8,display:'flex',justifyContent:'space-between',fontSize:10,color:'#94a3b8',borderTop:'1px solid #f1f5f9',paddingTop:8}}>
-                      <span>Done: <span style={{color:dc,fontWeight:700}}>{dayTasks.length}</span></span>
-                      <span>Left: <span style={{color:'#ea580c',fontWeight:700}}>{HABITS.length-dayTasks.length}</span></span>
+                    <div style={{marginTop:10,display:'flex',justifyContent:'space-between',
+                      fontSize:10,color:'var(--dim)',borderTop:'1px solid var(--b1)',paddingTop:8}}>
+                      <span style={{color:dc}}>✓ {done.length}</span>
+                      <span style={{color:'var(--sub)'}}>○ {HABITS.length-done.length}</span>
                     </div>
                   </div>
                 )
@@ -809,94 +1039,102 @@ function Dashboard() {
             </div>
           )}
 
-          {/* ── Listings ── */}
-          <div style={{background:'white',border:'1px solid #e2e8f0',borderRadius:16,padding:22,marginTop:20,boxShadow:'0 1px 6px rgba(0,0,0,0.05)'}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:18}}>
-              <div>
-                <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:16,color:'#1e293b'}}>🏡 Listings Tracker</div>
-                <div style={{fontSize:10,color:'#94a3b8',marginTop:3}}>Log every property you've listed this month</div>
-              </div>
-              <div style={{background:'#f0fdfa',border:'1px solid #5eead4',borderRadius:12,padding:'8px 18px',textAlign:'center'}}>
-                <div style={{fontSize:9,color:'#94a3b8',letterSpacing:1}}>TOTAL LISTED</div>
-                <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:28,color:'#0f766e'}}>{totalListings}</div>
-              </div>
+          {/* ── Listings Tracker ── */}
+          <div style={{marginTop:28}}>
+            <div style={{fontFamily:"'Instrument Serif',serif",fontSize:18,color:'var(--text)',marginBottom:4}}>
+              Listings Tracker
             </div>
-            <div style={{display:'grid',gridTemplateColumns:'28px 1fr 130px 140px 40px',gap:8,padding:'6px 0',borderBottom:'1px solid #f1f5f9',marginBottom:8}}>
-              <span style={{fontSize:9,color:'#cbd5e1',textAlign:'center'}}>#</span>
-              <span style={{fontSize:9,color:'#94a3b8',letterSpacing:1}}>ADDRESS</span>
-              <span style={{fontSize:9,color:'#94a3b8',letterSpacing:1}}>UNITS</span>
-              <span style={{fontSize:9,color:'#94a3b8',letterSpacing:1}}>STATUS</span>
-              <span />
+            <div style={{fontSize:11,color:'var(--sub)',marginBottom:14}}>
+              Mark as <strong>Pending</strong> to auto-create a pipeline entry · Mark as <strong>Closed</strong> to complete the deal
             </div>
-            {listings.length===0&&<div style={{textAlign:'center',padding:'18px 0',color:'#cbd5e1',fontSize:11}}>No listings yet — add one below</div>}
-            <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:14}}>
-              {listings.map((l,i)=>(
-                <div key={l.id} style={{display:'grid',gridTemplateColumns:'28px 1fr 130px 140px 40px',gap:8,alignItems:'center'}}>
-                  <span style={{fontSize:11,color:'#cbd5e1',textAlign:'center'}}>{i+1}</span>
-                  <input value={l.address} onChange={e=>updateListing(l.id,'address',e.target.value)} placeholder="123 Maple Drive..."
-                    style={{border:'1px solid #e2e8f0',borderRadius:8,padding:'7px 11px',fontSize:12,color:'#334155',background:'#f8fafc',fontFamily:"'DM Mono',monospace",width:'100%'}} />
-                  <div style={{display:'flex',alignItems:'center',gap:6,background:'#f0fdfa',border:'1px solid #5eead4',borderRadius:8,padding:'6px 10px'}}>
-                    <span style={{fontSize:10,color:'#0f766e'}}>Units:</span>
-                    <input type="number" min="1" value={l.count} onChange={e=>updateListing(l.id,'count',e.target.value)}
-                      style={{width:38,border:'none',background:'transparent',fontSize:14,fontWeight:800,color:'#0f766e',fontFamily:"'Syne',sans-serif",textAlign:'center'}} />
+
+            <div className="card" style={{padding:20}}>
+              {/* Col headers */}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 90px 170px 36px',gap:8,padding:'4px 12px',marginBottom:8}}>
+                <span style={{fontSize:9,color:'var(--dim)',letterSpacing:.8}}>ADDRESS</span>
+                <span style={{fontSize:9,color:'var(--dim)',letterSpacing:.8}}>UNITS</span>
+                <span style={{fontSize:9,color:'var(--dim)',letterSpacing:.8}}>STATUS</span>
+                <span/>
+              </div>
+
+              {listings.length===0 && <div style={{textAlign:'center',padding:'20px',color:'var(--dim)',fontSize:12}}>No listings yet</div>}
+
+              <div style={{display:'flex',flexDirection:'column',gap:5,marginBottom:12}}>
+                {listings.map(l=>(
+                  <div key={l.id} className="pipe-row" style={{gridTemplateColumns:'1fr 90px 170px 36px'}}>
+                    <input className="pipe-input" value={l.address||''} onChange={e=>updateListing(l.id,'address',e.target.value)} placeholder="Property address…"/>
+                    <div style={{display:'flex',alignItems:'center',gap:6}}>
+                      <input type="number" min="1" value={l.units||1} onChange={e=>updateListing(l.id,'units',e.target.value)}
+                        style={{width:40,background:'transparent',border:'none',color:'#60a5fa',
+                          fontSize:14,fontFamily:"'JetBrains Mono',monospace",fontWeight:700,textAlign:'center'}}/>
+                      <span style={{fontSize:10,color:'var(--dim)'}}>units</span>
+                    </div>
+                    <select className="pipe-select" value={l.status||'active'}
+                      onChange={e=>handleListingStatus(l,e.target.value)}
+                      style={{color:l.status==='closed'?'#34d399':l.status==='pending'?'#fbbf24':'var(--sub)'}}>
+                      <option value="active">Active</option>
+                      <option value="pending">Pending → auto-adds to pipeline</option>
+                      <option value="closed">Closed → completes deal</option>
+                    </select>
+                    <button className="del-btn" onClick={()=>removeListing(l.id)}>✕</button>
                   </div>
-                  <select value={l.status||'active'} onChange={e=>{ if(e.target.value==='closed') handleListingMarkClosed(l); else updateListing(l.id,'status',e.target.value) }}
-                    style={{border:`1.5px solid ${l.status==='pending'?'#fde047':'#5eead4'}`,borderRadius:8,padding:'7px 8px',fontSize:11,cursor:'pointer',background:l.status==='pending'?'#fef9c3':'#f0fdfa',color:l.status==='pending'?'#ca8a04':'#0f766e',fontFamily:"'DM Mono',monospace",fontWeight:600,width:'100%'}}>
-                    <option value="active">🟢 Active</option>
-                    <option value="pending">⏳ Pending</option>
-                    <option value="closed">🎉 Mark as Closed</option>
-                  </select>
-                  <button onClick={()=>removeListing(l.id)} style={{background:'#fef2f2',border:'1px solid #fecaca',color:'#dc2626',borderRadius:8,padding:'7px',cursor:'pointer',fontSize:13,lineHeight:1}}>✕</button>
-                </div>
-              ))}
-            </div>
-            <div style={{display:'grid',gridTemplateColumns:'28px 1fr 130px 140px 40px',gap:8,alignItems:'center',borderTop:'1px dashed #e2e8f0',paddingTop:12}}>
-              <span style={{fontSize:12,color:'#94a3b8',textAlign:'center'}}>+</span>
-              <input value={newAddress} onChange={e=>setNewAddress(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="New property address..."
-                style={{border:'1.5px dashed #cbd5e1',borderRadius:8,padding:'8px 12px',fontSize:12,color:'#334155',background:'#fafcff',fontFamily:"'DM Mono',monospace",width:'100%'}} />
-              <div style={{display:'flex',alignItems:'center',gap:6,background:'#fafcff',border:'1.5px dashed #cbd5e1',borderRadius:8,padding:'6px 10px'}}>
-                <span style={{fontSize:10,color:'#94a3b8'}}>Units:</span>
-                <input type="number" min="1" value={newCount} onChange={e=>setNewCount(e.target.value)} placeholder="1"
-                  style={{width:38,border:'none',background:'transparent',fontSize:14,fontWeight:800,color:'#0f766e',fontFamily:"'Syne',sans-serif",textAlign:'center'}} />
+                ))}
               </div>
-              <div />
-              <button onClick={addListing} style={{background:'#0f766e',color:'white',border:'none',borderRadius:8,padding:'8px',cursor:'pointer',fontSize:16,lineHeight:1}}>+</button>
+
+              {/* Add listing */}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 90px 170px 36px',gap:8,borderTop:'1px solid var(--b1)',paddingTop:12}}>
+                <input className="input" value={newAddr} onChange={e=>setNewAddr(e.target.value)}
+                  onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="New listing address…" style={{padding:'8px 12px'}}/>
+                <div style={{display:'flex',alignItems:'center',gap:6,background:'var(--s2)',
+                  border:'1px solid var(--b2)',borderRadius:8,padding:'6px 10px'}}>
+                  <input type="number" min="1" value={newUnits} onChange={e=>setNewUnits(e.target.value)}
+                    style={{width:32,background:'transparent',border:'none',color:'#60a5fa',
+                      fontSize:14,fontFamily:"'JetBrains Mono',monospace",fontWeight:700,textAlign:'center'}}/>
+                  <span style={{fontSize:10,color:'var(--dim)'}}>units</span>
+                </div>
+                <div/>
+                <button onClick={addListing} style={{background:'#60a5fa',border:'none',color:'#09090b',
+                  borderRadius:8,padding:'8px',cursor:'pointer',fontSize:16,fontWeight:700,lineHeight:1}}>+</button>
+              </div>
             </div>
           </div>
 
           {/* ── Pipeline ── */}
-          <div style={{marginTop:20}}>
-            <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:4}}>
-              <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:17,color:'#1e293b'}}>📋 Transaction Pipeline</div>
-              <div style={{display:'flex',gap:8}}>
-                {[
-                  {label:`${offersMade.length} Made`,     color:'#0369a1',bg:'#e0f2fe'},
-                  {label:`${offersReceived.length} Recd`, color:'#7c3aed',bg:'#ede9fe'},
-                  {label:`${pendingDeals.length} Pending`,color:'#ca8a04',bg:'#fef9c3'},
-                  {label:`${closedDeals.length} Closed`,  color:'#15803d',bg:'#dcfce7'},
-                ].map((b,i)=>(
-                  <span key={i} style={{fontSize:10,color:b.color,background:b.bg,borderRadius:7,padding:'2px 9px',fontFamily:"'Syne',sans-serif",fontWeight:700}}>{b.label}</span>
-                ))}
-              </div>
+          <div style={{marginTop:28}}>
+            <div style={{fontFamily:"'Instrument Serif',serif",fontSize:18,color:'var(--text)',marginBottom:4}}>
+              Transaction Pipeline
             </div>
-            <div style={{fontSize:10,color:'#94a3b8',marginBottom:4}}>Moving an offer to Pending or Closed always <strong>preserves its count</strong> and awards pipeline XP. 🏆</div>
+            <div style={{fontSize:11,color:'var(--sub)',marginBottom:14}}>
+              Counts are preserved when deals move stages · Commission is per-deal and optional
+            </div>
 
-            <TransactionTracker title="Offers Made"     icon="📤" color="#0369a1" bg="#e0f2fe" border="#7dd3fc" placeholder="e.g. 456 Oak Ave"   priceLabel="Offer Amount"   rows={offersMade}    setRows={setOffersMade}    onMarkClosed={handleMarkClosed} onMoveToPending={handleMoveToPending} />
-            <TransactionTracker title="Offers Received" icon="📥" color="#7c3aed" bg="#ede9fe" border="#c4b5fd" placeholder="e.g. 789 Pine Blvd" priceLabel="Offer Amount"   rows={offersReceived} setRows={setOffersReceived} onMarkClosed={handleMarkClosed} onMoveToPending={handleMoveToPending} />
-            <TransactionTracker title="Went Pending"    icon="⏳" color="#ca8a04" bg="#fef9c3" border="#fde047" placeholder="e.g. 101 Elm St"    priceLabel="Contract Price" rows={pendingDeals}  setRows={setPendingDeals}  onMarkClosed={handleMarkClosed} />
-            <TransactionTracker
-              title="Closed" icon="🎉" color="#15803d" bg="#dcfce7" border="#86efac"
-              placeholder="e.g. 202 Cedar Ln" priceLabel="Closed Price"
-              rows={closedDeals} setRows={setClosedDeals} showStatusDropdown={false}
-              showCommission={true}
-              commissionPct={commissionPct}
-              onCommissionChange={saveCommissionPct}
-              showCommissionInSummary={showCommissionInSummary}
-              onToggleShowCommission={toggleShowCommission}
+            <PipelineSection
+              title="Offers Made" icon="📤" accentColor="#60a5fa"
+              rows={offersMade} setRows={setOffersMade}
+              onStatusChange={(row,st)=>handleOfferStatus(row,st,setOffersMade)}
+            />
+            <PipelineSection
+              title="Offers Received" icon="📥" accentColor="#c084fc"
+              rows={offersReceived} setRows={setOffersReceived}
+              onStatusChange={(row,st)=>handleOfferStatus(row,st,setOffersReceived)}
+            />
+            <PipelineSection
+              title="Went Pending" icon="⏳" accentColor="#fbbf24"
+              rows={pendingDeals} setRows={setPendingDeals}
+              onStatusChange={(row,st)=>handlePendingStatus(row,st)}
+            />
+            <PipelineSection
+              title="Closed" icon="🎉" accentColor="#34d399"
+              rows={closedDeals} setRows={setClosedDeals}
+              showSource={true}
             />
           </div>
 
-          <div style={{textAlign:'center',padding:'20px 0 10px',fontSize:9,color:'#cbd5e1',letterSpacing:2}}>REALTYGRIND v4.0 — CLOSE MORE. EVERY DAY.</div>
+          <div style={{height:48}}/>
+          <div style={{textAlign:'center',fontSize:10,color:'var(--dim)',fontFamily:"'JetBrains Mono',monospace",letterSpacing:2,paddingBottom:24}}>
+            REALTYGRIND · {MONTH_YEAR} · CLOSE MORE EVERY DAY
+          </div>
+
         </div>
         )}
       </div>
@@ -904,12 +1142,23 @@ function Dashboard() {
   )
 }
 
+// ─── Root ─────────────────────────────────────────────────────────────────────
+
 function AppInner() {
-  const {user,loading}=useAuth()
-  if (loading) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'linear-gradient(135deg,#f0f9ff,#f0fdf4)',fontFamily:"'Syne',sans-serif",fontSize:18,color:'#94a3b8'}}>🏡 Loading RealtyGrind...</div>
-  return user ? <Dashboard /> : <AuthPage />
+  const { user, loading } = useAuth()
+  if (loading) return (
+    <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',
+      background:'#09090b',fontFamily:"'Instrument Serif',serif",fontSize:20,color:'#d4a853',gap:12}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif&display=swap');
+        @keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <div style={{width:20,height:20,border:'2px solid #d4a853',borderTopColor:'transparent',
+        borderRadius:'50%',animation:'spin 1s linear infinite'}}/>
+      RealtyGrind
+    </div>
+  )
+  return user ? <Dashboard/> : <AuthPage/>
 }
 
 export default function App() {
-  return <AuthProvider><AppInner /></AuthProvider>
+  return <AuthProvider><AppInner/></AuthProvider>
 }

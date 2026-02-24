@@ -5,6 +5,7 @@ import AuthPage from './pages/AuthPage'
 import Leaderboard from './pages/Leaderboard'
 import TeamsPage from './pages/TeamsPage'
 import ProfilePage from './pages/ProfilePage'
+import DirectoryPage from './pages/DirectoryPage'
 import { CSS, Ring, StatCard, Wordmark, Loader, ThemeToggle, PageNav, getRank, fmtMoney, RANKS, CAT } from './design'
 
 // ─── Theme context ─────────────────────────────────────────────────────────────
@@ -38,7 +39,7 @@ function getToday()  { const d=new Date(); return { week:Math.min(Math.floor((d.
 
 // ─── Pipeline section ─────────────────────────────────────────────────────────
 
-function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onStatusChange, showSource, statusOpts }) {
+function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onStatusChange, showSource, statusOpts, onAdd }) {
   const [addr,  setAddr]  = useState('')
   const [price, setPrice] = useState('')
   const [comm,  setComm]  = useState('')
@@ -48,6 +49,7 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
     const row = { id:`tmp-${Date.now()}`, address:addr.trim(), price:price.trim(), commission:comm.trim(), status:'active' }
     setRows(prev => [...prev, row])
     setAddr(''); setPrice(''); setComm('')
+    if (onAdd) onAdd(row)
   }
 
   async function remove(row) {
@@ -192,10 +194,11 @@ function Dashboard({ theme, onToggleTheme }) {
     const g={}; HABITS.forEach(h=>{g[h.id]=Array(WEEKS).fill(null).map(()=>Array(7).fill(false))}); return g
   })
   const [counters, setCounters] = useState({})
-  const [xp,       setXp]       = useState(0)
-  const [streak,   setStreak]   = useState(0)
-  const [xpPop,    setXpPop]    = useState(null)
-  const [animCell, setAnimCell] = useState(null)
+  const [xp,             setXp]             = useState(0)
+  const [streak,         setStreak]         = useState(0)
+  const [xpPop,          setXpPop]          = useState(null)
+  const [animCell,       setAnimCell]       = useState(null)
+  const [sessionPipeline,setSessionPipeline]= useState({ offer_made:0, offer_received:0, went_pending:0, closed:0 })
 
   // Listings
   const [listings,  setListings]  = useState([])
@@ -264,6 +267,11 @@ function Dashboard({ theme, onToggleTheme }) {
     return nxp
   }
 
+  async function awardPipelineXp(type, color) {
+    setSessionPipeline(prev => ({...prev, [type]: prev[type]+1}))
+    await addXp(PIPELINE_XP[type], color)
+  }
+
   // ── Habits ─────────────────────────────────────────────────────────────────
   async function toggleHabit(hid, week, day) {
     const newVal = !habits[hid][week][day]
@@ -320,27 +328,25 @@ function Dashboard({ theme, onToggleTheme }) {
 
   async function handleOfferStatus(row, newStatus, srcSetter) {
     if (newStatus === 'pending') {
-      srcSetter(prev=>prev.filter(r=>r.id!==row.id))
-      await dbDelete(row.id)
+      // NON-DESTRUCTIVE: keep entry in its current section, also create a Went Pending record
       const data = await dbInsert('pending', row, 'Offers')
       if (data) setPendingDeals(prev=>[...prev,{...row,id:data.id,status:'active',closedFrom:'Offers'}])
       setWentPendingCount(prev => prev + 1)
-      await addXp(PIPELINE_XP.went_pending, '#f59e0b')
+      await awardPipelineXp('went_pending', '#f59e0b')
     } else if (newStatus === 'closed') {
-      srcSetter(prev=>prev.filter(r=>r.id!==row.id))
-      await dbDelete(row.id)
+      // NON-DESTRUCTIVE: keep entry in its current section, also create a Closed record
       const data = await dbInsert('closed', row, 'Offers')
       if (data) setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:'Offers'}])
-      await addXp(PIPELINE_XP.closed, '#10b981')
+      await awardPipelineXp('closed', '#10b981')
     }
   }
 
   async function handlePendingStatus(row, newStatus) {
     if (newStatus === 'closed') {
-      setPendingDeals(prev=>prev.filter(r=>r.id!==row.id))
+      // NON-DESTRUCTIVE: keep entry in Went Pending, also create a Closed record
       const data = await dbInsert('closed', row, row.closedFrom||'Pending')
       if (data) setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:row.closedFrom||'Pending'}])
-      await addXp(PIPELINE_XP.closed, '#10b981')
+      await awardPipelineXp('closed', '#10b981')
     }
   }
 
@@ -373,33 +379,25 @@ function Dashboard({ theme, onToggleTheme }) {
   async function handleListingOfferReceived(listing) {
     const data = await dbInsert('offer_received', {address:listing.address, price:listing.price||'', commission:listing.commission||''})
     if (data) setOffersReceived(prev=>[...prev,{id:data.id,address:listing.address,price:listing.price||'',commission:listing.commission||'',status:'active',closedFrom:''}])
-    await addXp(PIPELINE_XP.offer_received, '#8b5cf6')
+    await awardPipelineXp('offer_received', '#8b5cf6')
   }
 
   async function handleListingStatus(listing, newStatus) {
     const lPrice = listing.price||''
     const lComm  = listing.commission||''
     if (newStatus === 'pending') {
-      // Keep listing visible (status pill updates), create Went Pending pipeline entry
+      // NON-DESTRUCTIVE: listing stays, status pill changes, Went Pending entry created
       await updateListing(listing.id, 'status', 'pending')
       const data = await dbInsert('pending', {address:listing.address, price:lPrice, commission:lComm}, 'Listing')
       if (data) setPendingDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'active',closedFrom:'Listing'}])
       setWentPendingCount(prev => prev + 1)
-      await addXp(PIPELINE_XP.went_pending, '#f59e0b')
+      await awardPipelineXp('went_pending', '#f59e0b')
     } else if (newStatus === 'closed') {
-      // Carry price/commission through to the closed entry, then remove the listing
-      const existing = pendingDeals.find(p=>p.address===listing.address && p.closedFrom==='Listing')
-      if (existing) {
-        setPendingDeals(prev=>prev.filter(r=>r.id!==existing.id))
-        const data = await dbInsert('closed', {...existing, price:lPrice||existing.price, commission:lComm||existing.commission}, 'Listing')
-        if (data) setClosedDeals(prev=>[...prev,{...existing,id:data.id,status:'closed',closedFrom:'Listing',price:lPrice||existing.price,commission:lComm||existing.commission}])
-      } else {
-        const data = await dbInsert('closed', {address:listing.address, price:lPrice, commission:lComm}, 'Listing')
-        if (data) setClosedDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'closed',closedFrom:'Listing'}])
-      }
-      setListings(prev=>prev.filter(l=>l.id!==listing.id))
-      await supabase.from('listings').delete().eq('id',listing.id)
-      await addXp(PIPELINE_XP.closed, '#10b981')
+      // NON-DESTRUCTIVE: listing stays with 'closed' status, Closed entry created
+      await updateListing(listing.id, 'status', 'closed')
+      const data = await dbInsert('closed', {address:listing.address, price:lPrice, commission:lComm}, 'Listing')
+      if (data) setClosedDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'closed',closedFrom:'Listing'}])
+      await awardPipelineXp('closed', '#10b981')
     }
   }
 
@@ -418,12 +416,18 @@ function Dashboard({ theme, onToggleTheme }) {
   const totalListings    = listings.length
   const closedVol        = closedDeals.reduce((a,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
   const closedComm       = closedDeals.reduce((a,r)=>{ const n=parseFloat(String(r.commission||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
-  const todayXp          = HABITS.reduce((acc,h)=>{
+  const todayHabitXp     = HABITS.reduce((acc,h)=>{
     if(!habits[h.id][today.week][today.day]) return acc
     const ckey=`${h.id}-${today.week}-${today.day}`
     const cnt=counters[ckey]||0
     return acc + h.xp + (cnt>0?Math.max(0,cnt-1)*(h.xpEach||0):0)
   },0)
+  const sessionPipelineXp =
+    sessionPipeline.offer_made    * PIPELINE_XP.offer_made    +
+    sessionPipeline.offer_received * PIPELINE_XP.offer_received +
+    sessionPipeline.went_pending  * PIPELINE_XP.went_pending  +
+    sessionPipeline.closed        * PIPELINE_XP.closed
+  const todayXp = todayHabitXp + sessionPipelineXp
 
   const dateStr   = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})
   const weekColors = ['#0ea5e9','#10b981','#f43f5e','#f59e0b']
@@ -434,9 +438,10 @@ function Dashboard({ theme, onToggleTheme }) {
   ]
   const quote = quotes[new Date().getDay()]
 
-  if (page==='leaderboard') return <Leaderboard onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
-  if (page==='teams')       return <TeamsPage   onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
-  if (page==='profile')     return <ProfilePage onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
+  if (page==='leaderboard') return <Leaderboard   onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
+  if (page==='teams')       return <TeamsPage     onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
+  if (page==='profile')     return <ProfilePage   onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
+  if (page==='directory')   return <DirectoryPage onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
 
   return (
     <div className="page">
@@ -464,6 +469,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
           <button className="nav-btn" onClick={()=>setPage('leaderboard')}>🏆 Board</button>
           <button className="nav-btn" onClick={()=>setPage('teams')}>👥 Teams</button>
+          <button className="nav-btn" onClick={()=>setPage('directory')}>🔗 Tools</button>
 
           <span style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
 
@@ -656,11 +662,50 @@ function Dashboard({ theme, onToggleTheme }) {
                 </div>
               )}
 
-              <div className="card" style={{ padding:16, textAlign:'center', background:'var(--gold3)',
-                border:'1px solid var(--gold4)' }}>
-                <div className="label" style={{ marginBottom:4, color:'var(--gold)' }}>XP Earned Today</div>
-                <div className="serif" style={{ fontSize:32, color:'var(--gold)', fontWeight:700 }}>{todayXp.toLocaleString()}</div>
-                <div style={{ fontSize:10, color:'var(--muted)', marginTop:3 }}>total: {xp.toLocaleString()} XP</div>
+              <div className="card" style={{ padding:16, background:'var(--gold3)', border:'1px solid var(--gold4)' }}>
+                <div className="label" style={{ marginBottom:6, color:'var(--gold)', textAlign:'center' }}>XP Earned Today</div>
+                <div className="serif" style={{ fontSize:36, color:'var(--gold)', fontWeight:700, textAlign:'center', lineHeight:1 }}>
+                  {todayXp.toLocaleString()}
+                </div>
+                <div style={{ fontSize:10, color:'var(--muted)', marginTop:3, textAlign:'center' }}>
+                  all-time: {xp.toLocaleString()} XP
+                </div>
+
+                {/* Breakdown by source */}
+                {todayXp > 0 && (
+                  <div style={{ marginTop:12, borderTop:'1px solid var(--gold4)', paddingTop:10, display:'flex', flexDirection:'column', gap:5 }}>
+                    {todayHabitXp > 0 && (
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:11 }}>
+                        <span style={{ color:'var(--muted)' }}>⚡ Habits</span>
+                        <span className="mono" style={{ color:'var(--gold)', fontWeight:700 }}>+{todayHabitXp.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {sessionPipeline.offer_made > 0 && (
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:11 }}>
+                        <span style={{ color:'var(--muted)' }}>📤 Offers Made ×{sessionPipeline.offer_made}</span>
+                        <span className="mono" style={{ color:'#0ea5e9', fontWeight:700 }}>+{(sessionPipeline.offer_made*PIPELINE_XP.offer_made).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {sessionPipeline.offer_received > 0 && (
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:11 }}>
+                        <span style={{ color:'var(--muted)' }}>📥 Offers Rec'd ×{sessionPipeline.offer_received}</span>
+                        <span className="mono" style={{ color:'#8b5cf6', fontWeight:700 }}>+{(sessionPipeline.offer_received*PIPELINE_XP.offer_received).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {sessionPipeline.went_pending > 0 && (
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:11 }}>
+                        <span style={{ color:'var(--muted)' }}>⏳ Went Pending ×{sessionPipeline.went_pending}</span>
+                        <span className="mono" style={{ color:'#f59e0b', fontWeight:700 }}>+{(sessionPipeline.went_pending*PIPELINE_XP.went_pending).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {sessionPipeline.closed > 0 && (
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:11 }}>
+                        <span style={{ color:'var(--muted)' }}>🎉 Closed ×{sessionPipeline.closed}</span>
+                        <span className="mono" style={{ color:'#10b981', fontWeight:700 }}>+{(sessionPipeline.closed*PIPELINE_XP.closed).toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -867,23 +912,28 @@ function Dashboard({ theme, onToggleTheme }) {
                   {/* Status + action buttons + delete — all on one line */}
                   <div style={{ display:'flex', alignItems:'center', gap:5, flexShrink:0, flexWrap:'nowrap' }}>
                     <span className={`status-pill sp-${l.status||'active'}`}>
-                      {l.status==='pending' ? '⏳ Pending' : '● Active'}
+                      {l.status==='pending' ? '⏳ Pending' : l.status==='closed' ? '✓ Closed' : '● Active'}
                     </span>
-                    {/* Offer received on this listing */}
-                    <button className="act-btn act-btn-blue" onClick={()=>handleListingOfferReceived(l)}
-                      title="Log an offer received on this listing">
-                      Offer Rec'd
-                    </button>
-                    {/* Move to pending — only if not already pending */}
-                    {(l.status==='active' || !l.status) && (
-                      <button className="act-btn act-btn-amber" onClick={()=>handleListingStatus(l,'pending')}>
-                        → Pending
-                      </button>
+                    {/* Action buttons only shown for non-closed listings */}
+                    {l.status !== 'closed' && (
+                      <>
+                        {/* Offer received on this listing */}
+                        <button className="act-btn act-btn-blue" onClick={()=>handleListingOfferReceived(l)}
+                          title="Log an offer received on this listing">
+                          Offer Rec'd
+                        </button>
+                        {/* Move to pending — only if not already pending */}
+                        {(l.status==='active' || !l.status) && (
+                          <button className="act-btn act-btn-amber" onClick={()=>handleListingStatus(l,'pending')}>
+                            → Pending
+                          </button>
+                        )}
+                        {/* Close the deal */}
+                        <button className="act-btn act-btn-green" onClick={()=>handleListingStatus(l,'closed')}>
+                          ✓ Closed
+                        </button>
+                      </>
                     )}
-                    {/* Close the deal */}
-                    <button className="act-btn act-btn-green" onClick={()=>handleListingStatus(l,'closed')}>
-                      ✓ Closed
-                    </button>
                     <button className="btn-del" onClick={()=>removeListing(l)}>✕</button>
                   </div>
                 </div>
@@ -926,11 +976,13 @@ function Dashboard({ theme, onToggleTheme }) {
           <PipelineSection title="Offers Made" icon="📤" accentColor="#0ea5e9" xpLabel={PIPELINE_XP.offer_made}
             rows={offersMade} setRows={setOffersMade}
             onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersMade)}
+            onAdd={()=>awardPipelineXp('offer_made','#0ea5e9')}
             statusOpts={[{v:'active',l:'Active'},{v:'pending',l:'Move to Pending'},{v:'closed',l:'Mark Closed'}]}/>
 
           <PipelineSection title="Offers Received" icon="📥" accentColor="#8b5cf6" xpLabel={PIPELINE_XP.offer_received}
             rows={offersReceived} setRows={setOffersReceived}
             onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersReceived)}
+            onAdd={()=>awardPipelineXp('offer_received','#8b5cf6')}
             statusOpts={[{v:'active',l:'Active'},{v:'pending',l:'Move to Pending'},{v:'closed',l:'Mark Closed'}]}/>
 
           <PipelineSection title="Went Pending" icon="⏳" accentColor="#f59e0b" xpLabel={PIPELINE_XP.went_pending}

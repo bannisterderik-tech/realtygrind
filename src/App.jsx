@@ -47,7 +47,6 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
     if (!addr.trim()) return
     const row = { id:`tmp-${Date.now()}`, address:addr.trim(), price:price.trim(), commission:comm.trim(), status:'active' }
     setRows(prev => [...prev, row])
-    if (onStatusChange === null) {} // closed section, no add
     setAddr(''); setPrice(''); setComm('')
   }
 
@@ -63,22 +62,28 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
   const totalVol  = rows.reduce((a,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
   const totalComm = rows.reduce((a,r)=>{ const n=parseFloat(String(r.commission||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
 
+  // Action buttons replace the dropdown — filter out 'active' (current state) to show only forward actions
+  const actionOpts = (statusOpts||[]).filter(o => o.v !== 'active')
+
   const cols = showSource
-    ? '1fr 110px 110px 80px 36px'
-    : '1fr 110px 110px 160px 36px'
+    ? '1fr 110px 110px 90px 30px'
+    : `1fr 110px 110px ${actionOpts.length > 1 ? '168px' : '90px'} 30px`
 
   return (
     <div className="card" style={{ padding:22, marginBottom:12 }}>
       {/* Header */}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16, flexWrap:'wrap', gap:10 }}>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <span style={{ fontSize:20 }}>{icon}</span>
+          <div style={{ width:38, height:38, borderRadius:10, background:`${accentColor}14`, border:`1px solid ${accentColor}28`,
+            display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>
+            {icon}
+          </div>
           <div>
             <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-              <span className="serif" style={{ fontSize:18, color:'var(--text)', fontWeight:600 }}>{title}</span>
-              <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, fontSize:20, color:accentColor, lineHeight:1 }}>{rows.length}</span>
+              <span className="serif" style={{ fontSize:17, color:'var(--text)', fontWeight:600 }}>{title}</span>
+              <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, fontSize:19, color:accentColor, lineHeight:1 }}>{rows.length}</span>
               <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700, fontFamily:"'JetBrains Mono',monospace",
-                background:`${accentColor}18`, color:accentColor, border:`1px solid ${accentColor}30` }}>
+                background:`${accentColor}14`, color:accentColor, border:`1px solid ${accentColor}28` }}>
                 +{xpLabel} XP/deal
               </span>
             </div>
@@ -95,12 +100,12 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
           <div style={{ display:'flex', gap:8 }}>
             <div className="card-inset" style={{ padding:'8px 14px', textAlign:'right' }}>
               <div className="label" style={{ marginBottom:3 }}>VOLUME</div>
-              <div className="serif" style={{ fontSize:20, color:accentColor, fontWeight:700 }}>{fmtMoney(totalVol)}</div>
+              <div className="serif" style={{ fontSize:19, color:accentColor, fontWeight:700 }}>{fmtMoney(totalVol)}</div>
             </div>
             {totalComm > 0 && (
-              <div style={{ background:'rgba(5,150,105,.08)', border:'1px solid rgba(5,150,105,.2)', borderRadius:8, padding:'8px 14px', textAlign:'right' }}>
+              <div style={{ background:'rgba(5,150,105,.07)', border:'1px solid rgba(5,150,105,.18)', borderRadius:9, padding:'8px 14px', textAlign:'right' }}>
                 <div className="label" style={{ marginBottom:3 }}>COMMISSION</div>
-                <div className="serif" style={{ fontSize:20, color:'var(--green)', fontWeight:700 }}>{fmtMoney(totalComm)}</div>
+                <div className="serif" style={{ fontSize:19, color:'var(--green)', fontWeight:700 }}>{fmtMoney(totalComm)}</div>
               </div>
             )}
           </div>
@@ -108,16 +113,16 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
       </div>
 
       {/* Column labels */}
-      <div style={{ display:'grid', gridTemplateColumns:cols, gap:8, padding:'3px 12px', marginBottom:6 }}>
+      <div style={{ display:'grid', gridTemplateColumns:cols, gap:8, padding:'3px 13px', marginBottom:5 }}>
         <span className="label">ADDRESS</span>
         <span className="label">PRICE</span>
         <span className="label">COMMISSION</span>
-        <span className="label">{showSource ? 'SOURCE' : 'STATUS'}</span>
+        <span className="label">{showSource ? 'SOURCE' : 'ACTIONS'}</span>
         <span/>
       </div>
 
       {rows.length === 0 && (
-        <div style={{ textAlign:'center', padding:'18px 0', color:'var(--dim)', fontSize:12 }}>
+        <div style={{ textAlign:'center', padding:'20px 0', color:'var(--dim)', fontSize:12 }}>
           No entries yet{!showSource && ' — add one below'}
         </div>
       )}
@@ -132,17 +137,22 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
               placeholder="optional" style={{ color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
             {showSource
               ? <span style={{ fontSize:11, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", padding:'0 2px' }}>{r.closedFrom||'Manual'}</span>
-              : <select className="pipe-select" value={r.status||'active'} onChange={e=>onStatusChange(r,e.target.value)}
-                  style={{ color: r.status==='pending'?'var(--gold2)':r.status==='closed'?'var(--green)':'var(--muted)' }}>
-                  {(statusOpts||[]).map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
-                </select>
+              : <div style={{ display:'flex', gap:4, alignItems:'center', flexWrap:'nowrap' }}>
+                  {actionOpts.map(o => (
+                    <button key={o.v}
+                      className={`act-btn ${o.v==='pending' ? 'act-btn-amber' : 'act-btn-green'}`}
+                      onClick={()=>onStatusChange(r, o.v)}>
+                      {o.v==='pending' ? '→ Pending' : '✓ Closed'}
+                    </button>
+                  ))}
+                </div>
             }
             <button className="btn-del" onClick={()=>remove(r)}>✕</button>
           </div>
         ))}
       </div>
 
-      {/* Add row — not shown for closed (read-only) */}
+      {/* Add row */}
       {!showSource && (
         <div style={{ display:'grid', gridTemplateColumns:cols, gap:8, borderTop:'1px solid var(--b1)', paddingTop:12, alignItems:'center' }}>
           <input className="field-input" value={addr} onChange={e=>setAddr(e.target.value)}
@@ -157,8 +167,9 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
           <div/>
           <button onClick={add} style={{
             background: accentColor, border:'none', color:'#fff', borderRadius:8,
-            width:36, height:36, fontSize:20, fontWeight:700, cursor:'pointer', lineHeight:1,
+            width:30, height:30, fontSize:19, fontWeight:700, cursor:'pointer', lineHeight:1,
             display:'flex', alignItems:'center', justifyContent:'center', transition:'all .15s',
+            flexShrink:0,
           }}>+</button>
         </div>
       )}
@@ -322,7 +333,6 @@ function Dashboard({ theme, onToggleTheme }) {
   async function handlePendingStatus(row, newStatus) {
     if (newStatus === 'closed') {
       setPendingDeals(prev=>prev.filter(r=>r.id!==row.id))
-      // Keep pending DB row for historical count — just add a closed record
       const data = await dbInsert('closed', row, row.closedFrom||'Pending')
       if (data) setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:row.closedFrom||'Pending'}])
       await addXp(PIPELINE_XP.closed, '#10b981')
@@ -351,7 +361,6 @@ function Dashboard({ theme, onToggleTheme }) {
     if (field==='status')  await supabase.from('listings').update({status:val}).eq('id',id)
   }
 
-  // Listing status flow: active → pending (auto-creates pipeline entry) → closed
   async function handleListingStatus(listing, newStatus) {
     await updateListing(listing.id, 'status', newStatus)
     if (newStatus === 'pending') {
@@ -359,13 +368,11 @@ function Dashboard({ theme, onToggleTheme }) {
       if (data) setPendingDeals(prev=>[...prev,{id:data.id,address:listing.address,price:'',commission:'',status:'active',closedFrom:'Listing'}])
       await addXp(PIPELINE_XP.went_pending, '#f59e0b')
     } else if (newStatus === 'closed') {
-      // If a pending pipeline entry already exists for this listing, move it to closed
       const existing = pendingDeals.find(p=>p.address===listing.address && p.closedFrom==='Listing')
       if (existing) {
         setPendingDeals(prev=>prev.filter(r=>r.id!==existing.id))
         const data = await dbInsert('closed', existing, 'Listing')
         if (data) setClosedDeals(prev=>[...prev,{...existing,id:data.id,status:'closed',closedFrom:'Listing'}])
-        // Keep the pending DB record for historical count
       } else {
         const data = await dbInsert('closed', {address:listing.address,price:'',commission:''}, 'Listing')
         if (data) setClosedDeals(prev=>[...prev,{id:data.id,address:listing.address,price:'',commission:'',status:'closed',closedFrom:'Listing'}])
@@ -415,7 +422,7 @@ function Dashboard({ theme, onToggleTheme }) {
     <div className="page">
       {/* XP float */}
       {xpPop && (
-        <div style={{ position:'fixed', top:70, right:30, zIndex:9999, pointerEvents:'none',
+        <div style={{ position:'fixed', top:74, right:30, zIndex:9999, pointerEvents:'none',
           fontFamily:"'Fraunces',serif", fontSize:22, fontWeight:700, color:xpPop.color,
           animation:'floatXp 1.4s ease forwards', textShadow:`0 0 20px ${xpPop.color}55` }}>
           {xpPop.val}
@@ -424,21 +431,27 @@ function Dashboard({ theme, onToggleTheme }) {
 
       {/* ── Nav ─────────────────────────────────────────────── */}
       <nav className="topnav">
-        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:14 }}>
           <Wordmark light/>
+          <span style={{ width:1, height:20, background:'rgba(255,255,255,.1)', display:'block', flexShrink:0 }}/>
           <span style={{ fontSize:10, color:'var(--nav-sub)', fontFamily:"'JetBrains Mono',monospace",
-            borderLeft:'1px solid rgba(255,255,255,.1)', paddingLeft:12 }}>{MONTH_YEAR}</span>
+            letterSpacing:.5 }}>{MONTH_YEAR}</span>
         </div>
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:7 }}>
           <ThemeToggle theme={theme} onToggle={onToggleTheme}/>
+
+          <span style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
+
           <button className="nav-btn" onClick={()=>setPage('leaderboard')}>🏆 Board</button>
           <button className="nav-btn" onClick={()=>setPage('teams')}>👥 Teams</button>
 
+          <span style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
+
           {/* Rank chip */}
-          <div style={{ background:'rgba(255,255,255,.07)', border:`1px solid ${rank.color}44`,
-            borderRadius:9, padding:'5px 12px', display:'flex', alignItems:'center', gap:10 }}>
+          <div style={{ background:'rgba(255,255,255,.06)', border:`1px solid ${rank.color}38`,
+            borderRadius:9, padding:'5px 11px', display:'flex', alignItems:'center', gap:9 }}>
             <span style={{ fontSize:12, fontWeight:600, color:rank.color }}>{rank.icon} {rank.name}</span>
-            <div style={{ width:48, height:4, background:'rgba(255,255,255,.1)', borderRadius:2, overflow:'hidden' }}>
+            <div style={{ width:44, height:3, background:'rgba(255,255,255,.1)', borderRadius:2, overflow:'hidden' }}>
               <div style={{ height:'100%', background:rank.color, borderRadius:2, width:`${rankPct}%`,
                 transition:'width .6s', boxShadow:`0 0 5px ${rank.color}99` }}/>
             </div>
@@ -447,16 +460,16 @@ function Dashboard({ theme, onToggleTheme }) {
             </span>
           </div>
 
-          <div style={{ background:'rgba(255,255,255,.07)', border:'1px solid rgba(255,165,0,.2)',
-            borderRadius:9, padding:'5px 12px', textAlign:'center' }}>
-            <div style={{ fontSize:9, color:'var(--nav-sub)', letterSpacing:.8 }}>STREAK</div>
-            <div className="serif" style={{ fontSize:16, color:'#fb923c' }}>🔥 {streak}</div>
+          <div style={{ background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,165,0,.18)',
+            borderRadius:9, padding:'5px 11px', textAlign:'center' }}>
+            <div style={{ fontSize:9, color:'var(--nav-sub)', letterSpacing:.8, lineHeight:1 }}>STREAK</div>
+            <div className="serif" style={{ fontSize:15, color:'#fb923c', lineHeight:1.2 }}>🔥 {streak}</div>
           </div>
 
           <button className="nav-btn active" onClick={()=>setPage('profile')}>
             {profile?.full_name?.split(' ')[0]||'Profile'}
           </button>
-          <button className="btn-ghost" style={{ background:'transparent', border:'1px solid rgba(255,255,255,.1)', color:'var(--nav-sub)' }}
+          <button className="btn-ghost" style={{ background:'transparent', border:'1px solid rgba(255,255,255,.09)', color:'var(--nav-sub)', fontSize:12 }}
             onClick={()=>supabase.auth.signOut()}>Sign out</button>
         </div>
       </nav>
@@ -465,44 +478,44 @@ function Dashboard({ theme, onToggleTheme }) {
       <div className="page-inner">
 
         {/* ── Header ─────────────────────────────────────────── */}
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:24, flexWrap:'wrap', gap:12 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:22, flexWrap:'wrap', gap:12 }}>
           <div>
-            <div className="serif" style={{ fontSize:36, color:'var(--text)', lineHeight:1, marginBottom:6 }}>
+            <div className="serif" style={{ fontSize:34, color:'var(--text)', lineHeight:1.1, marginBottom:5 }}>
               {dateStr.split(',')[0]}<span style={{ color:'var(--gold)' }}>,</span>
             </div>
-            <div style={{ fontSize:12, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace" }}>
+            <div style={{ fontSize:12, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", letterSpacing:.3 }}>
               {dateStr.split(',').slice(1).join(',').trim()}
             </div>
           </div>
-          <div className="serif" style={{ fontStyle:'italic', fontSize:15, color:'var(--dim)', maxWidth:360, textAlign:'right', lineHeight:1.6 }}>
+          <div className="serif" style={{ fontStyle:'italic', fontSize:14, color:'var(--dim)', maxWidth:340, textAlign:'right', lineHeight:1.65 }}>
             "{quote}"
           </div>
         </div>
 
         {/* ── Stats row ──────────────────────────────────────── */}
-        <div className="stat-grid" style={{ marginBottom:20 }}>
+        <div className="stat-grid" style={{ marginBottom:18 }}>
           <StatCard icon="⚡" label="Today" value={`${todayPct}%`}
             color={todayPct>=80?'var(--green)':todayPct>=50?'var(--gold)':'var(--red)'}
             sub={`${todayChecks}/${HABITS.length} habits`}
             accent={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'}/>
           <StatCard icon="📅" label="Month"        value={`${monthPct}%`}   color="var(--gold)"  sub={`${totalHabitChecks} checks`}/>
           <StatCard icon="📅" label="Appointments" value={totalAppts}        color="var(--green)" sub="this month"/>
-          <StatCard icon="🔑" label="Showings"      value={totalShowings}    color="#0ea5e9"/>
-          <StatCard icon="🏡" label="Listed"        value={totalListings}    color="#8b5cf6"      sub="units"/>
-          <StatCard icon="📤" label="Offers Made"   value={offersMade.length}    color="#0ea5e9"/>
-          <StatCard icon="📥" label="Offers Rec'd"  value={offersReceived.length} color="#8b5cf6"/>
+          <StatCard icon="🔑" label="Showings"      value={totalShowings}    color="var(--blue)"/>
+          <StatCard icon="🏡" label="Listed"        value={totalListings}    color="var(--purple)" sub="units"/>
+          <StatCard icon="📤" label="Offers Made"   value={offersMade.length}     color="var(--blue)"/>
+          <StatCard icon="📥" label="Offers Rec'd"  value={offersReceived.length} color="var(--purple)"/>
           <StatCard icon="⏳" label="Went Pending"  value={pendingDeals.length}   color="var(--gold2)"/>
           <StatCard icon="🎉" label="Closed"         value={closedDeals.length}    color="var(--green)" sub={closedVol>0?fmtMoney(closedVol):null}/>
           {showCommSummary && closedComm>0 && <StatCard icon="💰" label="Commission" value={fmtMoney(closedComm)||'$0'} color="var(--green)" accent="#10b981"/>}
         </div>
 
         {/* Pipeline XP info */}
-        <div className="card-flat" style={{ padding:'10px 18px', marginBottom:20, display:'flex', alignItems:'center', gap:18, flexWrap:'wrap' }}>
+        <div className="card-flat" style={{ padding:'10px 16px', marginBottom:20, display:'flex', alignItems:'center', gap:16, flexWrap:'wrap' }}>
           <span className="label">Pipeline XP</span>
-          {[{l:'Offer',xp:75,c:'#0ea5e9'},{l:'Pending',xp:150,c:'#f59e0b'},{l:'Closed',xp:300,c:'#10b981'}].map((p,i)=>(
+          {[{l:'Offer Made',xp:75,c:'#0ea5e9'},{l:'Went Pending',xp:150,c:'#f59e0b'},{l:'Closed',xp:300,c:'#10b981'}].map((p,i)=>(
             <div key={i} style={{ display:'flex', alignItems:'center', gap:5 }}>
               <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700,
-                fontFamily:"'JetBrains Mono',monospace", background:`${p.c}18`, color:p.c, border:`1px solid ${p.c}30` }}>
+                fontFamily:"'JetBrains Mono',monospace", background:`${p.c}14`, color:p.c, border:`1px solid ${p.c}28` }}>
                 +{p.xp} XP
               </span>
               <span style={{ fontSize:11, color:'var(--muted)' }}>{p.l}</span>
@@ -513,13 +526,13 @@ function Dashboard({ theme, onToggleTheme }) {
               setShowCommSummary(e.target.checked)
               await supabase.from('profiles').update({show_commission:e.target.checked}).eq('id',user.id)
             }} style={{ accentColor:'var(--gold)' }}/>
-            Show commission in summary
+            Show commission
           </label>
         </div>
 
         {/* ── Tabs ──────────────────────────────────────────── */}
         <div className="tabs">
-          {[{id:'today',l:`Today`},{id:'monthly',l:'Monthly Grid'},{id:'weekly',l:'Week View'}].map(t=>(
+          {[{id:'today',l:'Today'},{id:'monthly',l:'Monthly Grid'},{id:'weekly',l:'Week View'}].map(t=>(
             <button key={t.id} className={`tab-item${tab===t.id?' on':''}`} onClick={()=>setTab(t.id)}>{t.l}</button>
           ))}
         </div>
@@ -530,21 +543,21 @@ function Dashboard({ theme, onToggleTheme }) {
 
             {/* Habits checklist */}
             <div className="card" style={{ padding:24 }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
                 <div>
-                  <div className="serif" style={{ fontSize:22, color:'var(--text)', marginBottom:2 }}>Daily Habits</div>
-                  <div style={{ fontSize:12, color:'var(--muted)' }}>FULL_DAYS[today.day] check-ins</div>
+                  <div className="serif" style={{ fontSize:21, color:'var(--text)', marginBottom:2 }}>Daily Habits</div>
+                  <div style={{ fontSize:12, color:'var(--muted)' }}>{FULL_DAYS[today.day]} check-ins</div>
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                  <Ring pct={todayPct} size={56} color={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'}/>
+                  <Ring pct={todayPct} size={54} color={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'}/>
                   <div>
-                    <div className="serif" style={{ fontSize:24, color:'var(--text)', lineHeight:1 }}>{todayChecks}/{HABITS.length}</div>
+                    <div className="serif" style={{ fontSize:22, color:'var(--text)', lineHeight:1 }}>{todayChecks}/{HABITS.length}</div>
                     <div style={{ fontSize:10, color:'var(--muted)' }}>completed</div>
                   </div>
                 </div>
               </div>
 
-              <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+              <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
                 {HABITS.map(h => {
                   const done  = habits[h.id][today.week][today.day]
                   const cs    = CAT[h.cat]
@@ -560,7 +573,7 @@ function Dashboard({ theme, onToggleTheme }) {
                           </svg>
                         )}
                       </button>
-                      <span style={{ fontSize:16, flexShrink:0 }}>{h.icon}</span>
+                      <span style={{ fontSize:15, flexShrink:0 }}>{h.icon}</span>
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
                           textDecoration:done?'line-through':'none', transition:'all .15s' }}>{h.label}</div>
@@ -594,13 +607,13 @@ function Dashboard({ theme, onToggleTheme }) {
             {/* Sidebar */}
             <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
               <div className="card" style={{ padding:20, textAlign:'center' }}>
-                <Ring pct={todayPct} size={104}
+                <Ring pct={todayPct} size={100}
                   color={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'} sw={8}/>
-                <div className="serif" style={{ marginTop:12, fontSize:16, color:'var(--text)' }}>
+                <div className="serif" style={{ marginTop:12, fontSize:15, color:'var(--text)' }}>
                   {todayPct===100?'Perfect day! 🎉':todayPct>=80?'Almost there!':todayPct>=50?'Good progress':'Keep going'}
                 </div>
                 <div style={{ fontSize:11, color:'var(--muted)', marginTop:4 }}>
-                  {HABITS.length-todayChecks} left
+                  {HABITS.length-todayChecks} habit{HABITS.length-todayChecks!==1?'s':''} left
                 </div>
               </div>
 
@@ -614,9 +627,9 @@ function Dashboard({ theme, onToggleTheme }) {
                     const cs = CAT[h.cat]
                     return (
                       <div key={h.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
-                        marginBottom:6, padding:'6px 8px', borderRadius:7, background:cs.light }}>
+                        marginBottom:5, padding:'6px 8px', borderRadius:7, background:cs.light }}>
                         <span style={{ fontSize:12, color:'var(--text2)' }}>{h.icon} {h.label}</span>
-                        <span className="mono" style={{ fontWeight:700, fontSize:15, color:cs.color }}>{cnt||1}</span>
+                        <span className="mono" style={{ fontWeight:700, fontSize:14, color:cs.color }}>{cnt||1}</span>
                       </div>
                     )
                   })}
@@ -626,8 +639,8 @@ function Dashboard({ theme, onToggleTheme }) {
               <div className="card" style={{ padding:16, textAlign:'center', background:'var(--gold3)',
                 border:'1px solid var(--gold4)' }}>
                 <div className="label" style={{ marginBottom:4, color:'var(--gold)' }}>XP Earned Today</div>
-                <div className="serif" style={{ fontSize:34, color:'var(--gold)', fontWeight:700 }}>{todayXp.toLocaleString()}</div>
-                <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>total: {xp.toLocaleString()} XP</div>
+                <div className="serif" style={{ fontSize:32, color:'var(--gold)', fontWeight:700 }}>{todayXp.toLocaleString()}</div>
+                <div style={{ fontSize:10, color:'var(--muted)', marginTop:3 }}>total: {xp.toLocaleString()} XP</div>
               </div>
             </div>
           </div>
@@ -753,7 +766,6 @@ function Dashboard({ theme, onToggleTheme }) {
                     {HABITS.map(h=>{
                       const checked = habits[h.id][today.week][di]
                       const cs      = CAT[h.cat]
-                      const ckey    = `${h.id}-${today.week}-${di}`
                       return (
                         <button key={h.id} onClick={()=>toggleHabit(h.id,today.week,di)} style={{
                           display:'flex', alignItems:'center', gap:6, width:'100%', textAlign:'left',
@@ -781,58 +793,100 @@ function Dashboard({ theme, onToggleTheme }) {
         )}
 
         {/* ══ LISTINGS ════════════════════════════════════════ */}
-        <div style={{ marginTop:32 }}>
-          <div style={{ marginBottom:16 }}>
-            <div className="serif" style={{ fontSize:22, color:'var(--text)', marginBottom:3 }}>Listings Tracker</div>
-            <div className="section-sub">Mark <strong>Pending</strong> to auto-create a pipeline entry · Mark <strong>Closed</strong> to complete the deal</div>
+        <div style={{ marginTop:36 }}>
+          <div className="section-divider"/>
+          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14, gap:12, flexWrap:'wrap' }}>
+            <div>
+              <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:4 }}>
+                <span style={{ fontSize:20 }}>🏡</span>
+                <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>Listings Tracker</span>
+                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, fontSize:18, color:'var(--purple)', lineHeight:1 }}>{listings.length}</span>
+              </div>
+              <div className="section-sub" style={{ marginBottom:0 }}>
+                Mark <strong>Pending</strong> to auto-create a pipeline entry · Mark <strong>Closed</strong> to complete the deal
+              </div>
+            </div>
           </div>
 
           <div className="card" style={{ padding:20 }}>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 80px 190px 36px', gap:8, padding:'3px 12px', marginBottom:8 }}>
-              <span className="label">Address</span><span className="label">Units</span><span className="label">Status</span><span/>
+            {/* Column headers */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 64px auto', gap:8, padding:'3px 13px', marginBottom:6 }}>
+              <span className="label">Address</span>
+              <span className="label">Units</span>
+              <span className="label">Status &amp; Actions</span>
             </div>
 
-            {listings.length===0 && <div style={{ textAlign:'center', padding:'18px 0', color:'var(--dim)', fontSize:12 }}>No listings this month</div>}
+            {listings.length===0 && (
+              <div style={{ textAlign:'center', padding:'22px 0', color:'var(--dim)', fontSize:12 }}>
+                No listings this month — add one below
+              </div>
+            )}
 
             <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:12 }}>
-              {listings.map(l=>(
-                <div key={l.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 80px 190px 36px' }}>
-                  <input className="pipe-input" value={l.address||''} onChange={e=>updateListing(l.id,'address',e.target.value)} placeholder="Address…"/>
-                  <div style={{ display:'flex', alignItems:'center', gap:4 }}>
-                    <input type="number" min="1" value={l.units||1} onChange={e=>updateListing(l.id,'units',e.target.value)}
-                      style={{ width:32, background:'transparent', border:'none', color:'#8b5cf6', fontSize:14,
-                        fontFamily:"'JetBrains Mono',monospace", fontWeight:700, textAlign:'center' }}/>
+              {listings.map(l => (
+                <div key={l.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 64px auto' }}>
+                  {/* Address */}
+                  <input className="pipe-input" value={l.address||''}
+                    onChange={e=>updateListing(l.id,'address',e.target.value)} placeholder="Address…"/>
+
+                  {/* Units */}
+                  <div style={{ display:'flex', alignItems:'center', gap:3 }}>
+                    <input type="number" min="1" value={l.units||1}
+                      onChange={e=>updateListing(l.id,'units',e.target.value)}
+                      style={{ width:36, background:'transparent', border:'none', color:'var(--purple)',
+                        fontSize:13, fontFamily:"'JetBrains Mono',monospace", fontWeight:700, textAlign:'center' }}/>
                     <span style={{ fontSize:10, color:'var(--dim)' }}>u</span>
                   </div>
-                  <select className="pipe-select" value={l.status||'active'} onChange={e=>handleListingStatus(l,e.target.value)}
-                    style={{ color:l.status==='closed'?'var(--green)':l.status==='pending'?'var(--gold2)':'var(--muted)' }}>
-                    <option value="active">Active</option>
-                    <option value="pending">Pending — auto pipeline</option>
-                    <option value="closed">Closed — complete deal</option>
-                  </select>
-                  <button className="btn-del" onClick={()=>removeListing(l)}>✕</button>
+
+                  {/* Status + action buttons + delete — all on one line */}
+                  <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0, flexWrap:'nowrap' }}>
+                    <span className={`status-pill sp-${l.status||'active'}`}>
+                      {l.status==='pending' ? '⏳ Pending' : l.status==='closed' ? '✓ Closed' : '● Active'}
+                    </span>
+                    {(l.status==='active' || !l.status) && (
+                      <button className="act-btn act-btn-amber" onClick={()=>handleListingStatus(l,'pending')}>
+                        → Pending
+                      </button>
+                    )}
+                    {l.status !== 'closed' && (
+                      <button className="act-btn act-btn-green" onClick={()=>handleListingStatus(l,'closed')}>
+                        ✓ Closed
+                      </button>
+                    )}
+                    <button className="btn-del" onClick={()=>removeListing(l)}>✕</button>
+                  </div>
                 </div>
               ))}
             </div>
 
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 80px 190px 36px', gap:8, borderTop:'1px solid var(--b1)', paddingTop:12, alignItems:'center' }}>
+            {/* Add new listing */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 64px auto', gap:8,
+              borderTop:'1px solid var(--b1)', paddingTop:12, alignItems:'center' }}>
               <input className="field-input" value={newAddr} onChange={e=>setNewAddr(e.target.value)}
-                onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="New listing address…" style={{ padding:'8px 12px' }}/>
-              <input type="number" min="1" className="field-input" value={newUnits} onChange={e=>setNewUnits(e.target.value)}
-                style={{ padding:'8px 10px', color:'#8b5cf6', fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}/>
-              <div/>
-              <button onClick={addListing} style={{ background:'#8b5cf6', border:'none', color:'#fff', borderRadius:8,
-                width:36, height:36, fontSize:20, fontWeight:700, cursor:'pointer', lineHeight:1,
-                display:'flex', alignItems:'center', justifyContent:'center' }}>+</button>
+                onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="New listing address…"
+                style={{ padding:'8px 12px' }}/>
+              <input type="number" min="1" className="field-input" value={newUnits}
+                onChange={e=>setNewUnits(e.target.value)}
+                style={{ padding:'8px 10px', color:'var(--purple)', fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}/>
+              <button onClick={addListing} style={{
+                background:'var(--purple)', border:'none', color:'#fff', borderRadius:9,
+                padding:'9px 16px', fontSize:13, fontWeight:600, cursor:'pointer', lineHeight:1,
+                display:'flex', alignItems:'center', gap:5, whiteSpace:'nowrap', transition:'all .15s',
+                flexShrink:0,
+              }}>+ Add</button>
             </div>
           </div>
         </div>
 
         {/* ══ PIPELINE ════════════════════════════════════════ */}
-        <div style={{ marginTop:32 }}>
-          <div style={{ marginBottom:16 }}>
-            <div className="serif" style={{ fontSize:22, color:'var(--text)', marginBottom:3 }}>Transaction Pipeline</div>
-            <div className="section-sub">Historical counts preserved when deals move stages · Commission is per-deal</div>
+        <div style={{ marginTop:36 }}>
+          <div className="section-divider"/>
+          <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:16 }}>
+            <span style={{ fontSize:20 }}>📊</span>
+            <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>Transaction Pipeline</span>
+            <span style={{ fontSize:11, color:'var(--muted)', paddingLeft:4 }}>
+              Historical counts preserved · Commission is per-deal
+            </span>
           </div>
 
           <PipelineSection title="Offers Made" icon="📤" accentColor="#0ea5e9" xpLabel={PIPELINE_XP.offer_made}
@@ -850,7 +904,7 @@ function Dashboard({ theme, onToggleTheme }) {
             onStatusChange={(r,s)=>handlePendingStatus(r,s)}
             statusOpts={[{v:'active',l:'Active'},{v:'closed',l:'Mark Closed'}]}/>
 
-          <PipelineSection title="Closed" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
+          <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
             rows={closedDeals} setRows={setClosedDeals}
             showSource={true}/>
         </div>

@@ -44,12 +44,24 @@ export default function AuthPage({ theme, onToggleTheme }) {
         }}/>
 
         {/* Theme toggle */}
-        <div style={{ position:'absolute', top:20, right:20 }}>
+        <div style={{ position:'absolute', top:20, right:20, display:'flex', alignItems:'center', gap:8 }}>
+          <span style={{ fontSize:11, color:'var(--muted)', fontWeight:500 }}>
+            {theme==='dark' ? 'Dark' : 'Light'} mode
+          </span>
           <button onClick={onToggleTheme} style={{
-            background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:9, padding:'8px 14px',
-            cursor:'pointer', fontSize:13, color:'var(--text2)', display:'flex', alignItems:'center', gap:7,
+            position:'relative', width:46, height:26, borderRadius:14, cursor:'pointer', padding:0, border:'1.5px solid var(--b3)',
+            background: theme==='dark' ? 'var(--bg3)' : 'var(--text)',
+            transition:'all .2s',
           }}>
-            {theme==='dark'?'☀️ Light':'🌙 Dark'} mode
+            <div style={{
+              position:'absolute', top:3, width:18, height:18, borderRadius:'50%',
+              background:'#fff', transition:'transform .2s cubic-bezier(.4,2,.55,1)',
+              left: 3, transform: theme==='dark' ? 'translateX(20px)' : 'translateX(0)',
+              display:'flex', alignItems:'center', justifyContent:'center', fontSize:10,
+              boxShadow:'0 1px 4px rgba(0,0,0,.25)',
+            }}>
+              {theme==='dark' ? '🌙' : '☀️'}
+            </div>
           </button>
         </div>
 

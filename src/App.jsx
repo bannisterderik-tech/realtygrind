@@ -5,6 +5,7 @@ import AuthPage from './pages/AuthPage'
 import Leaderboard from './pages/Leaderboard'
 import TeamsPage from './pages/TeamsPage'
 import ProfilePage from './pages/ProfilePage'
+import DirectoryPage from './pages/DirectoryPage'
 import { CSS, Ring, StatCard, Wordmark, Loader, ThemeToggle, PageNav, getRank, fmtMoney, RANKS, CAT } from './design'
 
 // ─── Theme context ─────────────────────────────────────────────────────────────
@@ -437,9 +438,10 @@ function Dashboard({ theme, onToggleTheme }) {
   ]
   const quote = quotes[new Date().getDay()]
 
-  if (page==='leaderboard') return <Leaderboard onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
-  if (page==='teams')       return <TeamsPage   onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
-  if (page==='profile')     return <ProfilePage onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
+  if (page==='leaderboard') return <Leaderboard   onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
+  if (page==='teams')       return <TeamsPage     onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
+  if (page==='profile')     return <ProfilePage   onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
+  if (page==='directory')   return <DirectoryPage onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
 
   return (
     <div className="page">
@@ -467,6 +469,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
           <button className="nav-btn" onClick={()=>setPage('leaderboard')}>🏆 Board</button>
           <button className="nav-btn" onClick={()=>setPage('teams')}>👥 Teams</button>
+          <button className="nav-btn" onClick={()=>setPage('directory')}>🔗 Tools</button>
 
           <span style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
 

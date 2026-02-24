@@ -26,9 +26,35 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
   const [delText,    setDelText]    = useState('')
   const [delLoading, setDelLoading] = useState(false)
   const [activeTab,  setActiveTab]  = useState('profile')
+  const [history,    setHistory]    = useState([])
+  const [histLoad,   setHistLoad]   = useState(false)
+  const [histFetched,setHistFetched]= useState(false)
 
   useEffect(()=>{ fetchAnnual(year) },[year])
   useEffect(()=>{ if(profile?.team_id) fetchMembers(profile.team_id) },[profile])
+  useEffect(()=>{ if(activeTab==='history' && !histFetched) fetchHistory() },[activeTab])
+
+  async function fetchHistory() {
+    setHistLoad(true)
+    const {data} = await supabase.from('transactions')
+      .select('*')
+      .eq('user_id', user.id)
+      .in('type', ['offer_made','offer_received'])
+      .order('month_year', {ascending:false})
+    if (data) {
+      // Group by month_year, preserving descending order
+      const order = []
+      const map   = {}
+      data.forEach(t => {
+        const mk = t.month_year || 'Unknown'
+        if (!map[mk]) { map[mk] = []; order.push(mk) }
+        map[mk].push(t)
+      })
+      setHistory(order.map(mk => ({ mk, items: map[mk] })))
+    }
+    setHistFetched(true)
+    setHistLoad(false)
+  }
 
   async function fetchMembers(tid) {
     const {data} = await supabase.from('profiles').select('id,full_name,xp,streak').eq('team_id',tid).order('xp',{ascending:false})
@@ -95,7 +121,7 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
   }
 
   const curMonth = new Date().toISOString().slice(0,7)
-  const tabs = [{id:'profile',l:'Profile'},{id:'annual',l:'Annual Summary'},{id:'settings',l:'Settings'}]
+  const tabs = [{id:'profile',l:'Profile'},{id:'annual',l:'Annual Summary'},{id:'history',l:'Offer History'},{id:'settings',l:'Settings'}]
 
   return (
     <>
@@ -336,6 +362,123 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
                         </tr>
                       </tfoot>
                     </table>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── History tab ── */}
+          {activeTab==='history' && (
+            <div style={{ animation:'fadeUp .25s ease' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20, flexWrap:'wrap' }}>
+                <div className="serif" style={{ fontSize:18, color:'var(--text)' }}>Offer History</div>
+                <div style={{ fontSize:13, color:'var(--muted)' }}>All-time offers made &amp; received across every month</div>
+              </div>
+
+              {histLoad ? <Loader/> : history.length === 0 ? (
+                <div className="card" style={{ padding:48, textAlign:'center', color:'var(--dim)', fontSize:13 }}>
+                  No offer history yet — offers you make or receive will appear here.
+                </div>
+              ) : (
+                <>
+                  {/* Lifetime summary */}
+                  {(()=>{
+                    const allItems = history.flatMap(g => g.items)
+                    const made     = allItems.filter(t => t.type==='offer_made')
+                    const recvd    = allItems.filter(t => t.type==='offer_received')
+                    const vol = [...made,...recvd].reduce((a,t)=>{ const n=parseFloat(String(t.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
+                    const comm = allItems.reduce((a,t)=>{ const n=parseFloat(String(t.commission||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
+                    return (
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))', gap:10, marginBottom:24 }}>
+                        {[
+                          {l:'Offers Made',   v:made.length,                c:'#0ea5e9'},
+                          {l:"Offers Rec'd",  v:recvd.length,               c:'#8b5cf6'},
+                          {l:'Total Volume',  v:vol>0?fmtMoney(vol):'—',    c:'var(--gold2)'},
+                          {l:'Est. Comm.',    v:comm>0?fmtMoney(comm):'—',  c:'var(--green)'},
+                        ].map((s,i) => (
+                          <div key={i} className="card-inset" style={{ padding:'12px 14px', textAlign:'center' }}>
+                            <div className="label" style={{ marginBottom:4 }}>{s.l}</div>
+                            <div className="serif" style={{ fontSize:22, color:s.c, fontWeight:700 }}>{s.v}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
+
+                  {/* Timeline grouped by month */}
+                  <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+                    {history.map(group => {
+                      const [y, m] = group.mk.split('-')
+                      const mName  = MONTHS[parseInt(m)-1]
+                      const label  = mName ? `${mName} '${(y||'').slice(2)}` : group.mk
+                      const madeCount = group.items.filter(t => t.type==='offer_made').length
+                      const rcvdCount = group.items.filter(t => t.type==='offer_received').length
+                      return (
+                        <div key={group.mk} className="card" style={{ padding:20 }}>
+                          {/* Month header */}
+                          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14, flexWrap:'wrap' }}>
+                            <div className="serif" style={{ fontSize:17, color:'var(--text)', fontWeight:600 }}>{label}</div>
+                            {madeCount > 0 && (
+                              <span style={{ fontSize:10, padding:'2px 9px', borderRadius:20, fontWeight:700,
+                                background:'rgba(14,165,233,.1)', color:'#0ea5e9', border:'1px solid rgba(14,165,233,.25)',
+                                fontFamily:"'JetBrains Mono',monospace" }}>
+                                📤 {madeCount} MADE
+                              </span>
+                            )}
+                            {rcvdCount > 0 && (
+                              <span style={{ fontSize:10, padding:'2px 9px', borderRadius:20, fontWeight:700,
+                                background:'rgba(139,92,246,.1)', color:'#8b5cf6', border:'1px solid rgba(139,92,246,.25)',
+                                fontFamily:"'JetBrains Mono',monospace" }}>
+                                📥 {rcvdCount} RECEIVED
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Entries */}
+                          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                            {group.items.map(t => {
+                              const isMade = t.type === 'offer_made'
+                              const color  = isMade ? '#0ea5e9' : '#8b5cf6'
+                              const bg     = isMade ? 'rgba(14,165,233,.06)' : 'rgba(139,92,246,.06)'
+                              const border = isMade ? 'rgba(14,165,233,.18)' : 'rgba(139,92,246,.18)'
+                              return (
+                                <div key={t.id} style={{
+                                  display:'grid',
+                                  gridTemplateColumns:'auto 1fr auto auto',
+                                  gap:10, alignItems:'center',
+                                  padding:'10px 14px', borderRadius:9, background:bg, border:`1px solid ${border}`,
+                                }}>
+                                  <div style={{ fontSize:16 }}>{isMade ? '📤' : '📥'}</div>
+                                  <div style={{ minWidth:0 }}>
+                                    <div style={{ fontSize:13, fontWeight:600, color:'var(--text)',
+                                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                                      {t.address || 'No address'}
+                                    </div>
+                                    <div style={{ fontSize:10, color:color, fontFamily:"'JetBrains Mono',monospace",
+                                      fontWeight:700, marginTop:2, letterSpacing:.4 }}>
+                                      {isMade ? 'OFFER MADE' : 'OFFER RECEIVED'}
+                                    </div>
+                                  </div>
+                                  {t.price ? (
+                                    <div style={{ fontSize:12, fontWeight:700, color:'var(--gold2)',
+                                      fontFamily:"'JetBrains Mono',monospace", whiteSpace:'nowrap' }}>
+                                      {t.price}
+                                    </div>
+                                  ) : <div/>}
+                                  {t.commission ? (
+                                    <div style={{ fontSize:12, fontWeight:700, color:'var(--green)',
+                                      fontFamily:"'JetBrains Mono',monospace", whiteSpace:'nowrap' }}>
+                                      {t.commission}
+                                    </div>
+                                  ) : <div/>}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </>
               )}

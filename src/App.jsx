@@ -200,13 +200,13 @@ function Dashboard({ theme, onToggleTheme }) {
   // Listings
   const [listings, setListings] = useState([])
   const [newAddr,  setNewAddr]  = useState('')
-  const [newUnits, setNewUnits] = useState('1')
 
   // Pipeline
-  const [offersMade,     setOffersMade]     = useState([])
-  const [offersReceived, setOffersReceived] = useState([])
-  const [pendingDeals,   setPendingDeals]   = useState([])
-  const [closedDeals,    setClosedDeals]    = useState([])
+  const [offersMade,       setOffersMade]       = useState([])
+  const [offersReceived,   setOffersReceived]   = useState([])
+  const [pendingDeals,     setPendingDeals]     = useState([])
+  const [closedDeals,      setClosedDeals]      = useState([])
+  const [wentPendingCount, setWentPendingCount] = useState(0) // historical — never decrements
 
   const [showCommSummary, setShowCommSummary] = useState(false)
 
@@ -232,7 +232,7 @@ function Dashboard({ theme, onToggleTheme }) {
       setHabits(g); setCounters(cnts)
     }
 
-    if (listRes.data) setListings(listRes.data.map(l=>({id:l.id,address:l.address,units:String(l.unit_count||1),status:l.status||'active'})))
+    if (listRes.data) setListings(listRes.data.map(l=>({id:l.id,address:l.address,status:l.status||'active'})))
 
     if (txRes.data) {
       const m = t => ({ id:t.id, address:t.address, price:t.price||'', commission:t.commission||'', status:t.status||'active', closedFrom:t.closed_from||'' })
@@ -240,6 +240,8 @@ function Dashboard({ theme, onToggleTheme }) {
       setOffersReceived(txRes.data.filter(t=>t.type==='offer_received').map(m))
       setPendingDeals(  txRes.data.filter(t=>t.type==='pending').map(m))
       setClosedDeals(   txRes.data.filter(t=>t.type==='closed').map(m))
+      // Historical count — all records ever marked pending, regardless of current state
+      setWentPendingCount(txRes.data.filter(t=>t.type==='pending').length)
     }
 
     if (profRes.data) {
@@ -320,6 +322,7 @@ function Dashboard({ theme, onToggleTheme }) {
       await dbDelete(row.id)
       const data = await dbInsert('pending', row, 'Offers')
       if (data) setPendingDeals(prev=>[...prev,{...row,id:data.id,status:'active',closedFrom:'Offers'}])
+      setWentPendingCount(prev => prev + 1)
       await addXp(PIPELINE_XP.went_pending, '#f59e0b')
     } else if (newStatus === 'closed') {
       srcSetter(prev=>prev.filter(r=>r.id!==row.id))
@@ -343,10 +346,10 @@ function Dashboard({ theme, onToggleTheme }) {
   async function addListing() {
     if (!newAddr.trim()) return
     const {data} = await supabase.from('listings').insert({
-      user_id:user.id, address:newAddr.trim(), unit_count:parseInt(newUnits)||1, status:'active', month_year:MONTH_YEAR
+      user_id:user.id, address:newAddr.trim(), unit_count:1, status:'active', month_year:MONTH_YEAR
     }).select().single()
-    if (data) setListings(prev=>[...prev,{id:data.id,address:data.address,units:String(data.unit_count),status:'active'}])
-    setNewAddr(''); setNewUnits('1')
+    if (data) setListings(prev=>[...prev,{id:data.id,address:data.address,status:'active'}])
+    setNewAddr('')
   }
 
   async function removeListing(listing) {
@@ -356,7 +359,6 @@ function Dashboard({ theme, onToggleTheme }) {
 
   async function updateListing(id, field, val) {
     setListings(prev=>prev.map(l=>l.id===id?{...l,[field]:val}:l))
-    if (field==='units')   await supabase.from('listings').update({unit_count:parseInt(val)||1}).eq('id',id)
     if (field==='address') await supabase.from('listings').update({address:val}).eq('id',id)
     if (field==='status')  await supabase.from('listings').update({status:val}).eq('id',id)
   }
@@ -366,6 +368,7 @@ function Dashboard({ theme, onToggleTheme }) {
     if (newStatus === 'pending') {
       const data = await dbInsert('pending', {address:listing.address,price:'',commission:''}, 'Listing')
       if (data) setPendingDeals(prev=>[...prev,{id:data.id,address:listing.address,price:'',commission:'',status:'active',closedFrom:'Listing'}])
+      setWentPendingCount(prev => prev + 1)
       await addXp(PIPELINE_XP.went_pending, '#f59e0b')
     } else if (newStatus === 'closed') {
       const existing = pendingDeals.find(p=>p.address===listing.address && p.closedFrom==='Listing')
@@ -395,7 +398,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const todayPct         = Math.round(todayChecks/HABITS.length*100)
   const totalAppts       = Object.entries(counters).filter(([k])=>k.startsWith('appointments')).reduce((a,[,v])=>a+v,0)
   const totalShowings    = Object.entries(counters).filter(([k])=>k.startsWith('showing')).reduce((a,[,v])=>a+v,0)
-  const totalListings    = listings.reduce((a,l)=>a+(parseInt(l.units)||0),0)
+  const totalListings    = listings.length
   const closedVol        = closedDeals.reduce((a,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
   const closedComm       = closedDeals.reduce((a,r)=>{ const n=parseFloat(String(r.commission||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
   const todayXp          = HABITS.reduce((acc,h)=>{
@@ -501,10 +504,10 @@ function Dashboard({ theme, onToggleTheme }) {
           <StatCard icon="📅" label="Month"        value={`${monthPct}%`}   color="var(--gold)"  sub={`${totalHabitChecks} checks`}/>
           <StatCard icon="📅" label="Appointments" value={totalAppts}        color="var(--green)" sub="this month"/>
           <StatCard icon="🔑" label="Showings"      value={totalShowings}    color="var(--blue)"/>
-          <StatCard icon="🏡" label="Listed"        value={totalListings}    color="var(--purple)" sub="units"/>
+          <StatCard icon="🏡" label="Listed"        value={totalListings}         color="var(--purple)"/>
           <StatCard icon="📤" label="Offers Made"   value={offersMade.length}     color="var(--blue)"/>
           <StatCard icon="📥" label="Offers Rec'd"  value={offersReceived.length} color="var(--purple)"/>
-          <StatCard icon="⏳" label="Went Pending"  value={pendingDeals.length}   color="var(--gold2)"/>
+          <StatCard icon="⏳" label="Went Pending"  value={wentPendingCount}      color="var(--gold2)"/>
           <StatCard icon="🎉" label="Closed"         value={closedDeals.length}    color="var(--green)" sub={closedVol>0?fmtMoney(closedVol):null}/>
           {showCommSummary && closedComm>0 && <StatCard icon="💰" label="Commission" value={fmtMoney(closedComm)||'$0'} color="var(--green)" accent="#10b981"/>}
         </div>
@@ -810,9 +813,8 @@ function Dashboard({ theme, onToggleTheme }) {
 
           <div className="card" style={{ padding:20 }}>
             {/* Column headers */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 64px auto', gap:8, padding:'3px 13px', marginBottom:6 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:8, padding:'3px 13px', marginBottom:6 }}>
               <span className="label">Address</span>
-              <span className="label">Units</span>
               <span className="label">Status &amp; Actions</span>
             </div>
 
@@ -824,19 +826,10 @@ function Dashboard({ theme, onToggleTheme }) {
 
             <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:12 }}>
               {listings.map(l => (
-                <div key={l.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 64px auto' }}>
+                <div key={l.id} className="pipe-row" style={{ gridTemplateColumns:'1fr auto' }}>
                   {/* Address */}
                   <input className="pipe-input" value={l.address||''}
                     onChange={e=>updateListing(l.id,'address',e.target.value)} placeholder="Address…"/>
-
-                  {/* Units */}
-                  <div style={{ display:'flex', alignItems:'center', gap:3 }}>
-                    <input type="number" min="1" value={l.units||1}
-                      onChange={e=>updateListing(l.id,'units',e.target.value)}
-                      style={{ width:36, background:'transparent', border:'none', color:'var(--purple)',
-                        fontSize:13, fontFamily:"'JetBrains Mono',monospace", fontWeight:700, textAlign:'center' }}/>
-                    <span style={{ fontSize:10, color:'var(--dim)' }}>u</span>
-                  </div>
 
                   {/* Status + action buttons + delete — all on one line */}
                   <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0, flexWrap:'nowrap' }}>
@@ -860,14 +853,10 @@ function Dashboard({ theme, onToggleTheme }) {
             </div>
 
             {/* Add new listing */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 64px auto', gap:8,
-              borderTop:'1px solid var(--b1)', paddingTop:12, alignItems:'center' }}>
+            <div style={{ display:'flex', gap:8, borderTop:'1px solid var(--b1)', paddingTop:12, alignItems:'center' }}>
               <input className="field-input" value={newAddr} onChange={e=>setNewAddr(e.target.value)}
                 onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="New listing address…"
-                style={{ padding:'8px 12px' }}/>
-              <input type="number" min="1" className="field-input" value={newUnits}
-                onChange={e=>setNewUnits(e.target.value)}
-                style={{ padding:'8px 10px', color:'var(--purple)', fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}/>
+                style={{ padding:'8px 12px', flex:1 }}/>
               <button onClick={addListing} style={{
                 background:'var(--purple)', border:'none', color:'#fff', borderRadius:9,
                 padding:'9px 16px', fontSize:13, fontWeight:600, cursor:'pointer', lineHeight:1,

@@ -6,6 +6,7 @@ import Leaderboard from './pages/Leaderboard'
 import TeamsPage from './pages/TeamsPage'
 import ProfilePage from './pages/ProfilePage'
 import DirectoryPage from './pages/DirectoryPage'
+import APODPage from './pages/APODPage'
 import { CSS, Ring, StatCard, Wordmark, Loader, ThemeToggle, PageNav, getRank, fmtMoney, RANKS, CAT } from './design'
 
 // ─── Theme context ─────────────────────────────────────────────────────────────
@@ -482,7 +483,8 @@ function Dashboard({ theme, onToggleTheme }) {
   if (page==='leaderboard') return <Leaderboard   onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
   if (page==='teams')       return <TeamsPage     onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
   if (page==='profile')     return <ProfilePage   onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
-  if (page==='directory')   return <DirectoryPage onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
+  if (page==='directory')   return <DirectoryPage onBack={()=>setPage('dashboard')} onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>
+  if (page==='apod')        return <APODPage      onBack={()=>setPage('directory')} theme={theme} onToggleTheme={onToggleTheme}/>
 
   return (
     <div className="page">

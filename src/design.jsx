@@ -1,11 +1,11 @@
 // ─── Shared constants ─────────────────────────────────────────────────────────
 
 export const RANKS = [
-  { name:'Rookie',       min:0,    max:500,      color:'#9ca3af', icon:'🏅' },
-  { name:'Associate',    min:500,  max:1500,     color:'#10b981', icon:'🥈' },
-  { name:'Senior Agent', min:1500, max:3000,     color:'#f59e0b', icon:'🥇' },
-  { name:'Top Producer', min:3000, max:6000,     color:'#ef4444', icon:'🏆' },
-  { name:'Elite Broker', min:6000, max:Infinity, color:'#8b5cf6', icon:'💎' },
+  { name:'Bronze',   min:0,    max:500,      color:'#cd7c32', icon:'🥉' },
+  { name:'Silver',   min:500,  max:1500,     color:'#94a3b8', icon:'🥈' },
+  { name:'Gold',     min:1500, max:3000,     color:'#d97706', icon:'🥇' },
+  { name:'Platinum', min:3000, max:6000,     color:'#38bdf8', icon:'🌟' },
+  { name:'Diamond',  min:6000, max:Infinity, color:'#a855f7', icon:'💎' },
 ]
 export function getRank(xp) { return [...RANKS].reverse().find(r=>xp>=r.min)||RANKS[0] }
 

@@ -34,22 +34,32 @@ const DAYS        = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 const FULL_DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
 const WEEKS       = 4
 const MONTH_YEAR  = new Date().toISOString().slice(0,7)
+const MONTHS      = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+function fmtMonth(my) {
+  if (!my) return ''
+  const [y,m] = my.split('-')
+  return `${MONTHS[parseInt(m)-1]} '${y.slice(2)}`
+}
 
 function getToday()  { const d=new Date(); return { week:Math.min(Math.floor((d.getDate()-1)/7),3), day:d.getDay() } }
 
 // ─── Pipeline section ─────────────────────────────────────────────────────────
 
-function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onStatusChange, showSource, statusOpts, onAdd }) {
+function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onStatusChange, showSource, statusOpts, onAdd, onRemove }) {
   const [addr,  setAddr]  = useState('')
   const [price, setPrice] = useState('')
   const [comm,  setComm]  = useState('')
 
-  function add() {
+  async function add() {
     if (!addr.trim()) return
-    const row = { id:`tmp-${Date.now()}`, address:addr.trim(), price:price.trim(), commission:comm.trim(), status:'active' }
-    setRows(prev => [...prev, row])
+    const tmp = { id:`tmp-${Date.now()}`, address:addr.trim(), price:price.trim(), commission:comm.trim(), status:'active' }
+    setRows(prev => [...prev, tmp])
     setAddr(''); setPrice(''); setComm('')
-    if (onAdd) onAdd(row)
+    if (onAdd) {
+      // onAdd persists to DB and returns the saved row with a real ID
+      const saved = await onAdd(tmp)
+      if (saved?.id) setRows(prev => prev.map(r => r.id === tmp.id ? saved : r))
+    }
   }
 
   async function remove(row) {
@@ -57,6 +67,7 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
     if (row.id && !String(row.id).startsWith('tmp-')) {
       await supabase.from('transactions').delete().eq('id', row.id)
     }
+    if (onRemove) onRemove(row)
   }
 
   function update(id, f, v) { setRows(prev => prev.map(r => r.id===id ? {...r,[f]:v} : r)) }
@@ -222,7 +233,7 @@ function Dashboard({ theme, onToggleTheme }) {
     setDbLoading(true)
     const [habRes, listRes, txRes, profRes] = await Promise.all([
       supabase.from('habit_completions').select('*').eq('user_id',user.id).eq('month_year',MONTH_YEAR),
-      supabase.from('listings').select('*').eq('user_id',user.id).eq('month_year',MONTH_YEAR),
+      supabase.from('listings').select('*').eq('user_id',user.id), // no month filter — listings persist until closed
       supabase.from('transactions').select('*').eq('user_id',user.id).eq('month_year',MONTH_YEAR),
       supabase.from('profiles').select('*').eq('id',user.id).single(),
     ])
@@ -237,7 +248,10 @@ function Dashboard({ theme, onToggleTheme }) {
       setHabits(g); setCounters(cnts)
     }
 
-    if (listRes.data) setListings(listRes.data.map(l=>({id:l.id,address:l.address,status:l.status||'active',price:l.price||'',commission:l.commission||''})))
+    if (listRes.data) setListings(listRes.data.map(l=>({
+      id:l.id, address:l.address, status:l.status||'active',
+      price:l.price||'', commission:l.commission||'', monthYear:l.month_year||''
+    })))
 
     if (txRes.data) {
       const m = t => ({ id:t.id, address:t.address, price:t.price||'', commission:t.commission||'', status:t.status||'active', closedFrom:t.closed_from||'' })
@@ -270,6 +284,33 @@ function Dashboard({ theme, onToggleTheme }) {
   async function awardPipelineXp(type, color) {
     setSessionPipeline(prev => ({...prev, [type]: prev[type]+1}))
     await addXp(PIPELINE_XP[type], color)
+  }
+
+  async function deductPipelineXp(type) {
+    const amount = PIPELINE_XP[type]
+    const nxp    = Math.max(0, xp - amount)
+    setXp(nxp)
+    setXpPop({ val:`-${amount} XP`, color:'#dc2626' })
+    setTimeout(()=>setXpPop(null), 1400)
+    await supabase.from('profiles').update({xp:nxp}).eq('id',user.id)
+    setSessionPipeline(prev => ({...prev, [type]: Math.max(0, prev[type]-1)}))
+    if (type === 'went_pending') setWentPendingCount(prev => Math.max(0, prev - 1))
+  }
+
+  // Persist a new Offer Made to DB, award XP, return saved row with real ID
+  async function handleOfferMadeAdd(tmpRow) {
+    const data = await dbInsert('offer_made', tmpRow)
+    await awardPipelineXp('offer_made', '#0ea5e9')
+    if (!data) return null
+    return { id:data.id, address:data.address||tmpRow.address, price:data.price||'', commission:data.commission||'', status:'active', closedFrom:'' }
+  }
+
+  // Persist a new Offer Received to DB, award XP, return saved row with real ID
+  async function handleOfferReceivedAdd(tmpRow) {
+    const data = await dbInsert('offer_received', tmpRow)
+    await awardPipelineXp('offer_received', '#8b5cf6')
+    if (!data) return null
+    return { id:data.id, address:data.address||tmpRow.address, price:data.price||'', commission:data.commission||'', status:'active', closedFrom:'' }
   }
 
   // ── Habits ─────────────────────────────────────────────────────────────────
@@ -358,7 +399,7 @@ function Dashboard({ theme, onToggleTheme }) {
       price:newPrice.trim(), commission:newComm.trim(),
       status:'active', month_year:MONTH_YEAR
     }).select().single()
-    if (data) setListings(prev=>[...prev,{id:data.id,address:data.address,status:'active',price:data.price||'',commission:data.commission||''}])
+    if (data) setListings(prev=>[...prev,{id:data.id,address:data.address,status:'active',price:data.price||'',commission:data.commission||'',monthYear:data.month_year||MONTH_YEAR}])
     setNewAddr(''); setNewPrice(''); setNewComm('')
   }
 
@@ -413,7 +454,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const todayPct         = Math.round(todayChecks/HABITS.length*100)
   const totalAppts       = Object.entries(counters).filter(([k])=>k.startsWith('appointments')).reduce((a,[,v])=>a+v,0)
   const totalShowings    = Object.entries(counters).filter(([k])=>k.startsWith('showing')).reduce((a,[,v])=>a+v,0)
-  const totalListings    = listings.length
+  const totalListings    = listings.filter(l => l.status !== 'closed').length
   const closedVol        = closedDeals.reduce((a,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
   const closedComm       = closedDeals.reduce((a,r)=>{ const n=parseFloat(String(r.commission||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
   const todayHabitXp     = HABITS.reduce((acc,h)=>{
@@ -868,7 +909,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, fontSize:18, color:'var(--purple)', lineHeight:1 }}>{listings.length}</span>
               </div>
               <div className="section-sub" style={{ marginBottom:0 }}>
-                Mark <strong>Pending</strong> to auto-create a pipeline entry · Mark <strong>Closed</strong> to complete the deal
+                Listings persist across months until closed · <strong>Pending</strong> creates a pipeline entry · <strong>Closed</strong> completes the deal
               </div>
             </div>
           </div>
@@ -891,9 +932,22 @@ function Dashboard({ theme, onToggleTheme }) {
             <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:12 }}>
               {listings.map(l => (
                 <div key={l.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 105px 115px auto' }}>
-                  {/* Address */}
-                  <input className="pipe-input" value={l.address||''}
-                    onChange={e=>updateListing(l.id,'address',e.target.value)} placeholder="Address…"/>
+                  {/* Address + optional cross-month badge */}
+                  <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
+                    <input className="pipe-input" value={l.address||''}
+                      onChange={e=>updateListing(l.id,'address',e.target.value)} placeholder="Address…"
+                      style={{ flex:1, minWidth:0 }}/>
+                    {l.monthYear && l.monthYear !== MONTH_YEAR && (
+                      <span title={`Listed in ${fmtMonth(l.monthYear)}`} style={{
+                        flexShrink:0, fontSize:9, padding:'2px 6px', borderRadius:4,
+                        background:'var(--bg2)', color:'var(--dim)',
+                        fontFamily:"'JetBrains Mono',monospace", fontWeight:600, letterSpacing:.3,
+                        border:'1px solid var(--b2)', whiteSpace:'nowrap',
+                      }}>
+                        {fmtMonth(l.monthYear)}
+                      </span>
+                    )}
+                  </div>
 
                   {/* List Price */}
                   <input className="pipe-input" value={l.price||''}
@@ -976,22 +1030,26 @@ function Dashboard({ theme, onToggleTheme }) {
           <PipelineSection title="Offers Made" icon="📤" accentColor="#0ea5e9" xpLabel={PIPELINE_XP.offer_made}
             rows={offersMade} setRows={setOffersMade}
             onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersMade)}
-            onAdd={()=>awardPipelineXp('offer_made','#0ea5e9')}
+            onAdd={handleOfferMadeAdd}
+            onRemove={()=>deductPipelineXp('offer_made')}
             statusOpts={[{v:'active',l:'Active'},{v:'pending',l:'Move to Pending'},{v:'closed',l:'Mark Closed'}]}/>
 
           <PipelineSection title="Offers Received" icon="📥" accentColor="#8b5cf6" xpLabel={PIPELINE_XP.offer_received}
             rows={offersReceived} setRows={setOffersReceived}
             onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersReceived)}
-            onAdd={()=>awardPipelineXp('offer_received','#8b5cf6')}
+            onAdd={handleOfferReceivedAdd}
+            onRemove={()=>deductPipelineXp('offer_received')}
             statusOpts={[{v:'active',l:'Active'},{v:'pending',l:'Move to Pending'},{v:'closed',l:'Mark Closed'}]}/>
 
           <PipelineSection title="Went Pending" icon="⏳" accentColor="#f59e0b" xpLabel={PIPELINE_XP.went_pending}
             rows={pendingDeals} setRows={setPendingDeals}
             onStatusChange={(r,s)=>handlePendingStatus(r,s)}
+            onRemove={()=>deductPipelineXp('went_pending')}
             statusOpts={[{v:'active',l:'Active'},{v:'closed',l:'Mark Closed'}]}/>
 
           <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
             rows={closedDeals} setRows={setClosedDeals}
+            onRemove={()=>deductPipelineXp('closed')}
             showSource={true}/>
         </div>
 

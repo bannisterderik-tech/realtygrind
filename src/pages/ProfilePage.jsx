@@ -22,7 +22,6 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
   const [year,       setYear]       = useState(CUR_YEAR)
   const [annual,     setAnnual]     = useState(null)
   const [annLoad,    setAnnLoad]    = useState(true)
-  const [members,    setMembers]    = useState([])
   const [showDel,    setShowDel]    = useState(false)
   const [delText,    setDelText]    = useState('')
   const [delLoading, setDelLoading] = useState(false)
@@ -40,7 +39,6 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
   const [editingHabit, setEditingHabit] = useState(null) // { id, label, icon, xp, isBuiltIn }
 
   useEffect(()=>{ fetchAnnual(year) },[year])
-  useEffect(()=>{ if(profile?.team_id) fetchMembers(profile.team_id) },[profile])
   useEffect(()=>{ if(activeTab==='history' && !histFetched) fetchHistory() },[activeTab])
   useEffect(()=>{
     if (!user || ctLoaded) return
@@ -52,9 +50,15 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
 
   useEffect(()=>{
     if (!user) return
-    supabase.from('profiles').select('habit_prefs').eq('id', user.id).single()
-      .then(({data}) => { if (data?.habit_prefs) setHabitPrefs(data.habit_prefs) })
-  },[user])
+    if (profile?.team_id && profile?.teams) {
+      // On a team — use team_prefs (owner and member both see team defaults)
+      setHabitPrefs(profile.teams.team_prefs || { hidden:[], order:[], edits:{} })
+    } else if (!profile?.team_id) {
+      // Not on a team — load own habit_prefs
+      supabase.from('profiles').select('habit_prefs').eq('id', user.id).single()
+        .then(({data}) => { if (data?.habit_prefs) setHabitPrefs(data.habit_prefs) })
+    }
+  },[user, profile])
 
   async function fetchHistory() {
     setHistLoad(true)
@@ -76,11 +80,6 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
     }
     setHistFetched(true)
     setHistLoad(false)
-  }
-
-  async function fetchMembers(tid) {
-    const {data} = await supabase.from('profiles').select('id,full_name,xp,streak').eq('team_id',tid).order('xp',{ascending:false})
-    setMembers(data||[])
   }
 
   async function fetchAnnual(yr) {
@@ -168,7 +167,13 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
   // ── Habit prefs helpers ────────────────────────────────────────────────────
   async function saveHabitPrefs(newPrefs) {
     setHabitPrefs(newPrefs)
-    await supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id)
+    if (isTeamOwner) {
+      // Owner: save to teams table — all members inherit these settings
+      await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+      await refreshProfile()
+    } else {
+      await supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id)
+    }
   }
 
   function moveHabit(id, dir) {
@@ -214,11 +219,16 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
   const curMonth = new Date().toISOString().slice(0,7)
   const tabs = [{id:'profile',l:'Profile'},{id:'annual',l:'Annual Summary'},{id:'history',l:'Offer History'},{id:'settings',l:'Settings'}]
 
+  // Team role
+  const isOnTeam    = !!profile?.team_id
+  const isTeamOwner = isOnTeam && profile?.teams?.created_by === user?.id
+  const isMemberOnly = isOnTeam && !isTeamOwner
+
   // Computed: unified habit list for the manager card
   const builtInEff = HABITS
     .filter(h => !(habitPrefs.hidden||[]).includes(h.id))
     .map(h => { const ed=(habitPrefs.edits||{})[h.id]||{}; return {...h, label:ed.label||h.label, icon:ed.icon||h.icon, xp:ed.xp||h.xp, isBuiltIn:true} })
-  const customDefs  = customTasks.map(t => ({...t, isBuiltIn:false}))
+  const customDefs  = isMemberOnly ? [] : customTasks.map(t => ({...t, isBuiltIn:false}))
   const allHabItems = [...builtInEff, ...customDefs]
   const habOrderArr = habitPrefs.order || []
   if (habOrderArr.length) {
@@ -306,60 +316,36 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
                 </div>
               </div>
 
-              {/* Team */}
-              {profile?.teams ? (
-                <div className="card" style={{ padding:22 }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:10 }}>
-                    <div className="serif" style={{ fontSize:18, color:'var(--text)' }}>{profile.teams.name}</div>
-                    <div className="card-inset" style={{ padding:'8px 18px', textAlign:'center' }}>
-                      <div className="label" style={{ marginBottom:3 }}>Invite Code</div>
-                      <div className="mono" style={{ fontSize:20, fontWeight:700, color:'var(--gold)', letterSpacing:5 }}>{profile.teams.invite_code}</div>
-                    </div>
-                  </div>
-                  <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
-                    {members.map((m,i)=>{
-                      const r=getRank(m.xp||0); const isMe=m.id===user.id
-                      return (
-                        <div key={m.id} className={`member-row${isMe?' me':''}`}>
-                          <div className="mono" style={{ width:24, fontSize:11, color:'var(--dim)', textAlign:'center' }}>{i+1}</div>
-                          <div style={{ width:30, height:30, borderRadius:'50%', background:`${r.color}15`, border:`1px solid ${r.color}30`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>{r.icon}</div>
-                          <div style={{ flex:1 }}>
-                            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                              <span style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{m.full_name||'Agent'}</span>
-                              {isMe && <span style={{ fontSize:9, padding:'1px 6px', borderRadius:4, background:'rgba(5,150,105,.1)', color:'var(--green)', border:'1px solid rgba(5,150,105,.2)', fontWeight:700 }}>YOU</span>}
-                            </div>
-                            <div style={{ fontSize:11, color:'var(--muted)' }}>{r.name}</div>
-                          </div>
-                          <div style={{ textAlign:'right' }}>
-                            <div className="serif" style={{ fontSize:20, color:r.color, fontWeight:700 }}>{(m.xp||0).toLocaleString()}</div>
-                            <div style={{ fontSize:11, color:'#f97316' }}>🔥 {m.streak||0}</div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              ) : (
-                <div className="card" style={{ padding:22, textAlign:'center', color:'var(--muted)', fontSize:13 }}>
-                  Not on a team. Go to <strong>Teams</strong> to create or join one.
-                </div>
-              )}
 
               {/* Daily Habits & Tasks */}
               <div className="card" style={{ padding:22 }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:isMemberOnly?8:16 }}>
                   <div>
                     <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:2 }}>Daily Habits &amp; Tasks</div>
-                    <div style={{ fontSize:12, color:'var(--muted)' }}>Reorder, edit, hide or add tasks — changes appear on your Today checklist</div>
+                    <div style={{ fontSize:12, color:'var(--muted)' }}>
+                      {isMemberOnly
+                        ? 'Set by your team leader'
+                        : isTeamOwner
+                          ? 'Managing team defaults — changes apply to all members'
+                          : 'Reorder, edit, hide or add tasks — changes appear on your Today checklist'}
+                    </div>
                   </div>
-                  <button className="btn-outline" style={{ fontSize:12 }}
-                    onClick={() => { setNewTaskForm({label:'',icon:'✅',xp:'15'}); setEditingHabit(null) }}>
-                    ＋ Add Task
-                  </button>
+                  {!isMemberOnly && (
+                    <button className="btn-outline" style={{ fontSize:12 }}
+                      onClick={() => { setNewTaskForm({label:'',icon:'✅',xp:'15'}); setEditingHabit(null) }}>
+                      ＋ Add Task
+                    </button>
+                  )}
                 </div>
+                {isTeamOwner && (
+                  <div style={{ fontSize:11, color:'#8b5cf6', marginBottom:12, display:'flex', alignItems:'center', gap:6,
+                    padding:'6px 10px', borderRadius:7, background:'rgba(139,92,246,.08)', border:'1px solid rgba(139,92,246,.18)' }}>
+                    <span>👑</span> Team owner — your edits apply to all team members
+                  </div>
+                )}
 
-                {/* New task form */}
-                {newTaskForm && (
+                {/* New task form — owners and solo users only */}
+                {newTaskForm && !isMemberOnly && (
                   <div style={{ display:'grid', gridTemplateColumns:'56px 1fr 72px auto', gap:8,
                     alignItems:'flex-end', marginBottom:14, padding:14, borderRadius:10,
                     background:'var(--bg2,var(--b1))', border:'1px solid var(--b2)' }}>
@@ -433,17 +419,19 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
                       /* Display row */
                       <div style={{ display:'flex', alignItems:'center', gap:8, padding:'9px 4px',
                         borderBottom:'1px solid var(--b1)' }}>
-                        {/* Reorder arrows */}
-                        <div style={{ display:'flex', flexDirection:'column', gap:0, flexShrink:0 }}>
-                          <button onClick={()=>moveHabit(h.id,'up')} disabled={hIdx===0}
-                            style={{ background:'none', border:'none', lineHeight:1, padding:'2px 4px',
-                              cursor:hIdx===0?'default':'pointer',
-                              color:hIdx===0?'var(--dim)':'var(--muted)', fontSize:10 }}>▲</button>
-                          <button onClick={()=>moveHabit(h.id,'down')} disabled={hIdx===effectiveHabits.length-1}
-                            style={{ background:'none', border:'none', lineHeight:1, padding:'2px 4px',
-                              cursor:hIdx===effectiveHabits.length-1?'default':'pointer',
-                              color:hIdx===effectiveHabits.length-1?'var(--dim)':'var(--muted)', fontSize:10 }}>▼</button>
-                        </div>
+                        {/* Reorder arrows — owners and solo users only */}
+                        {!isMemberOnly && (
+                          <div style={{ display:'flex', flexDirection:'column', gap:0, flexShrink:0 }}>
+                            <button onClick={()=>moveHabit(h.id,'up')} disabled={hIdx===0}
+                              style={{ background:'none', border:'none', lineHeight:1, padding:'2px 4px',
+                                cursor:hIdx===0?'default':'pointer',
+                                color:hIdx===0?'var(--dim)':'var(--muted)', fontSize:10 }}>▲</button>
+                            <button onClick={()=>moveHabit(h.id,'down')} disabled={hIdx===effectiveHabits.length-1}
+                              style={{ background:'none', border:'none', lineHeight:1, padding:'2px 4px',
+                                cursor:hIdx===effectiveHabits.length-1?'default':'pointer',
+                                color:hIdx===effectiveHabits.length-1?'var(--dim)':'var(--muted)', fontSize:10 }}>▼</button>
+                          </div>
+                        )}
                         <span style={{ fontSize:18, flexShrink:0 }}>{h.icon}</span>
                         <span style={{ flex:1, fontSize:13, fontWeight:500, color:'var(--text)', minWidth:0 }}>{h.label}</span>
                         {h.isBuiltIn && (
@@ -452,20 +440,24 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
                             letterSpacing:.5, flexShrink:0, whiteSpace:'nowrap' }}>BUILT-IN</span>
                         )}
                         <span style={{ fontSize:11, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>+{h.xp} XP</span>
-                        <button className="btn-outline" style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }}
-                          onClick={()=>{ setEditingHabit({...h}); setNewTaskForm(null) }}>Edit</button>
-                        {h.isBuiltIn ? (
-                          <button className="btn-del" title="Hide from checklist" onClick={()=>hideBuiltIn(h.id)}>✕</button>
-                        ) : (
-                          <button className="btn-del" onClick={()=>deleteDefaultTask(h.id)}>✕</button>
+                        {!isMemberOnly && (
+                          <>
+                            <button className="btn-outline" style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }}
+                              onClick={()=>{ setEditingHabit({...h}); setNewTaskForm(null) }}>Edit</button>
+                            {h.isBuiltIn ? (
+                              <button className="btn-del" title="Hide from checklist" onClick={()=>hideBuiltIn(h.id)}>✕</button>
+                            ) : (
+                              <button className="btn-del" onClick={()=>deleteDefaultTask(h.id)}>✕</button>
+                            )}
+                          </>
                         )}
                       </div>
                     )}
                   </div>
                 ))}
 
-                {/* Hidden built-ins — restore section */}
-                {hiddenBuiltIns.length > 0 && (
+                {/* Hidden built-ins — restore section (owners and solo users only) */}
+                {hiddenBuiltIns.length > 0 && !isMemberOnly && (
                   <div style={{ marginTop:18, paddingTop:14, borderTop:'1px dashed var(--b2)' }}>
                     <div style={{ fontSize:10, color:'var(--dim)', fontWeight:700, letterSpacing:1,
                       marginBottom:10, textTransform:'uppercase' }}>Hidden Habits</div>

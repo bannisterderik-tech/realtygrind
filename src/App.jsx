@@ -270,6 +270,11 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
 
   function update(id, f, v) { setRows(prev => prev.map(r => r.id===id ? {...r,[f]:v} : r)) }
 
+  async function persist(id, field, value) {
+    if (!id || String(id).startsWith('tmp-')) return
+    await supabase.from('transactions').update({ [field]: value }).eq('id', id)
+  }
+
   const totalVol  = rows.reduce((a,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
   const totalComm = rows.reduce((a,r)=>{ const n=parseFloat(String(r.commission||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
 
@@ -342,10 +347,13 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
       <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom: showSource ? 0 : 10 }}>
         {rows.map(r => (
           <div key={r.id} className="pipe-row" style={{ gridTemplateColumns:cols }}>
-            <input className="pipe-input" value={r.address||''} onChange={e=>update(r.id,'address',e.target.value)} placeholder="Property address…"/>
+            <input className="pipe-input" value={r.address||''} onChange={e=>update(r.id,'address',e.target.value)}
+              onBlur={e=>persist(r.id,'address',e.target.value)} placeholder="Property address…"/>
             <input className="pipe-input" value={r.price||''} onChange={e=>update(r.id,'price',e.target.value)}
+              onBlur={e=>persist(r.id,'price',e.target.value)}
               placeholder="$0" style={{ color:accentColor, fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
             <input className="pipe-input" value={r.commission||''} onChange={e=>update(r.id,'commission',e.target.value)}
+              onBlur={e=>persist(r.id,'commission',e.target.value)}
               placeholder="optional" style={{ color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
             {showSource
               ? <span style={{ fontSize:11, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", padding:'0 2px' }}>{r.closedFrom||'Manual'}</span>
@@ -1032,7 +1040,7 @@ function Dashboard({ theme, onToggleTheme }) {
                                 {t.isDefault ? 'daily' : 'today'}
                               </span>
                               {!t.isDefault && (
-                                <button className="btn-del" onClick={()=>deleteCustomTask(t.id)} title="Remove task"/>
+                                <button className="btn-del" onClick={()=>deleteCustomTask(t.id)}>✕</button>
                               )}
                             </div>
                           )

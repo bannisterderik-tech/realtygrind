@@ -419,7 +419,7 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
                 <div style={{ display:'flex', gap:6 }}>
                   {[CUR_YEAR,CUR_YEAR-1,CUR_YEAR-2].map(y=>(
                     <button key={y} onClick={()=>setYear(y)} style={{
-                      padding:'5px 14px', borderRadius:7, border:'1.5px solid', cursor:'pointer', fontSize:12, fontWeight:600, transition:'all .15s',
+                      padding:'5px 14px', borderRadius:7, border:'1.5px solid', cursor:'pointer', fontSize:12, fontWeight:600, transition:'background .15s, border-color .15s, color .15s',
                       background:year===y?'var(--text)':'transparent',
                       borderColor:year===y?'var(--text)':'var(--b3)',
                       color:year===y?'var(--bg)':'var(--text2)',
@@ -633,7 +633,7 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
                 <div style={{ display:'flex', gap:12 }}>
                   {['light','dark'].map(t => (
                     <button key={t} onClick={()=>{ if(theme!==t) onToggleTheme() }} style={{
-                      flex:1, padding:'18px 16px', borderRadius:10, cursor:'pointer', transition:'all .15s',
+                      flex:1, padding:'18px 16px', borderRadius:10, cursor:'pointer', transition:'background .15s, border-color .15s, color .15s',
                       border:`2px solid ${theme===t?'var(--gold)':'var(--b2)'}`,
                       background: theme===t ? 'var(--gold3)' : 'var(--surface2)',
                       display:'flex', flexDirection:'column', alignItems:'center', gap:8,

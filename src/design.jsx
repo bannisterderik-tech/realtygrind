@@ -129,9 +129,9 @@ body,.page { background: var(--bg); color: var(--text); }
   border: 1px solid var(--b2);
   border-radius: var(--r);
   box-shadow: var(--shadow);
-  transition: background .25s, border-color .15s, box-shadow .15s;
+  transition: background .25s, border-color .15s;
 }
-.card:hover { border-color: var(--b3); box-shadow: var(--shadow3); }
+.card:hover { border-color: var(--b3); }
 .card-flat { background: var(--surface2); border: 1px solid var(--b1); border-radius: var(--r2); }
 .card-inset { background: var(--bg2); border: 1px solid var(--b1); border-radius: 9px; }
 

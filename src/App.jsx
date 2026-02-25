@@ -149,7 +149,7 @@ function OfferModal({ repName, onSubmit, onClose }) {
 
 // ─── Print Daily Modal ────────────────────────────────────────────────────────
 
-function PrintDailyModal({ habits, counters, today, offersMade, offersReceived, pendingDeals, closedDeals, buyerReps, onClose }) {
+function PrintDailyModal({ habits, counters, today, todayDate, customTasks, customDone, offersMade, offersReceived, pendingDeals, closedDeals, buyerReps, onClose }) {
   const dateStr = new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' })
   const prospectCount  = counters[`prospecting-${today.week}-${today.day}`]  || 0
   const apptCount      = counters[`appointments-${today.week}-${today.day}`] || 0
@@ -208,6 +208,30 @@ function PrintDailyModal({ habits, counters, today, offersMade, offersReceived, 
                   </div>
                 )
               })}
+              {(()=>{
+                const ct = (customTasks||[]).filter(t => t.isDefault || t.specificDate === todayDate)
+                if (!ct.length) return null
+                return (
+                  <>
+                    <div style={{ borderTop:'1px solid #ccc', margin:'8px 0 6px', paddingTop:6,
+                      fontSize:9, fontWeight:700, textTransform:'uppercase', letterSpacing:'.08em', color:'#666' }}>
+                      Custom Tasks
+                    </div>
+                    {ct.map(t => {
+                      const done = !!(customDone||{})[`${t.id}-${today.week}-${today.day}`]
+                      return (
+                        <div key={t.id} className="print-habit-row">
+                          <span className={`print-checkbox${done ? ' checked' : ''}`}/>
+                          <span style={{ fontSize:13 }}>{t.icon}</span>
+                          <span style={{ flex:1, textDecoration:done?'line-through':'none', color:done?'#888':'#111' }}>
+                            {t.label}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </>
+                )
+              })()}
             </div>
             {/* Right: Activity Tracker */}
             <div>
@@ -1568,6 +1592,9 @@ function Dashboard({ theme, onToggleTheme }) {
           habits={habits}
           counters={counters}
           today={today}
+          todayDate={todayDate}
+          customTasks={customTasks}
+          customDone={customDone}
           offersMade={offersMade}
           offersReceived={offersReceived}
           pendingDeals={pendingDeals}

@@ -2,7 +2,6 @@ import { useState, useEffect, createContext, useContext } from 'react'
 import { AuthProvider, useAuth } from './lib/AuthContext'
 import { supabase } from './lib/supabase'
 import AuthPage from './pages/AuthPage'
-import Leaderboard from './pages/Leaderboard'
 import TeamsPage from './pages/TeamsPage'
 import ProfilePage from './pages/ProfilePage'
 import DirectoryPage from './pages/DirectoryPage'
@@ -1344,7 +1343,6 @@ function Dashboard({ theme, onToggleTheme }) {
   ]
   const quote = quotes[new Date().getDay()]
 
-  if (page==='leaderboard') return <Leaderboard   onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
   if (page==='teams')       return <TeamsPage     onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
   if (page==='profile')     return <ProfilePage   onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
   if (page==='directory')   return <DirectoryPage onBack={()=>setPage('dashboard')} onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>
@@ -1374,7 +1372,6 @@ function Dashboard({ theme, onToggleTheme }) {
 
           {/* Board + Teams — hidden on mobile */}
           <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
-          <button className="nav-btn mob-hide" onClick={()=>setPage('leaderboard')}>🏆 Board</button>
           <button className="nav-btn mob-hide" onClick={()=>setPage('teams')}>👥 Teams</button>
 
           <button className="nav-btn" onClick={()=>setPage('directory')}>🔗 Tools</button>

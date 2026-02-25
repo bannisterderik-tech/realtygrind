@@ -8,6 +8,7 @@ import ProfilePage from './pages/ProfilePage'
 import DirectoryPage from './pages/DirectoryPage'
 import APODPage from './pages/APODPage'
 import { CSS, Ring, StatCard, Wordmark, Loader, ThemeToggle, PageNav, getRank, fmtMoney, RANKS, CAT } from './design'
+import { HABITS } from './habits'
 
 // ─── Theme context ─────────────────────────────────────────────────────────────
 
@@ -15,20 +16,6 @@ export const ThemeCtx = createContext({ theme:'light', toggle:()=>{} })
 export const useTheme = () => useContext(ThemeCtx)
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
-
-const HABITS = [
-  { id:'prospecting',  label:'Prospecting Calls',   icon:'📞', xp:25,  cat:'leads',     counter:true, xpEach:10 },
-  { id:'followup',     label:'Follow-Up Emails',    icon:'✉️', xp:15,  cat:'leads',     counter:true, xpEach:8  },
-  { id:'appointments', label:'Appointments Booked', icon:'📅', xp:30,  cat:'leads',     counter:true, xpEach:25 },
-  { id:'showing',      label:'Property Showings',   icon:'🔑', xp:30,  cat:'leads',     counter:true, xpEach:20 },
-  { id:'newlisting',   label:'Listings Taken',      icon:'🏠', xp:25,  cat:'listings',  counter:true, xpEach:30 },
-  { id:'social',       label:'Social Posts',        icon:'📱', xp:10,  cat:'marketing', counter:true, xpEach:8  },
-  { id:'crm',          label:'CRM Updates',         icon:'💾', xp:15,  cat:'admin',     counter:true, xpEach:5  },
-  { id:'market',       label:'Market Analysis',     icon:'📊', xp:35,  cat:'market' },
-  { id:'networking',   label:'Networking',          icon:'🤝', xp:20,  cat:'leads',     counter:true, xpEach:15 },
-  { id:'training',     label:'Training',            icon:'📚', xp:20,  cat:'growth' },
-  { id:'review',       label:'Review Requests',     icon:'⭐', xp:20,  cat:'marketing', counter:true, xpEach:15 },
-]
 
 const PIPELINE_XP = { offer_made:75, offer_received:75, went_pending:150, closed:300 }
 const DAYS        = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
@@ -939,6 +926,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [showPrint,        setShowPrint]        = useState(false)
   const [showWeeklyUpdate, setShowWeeklyUpdate] = useState(false)
   const [showBuyersUpdate, setShowBuyersUpdate] = useState(false)
+  const [habitPrefs,       setHabitPrefs]       = useState({ hidden:[], order:[], edits:{} })
 
   // Custom tasks
   const [customTasks,   setCustomTasks]   = useState([])
@@ -1007,6 +995,7 @@ function Dashboard({ theme, onToggleTheme }) {
       setXp(profRes.data.xp||0)
       setStreak(profRes.data.streak||0)
       setShowCommSummary(profRes.data.show_commission||false)
+      if (profRes.data.habit_prefs) setHabitPrefs(profRes.data.habit_prefs)
     }
     setDbLoading(false)
   }
@@ -1057,8 +1046,11 @@ function Dashboard({ theme, onToggleTheme }) {
   async function toggleHabit(hid, week, day) {
     const newVal = !habits[hid][week][day]
     setHabits(prev=>{ const n={...prev}; n[hid]=n[hid].map((w,wi)=>wi===week?w.map((d,di)=>di===day?newVal:d):w); return n })
-    const h   = HABITS.find(x=>x.id===hid)
-    const cat = CAT[h.cat]
+    // Use effectiveHabits so edited XP/label/icon values take effect
+    const hBase = HABITS.find(x=>x.id===hid)
+    const hEd   = (habitPrefs.edits||{})[hid] || {}
+    const h     = { ...hBase, xp: hEd.xp || hBase.xp }
+    const cat   = CAT[h.cat]
     if (newVal) {
       await addXp(h.xp, cat.color)
       const ckey = `${hid}-${week}-${day}`
@@ -1081,8 +1073,10 @@ function Dashboard({ theme, onToggleTheme }) {
   }
 
   async function incrementCounter(hid, week, day) {
-    const h    = HABITS.find(x=>x.id===hid)
-    const cat  = CAT[h.cat]
+    const hBase = HABITS.find(x=>x.id===hid)
+    const hEd   = (habitPrefs.edits||{})[hid] || {}
+    const h     = { ...hBase, xp: hEd.xp || hBase.xp }
+    const cat   = CAT[h.cat]
     const ckey = `${hid}-${week}-${day}`
     if (!habits[hid][week][day]) { await toggleHabit(hid,week,day); return }
     const newCnt = (counters[ckey]||1) + 1
@@ -1271,11 +1265,27 @@ function Dashboard({ theme, onToggleTheme }) {
   const nextRank = RANKS[RANKS.indexOf(rank)+1]
   const rankPct  = nextRank ? Math.round((xp-rank.min)/(nextRank.min-rank.min)*100) : 100
 
-  const totalHabitChecks = HABITS.reduce((a,h)=>a+habits[h.id].flat().filter(Boolean).length,0)
-  const totalPossible    = HABITS.length*WEEKS*7
+  // ── Effective habits: built-ins (with edits, hidden removed) + custom defaults, ordered ──
+  const builtInEffective = HABITS
+    .filter(h => !(habitPrefs.hidden||[]).includes(h.id))
+    .map(h => {
+      const ed = (habitPrefs.edits||{})[h.id] || {}
+      return { ...h, label:ed.label||h.label, icon:ed.icon||h.icon, xp:ed.xp||h.xp, isBuiltIn:true }
+    })
+  const customDefaults = customTasks.filter(t => t.isDefault).map(t => ({ ...t, isBuiltIn:false }))
+  const allEffective   = [...builtInEffective, ...customDefaults]
+  const orderArr       = habitPrefs.order || []
+  if (orderArr.length) {
+    const idx = {}; orderArr.forEach((id,i) => idx[id]=i)
+    allEffective.sort((a,b) => (idx[a.id]??999) - (idx[b.id]??999))
+  }
+  const effectiveHabits = allEffective
+
+  const totalHabitChecks = builtInEffective.reduce((a,h)=>a+habits[h.id].flat().filter(Boolean).length,0)
+  const totalPossible    = Math.max(builtInEffective.length,1)*WEEKS*7
   const monthPct         = Math.round(totalHabitChecks/totalPossible*100)
-  const todayChecks      = HABITS.filter(h=>habits[h.id][today.week][today.day]).length
-  const todayPct         = Math.round(todayChecks/HABITS.length*100)
+  const todayChecks      = builtInEffective.filter(h=>habits[h.id][today.week][today.day]).length
+  const todayPct         = Math.round(todayChecks/Math.max(builtInEffective.length,1)*100)
   const totalAppts       = Object.entries(counters).filter(([k])=>k.startsWith('appointments')).reduce((a,[,v])=>a+v,0)
   const totalShowings    = Object.entries(counters).filter(([k])=>k.startsWith('showing')).reduce((a,[,v])=>a+v,0)
   const totalListings    = listings.filter(l => l.status !== 'closed').length
@@ -1389,7 +1399,7 @@ function Dashboard({ theme, onToggleTheme }) {
         <div className="stat-grid" style={{ marginBottom:18 }}>
           <StatCard icon="⚡" label="Today" value={`${todayPct}%`}
             color={todayPct>=80?'var(--green)':todayPct>=50?'var(--gold)':'var(--red)'}
-            sub={`${todayChecks}/${HABITS.length} habits`}
+            sub={`${todayChecks}/${builtInEffective.length} habits`}
             accent={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'}/>
           <StatCard icon="📅" label="Month"        value={`${monthPct}%`}   color="var(--gold)"  sub={`${totalHabitChecks} checks`}/>
           <StatCard icon="📅" label="Appointments" value={totalAppts}        color="var(--green)" sub="this month"/>
@@ -1452,68 +1462,97 @@ function Dashboard({ theme, onToggleTheme }) {
                 <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                   <Ring pct={todayPct} size={54} color={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'}/>
                   <div>
-                    <div className="serif" style={{ fontSize:22, color:'var(--text)', lineHeight:1 }}>{todayChecks}/{HABITS.length}</div>
+                    <div className="serif" style={{ fontSize:22, color:'var(--text)', lineHeight:1 }}>{todayChecks}/{builtInEffective.length}</div>
                     <div style={{ fontSize:10, color:'var(--muted)' }}>completed</div>
                   </div>
                 </div>
               </div>
 
+              {/* ── Unified task list: built-ins + custom defaults (ordered) ── */}
               <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
-                {HABITS.map(h => {
-                  const done  = habits[h.id][today.week][today.day]
-                  const cs    = CAT[h.cat]
-                  const ckey  = `${h.id}-${today.week}-${today.day}`
-                  const cnt   = counters[ckey]||0
-                  return (
-                    <div key={h.id} className={`habit-row${done?' done':''}`}>
-                      <button className="chk" onClick={()=>toggleHabit(h.id,today.week,today.day)}
-                        style={done?{background:cs.light,borderColor:cs.color}:{}}>
-                        {done && (
-                          <svg width="11" height="8" viewBox="0 0 11 8" fill="none">
-                            <path d="M1 4L4 7L10 1" stroke={cs.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
+                {effectiveHabits.map(h => {
+                  if (h.isBuiltIn) {
+                    const done = habits[h.id][today.week][today.day]
+                    const cs   = CAT[h.cat]
+                    const ckey = `${h.id}-${today.week}-${today.day}`
+                    const cnt  = counters[ckey]||0
+                    return (
+                      <div key={h.id} className={`habit-row${done?' done':''}`}>
+                        <button className="chk" onClick={()=>toggleHabit(h.id,today.week,today.day)}
+                          style={done?{background:cs.light,borderColor:cs.color}:{}}>
+                          {done && (
+                            <svg width="11" height="8" viewBox="0 0 11 8" fill="none">
+                              <path d="M1 4L4 7L10 1" stroke={cs.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          )}
+                        </button>
+                        <span style={{ fontSize:15, flexShrink:0 }}>{h.icon}</span>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
+                            textDecoration:done?'line-through':'none', transition:'all .15s' }}>{h.label}</div>
+                          <div style={{ fontSize:10, color:'var(--dim)' }}>
+                            +{h.xp} XP{h.xpEach?` · +${h.xpEach} per extra`:''}
+                          </div>
+                        </div>
+                        <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:500, flexShrink:0,
+                          background:cs.light, color:cs.color, border:`1px solid ${cs.border}` }}>
+                          {h.cat}
+                        </span>
+                        {h.counter && done && (
+                          <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
+                            <span className="mono" style={{ fontSize:15, color:cs.color, fontWeight:700, minWidth:22, textAlign:'center' }}>
+                              {cnt||1}
+                            </span>
+                            <button className="cnt-btn" onClick={()=>incrementCounter(h.id,today.week,today.day)}
+                              style={{ borderColor:cs.color, color:cs.color }}>+</button>
+                          </div>
                         )}
-                      </button>
-                      <span style={{ fontSize:15, flexShrink:0 }}>{h.icon}</span>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
-                          textDecoration:done?'line-through':'none', transition:'all .15s' }}>{h.label}</div>
-                        <div style={{ fontSize:10, color:'var(--dim)' }}>
-                          +{h.xp} XP{h.xpEach?` · +${h.xpEach} per extra`:''}
-                        </div>
-                      </div>
-                      <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:500, flexShrink:0,
-                        background:cs.light, color:cs.color, border:`1px solid ${cs.border}` }}>
-                        {h.cat}
-                      </span>
-                      {h.counter && done && (
-                        <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
-                          <span className="mono" style={{ fontSize:15, color:cs.color, fontWeight:700, minWidth:22, textAlign:'center' }}>
-                            {cnt||1}
-                          </span>
+                        {h.counter && !done && (
                           <button className="cnt-btn" onClick={()=>incrementCounter(h.id,today.week,today.day)}
-                            style={{ borderColor:cs.color, color:cs.color }}>+</button>
+                            style={{ borderColor:'var(--b3)', color:'var(--dim)' }}>+</button>
+                        )}
+                      </div>
+                    )
+                  } else {
+                    // Custom default task (in unified order)
+                    const ckey = `${h.id}-${today.week}-${today.day}`
+                    const done = !!customDone[ckey]
+                    return (
+                      <div key={h.id} className={`habit-row${done?' done':''}`}>
+                        <button className="chk" onClick={()=>toggleCustomTask(h.id,today.week,today.day)}
+                          style={done?{background:'rgba(6,182,212,.12)',borderColor:'#06b6d4'}:{}}>
+                          {done && (
+                            <svg width="11" height="8" viewBox="0 0 11 8" fill="none">
+                              <path d="M1 4L4 7L10 1" stroke="#06b6d4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          )}
+                        </button>
+                        <span style={{ fontSize:15, flexShrink:0 }}>{h.icon}</span>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
+                            textDecoration:done?'line-through':'none', transition:'all .15s' }}>{h.label}</div>
+                          <div style={{ fontSize:10, color:'var(--dim)' }}>+{h.xp} XP</div>
                         </div>
-                      )}
-                      {h.counter && !done && (
-                        <button className="cnt-btn" onClick={()=>incrementCounter(h.id,today.week,today.day)}
-                          style={{ borderColor:'var(--b3)', color:'var(--dim)' }}>+</button>
-                      )}
-                    </div>
-                  )
+                        <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:500, flexShrink:0,
+                          background:'rgba(6,182,212,.12)', color:'#06b6d4', border:'1px solid rgba(6,182,212,.22)' }}>
+                          custom
+                        </span>
+                      </div>
+                    )
+                  }
                 })}
               </div>
 
-              {/* ── Custom tasks ─────────────────────────────── */}
+              {/* ── Day-specific tasks (today only) ─────────── */}
               {(()=>{
-                const customTasksToday = customTasks.filter(t => t.isDefault || t.specificDate === todayDate)
+                const dayTasks = customTasks.filter(t => !t.isDefault && t.specificDate === todayDate)
                 return (
                   <>
-                    {customTasksToday.length > 0 && (
+                    {dayTasks.length > 0 && (
                       <div style={{ borderTop:'1px solid var(--b1)', marginTop:14, paddingTop:12,
                         display:'flex', flexDirection:'column', gap:2 }}>
-                        <div className="label" style={{ marginBottom:6, fontSize:11 }}>Custom Tasks</div>
-                        {customTasksToday.map(t => {
+                        <div className="label" style={{ marginBottom:6, fontSize:11 }}>Today Only</div>
+                        {dayTasks.map(t => {
                           const ckey = `${t.id}-${today.week}-${today.day}`
                           const done = !!customDone[ckey]
                           return (
@@ -1528,20 +1567,15 @@ function Dashboard({ theme, onToggleTheme }) {
                               </button>
                               <span style={{ fontSize:15, flexShrink:0 }}>{t.icon}</span>
                               <div style={{ flex:1, minWidth:0 }}>
-                                <div style={{ fontSize:13, fontWeight:500,
-                                  color:done?'var(--muted)':'var(--text)',
-                                  textDecoration:done?'line-through':'none', transition:'all .15s' }}>
-                                  {t.label}
-                                </div>
+                                <div style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
+                                  textDecoration:done?'line-through':'none', transition:'all .15s' }}>{t.label}</div>
                                 <div style={{ fontSize:10, color:'var(--dim)' }}>+{t.xp} XP</div>
                               </div>
                               <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:500, flexShrink:0,
-                                background:'rgba(6,182,212,.12)', color:'#06b6d4', border:'1px solid rgba(6,182,212,.22)' }}>
-                                {t.isDefault ? 'daily' : 'today'}
+                                background:'rgba(245,158,11,.1)', color:'var(--gold2)', border:'1px solid rgba(245,158,11,.25)' }}>
+                                today
                               </span>
-                              {!t.isDefault && (
-                                <button className="btn-del" onClick={()=>deleteCustomTask(t.id)}>✕</button>
-                              )}
+                              <button className="btn-del" onClick={()=>deleteCustomTask(t.id)}>✕</button>
                             </div>
                           )
                         })}

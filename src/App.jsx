@@ -97,6 +97,100 @@ function OfferModal({ repName, onSubmit, onClose }) {
   )
 }
 
+// ─── Print Daily Modal ────────────────────────────────────────────────────────
+
+function PrintDailyModal({ habits, counters, today, offersMade, offersReceived, pendingDeals, closedDeals, buyerReps, onClose }) {
+  const dateStr = new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' })
+  const prospectCount  = counters[`prospecting-${today.week}-${today.day}`]  || 0
+  const apptCount      = counters[`appointments-${today.week}-${today.day}`] || 0
+  const braSignedCount = buyerReps.filter(r => r.status === 'closed').length
+  const tracker = [
+    { label:'Prospecting Calls',            val: prospectCount },
+    { label:'Appointments Booked',          val: apptCount },
+    { label:'Buyer Rep Agreements Signed',  val: braSignedCount },
+    { label:'Offers Made',                  val: offersMade.length },
+    { label:'Offers Received',              val: offersReceived.length },
+    { label:'Offers Pending',               val: pendingDeals.length },
+    { label:'Closed Deals',                 val: closedDeals.length },
+  ]
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:1100,
+      overflowY:'auto', padding:'30px 20px' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ maxWidth:780, margin:'0 auto' }}>
+        {/* Controls — hidden on print */}
+        <div className="print-modal-header">
+          <div style={{ color:'#fff', fontSize:15, fontWeight:600 }}>🖨️ Print Preview</div>
+          <div style={{ display:'flex', gap:8 }}>
+            <button className="btn-gold" style={{ fontSize:13 }} onClick={() => window.print()}>Print</button>
+            <button className="btn-outline" style={{ fontSize:13, color:'#fff', borderColor:'rgba(255,255,255,.3)' }} onClick={onClose}>✕ Close</button>
+          </div>
+        </div>
+        {/* Printable sheet */}
+        <div className="print-sheet">
+          {/* Sheet header */}
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start',
+            borderBottom:'3px solid #111', paddingBottom:10, marginBottom:16 }}>
+            <div>
+              <div style={{ fontSize:22, fontWeight:700, letterSpacing:'.02em' }}>REALTYGRIND</div>
+              <div style={{ fontSize:11, color:'#555', letterSpacing:'.08em', textTransform:'uppercase' }}>Daily Agent Planner</div>
+            </div>
+            <div style={{ textAlign:'right' }}>
+              <div style={{ fontSize:11, color:'#888', textTransform:'uppercase', letterSpacing:'.05em' }}>Date</div>
+              <div style={{ fontSize:14, fontWeight:600 }}>{dateStr}</div>
+            </div>
+          </div>
+          {/* 2-col grid */}
+          <div className="print-sheet-grid">
+            {/* Left: Habits Checklist */}
+            <div>
+              <div className="print-section-title">Daily Habits Checklist</div>
+              {HABITS.map(h => {
+                const done = habits[h.id]?.[today.week]?.[today.day]
+                const cnt  = h.counter ? (counters[`${h.id}-${today.week}-${today.day}`] || 0) : 0
+                return (
+                  <div key={h.id} className="print-habit-row">
+                    <span className={`print-checkbox${done ? ' checked' : ''}`}/>
+                    <span style={{ fontSize:13 }}>{h.icon}</span>
+                    <span style={{ flex:1, textDecoration:done?'line-through':'none', color:done?'#888':'#111' }}>
+                      {h.label}{cnt > 0 ? ` (×${cnt})` : ''}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            {/* Right: Activity Tracker */}
+            <div>
+              <div className="print-section-title">Activity Tracker</div>
+              {tracker.map(row => (
+                <div key={row.label} className="print-tracker-row">
+                  <span>{row.label}</span>
+                  <span className="print-tracker-val">{row.val > 0 ? row.val : '—'}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Notes */}
+          <div style={{ marginTop:22 }}>
+            <div className="print-section-title">Notes</div>
+            {[...Array(7)].map((_,i) => <div key={i} className="print-ruled"/>)}
+          </div>
+          {/* To-Dos for Tomorrow */}
+          <div style={{ marginTop:20 }}>
+            <div className="print-section-title">To-Dos for Tomorrow</div>
+            {[...Array(5)].map((_,i) => (
+              <div key={i} className="print-todo-row">
+                <span className="print-checkbox"/>
+                <div className="print-todo-line"/>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Pipeline section ─────────────────────────────────────────────────────────
 
 function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onStatusChange, showSource, statusOpts, onAdd, onRemove }) {
@@ -286,6 +380,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [wentPendingCount, setWentPendingCount] = useState(0) // historical — never decrements
 
   const [showCommSummary, setShowCommSummary] = useState(false)
+  const [showPrint,       setShowPrint]       = useState(false)
 
   useEffect(()=>{ loadAll() },[user])
 
@@ -715,6 +810,13 @@ function Dashboard({ theme, onToggleTheme }) {
 
         {/* ══ TODAY ══════════════════════════════════════════ */}
         {tab==='today' && (
+          <>
+          <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:10 }}>
+            <button className="btn-outline" onClick={() => setShowPrint(true)}
+              style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}>
+              🖨️ Print Daily Tasks
+            </button>
+          </div>
           <div className="today-grid">
 
             {/* Habits checklist */}
@@ -859,6 +961,7 @@ function Dashboard({ theme, onToggleTheme }) {
               </div>
             </div>
           </div>
+          </>
         )}
 
         {/* ══ MONTHLY GRID ════════════════════════════════════ */}
@@ -1274,6 +1377,21 @@ function Dashboard({ theme, onToggleTheme }) {
           repName={offerModal.repName}
           onSubmit={submitBuyerRepOffer}
           onClose={() => setOfferModal(null)}
+        />
+      )}
+
+      {/* ── Print Daily Modal ────────────────────────────── */}
+      {showPrint && (
+        <PrintDailyModal
+          habits={habits}
+          counters={counters}
+          today={today}
+          offersMade={offersMade}
+          offersReceived={offersReceived}
+          pendingDeals={pendingDeals}
+          closedDeals={closedDeals}
+          buyerReps={buyerReps}
+          onClose={() => setShowPrint(false)}
         />
       )}
     </div>

@@ -30,9 +30,22 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
   const [histLoad,   setHistLoad]   = useState(false)
   const [histFetched,setHistFetched]= useState(false)
 
+  // Custom tasks
+  const [customTasks,  setCustomTasks]  = useState([])
+  const [ctLoaded,     setCtLoaded]     = useState(false)
+  const [newTaskForm,  setNewTaskForm]  = useState(null) // null | {label,icon,xp}
+  const [editingTask,  setEditingTask]  = useState(null) // null | task object
+
   useEffect(()=>{ fetchAnnual(year) },[year])
   useEffect(()=>{ if(profile?.team_id) fetchMembers(profile.team_id) },[profile])
   useEffect(()=>{ if(activeTab==='history' && !histFetched) fetchHistory() },[activeTab])
+  useEffect(()=>{
+    if (!user || ctLoaded) return
+    supabase.from('custom_tasks').select('*')
+      .eq('user_id', user.id).eq('is_default', true)
+      .order('created_at')
+      .then(({data}) => { if (data) setCustomTasks(data); setCtLoaded(true) })
+  },[user])
 
   async function fetchHistory() {
     setHistLoad(true)
@@ -118,6 +131,29 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
     await supabase.from('team_members').delete().eq('user_id',user.id)
     await supabase.from('profiles').delete().eq('id',user.id)
     await supabase.auth.signOut()
+  }
+
+  // ── Custom tasks CRUD ──────────────────────────────────────────────────────
+  async function saveNewTask() {
+    if (!newTaskForm?.label?.trim()) return
+    const {data} = await supabase.from('custom_tasks').insert({
+      user_id:user.id, label:newTaskForm.label.trim(),
+      icon:newTaskForm.icon.trim()||'✅', xp:Number(newTaskForm.xp)||15,
+      is_default:true
+    }).select().single()
+    if (data) setCustomTasks(prev => [...prev, data])
+    setNewTaskForm(null)
+  }
+
+  async function updateTask(id, changes) {
+    await supabase.from('custom_tasks').update(changes).eq('id',id).eq('user_id',user.id)
+    setCustomTasks(prev => prev.map(t => t.id===id ? {...t,...changes} : t))
+    setEditingTask(null)
+  }
+
+  async function deleteDefaultTask(id) {
+    await supabase.from('custom_tasks').delete().eq('id',id).eq('user_id',user.id)
+    setCustomTasks(prev => prev.filter(t => t.id !== id))
   }
 
   const curMonth = new Date().toISOString().slice(0,7)
@@ -239,6 +275,107 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
                   Not on a team. Go to <strong>Teams</strong> to create or join one.
                 </div>
               )}
+
+              {/* Custom Daily Tasks */}
+              <div className="card" style={{ padding:22 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+                  <div>
+                    <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:2 }}>Custom Daily Tasks</div>
+                    <div style={{ fontSize:12, color:'var(--muted)' }}>Appear every day on your Today checklist</div>
+                  </div>
+                  <button className="btn-outline" style={{ fontSize:12 }}
+                    onClick={() => { setNewTaskForm({label:'',icon:'✅',xp:'15'}); setEditingTask(null) }}>
+                    + New Task
+                  </button>
+                </div>
+
+                {/* New task form */}
+                {newTaskForm && (
+                  <div style={{ display:'grid', gridTemplateColumns:'56px 1fr 72px auto', gap:8,
+                    alignItems:'flex-end', marginBottom:14, padding:14, borderRadius:10,
+                    background:'var(--bg2,var(--b1))', border:'1px solid var(--b2)' }}>
+                    <div>
+                      <div className="label" style={{ marginBottom:4 }}>Icon</div>
+                      <input className="field-input" value={newTaskForm.icon} maxLength={2}
+                        onChange={e=>setNewTaskForm(f=>({...f,icon:e.target.value}))}
+                        style={{ textAlign:'center', fontSize:18, padding:'6px 0' }}/>
+                    </div>
+                    <div>
+                      <div className="label" style={{ marginBottom:4 }}>Label</div>
+                      <input className="field-input" value={newTaskForm.label} autoFocus
+                        onChange={e=>setNewTaskForm(f=>({...f,label:e.target.value}))}
+                        onKeyDown={e=>e.key==='Enter'&&saveNewTask()}
+                        placeholder="Task name"/>
+                    </div>
+                    <div>
+                      <div className="label" style={{ marginBottom:4 }}>XP</div>
+                      <input className="field-input" value={newTaskForm.xp} type="number"
+                        onChange={e=>setNewTaskForm(f=>({...f,xp:e.target.value}))}
+                        onKeyDown={e=>e.key==='Enter'&&saveNewTask()}
+                        min="0" max="500"/>
+                    </div>
+                    <div style={{ display:'flex', gap:6, paddingBottom:2 }}>
+                      <button className="btn-gold" style={{ fontSize:12 }} onClick={saveNewTask}
+                        disabled={!newTaskForm.label.trim()}>Save</button>
+                      <button className="btn-outline" style={{ fontSize:12 }} onClick={()=>setNewTaskForm(null)}>✕</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Task list */}
+                {customTasks.length === 0 && !newTaskForm && (
+                  <div style={{ fontSize:13, color:'var(--muted)', padding:'10px 0' }}>
+                    No custom tasks yet — add one above and it will appear on your daily checklist.
+                  </div>
+                )}
+                {customTasks.map(t => (
+                  <div key={t.id}>
+                    {editingTask?.id === t.id ? (
+                      /* Inline edit row */
+                      <div style={{ display:'grid', gridTemplateColumns:'56px 1fr 72px auto', gap:8,
+                        alignItems:'flex-end', marginBottom:8, padding:'10px 12px', borderRadius:10,
+                        background:'var(--bg2,var(--b1))', border:'1px solid var(--b2)' }}>
+                        <div>
+                          <div className="label" style={{ marginBottom:4 }}>Icon</div>
+                          <input className="field-input" value={editingTask.icon} maxLength={2}
+                            onChange={e=>setEditingTask(et=>({...et,icon:e.target.value}))}
+                            style={{ textAlign:'center', fontSize:18, padding:'6px 0' }}/>
+                        </div>
+                        <div>
+                          <div className="label" style={{ marginBottom:4 }}>Label</div>
+                          <input className="field-input" value={editingTask.label} autoFocus
+                            onChange={e=>setEditingTask(et=>({...et,label:e.target.value}))}
+                            onKeyDown={e=>e.key==='Enter'&&updateTask(editingTask.id,{label:editingTask.label,icon:editingTask.icon,xp:Number(editingTask.xp)||15})}
+                            placeholder="Task name"/>
+                        </div>
+                        <div>
+                          <div className="label" style={{ marginBottom:4 }}>XP</div>
+                          <input className="field-input" value={editingTask.xp} type="number"
+                            onChange={e=>setEditingTask(et=>({...et,xp:e.target.value}))}
+                            min="0" max="500"/>
+                        </div>
+                        <div style={{ display:'flex', gap:6, paddingBottom:2 }}>
+                          <button className="btn-gold" style={{ fontSize:12 }}
+                            onClick={()=>updateTask(editingTask.id,{label:editingTask.label.trim(),icon:editingTask.icon.trim()||'✅',xp:Number(editingTask.xp)||15})}
+                            disabled={!editingTask.label.trim()}>Save</button>
+                          <button className="btn-outline" style={{ fontSize:12 }} onClick={()=>setEditingTask(null)}>✕</button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Display row */
+                      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 4px',
+                        borderBottom:'1px solid var(--b1)' }}>
+                        <span style={{ fontSize:18 }}>{t.icon}</span>
+                        <span style={{ flex:1, fontSize:13, fontWeight:500, color:'var(--text)' }}>{t.label}</span>
+                        <span style={{ fontSize:11, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace" }}>+{t.xp} XP</span>
+                        <button className="btn-outline" style={{ fontSize:11, padding:'4px 10px' }}
+                          onClick={()=>{ setEditingTask({...t}); setNewTaskForm(null) }}>Edit</button>
+                        <button className="btn-del" onClick={()=>deleteDefaultTask(t.id)} title="Delete task"/>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
 
               {/* Danger zone */}
               <div className="card" style={{ padding:22, borderTop:'3px solid var(--red)' }}>

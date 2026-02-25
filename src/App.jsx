@@ -44,6 +44,56 @@ function fmtMonth(my) {
 
 function getToday()  { const d=new Date(); return { week:Math.min(Math.floor((d.getDate()-1)/7),3), day:d.getDay() } }
 
+// ─── Add Task Modal ───────────────────────────────────────────────────────────
+
+function AddTaskModal({ onSubmit, onClose }) {
+  const [label, setLabel] = useState('')
+  const [icon,  setIcon]  = useState('✅')
+  const [xp,    setXp]    = useState('15')
+  const submit = () => { if (label.trim()) onSubmit(label.trim(), icon.trim()||'✅', Number(xp)||15) }
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:1000,
+      display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="card" style={{ padding:24, width:'100%', maxWidth:400, animation:'fadeUp .2s ease' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:18 }}>
+          <span style={{ fontSize:20 }}>📋</span>
+          <div className="serif" style={{ fontSize:18, color:'var(--text)' }}>Add Task for Today</div>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'64px 1fr', gap:10, marginBottom:12 }}>
+          <div>
+            <div className="label" style={{ marginBottom:5 }}>Icon</div>
+            <input className="field-input" value={icon} maxLength={2}
+              onChange={e => setIcon(e.target.value)} placeholder="✅"
+              style={{ textAlign:'center', fontSize:20, padding:'8px 0' }}/>
+          </div>
+          <div>
+            <div className="label" style={{ marginBottom:5 }}>Task Label</div>
+            <input className="field-input" value={label} autoFocus
+              onChange={e => setLabel(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && submit()}
+              placeholder="e.g. Morning call review"/>
+          </div>
+        </div>
+        <div style={{ marginBottom:22 }}>
+          <div className="label" style={{ marginBottom:5 }}>XP Reward</div>
+          <input className="field-input" value={xp} type="number" min="0" max="500"
+            onChange={e => setXp(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && submit()}
+            placeholder="15"
+            style={{ color:'var(--gold2)', fontFamily:"'JetBrains Mono',monospace", width:100 }}/>
+        </div>
+        <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+          <button className="btn-outline" onClick={onClose}>Cancel</button>
+          <button className="btn-gold" onClick={submit} disabled={!label.trim()} style={{ minWidth:120 }}>
+            + Add Task
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Offer Modal ──────────────────────────────────────────────────────────────
 
 function OfferModal({ repName, onSubmit, onClose }) {
@@ -382,26 +432,46 @@ function Dashboard({ theme, onToggleTheme }) {
   const [showCommSummary, setShowCommSummary] = useState(false)
   const [showPrint,       setShowPrint]       = useState(false)
 
+  // Custom tasks
+  const [customTasks,   setCustomTasks]   = useState([])
+  const [customDone,    setCustomDone]    = useState({}) // { 'uuid-week-day': true }
+  const [addTaskModal,  setAddTaskModal]  = useState(false)
+  const todayDate = new Date().toISOString().slice(0,10)
+
   useEffect(()=>{ loadAll() },[user])
 
   async function loadAll() {
     if (!user) return
     setDbLoading(true)
-    const [habRes, listRes, txRes, profRes] = await Promise.all([
+    const [habRes, listRes, txRes, profRes, ctRes] = await Promise.all([
       supabase.from('habit_completions').select('*').eq('user_id',user.id).eq('month_year',MONTH_YEAR),
       supabase.from('listings').select('*').eq('user_id',user.id), // no month filter — listings persist until closed
       supabase.from('transactions').select('*').eq('user_id',user.id).eq('month_year',MONTH_YEAR),
       supabase.from('profiles').select('*').eq('id',user.id).single(),
+      supabase.from('custom_tasks').select('*').eq('user_id',user.id),
     ])
 
     if (habRes.data?.length) {
       const g={}; HABITS.forEach(h=>{g[h.id]=Array(WEEKS).fill(null).map(()=>Array(7).fill(false))})
       const cnts={}
+      const cd={}
       habRes.data.forEach(c=>{
-        if(g[c.habit_id]) g[c.habit_id][c.week_index][c.day_index]=true
-        if(c.counter_value>0) cnts[`${c.habit_id}-${c.week_index}-${c.day_index}`]=c.counter_value
+        if(g[c.habit_id]) {
+          g[c.habit_id][c.week_index][c.day_index]=true
+          if(c.counter_value>0) cnts[`${c.habit_id}-${c.week_index}-${c.day_index}`]=c.counter_value
+        } else {
+          // Unknown habit_id → custom task completion
+          cd[`${c.habit_id}-${c.week_index}-${c.day_index}`]=true
+        }
       })
-      setHabits(g); setCounters(cnts)
+      setHabits(g); setCounters(cnts); setCustomDone(cd)
+    }
+
+    if (ctRes.data) {
+      setCustomTasks(ctRes.data.map(t => ({
+        id:t.id, label:t.label, icon:t.icon, xp:t.xp,
+        isDefault:t.is_default, specificDate:t.specific_date
+      })))
     }
 
     if (listRes.data) {
@@ -514,6 +584,51 @@ function Dashboard({ theme, onToggleTheme }) {
       user_id:user.id, habit_id:hid, week_index:week, day_index:day,
       month_year:MONTH_YEAR, xp_earned:(h.xp||0)+newCnt*(h.xpEach||0), counter_value:newCnt
     },{onConflict:'user_id,habit_id,week_index,day_index,month_year'})
+  }
+
+  // ── Custom tasks ────────────────────────────────────────────────────────────
+  async function toggleCustomTask(taskId, week, day) {
+    const key    = `${taskId}-${week}-${day}`
+    const newVal = !customDone[key]
+    setCustomDone(prev => newVal
+      ? {...prev, [key]:true}
+      : Object.fromEntries(Object.entries(prev).filter(([k])=>k!==key))
+    )
+    const task = customTasks.find(t => t.id === taskId)
+    if (!task) return
+    if (newVal) {
+      await addXp(task.xp, '#06b6d4')
+      await supabase.from('habit_completions').upsert({
+        user_id:user.id, habit_id:taskId, week_index:week, day_index:day,
+        month_year:MONTH_YEAR, xp_earned:task.xp, counter_value:0
+      },{onConflict:'user_id,habit_id,week_index,day_index,month_year'})
+    } else {
+      const nxp = Math.max(0, xp - task.xp)
+      setXp(nxp)
+      setXpPop({ val:`-${task.xp} XP`, color:'#dc2626' })
+      setTimeout(()=>setXpPop(null), 1400)
+      await supabase.from('profiles').update({xp:nxp}).eq('id',user.id)
+      await supabase.from('habit_completions').delete()
+        .eq('user_id',user.id).eq('habit_id',taskId)
+        .eq('week_index',week).eq('day_index',day).eq('month_year',MONTH_YEAR)
+    }
+  }
+
+  async function addTaskToday(label, icon, xp) {
+    const {data} = await supabase.from('custom_tasks').insert({
+      user_id:user.id, label, icon, xp:Number(xp)||15,
+      is_default:false, specific_date:todayDate
+    }).select().single()
+    if (data) setCustomTasks(prev => [...prev, {
+      id:data.id, label:data.label, icon:data.icon, xp:data.xp,
+      isDefault:false, specificDate:data.specific_date
+    }])
+    setAddTaskModal(false)
+  }
+
+  async function deleteCustomTask(id) {
+    await supabase.from('custom_tasks').delete().eq('id',id).eq('user_id',user.id)
+    setCustomTasks(prev => prev.filter(t => t.id !== id))
   }
 
   // ── Pipeline helpers ───────────────────────────────────────────────────────
@@ -880,6 +995,57 @@ function Dashboard({ theme, onToggleTheme }) {
                   )
                 })}
               </div>
+
+              {/* ── Custom tasks ─────────────────────────────── */}
+              {(()=>{
+                const customTasksToday = customTasks.filter(t => t.isDefault || t.specificDate === todayDate)
+                return (
+                  <>
+                    {customTasksToday.length > 0 && (
+                      <div style={{ borderTop:'1px solid var(--b1)', marginTop:14, paddingTop:12,
+                        display:'flex', flexDirection:'column', gap:2 }}>
+                        <div className="label" style={{ marginBottom:6, fontSize:11 }}>Custom Tasks</div>
+                        {customTasksToday.map(t => {
+                          const ckey = `${t.id}-${today.week}-${today.day}`
+                          const done = !!customDone[ckey]
+                          return (
+                            <div key={t.id} className={`habit-row${done?' done':''}`}>
+                              <button className="chk" onClick={()=>toggleCustomTask(t.id,today.week,today.day)}
+                                style={done?{background:'rgba(6,182,212,.12)',borderColor:'#06b6d4'}:{}}>
+                                {done && (
+                                  <svg width="11" height="8" viewBox="0 0 11 8" fill="none">
+                                    <path d="M1 4L4 7L10 1" stroke="#06b6d4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                                )}
+                              </button>
+                              <span style={{ fontSize:15, flexShrink:0 }}>{t.icon}</span>
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ fontSize:13, fontWeight:500,
+                                  color:done?'var(--muted)':'var(--text)',
+                                  textDecoration:done?'line-through':'none', transition:'all .15s' }}>
+                                  {t.label}
+                                </div>
+                                <div style={{ fontSize:10, color:'var(--dim)' }}>+{t.xp} XP</div>
+                              </div>
+                              <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:500, flexShrink:0,
+                                background:'rgba(6,182,212,.12)', color:'#06b6d4', border:'1px solid rgba(6,182,212,.22)' }}>
+                                {t.isDefault ? 'daily' : 'today'}
+                              </span>
+                              {!t.isDefault && (
+                                <button className="btn-del" onClick={()=>deleteCustomTask(t.id)} title="Remove task"/>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                    <button className="btn-outline" onClick={()=>setAddTaskModal(true)}
+                      style={{ marginTop:12, fontSize:12, width:'100%', justifyContent:'center' }}>
+                      + Add task for today
+                    </button>
+                  </>
+                )
+              })()}
             </div>
 
             {/* Sidebar */}
@@ -1377,6 +1543,14 @@ function Dashboard({ theme, onToggleTheme }) {
           repName={offerModal.repName}
           onSubmit={submitBuyerRepOffer}
           onClose={() => setOfferModal(null)}
+        />
+      )}
+
+      {/* ── Add Task Modal ───────────────────────────────── */}
+      {addTaskModal && (
+        <AddTaskModal
+          onSubmit={addTaskToday}
+          onClose={() => setAddTaskModal(false)}
         />
       )}
 

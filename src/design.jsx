@@ -396,6 +396,55 @@ body,.page { background: var(--bg); color: var(--text); }
   .tab-item   { font-size: 11px; padding: 7px 10px; }
   .stat-card  { padding: 10px 10px; }
 }
+
+/* ── Print Daily Sheet ──────────────────────────────── */
+.print-modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.print-sheet {
+  background: #fff; color: #111;
+  font-family: Georgia, 'Times New Roman', serif;
+  padding: 28px 32px;
+  border-radius: 8px;
+}
+.print-sheet-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 4px;
+}
+.print-section-title {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .09em; border-bottom: 2px solid #111;
+  padding-bottom: 4px; margin-bottom: 9px; font-family: 'DM Sans', sans-serif;
+}
+.print-habit-row {
+  display: flex; align-items: center; gap: 6px; font-size: 12.5px; margin-bottom: 5px;
+}
+.print-checkbox {
+  width: 13px; height: 13px; border: 1.5px solid #555;
+  border-radius: 2px; flex-shrink: 0; background: #fff; display: inline-block;
+}
+.print-checkbox.checked { background: #111; border-color: #111; }
+.print-tracker-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12.5px; margin-bottom: 7px;
+  border-bottom: 1px solid #ddd; padding-bottom: 4px;
+  font-family: 'DM Sans', sans-serif;
+}
+.print-tracker-val { font-weight: 700; min-width: 28px; text-align: right; }
+.print-ruled { border: none; border-bottom: 1px solid #ccc; height: 26px; margin-bottom: 1px; }
+.print-todo-row { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
+.print-todo-line { flex: 1; border-bottom: 1px solid #ccc; height: 20px; }
+
+@media print {
+  body * { visibility: hidden; }
+  .print-sheet, .print-sheet * { visibility: visible; }
+  .print-modal-header { display: none !important; }
+  .print-sheet {
+    position: fixed; inset: 0; padding: 14mm 16mm;
+    background: white; border-radius: 0;
+  }
+  @page { margin: 0; }
+}
 `
 
 // ─── React components ──────────────────────────────────────────────────────────

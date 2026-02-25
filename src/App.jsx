@@ -266,15 +266,13 @@ function PrintDailyModal({ habits, counters, today, todayDate, customTasks, cust
 }
 
 // ─── shared helper: previous week range ───────────────────────────────────────
+// Always "7 days ago → yesterday" relative to today, so running it on the 25th
+// shows Feb 18 – Feb 24 regardless of what day of the week it falls on.
 function usePrevWeekRange() {
-  const now = new Date()
-  const dow = now.getDay()
-  const startThisWeek = new Date(now)
-  startThisWeek.setDate(now.getDate() - ((dow + 6) % 7))
-  const endLast   = new Date(startThisWeek); endLast.setDate(startThisWeek.getDate() - 1)
-  const startLast = new Date(endLast);        startLast.setDate(endLast.getDate() - 6)
+  const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1)
+  const weekAgo   = new Date(); weekAgo.setDate(weekAgo.getDate() - 7)
   const fmtD = d => d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })
-  return `${fmtD(startLast)} – ${fmtD(endLast)}`
+  return `${fmtD(weekAgo)} – ${fmtD(yesterday)}`
 }
 
 // ─── shared print-sheet header ─────────────────────────────────────────────────

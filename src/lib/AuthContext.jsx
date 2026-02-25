@@ -29,7 +29,7 @@ export function AuthProvider({ children }) {
   async function fetchProfile(userId) {
     const { data } = await supabase
       .from('profiles')
-      .select('*, teams(name, invite_code)')
+      .select('*, teams(name, invite_code, created_by, team_prefs)')
       .eq('id', userId)
       .single()
     setProfile(data)

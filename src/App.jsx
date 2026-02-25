@@ -1042,13 +1042,29 @@ function Dashboard({ theme, onToggleTheme }) {
     return { id:data.id, address:data.address||tmpRow.address, price:data.price||'', commission:data.commission||'', status:'active', closedFrom:'' }
   }
 
+  // ── Profile habit prefs (for per-user skip) ────────────────────────────────
+  async function saveProfileHabitPrefs(newPrefs) {
+    setHabitPrefs(newPrefs)
+    await supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id)
+  }
+
+  function skipHabitToday(hid) {
+    const prev = (habitPrefs.skipped||{})[todayDate] || []
+    if (prev.includes(String(hid))) return
+    const newPrefs = {
+      ...habitPrefs,
+      skipped: { ...(habitPrefs.skipped||{}), [todayDate]: [...prev, String(hid)] }
+    }
+    saveProfileHabitPrefs(newPrefs)
+  }
+
   // ── Habits ─────────────────────────────────────────────────────────────────
   async function toggleHabit(hid, week, day) {
     const newVal = !habits[hid][week][day]
     setHabits(prev=>{ const n={...prev}; n[hid]=n[hid].map((w,wi)=>wi===week?w.map((d,di)=>di===day?newVal:d):w); return n })
     // Use effectiveHabits so edited XP/label/icon values take effect
     const hBase = HABITS.find(x=>x.id===hid)
-    const hEd   = (habitPrefs.edits||{})[hid] || {}
+    const hEd   = (activePrefs.edits||{})[hid] || {}
     const h     = { ...hBase, xp: hEd.xp || hBase.xp }
     const cat   = CAT[h.cat]
     if (newVal) {
@@ -1074,7 +1090,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
   async function incrementCounter(hid, week, day) {
     const hBase = HABITS.find(x=>x.id===hid)
-    const hEd   = (habitPrefs.edits||{})[hid] || {}
+    const hEd   = (activePrefs.edits||{})[hid] || {}
     const h     = { ...hBase, xp: hEd.xp || hBase.xp }
     const cat   = CAT[h.cat]
     const ckey = `${hid}-${week}-${day}`
@@ -1265,27 +1281,41 @@ function Dashboard({ theme, onToggleTheme }) {
   const nextRank = RANKS[RANKS.indexOf(rank)+1]
   const rankPct  = nextRank ? Math.round((xp-rank.min)/(nextRank.min-rank.min)*100) : 100
 
+  // ── Team vs personal prefs ────────────────────────────────────────────────
+  const isOnTeam    = !!profile?.team_id
+  const isTeamOwner = isOnTeam && profile?.teams?.created_by === user?.id
+  const activePrefs = isOnTeam
+    ? (profile?.teams?.team_prefs || { hidden:[], order:[], edits:{} })
+    : habitPrefs
+
   // ── Effective habits: built-ins (with edits, hidden removed) + custom defaults, ordered ──
   const builtInEffective = HABITS
-    .filter(h => !(habitPrefs.hidden||[]).includes(h.id))
+    .filter(h => !(activePrefs.hidden||[]).includes(h.id))
     .map(h => {
-      const ed = (habitPrefs.edits||{})[h.id] || {}
+      const ed = (activePrefs.edits||{})[h.id] || {}
       return { ...h, label:ed.label||h.label, icon:ed.icon||h.icon, xp:ed.xp||h.xp, isBuiltIn:true }
     })
-  const customDefaults = customTasks.filter(t => t.isDefault).map(t => ({ ...t, isBuiltIn:false }))
+  const customDefaults = isOnTeam && !isTeamOwner
+    ? []  // team members can't have permanent custom defaults in Today
+    : customTasks.filter(t => t.isDefault).map(t => ({ ...t, isBuiltIn:false }))
   const allEffective   = [...builtInEffective, ...customDefaults]
-  const orderArr       = habitPrefs.order || []
+  const orderArr       = activePrefs.order || []
   if (orderArr.length) {
     const idx = {}; orderArr.forEach((id,i) => idx[id]=i)
     allEffective.sort((a,b) => (idx[a.id]??999) - (idx[b.id]??999))
   }
   const effectiveHabits = allEffective
 
+  // ── Daily skip ───────────────────────────────────────────────────────────
+  const todaySkipped       = (habitPrefs.skipped||{})[todayDate] || []
+  const effectiveToday     = effectiveHabits.filter(h => !todaySkipped.includes(String(h.id)))
+  const todayBuiltInActive = builtInEffective.filter(h => !todaySkipped.includes(h.id))
+
   const totalHabitChecks = builtInEffective.reduce((a,h)=>a+habits[h.id].flat().filter(Boolean).length,0)
   const totalPossible    = Math.max(builtInEffective.length,1)*WEEKS*7
   const monthPct         = Math.round(totalHabitChecks/totalPossible*100)
-  const todayChecks      = builtInEffective.filter(h=>habits[h.id][today.week][today.day]).length
-  const todayPct         = Math.round(todayChecks/Math.max(builtInEffective.length,1)*100)
+  const todayChecks      = todayBuiltInActive.filter(h=>habits[h.id][today.week][today.day]).length
+  const todayPct         = Math.round(todayChecks/Math.max(todayBuiltInActive.length,1)*100)
   const totalAppts       = Object.entries(counters).filter(([k])=>k.startsWith('appointments')).reduce((a,[,v])=>a+v,0)
   const totalShowings    = Object.entries(counters).filter(([k])=>k.startsWith('showing')).reduce((a,[,v])=>a+v,0)
   const totalListings    = listings.filter(l => l.status !== 'closed').length
@@ -1462,7 +1492,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                   <Ring pct={todayPct} size={54} color={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'}/>
                   <div>
-                    <div className="serif" style={{ fontSize:22, color:'var(--text)', lineHeight:1 }}>{todayChecks}/{builtInEffective.length}</div>
+                    <div className="serif" style={{ fontSize:22, color:'var(--text)', lineHeight:1 }}>{todayChecks}/{todayBuiltInActive.length}</div>
                     <div style={{ fontSize:10, color:'var(--muted)' }}>completed</div>
                   </div>
                 </div>
@@ -1470,7 +1500,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
               {/* ── Unified task list: built-ins + custom defaults (ordered) ── */}
               <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
-                {effectiveHabits.map(h => {
+                {effectiveToday.map(h => {
                   if (h.isBuiltIn) {
                     const done = habits[h.id][today.week][today.day]
                     const cs   = CAT[h.cat]
@@ -1511,6 +1541,11 @@ function Dashboard({ theme, onToggleTheme }) {
                           <button className="cnt-btn" onClick={()=>incrementCounter(h.id,today.week,today.day)}
                             style={{ borderColor:'var(--b3)', color:'var(--dim)' }}>+</button>
                         )}
+                        {!done && (
+                          <button onClick={()=>skipHabitToday(h.id)} title="Skip for today"
+                            style={{ background:'none', border:'none', cursor:'pointer', color:'var(--dim)',
+                              fontSize:14, padding:'2px 4px', lineHeight:1, flexShrink:0, opacity:.6 }}>✕</button>
+                        )}
                       </div>
                     )
                   } else {
@@ -1537,6 +1572,11 @@ function Dashboard({ theme, onToggleTheme }) {
                           background:'rgba(6,182,212,.12)', color:'#06b6d4', border:'1px solid rgba(6,182,212,.22)' }}>
                           custom
                         </span>
+                        {!done && (
+                          <button onClick={()=>skipHabitToday(h.id)} title="Skip for today"
+                            style={{ background:'none', border:'none', cursor:'pointer', color:'var(--dim)',
+                              fontSize:14, padding:'2px 4px', lineHeight:1, flexShrink:0, opacity:.6 }}>✕</button>
+                        )}
                       </div>
                     )
                   }

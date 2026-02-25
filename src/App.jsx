@@ -346,8 +346,9 @@ function ListingsWeeklyModal({ listings, offersReceived, pendingDeals, closedDea
       <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.72)', zIndex:1100,
         display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
         onClick={e => e.target === e.currentTarget && onClose()}>
-        <div style={{ background:'var(--bg1)', border:'1px solid var(--b2)', borderRadius:16,
-          padding:28, maxWidth:560, width:'100%', maxHeight:'90vh', display:'flex', flexDirection:'column' }}>
+        <div style={{ background:'var(--surface)', border:'1px solid var(--b3)', borderRadius:16,
+          padding:28, maxWidth:560, width:'100%', maxHeight:'90vh', display:'flex', flexDirection:'column',
+          boxShadow:'0 24px 80px rgba(0,0,0,.35)' }}>
 
           {/* Header */}
           <div style={{ marginBottom:20 }}>
@@ -569,8 +570,9 @@ function BuyersWeeklyModal({ buyerReps, offersMade, onClose }) {
       <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.72)', zIndex:1100,
         display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
         onClick={e => e.target === e.currentTarget && onClose()}>
-        <div style={{ background:'var(--bg1)', border:'1px solid var(--b2)', borderRadius:16,
-          padding:28, maxWidth:560, width:'100%', maxHeight:'90vh', display:'flex', flexDirection:'column' }}>
+        <div style={{ background:'var(--surface)', border:'1px solid var(--b3)', borderRadius:16,
+          padding:28, maxWidth:560, width:'100%', maxHeight:'90vh', display:'flex', flexDirection:'column',
+          boxShadow:'0 24px 80px rgba(0,0,0,.35)' }}>
 
           <div style={{ marginBottom:20 }}>
             <div style={{ fontSize:19, fontWeight:800, color:'var(--text)', letterSpacing:'.01em' }}>

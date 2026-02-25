@@ -1947,9 +1947,9 @@ function Dashboard({ theme, onToggleTheme }) {
           </div>
 
           <div className="card" style={{ padding:20 }}>
-            <div className="resp-table"><div className="resp-table-inner" style={{ minWidth:380 }}>
+            <div className="resp-table"><div className="resp-table-inner" style={{ minWidth:420 }}>
             {/* Column headers */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 260px 30px', gap:8, padding:'3px 13px', marginBottom:6, border:'1px solid transparent' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 300px 30px', gap:8, padding:'3px 13px', marginBottom:6, border:'1px solid transparent' }}>
               <span className="label">Client Name</span>
               <span className="label">Status &amp; Actions</span>
               <span/>
@@ -1963,7 +1963,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
             <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:12 }}>
               {buyerReps.map(rep => (
-                <div key={rep.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 260px 30px' }}>
+                <div key={rep.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 300px 30px' }}>
                   {/* Client name + optional month badge */}
                   <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
                     <input className="pipe-input" value={rep.clientName||''}
@@ -1988,12 +1988,7 @@ function Dashboard({ theme, onToggleTheme }) {
                     </span>
                     {rep.status !== 'closed' && (
                       <>
-                        <button
-                          style={{ background:'rgba(14,165,233,.1)', color:'#0ea5e9',
-                            border:'1px solid rgba(14,165,233,.28)', borderRadius:7,
-                            padding:'4px 12px', fontSize:11, fontWeight:700, cursor:'pointer',
-                            whiteSpace:'nowrap', fontFamily:"'JetBrains Mono',monospace",
-                            transition:'background .15s, border-color .15s, color .15s' }}
+                        <button className="act-btn act-btn-blue"
                           onClick={() => setOfferModal({ repId:rep.id, repName:rep.clientName||'Buyer' })}>
                           📤 Offer Made
                         </button>
@@ -2011,7 +2006,7 @@ function Dashboard({ theme, onToggleTheme }) {
             </div>
 
             {/* Add new buyer rep */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 260px 30px', gap:8,
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 300px 30px', gap:8,
               borderTop:'1px solid var(--b1)', paddingTop:12, alignItems:'center' }}>
               <input className="field-input" value={newRepClient}
                 onChange={e => setNewRepClient(e.target.value)}

@@ -25,6 +25,7 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
   const [showDel,    setShowDel]    = useState(false)
   const [delText,    setDelText]    = useState('')
   const [delLoading, setDelLoading] = useState(false)
+  const [delError,   setDelError]   = useState(null)
   const [activeTab,  setActiveTab]  = useState('profile')
   const [history,    setHistory]    = useState([])
   const [histLoad,   setHistLoad]   = useState(false)
@@ -131,13 +132,16 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
   }
 
   async function deleteAccount() {
-    if(delText!=='DELETE') return
+    if (delText !== 'DELETE') return
     setDelLoading(true)
-    await supabase.from('habit_completions').delete().eq('user_id',user.id)
-    await supabase.from('listings').delete().eq('user_id',user.id)
-    await supabase.from('transactions').delete().eq('user_id',user.id)
-    await supabase.from('team_members').delete().eq('user_id',user.id)
-    await supabase.from('profiles').delete().eq('id',user.id)
+    setDelError(null)
+    // RPC runs with SECURITY DEFINER so it can delete from auth.users
+    const { error } = await supabase.rpc('delete_user')
+    if (error) {
+      setDelError(error.message || 'Delete failed — check Supabase logs.')
+      setDelLoading(false)
+      return
+    }
     await supabase.auth.signOut()
   }
 
@@ -496,7 +500,7 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
                     <input className="field-input" value={delText} onChange={e=>setDelText(e.target.value)} placeholder="DELETE"
                       style={{ marginBottom:14, maxWidth:200, fontWeight:700, letterSpacing:3, color:'var(--red)' }}/>
                     <div style={{ display:'flex', gap:8 }}>
-                      <button className="btn-outline" onClick={()=>{setShowDel(false);setDelText('')}}>Cancel</button>
+                      <button className="btn-outline" onClick={()=>{setShowDel(false);setDelText('');setDelError(null)}}>Cancel</button>
                       <button onClick={deleteAccount} disabled={delLoading||delText!=='DELETE'}
                         style={{ background:delText==='DELETE'?'var(--red)':'rgba(220,38,38,.15)', border:'none',
                           color:delText==='DELETE'?'#fff':'rgba(220,38,38,.4)', borderRadius:8, padding:'9px 20px',
@@ -504,6 +508,11 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
                         {delLoading?'Deleting…':'Yes, Delete Everything'}
                       </button>
                     </div>
+                    {delError && (
+                      <div style={{ marginTop:10, fontSize:12, color:'var(--red)' }}>
+                        ⚠ {delError}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

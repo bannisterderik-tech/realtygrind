@@ -265,6 +265,210 @@ function PrintDailyModal({ habits, counters, today, todayDate, customTasks, cust
   )
 }
 
+// ─── Listings Weekly Update Modal ─────────────────────────────────────────────
+
+function ListingsWeeklyModal({ listings, offersReceived, buyerReps, onClose }) {
+  const [step,    setStep]    = useState(1)  // 1 = form, 2 = preview
+  const [summary, setSummary] = useState('')
+
+  // Previous week date range (Mon → Sun)
+  const now = new Date()
+  const dow = now.getDay()                          // 0=Sun
+  const startThisWeek = new Date(now)
+  startThisWeek.setDate(now.getDate() - ((dow + 6) % 7))  // last Monday
+  const endLast   = new Date(startThisWeek); endLast.setDate(startThisWeek.getDate() - 1)
+  const startLast = new Date(endLast);        startLast.setDate(endLast.getDate() - 6)
+  const fmtD = d => d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })
+  const weekRange = `${fmtD(startLast)} – ${fmtD(endLast)}`
+
+  /* ── Step 1: summary input ── */
+  if (step === 1) {
+    return (
+      <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', zIndex:1100,
+        display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+        onClick={e => e.target === e.currentTarget && onClose()}>
+        <div style={{ background:'var(--bg1)', border:'1px solid var(--b2)', borderRadius:16,
+          padding:32, maxWidth:520, width:'100%' }}>
+          <div style={{ fontSize:18, fontWeight:700, marginBottom:4, color:'var(--text)' }}>
+            📋 Weekly Listings Update
+          </div>
+          <div style={{ fontSize:12, color:'var(--muted)', marginBottom:22 }}>
+            Week of {weekRange}
+          </div>
+          <label style={{ fontSize:12, fontWeight:600, color:'var(--text)', display:'block', marginBottom:6 }}>
+            Weekly Activity Summary
+          </label>
+          <textarea
+            value={summary}
+            onChange={e => setSummary(e.target.value)}
+            placeholder="Summarize your listing activity from the past week — offers received, showings, price adjustments, client feedback, market notes…"
+            style={{ width:'100%', minHeight:170, background:'var(--bg2)', border:'1px solid var(--b2)',
+              borderRadius:8, color:'var(--text)', fontSize:13, padding:'10px 12px',
+              resize:'vertical', boxSizing:'border-box', fontFamily:'inherit', lineHeight:1.6 }}
+            autoFocus
+          />
+          <div style={{ display:'flex', gap:10, marginTop:18, justifyContent:'flex-end' }}>
+            <button className="btn-outline" style={{ fontSize:13 }} onClick={onClose}>Cancel</button>
+            <button className="btn-gold" style={{ fontSize:13 }} onClick={() => setStep(2)}>
+              Generate Preview →
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  /* ── Step 2: print preview ── */
+  const activeListings  = listings.filter(l => l.status !== 'closed')
+  const activeBRAs      = buyerReps.filter(r => r.status !== 'closed')
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:1100,
+      overflowY:'auto', padding:'30px 20px' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ maxWidth:780, margin:'0 auto' }}>
+        {/* Controls — hidden on print */}
+        <div className="print-modal-header">
+          <div style={{ color:'#fff', fontSize:15, fontWeight:600 }}>📋 Weekly Listings Update — Preview</div>
+          <div style={{ display:'flex', gap:8 }}>
+            <button className="btn-outline" style={{ fontSize:13, color:'#fff', borderColor:'rgba(255,255,255,.3)' }}
+              onClick={() => setStep(1)}>← Edit</button>
+            <button className="btn-gold" style={{ fontSize:13 }} onClick={() => window.print()}>Print / PDF</button>
+            <button className="btn-outline" style={{ fontSize:13, color:'#fff', borderColor:'rgba(255,255,255,.3)' }} onClick={onClose}>✕ Close</button>
+          </div>
+        </div>
+
+        {/* Printable sheet */}
+        <div className="print-sheet">
+          {/* Header */}
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start',
+            borderBottom:'3px solid #111', paddingBottom:10, marginBottom:18 }}>
+            <div>
+              <div style={{ fontSize:22, fontWeight:700, letterSpacing:'.02em' }}>REALTYGRIND</div>
+              <div style={{ fontSize:11, color:'#555', letterSpacing:'.08em', textTransform:'uppercase' }}>
+                Weekly Listings Update
+              </div>
+            </div>
+            <div style={{ textAlign:'right' }}>
+              <div style={{ fontSize:11, color:'#888', textTransform:'uppercase', letterSpacing:'.05em' }}>Period</div>
+              <div style={{ fontSize:13, fontWeight:600 }}>{weekRange}</div>
+            </div>
+          </div>
+
+          {/* Listings table */}
+          <div className="print-section-title">Current Listings ({listings.length})</div>
+          {listings.length === 0 ? (
+            <div style={{ fontSize:12, color:'#888', marginBottom:16 }}>No listings on record.</div>
+          ) : (
+            <table style={{ width:'100%', borderCollapse:'collapse', marginBottom:20, fontSize:12 }}>
+              <thead>
+                <tr style={{ borderBottom:'2px solid #111' }}>
+                  <th style={{ textAlign:'left', padding:'4px 8px', fontWeight:700 }}>Address</th>
+                  <th style={{ textAlign:'left', padding:'4px 8px', fontWeight:700 }}>List Price</th>
+                  <th style={{ textAlign:'left', padding:'4px 8px', fontWeight:700 }}>Commission</th>
+                  <th style={{ textAlign:'left', padding:'4px 8px', fontWeight:700 }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {listings.map((l, i) => (
+                  <tr key={l.id} style={{ borderBottom:'1px solid #e5e5e5', background:i%2===0?'#fff':'#f9f9f9' }}>
+                    <td style={{ padding:'5px 8px' }}>{l.address || '—'}</td>
+                    <td style={{ padding:'5px 8px', fontFamily:'monospace' }}>{l.price || '—'}</td>
+                    <td style={{ padding:'5px 8px', fontFamily:'monospace' }}>{l.commission || '—'}</td>
+                    <td style={{ padding:'5px 8px' }}>
+                      {l.status==='pending' ? '⏳ Pending' : l.status==='closed' ? '✓ Closed' : '● Active'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {/* Offers received */}
+          <div className="print-section-title">Offers Received ({offersReceived.length})</div>
+          {offersReceived.length === 0 ? (
+            <div style={{ fontSize:12, color:'#888', marginBottom:16 }}>No offers received on record.</div>
+          ) : (
+            <table style={{ width:'100%', borderCollapse:'collapse', marginBottom:20, fontSize:12 }}>
+              <thead>
+                <tr style={{ borderBottom:'2px solid #111' }}>
+                  <th style={{ textAlign:'left', padding:'4px 8px', fontWeight:700 }}>Property / Client</th>
+                  <th style={{ textAlign:'left', padding:'4px 8px', fontWeight:700 }}>Amount</th>
+                  <th style={{ textAlign:'left', padding:'4px 8px', fontWeight:700 }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {offersReceived.map((o, i) => (
+                  <tr key={o.id} style={{ borderBottom:'1px solid #e5e5e5', background:i%2===0?'#fff':'#f9f9f9' }}>
+                    <td style={{ padding:'5px 8px' }}>{o.address || o.clientName || '—'}</td>
+                    <td style={{ padding:'5px 8px', fontFamily:'monospace' }}>{o.price || '—'}</td>
+                    <td style={{ padding:'5px 8px' }}>
+                      {o.status==='pending' ? '⏳ Pending' : o.status==='closed' ? '✓ Closed' : '● Active'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {/* Buyer Rep Agreements */}
+          <div className="print-section-title">
+            Buyer Rep Agreements ({activeBRAs.length} active · {buyerReps.length - activeBRAs.length} closed)
+          </div>
+          {buyerReps.length === 0 ? (
+            <div style={{ fontSize:12, color:'#888', marginBottom:16 }}>No buyer rep agreements on record.</div>
+          ) : (
+            <table style={{ width:'100%', borderCollapse:'collapse', marginBottom:20, fontSize:12 }}>
+              <thead>
+                <tr style={{ borderBottom:'2px solid #111' }}>
+                  <th style={{ textAlign:'left', padding:'4px 8px', fontWeight:700 }}>Client Name</th>
+                  <th style={{ textAlign:'left', padding:'4px 8px', fontWeight:700 }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {buyerReps.map((r, i) => (
+                  <tr key={r.id} style={{ borderBottom:'1px solid #e5e5e5', background:i%2===0?'#fff':'#f9f9f9' }}>
+                    <td style={{ padding:'5px 8px' }}>{r.clientName || '—'}</td>
+                    <td style={{ padding:'5px 8px' }}>{r.status==='closed' ? '✓ Closed' : '● Active'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {/* Weekly summary (user-typed) */}
+          {summary.trim() && (
+            <div style={{ marginBottom:20 }}>
+              <div className="print-section-title">Weekly Activity Summary</div>
+              <div style={{ fontSize:12, color:'#222', lineHeight:1.75, whiteSpace:'pre-wrap',
+                borderLeft:'3px solid #111', paddingLeft:12 }}>
+                {summary}
+              </div>
+            </div>
+          )}
+
+          {/* Additional notes */}
+          <div style={{ marginTop:10 }}>
+            <div className="print-section-title">Additional Notes</div>
+            {[...Array(6)].map((_,i) => <div key={i} className="print-ruled"/>)}
+          </div>
+
+          {/* Action items */}
+          <div style={{ marginTop:18 }}>
+            <div className="print-section-title">Action Items for Next Week</div>
+            {[...Array(5)].map((_,i) => (
+              <div key={i} className="print-todo-row">
+                <span className="print-checkbox"/>
+                <div className="print-todo-line"/>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Pipeline section ─────────────────────────────────────────────────────────
 
 function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onStatusChange, showSource, statusOpts, onAdd, onRemove }) {
@@ -354,7 +558,7 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
 
       <div className="resp-table"><div className="resp-table-inner">
       {/* Column labels */}
-      <div style={{ display:'grid', gridTemplateColumns:cols, gap:8, padding:'3px 13px', marginBottom:5 }}>
+      <div style={{ display:'grid', gridTemplateColumns:cols, gap:8, padding:'3px 13px', marginBottom:5, border:'1px solid transparent' }}>
         <span className="label">ADDRESS</span>
         <span className="label">PRICE</span>
         <span className="label">COMMISSION</span>
@@ -463,6 +667,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
   const [showCommSummary, setShowCommSummary] = useState(false)
   const [showPrint,       setShowPrint]       = useState(false)
+  const [showWeeklyUpdate, setShowWeeklyUpdate] = useState(false)
 
   // Custom tasks
   const [customTasks,   setCustomTasks]   = useState([])
@@ -1322,16 +1527,28 @@ function Dashboard({ theme, onToggleTheme }) {
                 Listings persist across months until closed · <strong>Pending</strong> creates a pipeline entry · <strong>Closed</strong> completes the deal
               </div>
             </div>
+            {/* Weekly update print button */}
+            <button onClick={() => setShowWeeklyUpdate(true)} style={{
+              background:'rgba(139,92,246,.12)', color:'var(--purple)',
+              border:'1px solid rgba(139,92,246,.35)', borderRadius:9,
+              padding:'7px 14px', fontSize:12, fontWeight:700, cursor:'pointer',
+              display:'flex', alignItems:'center', gap:6, whiteSpace:'nowrap',
+              transition:'background .15s, border-color .15s',
+              flexShrink:0, alignSelf:'flex-start',
+            }}>
+              📋 Weekly Update
+            </button>
           </div>
 
           <div className="card" style={{ padding:20 }}>
             <div className="resp-table"><div className="resp-table-inner" style={{ minWidth:480 }}>
             {/* Column headers */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 115px auto', gap:8, padding:'3px 13px', marginBottom:6 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 115px 320px 30px', gap:8, padding:'3px 13px', marginBottom:6, border:'1px solid transparent' }}>
               <span className="label">Address</span>
               <span className="label">List Price</span>
               <span className="label">Commission</span>
               <span className="label">Status &amp; Actions</span>
+              <span/>
             </div>
 
             {listings.length===0 && (
@@ -1342,7 +1559,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
             <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:12 }}>
               {listings.map(l => (
-                <div key={l.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 105px 115px auto' }}>
+                <div key={l.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 105px 115px 320px 30px' }}>
                   {/* Address + optional cross-month badge */}
                   <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
                     <input className="pipe-input" value={l.address||''}
@@ -1374,7 +1591,7 @@ function Dashboard({ theme, onToggleTheme }) {
                     placeholder="comm."
                     style={{ color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
 
-                  {/* Status + action buttons + delete — all on one line */}
+                  {/* Status + action buttons (no delete here) */}
                   <div style={{ display:'flex', alignItems:'center', gap:5, flexShrink:0, flexWrap:'nowrap' }}>
                     <span className={`status-pill sp-${l.status||'active'}`}>
                       {l.status==='pending' ? '⏳ Pending' : l.status==='closed' ? '✓ Closed' : '● Active'}
@@ -1399,14 +1616,16 @@ function Dashboard({ theme, onToggleTheme }) {
                         </button>
                       </>
                     )}
-                    <button className="btn-del" onClick={()=>removeListing(l)}>✕</button>
                   </div>
+
+                  {/* Delete — own grid cell */}
+                  <button className="btn-del" onClick={()=>removeListing(l)}>✕</button>
                 </div>
               ))}
             </div>
 
             {/* Add new listing */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 115px auto', gap:8,
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 115px 320px 30px', gap:8,
               borderTop:'1px solid var(--b1)', paddingTop:12, alignItems:'center' }}>
               <input className="field-input" value={newAddr} onChange={e=>setNewAddr(e.target.value)}
                 onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="New listing address…"
@@ -1417,12 +1636,13 @@ function Dashboard({ theme, onToggleTheme }) {
               <input className="field-input" value={newComm} onChange={e=>setNewComm(e.target.value)}
                 onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="Commission"
                 style={{ padding:'8px 10px', color:'var(--green)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
+              <div/>{/* blank status/actions col */}
               <button onClick={addListing} style={{
                 background:'var(--purple)', border:'none', color:'#fff', borderRadius:9,
-                padding:'9px 16px', fontSize:13, fontWeight:600, cursor:'pointer', lineHeight:1,
-                display:'flex', alignItems:'center', gap:5, whiteSpace:'nowrap', transition:'all .15s',
-                flexShrink:0,
-              }}>+ Add</button>
+                padding:'9px 0', fontSize:15, fontWeight:700, cursor:'pointer', lineHeight:1,
+                display:'flex', alignItems:'center', justifyContent:'center',
+                width:'100%', transition:'background .15s',
+              }}>+</button>
             </div>
             </div></div>{/* /resp-table-inner /resp-table */}
           </div>
@@ -1447,9 +1667,10 @@ function Dashboard({ theme, onToggleTheme }) {
           <div className="card" style={{ padding:20 }}>
             <div className="resp-table"><div className="resp-table-inner" style={{ minWidth:380 }}>
             {/* Column headers */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:8, padding:'3px 13px', marginBottom:6 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 260px 30px', gap:8, padding:'3px 13px', marginBottom:6, border:'1px solid transparent' }}>
               <span className="label">Client Name</span>
               <span className="label">Status &amp; Actions</span>
+              <span/>
             </div>
 
             {buyerReps.length === 0 && (
@@ -1460,7 +1681,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
             <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:12 }}>
               {buyerReps.map(rep => (
-                <div key={rep.id} className="pipe-row" style={{ gridTemplateColumns:'1fr auto' }}>
+                <div key={rep.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 260px 30px' }}>
                   {/* Client name + optional month badge */}
                   <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
                     <input className="pipe-input" value={rep.clientName||''}
@@ -1478,7 +1699,7 @@ function Dashboard({ theme, onToggleTheme }) {
                     )}
                   </div>
 
-                  {/* Status + actions + delete */}
+                  {/* Status + actions (no delete here) */}
                   <div style={{ display:'flex', alignItems:'center', gap:5, flexShrink:0, flexWrap:'nowrap' }}>
                     <span className={`status-pill sp-${rep.status||'active'}`}>
                       {rep.status === 'closed' ? '✓ Closed' : '● Active'}
@@ -1490,7 +1711,7 @@ function Dashboard({ theme, onToggleTheme }) {
                             border:'1px solid rgba(14,165,233,.28)', borderRadius:7,
                             padding:'4px 12px', fontSize:11, fontWeight:700, cursor:'pointer',
                             whiteSpace:'nowrap', fontFamily:"'JetBrains Mono',monospace",
-                            transition:'all .15s' }}
+                            transition:'background .15s, border-color .15s, color .15s' }}
                           onClick={() => setOfferModal({ repId:rep.id, repName:rep.clientName||'Buyer' })}>
                           📤 Offer Made
                         </button>
@@ -1499,25 +1720,28 @@ function Dashboard({ theme, onToggleTheme }) {
                         </button>
                       </>
                     )}
-                    <button className="btn-del" onClick={() => removeBuyerRep(rep)}>✕</button>
                   </div>
+
+                  {/* Delete — own grid cell */}
+                  <button className="btn-del" onClick={() => removeBuyerRep(rep)}>✕</button>
                 </div>
               ))}
             </div>
 
             {/* Add new buyer rep */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:8,
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 260px 30px', gap:8,
               borderTop:'1px solid var(--b1)', paddingTop:12, alignItems:'center' }}>
               <input className="field-input" value={newRepClient}
                 onChange={e => setNewRepClient(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && addBuyerRep()}
                 placeholder="New buyer client name…" style={{ padding:'8px 12px' }}/>
+              <div/>{/* blank status/actions col */}
               <button onClick={addBuyerRep} style={{
                 background:'var(--blue)', border:'none', color:'#fff', borderRadius:9,
-                padding:'9px 16px', fontSize:13, fontWeight:600, cursor:'pointer', lineHeight:1,
-                display:'flex', alignItems:'center', gap:5, whiteSpace:'nowrap', transition:'all .15s',
-                flexShrink:0,
-              }}>+ Add</button>
+                padding:'9px 0', fontSize:15, fontWeight:700, cursor:'pointer', lineHeight:1,
+                display:'flex', alignItems:'center', justifyContent:'center',
+                width:'100%', transition:'background .15s',
+              }}>+</button>
             </div>
             </div></div>{/* /resp-table-inner /resp-table */}
           </div>
@@ -1601,6 +1825,16 @@ function Dashboard({ theme, onToggleTheme }) {
           closedDeals={closedDeals}
           buyerReps={buyerReps}
           onClose={() => setShowPrint(false)}
+        />
+      )}
+
+      {/* ── Listings Weekly Update Modal ──────────────────── */}
+      {showWeeklyUpdate && (
+        <ListingsWeeklyModal
+          listings={listings}
+          offersReceived={offersReceived}
+          buyerReps={buyerReps}
+          onClose={() => setShowWeeklyUpdate(false)}
         />
       )}
     </div>

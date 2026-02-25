@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { CSS, Loader, Wordmark, PageNav, ThemeToggle, Ring, getRank, fmtMoney, RANKS } from '../design'
+import { HABITS } from '../habits'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 const CUR_YEAR = new Date().getFullYear()
@@ -35,6 +36,8 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
   const [ctLoaded,     setCtLoaded]     = useState(false)
   const [newTaskForm,  setNewTaskForm]  = useState(null) // null | {label,icon,xp}
   const [editingTask,  setEditingTask]  = useState(null) // null | task object
+  const [habitPrefs,   setHabitPrefs]   = useState({ hidden:[], order:[], edits:{} })
+  const [editingHabit, setEditingHabit] = useState(null) // { id, label, icon, xp, isBuiltIn }
 
   useEffect(()=>{ fetchAnnual(year) },[year])
   useEffect(()=>{ if(profile?.team_id) fetchMembers(profile.team_id) },[profile])
@@ -45,6 +48,12 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
       .eq('user_id', user.id).eq('is_default', true)
       .order('created_at')
       .then(({data}) => { if (data) setCustomTasks(data); setCtLoaded(true) })
+  },[user])
+
+  useEffect(()=>{
+    if (!user) return
+    supabase.from('profiles').select('habit_prefs').eq('id', user.id).single()
+      .then(({data}) => { if (data?.habit_prefs) setHabitPrefs(data.habit_prefs) })
   },[user])
 
   async function fetchHistory() {
@@ -156,8 +165,68 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
     setCustomTasks(prev => prev.filter(t => t.id !== id))
   }
 
+  // ── Habit prefs helpers ────────────────────────────────────────────────────
+  async function saveHabitPrefs(newPrefs) {
+    setHabitPrefs(newPrefs)
+    await supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id)
+  }
+
+  function moveHabit(id, dir) {
+    const ids = effectiveHabits.map(h => h.id)
+    const i   = ids.indexOf(id)
+    if (dir==='up'   && i===0)              return
+    if (dir==='down' && i===ids.length-1)   return
+    const j = dir==='up' ? i-1 : i+1
+    ;[ids[i], ids[j]] = [ids[j], ids[i]]
+    saveHabitPrefs({...habitPrefs, order: ids})
+  }
+
+  function hideBuiltIn(id) {
+    saveHabitPrefs({...habitPrefs, hidden:[...(habitPrefs.hidden||[]), id]})
+  }
+
+  function restoreBuiltIn(id) {
+    saveHabitPrefs({...habitPrefs, hidden:(habitPrefs.hidden||[]).filter(x=>x!==id)})
+  }
+
+  async function saveHabitEdit() {
+    if (!editingHabit || !editingHabit.label.trim()) return
+    if (editingHabit.isBuiltIn) {
+      const newEdits = {
+        ...(habitPrefs.edits||{}),
+        [editingHabit.id]: {
+          label: editingHabit.label.trim(),
+          icon:  editingHabit.icon.trim() || (HABITS.find(h=>h.id===editingHabit.id)?.icon||'✅'),
+          xp:    Number(editingHabit.xp)||15,
+        }
+      }
+      await saveHabitPrefs({...habitPrefs, edits: newEdits})
+    } else {
+      await updateTask(editingHabit.id, {
+        label: editingHabit.label.trim(),
+        icon:  editingHabit.icon.trim()||'✅',
+        xp:    Number(editingHabit.xp)||15,
+      })
+    }
+    setEditingHabit(null)
+  }
+
   const curMonth = new Date().toISOString().slice(0,7)
   const tabs = [{id:'profile',l:'Profile'},{id:'annual',l:'Annual Summary'},{id:'history',l:'Offer History'},{id:'settings',l:'Settings'}]
+
+  // Computed: unified habit list for the manager card
+  const builtInEff = HABITS
+    .filter(h => !(habitPrefs.hidden||[]).includes(h.id))
+    .map(h => { const ed=(habitPrefs.edits||{})[h.id]||{}; return {...h, label:ed.label||h.label, icon:ed.icon||h.icon, xp:ed.xp||h.xp, isBuiltIn:true} })
+  const customDefs  = customTasks.map(t => ({...t, isBuiltIn:false}))
+  const allHabItems = [...builtInEff, ...customDefs]
+  const habOrderArr = habitPrefs.order || []
+  if (habOrderArr.length) {
+    const idx={}; habOrderArr.forEach((id,i)=>idx[id]=i)
+    allHabItems.sort((a,b)=>(idx[a.id]??999)-(idx[b.id]??999))
+  }
+  const effectiveHabits = allHabItems
+  const hiddenBuiltIns  = HABITS.filter(h => (habitPrefs.hidden||[]).includes(h.id))
 
   return (
     <>
@@ -276,16 +345,16 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
                 </div>
               )}
 
-              {/* Custom Daily Tasks */}
+              {/* Daily Habits & Tasks */}
               <div className="card" style={{ padding:22 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
                   <div>
-                    <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:2 }}>Custom Daily Tasks</div>
-                    <div style={{ fontSize:12, color:'var(--muted)' }}>Appear every day on your Today checklist</div>
+                    <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:2 }}>Daily Habits &amp; Tasks</div>
+                    <div style={{ fontSize:12, color:'var(--muted)' }}>Reorder, edit, hide or add tasks — changes appear on your Today checklist</div>
                   </div>
                   <button className="btn-outline" style={{ fontSize:12 }}
-                    onClick={() => { setNewTaskForm({label:'',icon:'✅',xp:'15'}); setEditingTask(null) }}>
-                    + New Task
+                    onClick={() => { setNewTaskForm({label:'',icon:'✅',xp:'15'}); setEditingHabit(null) }}>
+                    ＋ Add Task
                   </button>
                 </div>
 
@@ -322,59 +391,97 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
                   </div>
                 )}
 
-                {/* Task list */}
-                {customTasks.length === 0 && !newTaskForm && (
+                {/* Unified habit + task list */}
+                {effectiveHabits.length === 0 && !newTaskForm && (
                   <div style={{ fontSize:13, color:'var(--muted)', padding:'10px 0' }}>
-                    No custom tasks yet — add one above and it will appear on your daily checklist.
+                    No active habits — restore hidden ones below or add a custom task.
                   </div>
                 )}
-                {customTasks.map(t => (
-                  <div key={t.id}>
-                    {editingTask?.id === t.id ? (
+                {effectiveHabits.map((h, hIdx) => (
+                  <div key={h.id}>
+                    {editingHabit?.id === h.id ? (
                       /* Inline edit row */
                       <div style={{ display:'grid', gridTemplateColumns:'56px 1fr 72px auto', gap:8,
                         alignItems:'flex-end', marginBottom:8, padding:'10px 12px', borderRadius:10,
                         background:'var(--bg2,var(--b1))', border:'1px solid var(--b2)' }}>
                         <div>
                           <div className="label" style={{ marginBottom:4 }}>Icon</div>
-                          <input className="field-input" value={editingTask.icon} maxLength={2}
-                            onChange={e=>setEditingTask(et=>({...et,icon:e.target.value}))}
+                          <input className="field-input" value={editingHabit.icon} maxLength={2}
+                            onChange={e=>setEditingHabit(eh=>({...eh,icon:e.target.value}))}
                             style={{ textAlign:'center', fontSize:18, padding:'6px 0' }}/>
                         </div>
                         <div>
                           <div className="label" style={{ marginBottom:4 }}>Label</div>
-                          <input className="field-input" value={editingTask.label} autoFocus
-                            onChange={e=>setEditingTask(et=>({...et,label:e.target.value}))}
-                            onKeyDown={e=>e.key==='Enter'&&updateTask(editingTask.id,{label:editingTask.label,icon:editingTask.icon,xp:Number(editingTask.xp)||15})}
+                          <input className="field-input" value={editingHabit.label} autoFocus
+                            onChange={e=>setEditingHabit(eh=>({...eh,label:e.target.value}))}
+                            onKeyDown={e=>e.key==='Enter'&&saveHabitEdit()}
                             placeholder="Task name"/>
                         </div>
                         <div>
                           <div className="label" style={{ marginBottom:4 }}>XP</div>
-                          <input className="field-input" value={editingTask.xp} type="number"
-                            onChange={e=>setEditingTask(et=>({...et,xp:e.target.value}))}
+                          <input className="field-input" value={editingHabit.xp} type="number"
+                            onChange={e=>setEditingHabit(eh=>({...eh,xp:e.target.value}))}
                             min="0" max="500"/>
                         </div>
                         <div style={{ display:'flex', gap:6, paddingBottom:2 }}>
-                          <button className="btn-gold" style={{ fontSize:12 }}
-                            onClick={()=>updateTask(editingTask.id,{label:editingTask.label.trim(),icon:editingTask.icon.trim()||'✅',xp:Number(editingTask.xp)||15})}
-                            disabled={!editingTask.label.trim()}>Save</button>
-                          <button className="btn-outline" style={{ fontSize:12 }} onClick={()=>setEditingTask(null)}>✕</button>
+                          <button className="btn-gold" style={{ fontSize:12 }} onClick={saveHabitEdit}
+                            disabled={!editingHabit.label.trim()}>Save</button>
+                          <button className="btn-outline" style={{ fontSize:12 }} onClick={()=>setEditingHabit(null)}>✕</button>
                         </div>
                       </div>
                     ) : (
                       /* Display row */
-                      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 4px',
+                      <div style={{ display:'flex', alignItems:'center', gap:8, padding:'9px 4px',
                         borderBottom:'1px solid var(--b1)' }}>
-                        <span style={{ fontSize:18 }}>{t.icon}</span>
-                        <span style={{ flex:1, fontSize:13, fontWeight:500, color:'var(--text)' }}>{t.label}</span>
-                        <span style={{ fontSize:11, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace" }}>+{t.xp} XP</span>
-                        <button className="btn-outline" style={{ fontSize:11, padding:'4px 10px' }}
-                          onClick={()=>{ setEditingTask({...t}); setNewTaskForm(null) }}>Edit</button>
-                        <button className="btn-del" onClick={()=>deleteDefaultTask(t.id)}>✕</button>
+                        {/* Reorder arrows */}
+                        <div style={{ display:'flex', flexDirection:'column', gap:0, flexShrink:0 }}>
+                          <button onClick={()=>moveHabit(h.id,'up')} disabled={hIdx===0}
+                            style={{ background:'none', border:'none', lineHeight:1, padding:'2px 4px',
+                              cursor:hIdx===0?'default':'pointer',
+                              color:hIdx===0?'var(--dim)':'var(--muted)', fontSize:10 }}>▲</button>
+                          <button onClick={()=>moveHabit(h.id,'down')} disabled={hIdx===effectiveHabits.length-1}
+                            style={{ background:'none', border:'none', lineHeight:1, padding:'2px 4px',
+                              cursor:hIdx===effectiveHabits.length-1?'default':'pointer',
+                              color:hIdx===effectiveHabits.length-1?'var(--dim)':'var(--muted)', fontSize:10 }}>▼</button>
+                        </div>
+                        <span style={{ fontSize:18, flexShrink:0 }}>{h.icon}</span>
+                        <span style={{ flex:1, fontSize:13, fontWeight:500, color:'var(--text)', minWidth:0 }}>{h.label}</span>
+                        {h.isBuiltIn && (
+                          <span style={{ fontSize:9, padding:'2px 6px', borderRadius:4,
+                            background:'var(--b1)', color:'var(--dim)', fontWeight:600,
+                            letterSpacing:.5, flexShrink:0, whiteSpace:'nowrap' }}>BUILT-IN</span>
+                        )}
+                        <span style={{ fontSize:11, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>+{h.xp} XP</span>
+                        <button className="btn-outline" style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }}
+                          onClick={()=>{ setEditingHabit({...h}); setNewTaskForm(null) }}>Edit</button>
+                        {h.isBuiltIn ? (
+                          <button className="btn-del" title="Hide from checklist" onClick={()=>hideBuiltIn(h.id)}>✕</button>
+                        ) : (
+                          <button className="btn-del" onClick={()=>deleteDefaultTask(h.id)}>✕</button>
+                        )}
                       </div>
                     )}
                   </div>
                 ))}
+
+                {/* Hidden built-ins — restore section */}
+                {hiddenBuiltIns.length > 0 && (
+                  <div style={{ marginTop:18, paddingTop:14, borderTop:'1px dashed var(--b2)' }}>
+                    <div style={{ fontSize:10, color:'var(--dim)', fontWeight:700, letterSpacing:1,
+                      marginBottom:10, textTransform:'uppercase' }}>Hidden Habits</div>
+                    {hiddenBuiltIns.map(h => (
+                      <div key={h.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 4px',
+                        borderBottom:'1px solid var(--b1)', opacity:.55 }}>
+                        <span style={{ width:24, flexShrink:0 }}/>
+                        <span style={{ fontSize:16, flexShrink:0 }}>{h.icon}</span>
+                        <span style={{ flex:1, fontSize:13, color:'var(--muted)', textDecoration:'line-through' }}>{h.label}</span>
+                        <span style={{ fontSize:11, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>+{h.xp} XP</span>
+                        <button className="btn-outline" style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }}
+                          onClick={()=>restoreBuiltIn(h.id)}>Restore</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Danger zone */}

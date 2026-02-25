@@ -370,7 +370,7 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
                         <span style={{ fontSize:11, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace" }}>+{t.xp} XP</span>
                         <button className="btn-outline" style={{ fontSize:11, padding:'4px 10px' }}
                           onClick={()=>{ setEditingTask({...t}); setNewTaskForm(null) }}>Edit</button>
-                        <button className="btn-del" onClick={()=>deleteDefaultTask(t.id)} title="Delete task"/>
+                        <button className="btn-del" onClick={()=>deleteDefaultTask(t.id)}>✕</button>
                       </div>
                     )}
                   </div>

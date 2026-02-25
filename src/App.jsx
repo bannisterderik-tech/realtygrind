@@ -266,15 +266,13 @@ function PrintDailyModal({ habits, counters, today, todayDate, customTasks, cust
 }
 
 // ─── shared helper: previous week range ───────────────────────────────────────
+// Always "7 days ago → yesterday" relative to today, so running it on the 25th
+// shows Feb 18 – Feb 24 regardless of what day of the week it falls on.
 function usePrevWeekRange() {
-  const now = new Date()
-  const dow = now.getDay()
-  const startThisWeek = new Date(now)
-  startThisWeek.setDate(now.getDate() - ((dow + 6) % 7))
-  const endLast   = new Date(startThisWeek); endLast.setDate(startThisWeek.getDate() - 1)
-  const startLast = new Date(endLast);        startLast.setDate(endLast.getDate() - 6)
+  const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1)
+  const weekAgo   = new Date(); weekAgo.setDate(weekAgo.getDate() - 7)
   const fmtD = d => d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })
-  return `${fmtD(startLast)} – ${fmtD(endLast)}`
+  return `${fmtD(weekAgo)} – ${fmtD(yesterday)}`
 }
 
 // ─── shared print-sheet header ─────────────────────────────────────────────────
@@ -1909,13 +1907,13 @@ function Dashboard({ theme, onToggleTheme }) {
               <input className="field-input" value={newComm} onChange={e=>setNewComm(e.target.value)}
                 onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="Commission"
                 style={{ padding:'8px 10px', color:'var(--green)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
-              <div/>{/* blank status/actions col */}
               <button onClick={addListing} style={{
+                gridColumn:'span 2',
                 background:'var(--purple)', border:'none', color:'#fff', borderRadius:9,
-                padding:'9px 0', fontSize:15, fontWeight:700, cursor:'pointer', lineHeight:1,
-                display:'flex', alignItems:'center', justifyContent:'center',
-                width:'100%', transition:'background .15s',
-              }}>+</button>
+                padding:'9px 14px', fontSize:13, fontWeight:700, cursor:'pointer', lineHeight:1,
+                display:'flex', alignItems:'center', justifyContent:'center', gap:5,
+                transition:'background .15s', whiteSpace:'nowrap',
+              }}>+ Add Listing</button>
             </div>
             </div></div>{/* /resp-table-inner /resp-table */}
           </div>
@@ -2019,13 +2017,13 @@ function Dashboard({ theme, onToggleTheme }) {
                 onChange={e => setNewRepClient(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && addBuyerRep()}
                 placeholder="New buyer client name…" style={{ padding:'8px 12px' }}/>
-              <div/>{/* blank status/actions col */}
               <button onClick={addBuyerRep} style={{
+                gridColumn:'span 2',
                 background:'var(--blue)', border:'none', color:'#fff', borderRadius:9,
-                padding:'9px 0', fontSize:15, fontWeight:700, cursor:'pointer', lineHeight:1,
-                display:'flex', alignItems:'center', justifyContent:'center',
-                width:'100%', transition:'background .15s',
-              }}>+</button>
+                padding:'9px 14px', fontSize:13, fontWeight:700, cursor:'pointer', lineHeight:1,
+                display:'flex', alignItems:'center', justifyContent:'center', gap:5,
+                transition:'background .15s', whiteSpace:'nowrap',
+              }}>+ Add Buyer Rep</button>
             </div>
             </div></div>{/* /resp-table-inner /resp-table */}
           </div>

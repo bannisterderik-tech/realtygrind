@@ -133,11 +133,9 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
   async function deleteAccount() {
     if(delText!=='DELETE') return
     setDelLoading(true)
-    await supabase.from('habit_completions').delete().eq('user_id',user.id)
-    await supabase.from('listings').delete().eq('user_id',user.id)
-    await supabase.from('transactions').delete().eq('user_id',user.id)
-    await supabase.from('team_members').delete().eq('user_id',user.id)
-    await supabase.from('profiles').delete().eq('id',user.id)
+    // RPC runs with SECURITY DEFINER so it can delete from auth.users
+    const { error } = await supabase.rpc('delete_user')
+    if (error) { setDelLoading(false); return }
     await supabase.auth.signOut()
   }
 

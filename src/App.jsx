@@ -44,6 +44,59 @@ function fmtMonth(my) {
 
 function getToday()  { const d=new Date(); return { week:Math.min(Math.floor((d.getDate()-1)/7),3), day:d.getDay() } }
 
+// ─── Offer Modal ──────────────────────────────────────────────────────────────
+
+function OfferModal({ repName, onSubmit, onClose }) {
+  const [addr,  setAddr]  = useState('')
+  const [price, setPrice] = useState('')
+  const [comm,  setComm]  = useState('')
+  const submit = () => { if (addr.trim()) onSubmit(addr.trim(), price.trim(), comm.trim()) }
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:1000,
+      display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="card" style={{ padding:28, width:'100%', maxWidth:440, animation:'fadeUp .2s ease' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
+          <span style={{ fontSize:20 }}>📤</span>
+          <div className="serif" style={{ fontSize:20, color:'var(--text)' }}>Log Offer Made</div>
+        </div>
+        {repName && (
+          <div style={{ fontSize:12, color:'var(--muted)', marginBottom:18, padding:'8px 12px', borderRadius:8,
+            background:'var(--bg2)', border:'1px solid var(--b1)' }}>
+            🤝 Buyer: <strong>{repName}</strong>
+          </div>
+        )}
+        <div className="label" style={{ marginBottom:5 }}>Property Address</div>
+        <input className="field-input" value={addr} onChange={e => setAddr(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && submit()} autoFocus
+          placeholder="123 Main St, City, OR 97401" style={{ marginBottom:12 }}/>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:22 }}>
+          <div>
+            <div className="label" style={{ marginBottom:5 }}>Offer Price</div>
+            <input className="field-input" value={price} onChange={e => setPrice(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && submit()}
+              placeholder="$450,000"
+              style={{ color:'var(--gold2)', fontFamily:"'JetBrains Mono',monospace" }}/>
+          </div>
+          <div>
+            <div className="label" style={{ marginBottom:5 }}>Commission Est.</div>
+            <input className="field-input" value={comm} onChange={e => setComm(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && submit()}
+              placeholder="$13,500"
+              style={{ color:'var(--green)', fontFamily:"'JetBrains Mono',monospace" }}/>
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+          <button className="btn-outline" onClick={onClose}>Cancel</button>
+          <button className="btn-gold" onClick={submit} disabled={!addr.trim()} style={{ minWidth:130 }}>
+            + Add to Offers Made
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Pipeline section ─────────────────────────────────────────────────────────
 
 function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onStatusChange, showSource, statusOpts, onAdd, onRemove }) {
@@ -126,6 +179,7 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
         )}
       </div>
 
+      <div className="resp-table"><div className="resp-table-inner">
       {/* Column labels */}
       <div style={{ display:'grid', gridTemplateColumns:cols, gap:8, padding:'3px 13px', marginBottom:5 }}>
         <span className="label">ADDRESS</span>
@@ -187,6 +241,7 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
           }}>+</button>
         </div>
       )}
+      </div></div>{/* /resp-table-inner /resp-table */}
     </div>
   )
 }
@@ -217,6 +272,11 @@ function Dashboard({ theme, onToggleTheme }) {
   const [newAddr,   setNewAddr]   = useState('')
   const [newPrice,  setNewPrice]  = useState('')
   const [newComm,   setNewComm]   = useState('')
+
+  // Buyer Rep Agreements
+  const [buyerReps,     setBuyerReps]    = useState([])
+  const [newRepClient,  setNewRepClient] = useState('')
+  const [offerModal,    setOfferModal]   = useState(null) // null | { repId, repName }
 
   // Pipeline
   const [offersMade,       setOffersMade]       = useState([])
@@ -249,10 +309,16 @@ function Dashboard({ theme, onToggleTheme }) {
       setHabits(g); setCounters(cnts)
     }
 
-    if (listRes.data) setListings(listRes.data.map(l=>({
-      id:l.id, address:l.address, status:l.status||'active',
-      price:l.price||'', commission:l.commission||'', monthYear:l.month_year||''
-    })))
+    if (listRes.data) {
+      const allL = listRes.data
+      setListings(allL.filter(l => (l.unit_count ?? 1) !== 0).map(l => ({
+        id:l.id, address:l.address, status:l.status||'active',
+        price:l.price||'', commission:l.commission||'', monthYear:l.month_year||''
+      })))
+      setBuyerReps(allL.filter(l => l.unit_count === 0).map(r => ({
+        id:r.id, clientName:r.address||'', status:r.status||'active', monthYear:r.month_year||''
+      })))
+    }
 
     if (txRes.data) {
       const m = t => ({ id:t.id, address:t.address, price:t.price||'', commission:t.commission||'', status:t.status||'active', closedFrom:t.closed_from||'' })
@@ -443,6 +509,45 @@ function Dashboard({ theme, onToggleTheme }) {
     }
   }
 
+  // ── Buyer Rep Agreements ───────────────────────────────────────────────────
+  async function addBuyerRep() {
+    if (!newRepClient.trim()) return
+    const {data} = await supabase.from('listings').insert({
+      user_id:user.id, address:newRepClient.trim(), unit_count:0,
+      price:'', commission:'', status:'active', month_year:MONTH_YEAR
+    }).select().single()
+    if (data) setBuyerReps(prev => [...prev, { id:data.id, clientName:data.address, status:'active', monthYear:data.month_year||MONTH_YEAR }])
+    setNewRepClient('')
+  }
+
+  async function removeBuyerRep(rep) {
+    setBuyerReps(prev => prev.filter(r => r.id !== rep.id))
+    await supabase.from('listings').delete().eq('id', rep.id)
+  }
+
+  async function updateBuyerRepClient(id, val) {
+    setBuyerReps(prev => prev.map(r => r.id === id ? {...r, clientName:val} : r))
+    await supabase.from('listings').update({address:val}).eq('id', id)
+  }
+
+  async function closeBuyerRep(rep) {
+    setBuyerReps(prev => prev.map(r => r.id === rep.id ? {...r, status:'closed'} : r))
+    await supabase.from('listings').update({status:'closed'}).eq('id', rep.id)
+  }
+
+  async function submitBuyerRepOffer(addr, price, comm) {
+    if (!offerModal || !addr) return
+    const data = await dbInsert('offer_made', {address:addr, price, commission:comm})
+    if (data) {
+      setOffersMade(prev => [...prev, {
+        id:data.id, address:data.address, price:data.price||'',
+        commission:data.commission||'', status:'active', closedFrom:''
+      }])
+      await awardPipelineXp('offer_made', '#0ea5e9')
+    }
+    setOfferModal(null)
+  }
+
   // ── Derived ────────────────────────────────────────────────────────────────
   const rank     = getRank(xp)
   const nextRank = RANKS[RANKS.indexOf(rank)+1]
@@ -456,6 +561,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const totalAppts       = Object.entries(counters).filter(([k])=>k.startsWith('appointments')).reduce((a,[,v])=>a+v,0)
   const totalShowings    = Object.entries(counters).filter(([k])=>k.startsWith('showing')).reduce((a,[,v])=>a+v,0)
   const totalListings    = listings.filter(l => l.status !== 'closed').length
+  const totalBuyerReps   = buyerReps.filter(r => r.status !== 'closed').length
   const closedVol        = closedDeals.reduce((a,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
   const closedComm       = closedDeals.reduce((a,r)=>{ const n=parseFloat(String(r.commission||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
   const todayHabitXp     = HABITS.reduce((acc,h)=>{
@@ -499,25 +605,25 @@ function Dashboard({ theme, onToggleTheme }) {
 
       {/* ── Nav ─────────────────────────────────────────────── */}
       <nav className="topnav">
-        <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
           <Wordmark light/>
-          <span style={{ width:1, height:20, background:'rgba(255,255,255,.1)', display:'block', flexShrink:0 }}/>
-          <span style={{ fontSize:10, color:'var(--nav-sub)', fontFamily:"'JetBrains Mono',monospace",
+          <span className="mob-hide" style={{ width:1, height:20, background:'rgba(255,255,255,.1)', display:'block', flexShrink:0 }}/>
+          <span className="mob-hide" style={{ fontSize:10, color:'var(--nav-sub)', fontFamily:"'JetBrains Mono',monospace",
             letterSpacing:.5 }}>{MONTH_YEAR}</span>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:7 }}>
           <ThemeToggle theme={theme} onToggle={onToggleTheme}/>
 
-          <span style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
+          {/* Board + Teams — hidden on mobile */}
+          <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
+          <button className="nav-btn mob-hide" onClick={()=>setPage('leaderboard')}>🏆 Board</button>
+          <button className="nav-btn mob-hide" onClick={()=>setPage('teams')}>👥 Teams</button>
 
-          <button className="nav-btn" onClick={()=>setPage('leaderboard')}>🏆 Board</button>
-          <button className="nav-btn" onClick={()=>setPage('teams')}>👥 Teams</button>
           <button className="nav-btn" onClick={()=>setPage('directory')}>🔗 Tools</button>
 
-          <span style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
-
-          {/* Rank chip */}
-          <div style={{ background:'rgba(255,255,255,.06)', border:`1px solid ${rank.color}38`,
+          {/* Rank + Streak chips — hidden on mobile */}
+          <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
+          <div className="mob-hide" style={{ background:'rgba(255,255,255,.06)', border:`1px solid ${rank.color}38`,
             borderRadius:9, padding:'5px 11px', display:'flex', alignItems:'center', gap:9 }}>
             <span style={{ fontSize:12, fontWeight:600, color:rank.color }}>{rank.icon} {rank.name}</span>
             <div style={{ width:44, height:3, background:'rgba(255,255,255,.1)', borderRadius:2, overflow:'hidden' }}>
@@ -529,7 +635,7 @@ function Dashboard({ theme, onToggleTheme }) {
             </span>
           </div>
 
-          <div style={{ background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,165,0,.18)',
+          <div className="mob-hide" style={{ background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,165,0,.18)',
             borderRadius:9, padding:'5px 11px', textAlign:'center' }}>
             <div style={{ fontSize:9, color:'var(--nav-sub)', letterSpacing:.8, lineHeight:1 }}>STREAK</div>
             <div className="serif" style={{ fontSize:15, color:'#fb923c', lineHeight:1.2 }}>🔥 {streak}</div>
@@ -538,7 +644,7 @@ function Dashboard({ theme, onToggleTheme }) {
           <button className="nav-btn active" onClick={()=>setPage('profile')}>
             {profile?.full_name?.split(' ')[0]||'Profile'}
           </button>
-          <button className="btn-ghost" style={{ background:'transparent', border:'1px solid rgba(255,255,255,.09)', color:'var(--nav-sub)', fontSize:12 }}
+          <button className="btn-ghost mob-hide" style={{ background:'transparent', border:'1px solid rgba(255,255,255,.09)', color:'var(--nav-sub)', fontSize:12 }}
             onClick={()=>supabase.auth.signOut()}>Sign out</button>
         </div>
       </nav>
@@ -571,6 +677,7 @@ function Dashboard({ theme, onToggleTheme }) {
           <StatCard icon="📅" label="Appointments" value={totalAppts}        color="var(--green)" sub="this month"/>
           <StatCard icon="🔑" label="Showings"      value={totalShowings}    color="var(--blue)"/>
           <StatCard icon="🏡" label="Listed"        value={totalListings}         color="var(--purple)"/>
+          <StatCard icon="🤝" label="Buyer Reps"   value={totalBuyerReps}        color="var(--blue)"/>
           <StatCard icon="📤" label="Offers Made"   value={offersMade.length}     color="var(--blue)"/>
           <StatCard icon="📥" label="Offers Rec'd"  value={offersReceived.length} color="var(--purple)"/>
           <StatCard icon="⏳" label="Went Pending"  value={wentPendingCount}      color="var(--gold2)"/>
@@ -608,7 +715,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
         {/* ══ TODAY ══════════════════════════════════════════ */}
         {tab==='today' && (
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 220px', gap:20, alignItems:'start', animation:'fadeUp .3s ease' }}>
+          <div className="today-grid">
 
             {/* Habits checklist */}
             <div className="card" style={{ padding:24 }}>
@@ -917,6 +1024,7 @@ function Dashboard({ theme, onToggleTheme }) {
           </div>
 
           <div className="card" style={{ padding:20 }}>
+            <div className="resp-table"><div className="resp-table-inner" style={{ minWidth:480 }}>
             {/* Column headers */}
             <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 115px auto', gap:8, padding:'3px 13px', marginBottom:6 }}>
               <span className="label">Address</span>
@@ -1015,6 +1123,102 @@ function Dashboard({ theme, onToggleTheme }) {
                 flexShrink:0,
               }}>+ Add</button>
             </div>
+            </div></div>{/* /resp-table-inner /resp-table */}
+          </div>
+        </div>
+
+        {/* ══ BUYER REP AGREEMENTS ════════════════════════════ */}
+        <div style={{ marginTop:36 }}>
+          <div className="section-divider"/>
+          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14, gap:12, flexWrap:'wrap' }}>
+            <div>
+              <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:4 }}>
+                <span style={{ fontSize:20 }}>🤝</span>
+                <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>Buyer Rep Agreements</span>
+                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, fontSize:18, color:'var(--blue)', lineHeight:1 }}>{buyerReps.length}</span>
+              </div>
+              <div className="section-sub" style={{ marginBottom:0 }}>
+                Buyer reps persist across months · <strong>Offer Made</strong> logs to pipeline &amp; awards XP · <strong>Close Rep</strong> marks the agreement done
+              </div>
+            </div>
+          </div>
+
+          <div className="card" style={{ padding:20 }}>
+            <div className="resp-table"><div className="resp-table-inner" style={{ minWidth:380 }}>
+            {/* Column headers */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:8, padding:'3px 13px', marginBottom:6 }}>
+              <span className="label">Client Name</span>
+              <span className="label">Status &amp; Actions</span>
+            </div>
+
+            {buyerReps.length === 0 && (
+              <div style={{ textAlign:'center', padding:'22px 0', color:'var(--dim)', fontSize:12 }}>
+                No buyer rep agreements — add one below
+              </div>
+            )}
+
+            <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:12 }}>
+              {buyerReps.map(rep => (
+                <div key={rep.id} className="pipe-row" style={{ gridTemplateColumns:'1fr auto' }}>
+                  {/* Client name + optional month badge */}
+                  <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
+                    <input className="pipe-input" value={rep.clientName||''}
+                      onChange={e => updateBuyerRepClient(rep.id, e.target.value)}
+                      placeholder="Client name…" style={{ flex:1, minWidth:0 }}/>
+                    {rep.monthYear && rep.monthYear !== MONTH_YEAR && (
+                      <span title={`Added in ${fmtMonth(rep.monthYear)}`} style={{
+                        flexShrink:0, fontSize:9, padding:'2px 6px', borderRadius:4,
+                        background:'var(--bg2)', color:'var(--dim)',
+                        fontFamily:"'JetBrains Mono',monospace", fontWeight:600, letterSpacing:.3,
+                        border:'1px solid var(--b2)', whiteSpace:'nowrap',
+                      }}>
+                        {fmtMonth(rep.monthYear)}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Status + actions + delete */}
+                  <div style={{ display:'flex', alignItems:'center', gap:5, flexShrink:0, flexWrap:'nowrap' }}>
+                    <span className={`status-pill sp-${rep.status||'active'}`}>
+                      {rep.status === 'closed' ? '✓ Closed' : '● Active'}
+                    </span>
+                    {rep.status !== 'closed' && (
+                      <>
+                        <button
+                          style={{ background:'rgba(14,165,233,.1)', color:'#0ea5e9',
+                            border:'1px solid rgba(14,165,233,.28)', borderRadius:7,
+                            padding:'4px 12px', fontSize:11, fontWeight:700, cursor:'pointer',
+                            whiteSpace:'nowrap', fontFamily:"'JetBrains Mono',monospace",
+                            transition:'all .15s' }}
+                          onClick={() => setOfferModal({ repId:rep.id, repName:rep.clientName||'Buyer' })}>
+                          📤 Offer Made
+                        </button>
+                        <button className="act-btn act-btn-amber" onClick={() => closeBuyerRep(rep)}>
+                          ✓ Close Rep
+                        </button>
+                      </>
+                    )}
+                    <button className="btn-del" onClick={() => removeBuyerRep(rep)}>✕</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Add new buyer rep */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:8,
+              borderTop:'1px solid var(--b1)', paddingTop:12, alignItems:'center' }}>
+              <input className="field-input" value={newRepClient}
+                onChange={e => setNewRepClient(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addBuyerRep()}
+                placeholder="New buyer client name…" style={{ padding:'8px 12px' }}/>
+              <button onClick={addBuyerRep} style={{
+                background:'var(--blue)', border:'none', color:'#fff', borderRadius:9,
+                padding:'9px 16px', fontSize:13, fontWeight:600, cursor:'pointer', lineHeight:1,
+                display:'flex', alignItems:'center', gap:5, whiteSpace:'nowrap', transition:'all .15s',
+                flexShrink:0,
+              }}>+ Add</button>
+            </div>
+            </div></div>{/* /resp-table-inner /resp-table */}
           </div>
         </div>
 
@@ -1062,6 +1266,15 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
 
       </div>
+      )}
+
+      {/* ── Offer Modal ─────────────────────────────────── */}
+      {offerModal && (
+        <OfferModal
+          repName={offerModal.repName}
+          onSubmit={submitBuyerRepOffer}
+          onClose={() => setOfferModal(null)}
+        />
       )}
     </div>
   )

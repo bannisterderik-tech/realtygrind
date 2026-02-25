@@ -179,6 +179,7 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
         )}
       </div>
 
+      <div className="resp-table"><div className="resp-table-inner">
       {/* Column labels */}
       <div style={{ display:'grid', gridTemplateColumns:cols, gap:8, padding:'3px 13px', marginBottom:5 }}>
         <span className="label">ADDRESS</span>
@@ -240,6 +241,7 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
           }}>+</button>
         </div>
       )}
+      </div></div>{/* /resp-table-inner /resp-table */}
     </div>
   )
 }
@@ -603,25 +605,25 @@ function Dashboard({ theme, onToggleTheme }) {
 
       {/* ── Nav ─────────────────────────────────────────────── */}
       <nav className="topnav">
-        <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
           <Wordmark light/>
-          <span style={{ width:1, height:20, background:'rgba(255,255,255,.1)', display:'block', flexShrink:0 }}/>
-          <span style={{ fontSize:10, color:'var(--nav-sub)', fontFamily:"'JetBrains Mono',monospace",
+          <span className="mob-hide" style={{ width:1, height:20, background:'rgba(255,255,255,.1)', display:'block', flexShrink:0 }}/>
+          <span className="mob-hide" style={{ fontSize:10, color:'var(--nav-sub)', fontFamily:"'JetBrains Mono',monospace",
             letterSpacing:.5 }}>{MONTH_YEAR}</span>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:7 }}>
           <ThemeToggle theme={theme} onToggle={onToggleTheme}/>
 
-          <span style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
+          {/* Board + Teams — hidden on mobile */}
+          <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
+          <button className="nav-btn mob-hide" onClick={()=>setPage('leaderboard')}>🏆 Board</button>
+          <button className="nav-btn mob-hide" onClick={()=>setPage('teams')}>👥 Teams</button>
 
-          <button className="nav-btn" onClick={()=>setPage('leaderboard')}>🏆 Board</button>
-          <button className="nav-btn" onClick={()=>setPage('teams')}>👥 Teams</button>
           <button className="nav-btn" onClick={()=>setPage('directory')}>🔗 Tools</button>
 
-          <span style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
-
-          {/* Rank chip */}
-          <div style={{ background:'rgba(255,255,255,.06)', border:`1px solid ${rank.color}38`,
+          {/* Rank + Streak chips — hidden on mobile */}
+          <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
+          <div className="mob-hide" style={{ background:'rgba(255,255,255,.06)', border:`1px solid ${rank.color}38`,
             borderRadius:9, padding:'5px 11px', display:'flex', alignItems:'center', gap:9 }}>
             <span style={{ fontSize:12, fontWeight:600, color:rank.color }}>{rank.icon} {rank.name}</span>
             <div style={{ width:44, height:3, background:'rgba(255,255,255,.1)', borderRadius:2, overflow:'hidden' }}>
@@ -633,7 +635,7 @@ function Dashboard({ theme, onToggleTheme }) {
             </span>
           </div>
 
-          <div style={{ background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,165,0,.18)',
+          <div className="mob-hide" style={{ background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,165,0,.18)',
             borderRadius:9, padding:'5px 11px', textAlign:'center' }}>
             <div style={{ fontSize:9, color:'var(--nav-sub)', letterSpacing:.8, lineHeight:1 }}>STREAK</div>
             <div className="serif" style={{ fontSize:15, color:'#fb923c', lineHeight:1.2 }}>🔥 {streak}</div>
@@ -642,7 +644,7 @@ function Dashboard({ theme, onToggleTheme }) {
           <button className="nav-btn active" onClick={()=>setPage('profile')}>
             {profile?.full_name?.split(' ')[0]||'Profile'}
           </button>
-          <button className="btn-ghost" style={{ background:'transparent', border:'1px solid rgba(255,255,255,.09)', color:'var(--nav-sub)', fontSize:12 }}
+          <button className="btn-ghost mob-hide" style={{ background:'transparent', border:'1px solid rgba(255,255,255,.09)', color:'var(--nav-sub)', fontSize:12 }}
             onClick={()=>supabase.auth.signOut()}>Sign out</button>
         </div>
       </nav>
@@ -713,7 +715,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
         {/* ══ TODAY ══════════════════════════════════════════ */}
         {tab==='today' && (
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 220px', gap:20, alignItems:'start', animation:'fadeUp .3s ease' }}>
+          <div className="today-grid">
 
             {/* Habits checklist */}
             <div className="card" style={{ padding:24 }}>
@@ -1022,6 +1024,7 @@ function Dashboard({ theme, onToggleTheme }) {
           </div>
 
           <div className="card" style={{ padding:20 }}>
+            <div className="resp-table"><div className="resp-table-inner" style={{ minWidth:480 }}>
             {/* Column headers */}
             <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 115px auto', gap:8, padding:'3px 13px', marginBottom:6 }}>
               <span className="label">Address</span>
@@ -1120,6 +1123,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 flexShrink:0,
               }}>+ Add</button>
             </div>
+            </div></div>{/* /resp-table-inner /resp-table */}
           </div>
         </div>
 
@@ -1140,6 +1144,7 @@ function Dashboard({ theme, onToggleTheme }) {
           </div>
 
           <div className="card" style={{ padding:20 }}>
+            <div className="resp-table"><div className="resp-table-inner" style={{ minWidth:380 }}>
             {/* Column headers */}
             <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:8, padding:'3px 13px', marginBottom:6 }}>
               <span className="label">Client Name</span>
@@ -1213,6 +1218,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 flexShrink:0,
               }}>+ Add</button>
             </div>
+            </div></div>{/* /resp-table-inner /resp-table */}
           </div>
         </div>
 

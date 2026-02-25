@@ -348,6 +348,54 @@ body,.page { background: var(--bg); color: var(--text); }
   height: 1px; background: linear-gradient(90deg, var(--b2), transparent);
   margin: 32px 0 24px;
 }
+
+/* ══════════════════════════════════════════════════════════
+   RESPONSIVE
+   ══════════════════════════════════════════════════════════ */
+
+/* Today tab — 2-col desktop, 1-col mobile */
+.today-grid {
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 20px;
+  align-items: start;
+  animation: fadeUp .3s ease;
+}
+
+/* Horizontal-scroll wrapper for wide grids on mobile */
+.resp-table { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.resp-table-inner { min-width: 500px; }
+
+/* ── Tablet ≤ 900px ─────────────────────────────────────── */
+@media (max-width: 900px) {
+  .page-inner { padding: 24px 16px; }
+  .topnav     { padding: 0 14px; }
+}
+
+/* ── Mobile ≤ 700px ─────────────────────────────────────── */
+@media (max-width: 700px) {
+  .page-inner  { padding: 16px 12px; }
+  .topnav      { padding: 0 10px; height: 52px; }
+  .mob-hide    { display: none !important; }
+  .today-grid  { grid-template-columns: 1fr; }
+  .stat-grid   { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 7px; }
+  .tabs        { flex-wrap: wrap; gap: 4px; }
+  .tab-item    { font-size: 12px; padding: 8px 12px; }
+  .section-sub { font-size: 11px; }
+  .section-divider { margin: 22px 0 16px; }
+  .resp-table-inner { min-width: 450px; }
+  /* Larger tap targets */
+  .chk     { width: 26px !important; height: 26px !important; }
+  .btn-del { width: 34px !important; height: 34px !important; }
+}
+
+/* ── Small phones ≤ 480px ───────────────────────────────── */
+@media (max-width: 480px) {
+  .page-inner { padding: 12px 10px; }
+  .stat-grid  { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .tab-item   { font-size: 11px; padding: 7px 10px; }
+  .stat-card  { padding: 10px 10px; }
+}
 `
 
 // ─── React components ──────────────────────────────────────────────────────────

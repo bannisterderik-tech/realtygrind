@@ -937,7 +937,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [customTasks,         setCustomTasks]         = useState([])
   const [deletedDefaultTasks, setDeletedDefaultTasks] = useState([])
   const [customDone,          setCustomDone]          = useState({}) // { 'uuid-week-day': true }
-  const [customSkippedToday,  setCustomSkippedToday]  = useState([]) // UUIDs of custom defaults skipped today
+  const [skippedTodayTasks,   setSkippedTodayTasks]   = useState([]) // custom default tasks skipped for today
   const [addTaskModal,  setAddTaskModal]  = useState(false)
   const todayDate = new Date().toISOString().slice(0,10)
 
@@ -972,7 +972,11 @@ function Dashboard({ theme, onToggleTheme }) {
 
     if (ctRes.data) {
       const toTask = t => ({ id:t.id, label:t.label, icon:t.icon, xp:t.xp, isDefault:t.is_default, specificDate:t.specific_date })
-      setCustomTasks(ctRes.data.filter(t => !t.is_deleted).map(toTask))
+      const allNonDeleted = ctRes.data.filter(t => !t.is_deleted).map(toTask)
+      // Split: tasks skipped for today go to skippedTodayTasks, rest stay in customTasks
+      const persistedSkips = (profRes.data?.habit_prefs?.skipped||{})[todayDate] || []
+      setCustomTasks(allNonDeleted.filter(t => !t.isDefault || !persistedSkips.includes(String(t.id))))
+      setSkippedTodayTasks(allNonDeleted.filter(t => t.isDefault && persistedSkips.includes(String(t.id))))
       setDeletedDefaultTasks(ctRes.data.filter(t => t.is_deleted).map(toTask))
     }
 
@@ -1001,16 +1005,8 @@ function Dashboard({ theme, onToggleTheme }) {
       setXp(profRes.data.xp||0)
       setStreak(profRes.data.streak||0)
       setShowCommSummary(profRes.data.show_commission||false)
-      if (profRes.data.habit_prefs) {
-        setHabitPrefs(profRes.data.habit_prefs)
-        // Populate skipped custom tasks for today from persisted prefs
-        if (ctRes.data) {
-          const skippedIds = (profRes.data.habit_prefs.skipped||{})[todayDate] || []
-          const customDefaultIds = new Set(ctRes.data.filter(t => !t.is_deleted && t.is_default).map(t => String(t.id)))
-          setCustomSkippedToday(skippedIds.filter(id => customDefaultIds.has(id)))
-        }
-      }
-      if (profRes.data.goals) setGoals(profRes.data.goals)
+      if (profRes.data.habit_prefs) setHabitPrefs(profRes.data.habit_prefs)
+      if (profRes.data.goals)       setGoals(profRes.data.goals)
     }
     setDbLoading(false)
   }
@@ -1084,14 +1080,16 @@ function Dashboard({ theme, onToggleTheme }) {
     saveProfileHabitPrefs(newPrefs)
   }
 
-  // Custom default task skip/restore — updates local state immediately for instant UI feedback
-  function skipCustomTaskToday(id) {
-    setCustomSkippedToday(prev => prev.includes(String(id)) ? prev : [...prev, String(id)])
-    skipHabitToday(id)
+  // Custom default task skip/restore — moves task object between states for instant UI feedback
+  function skipCustomTaskToday(task) {
+    setCustomTasks(prev => prev.filter(t => t.id !== task.id))
+    setSkippedTodayTasks(prev => [...prev, task])
+    skipHabitToday(task.id)
   }
-  function unSkipCustomTaskToday(id) {
-    setCustomSkippedToday(prev => prev.filter(x => x !== String(id)))
-    unSkipHabitToday(id)
+  function unSkipCustomTaskToday(task) {
+    setSkippedTodayTasks(prev => prev.filter(t => t.id !== task.id))
+    setCustomTasks(prev => [...prev, { ...task }])
+    unSkipHabitToday(task.id)
   }
 
   // ── Habits ─────────────────────────────────────────────────────────────────
@@ -1379,8 +1377,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
   // ── Daily skip ───────────────────────────────────────────────────────────
   const todaySkipped       = (habitPrefs.skipped||{})[todayDate] || []
-  const effectiveToday     = effectiveHabits.filter(h =>
-    !todaySkipped.includes(String(h.id)) && !customSkippedToday.includes(String(h.id)))
+  const effectiveToday     = effectiveHabits.filter(h => !todaySkipped.includes(String(h.id)))
   const todayBuiltInActive = builtInEffective.filter(h => !todaySkipped.includes(h.id))
 
   const totalHabitChecks = builtInEffective.reduce((a,h)=>a+habits[h.id].flat().filter(Boolean).length,0)
@@ -1762,7 +1759,7 @@ function Dashboard({ theme, onToggleTheme }) {
                           custom
                         </span>
                         {!done && (
-                          <button onClick={()=>skipCustomTaskToday(h.id)} title="Skip for today"
+                          <button onClick={()=>skipCustomTaskToday(h)} title="Skip for today"
                             style={{ background:'none', border:'none', cursor:'pointer', color:'var(--dim)',
                               fontSize:14, padding:'2px 4px', lineHeight:1, flexShrink:0, opacity:.6 }}>✕</button>
                         )}
@@ -1816,30 +1813,24 @@ function Dashboard({ theme, onToggleTheme }) {
                     </button>
 
                     {/* Skipped custom tasks — restore inline */}
-                    {(()=>{
-                      const skippedCustoms = customTasks.filter(
-                        t => t.isDefault && customSkippedToday.includes(String(t.id))
-                      )
-                      if (!skippedCustoms.length) return null
-                      return (
-                        <div style={{ marginTop:16, paddingTop:14, borderTop:'1px dashed var(--b2)' }}>
-                          <div style={{ fontSize:10, color:'var(--dim)', fontWeight:700, letterSpacing:1,
-                            marginBottom:8, textTransform:'uppercase' }}>Skipped Today</div>
-                          {skippedCustoms.map(t => (
-                            <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8,
-                              padding:'8px 4px', borderBottom:'1px solid var(--b1)', opacity:.55 }}>
-                              <span style={{ fontSize:15, flexShrink:0 }}>{t.icon}</span>
-                              <span style={{ flex:1, fontSize:13, color:'var(--muted)',
-                                textDecoration:'line-through', minWidth:0 }}>{t.label}</span>
-                              <span style={{ fontSize:11, color:'var(--dim)',
-                                fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>+{t.xp} XP</span>
-                              <button className="btn-outline" style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }}
-                                onClick={()=>unSkipCustomTaskToday(t.id)}>Restore</button>
-                            </div>
-                          ))}
-                        </div>
-                      )
-                    })()}
+                    {skippedTodayTasks.length > 0 && (
+                      <div style={{ marginTop:16, paddingTop:14, borderTop:'1px dashed var(--b2)' }}>
+                        <div style={{ fontSize:10, color:'var(--dim)', fontWeight:700, letterSpacing:1,
+                          marginBottom:8, textTransform:'uppercase' }}>Skipped Today</div>
+                        {skippedTodayTasks.map(t => (
+                          <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8,
+                            padding:'8px 4px', borderBottom:'1px solid var(--b1)', opacity:.55 }}>
+                            <span style={{ fontSize:15, flexShrink:0 }}>{t.icon}</span>
+                            <span style={{ flex:1, fontSize:13, color:'var(--muted)',
+                              textDecoration:'line-through', minWidth:0 }}>{t.label}</span>
+                            <span style={{ fontSize:11, color:'var(--dim)',
+                              fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>+{t.xp} XP</span>
+                            <button className="btn-outline" style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }}
+                              onClick={()=>unSkipCustomTaskToday(t)}>Restore</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </>
                 )
               })()}

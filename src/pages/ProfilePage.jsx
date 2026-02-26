@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { CSS, Loader, Wordmark, PageNav, ThemeToggle, Ring, getRank, fmtMoney, RANKS } from '../design'
+import { CSS, Loader, Wordmark, ThemeToggle, Ring, getRank, fmtMoney, RANKS } from '../design'
 import { HABITS } from '../habits'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 const CUR_YEAR = new Date().getFullYear()
 
-export default function ProfilePage({ onBack, theme, onToggleTheme }) {
+export default function ProfilePage({ onNavigate, theme, onToggleTheme }) {
   const { user, profile, refreshProfile } = useAuth()
   const rank     = getRank(profile?.xp||0)
   const nextRank = RANKS.find(r => r.min > (profile?.xp||0))
@@ -38,6 +38,9 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
   const [editingTask,  setEditingTask]  = useState(null) // null | task object
   const [habitPrefs,   setHabitPrefs]   = useState({ hidden:[], order:[], edits:{} })
   const [editingHabit, setEditingHabit] = useState(null) // { id, label, icon, xp, isBuiltIn }
+  const [goals,        setGoals]        = useState({ xp:'', prospecting:'', appointments:'', showing:'', closed:'' })
+  const [goalsSaving,  setGoalsSaving]  = useState(false)
+  const [goalsMsg,     setGoalsMsg]     = useState('')
 
   useEffect(()=>{ fetchAnnual(year) },[year])
   useEffect(()=>{ if(activeTab==='history' && !histFetched) fetchHistory() },[activeTab])
@@ -60,6 +63,24 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
         .then(({data}) => { if (data?.habit_prefs) setHabitPrefs(data.habit_prefs) })
     }
   },[user, profile])
+
+  useEffect(()=>{
+    if (!user) return
+    supabase.from('profiles').select('goals').eq('id', user.id).single()
+      .then(({data}) => {
+        if (data?.goals) setGoals(g=>({ ...g, ...Object.fromEntries(Object.entries(data.goals).map(([k,v])=>[k,v||''])) }))
+      })
+  },[user])
+
+  async function saveGoals() {
+    setGoalsSaving(true)
+    const parsed = {}
+    Object.entries(goals).forEach(([k,v])=>{ const n=parseInt(v); if(n>0) parsed[k]=n })
+    await supabase.from('profiles').update({ goals: parsed }).eq('id', user.id)
+    setGoalsSaving(false)
+    setGoalsMsg('Goals saved!')
+    setTimeout(()=>setGoalsMsg(''), 2500)
+  }
 
   async function fetchHistory() {
     setHistLoad(true)
@@ -246,16 +267,6 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
     <>
       <style>{CSS}</style>
       <div className="page">
-        <PageNav
-          left={<>
-            <button className="nav-btn" onClick={onBack}>← Back</button>
-            <Wordmark light/>
-          </>}
-          right={<>
-            <ThemeToggle theme={theme} onToggle={onToggleTheme}/>
-            <span style={{ fontSize:12, color:'var(--nav-sub)', fontStyle:'italic' }}>Profile</span>
-          </>}
-        />
 
         <div className="page-inner" style={{ maxWidth:880 }}>
 
@@ -780,6 +791,39 @@ export default function ProfilePage({ onBack, theme, onToggleTheme }) {
                       <span style={{ fontSize:13, fontWeight:500, color:'var(--text)', fontFamily:"'JetBrains Mono',monospace" }}>{row.v}</span>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              {/* ── Monthly Goals ── */}
+              <div className="card" style={{ padding:24 }}>
+                <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:4 }}>🎯 Monthly Goals</div>
+                <div style={{ fontSize:13, color:'var(--muted)', marginBottom:20 }}>
+                  Set targets to track progress on your dashboard. Leave blank to hide.
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:14 }}>
+                  {[
+                    { key:'xp',           label:'Monthly XP Target',      icon:'⚡', placeholder:'e.g. 2000' },
+                    { key:'prospecting',  label:'Prospecting Calls',       icon:'📞', placeholder:'e.g. 40' },
+                    { key:'appointments', label:'Appointments Booked',     icon:'📅', placeholder:'e.g. 10' },
+                    { key:'showing',      label:'Property Showings',       icon:'🔑', placeholder:'e.g. 20' },
+                    { key:'closed',       label:'Deals to Close',          icon:'🎉', placeholder:'e.g. 3' },
+                  ].map(f=>(
+                    <div key={f.key}>
+                      <div className="label" style={{ marginBottom:5 }}>{f.icon} {f.label}</div>
+                      <input type="number" min="0" className="field-input"
+                        value={goals[f.key]||''}
+                        onChange={e=>setGoals(g=>({...g,[f.key]:e.target.value}))}
+                        placeholder={f.placeholder}
+                        style={{ width:'100%' }}/>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop:18, display:'flex', alignItems:'center', gap:12 }}>
+                  <button className="btn-primary" onClick={saveGoals} disabled={goalsSaving}
+                    style={{ padding:'9px 22px', fontSize:13 }}>
+                    {goalsSaving ? 'Saving…' : 'Save Goals'}
+                  </button>
+                  {goalsMsg && <span style={{ fontSize:12, color:'var(--green)' }}>{goalsMsg}</span>}
                 </div>
               </div>
 

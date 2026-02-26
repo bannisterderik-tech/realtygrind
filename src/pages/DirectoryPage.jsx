@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CSS, Wordmark, PageNav, ThemeToggle } from '../design'
+import { CSS, Wordmark, ThemeToggle } from '../design'
 
 const CALCULATORS = [
   {
@@ -128,7 +128,7 @@ const APPS = [
 
 const CATS = ['All', 'CRM', 'Lead Gen', 'MLS', 'Transactions', 'Research', 'Productivity']
 
-export default function DirectoryPage({ onBack, onNavigate, theme, onToggleTheme }) {
+export default function DirectoryPage({ onNavigate, theme, onToggleTheme }) {
   const [filter, setFilter]   = useState('All')
   const [search, setSearch]   = useState('')
 
@@ -144,16 +144,6 @@ export default function DirectoryPage({ onBack, onNavigate, theme, onToggleTheme
     <>
       <style>{CSS}</style>
       <div className="page">
-        <PageNav
-          left={<>
-            <button className="nav-btn" onClick={onBack}>← Back</button>
-            <Wordmark light/>
-          </>}
-          right={<>
-            <ThemeToggle theme={theme} onToggle={onToggleTheme}/>
-            <span style={{ fontSize:12, color:'var(--nav-sub)', fontStyle:'italic' }}>Team Directory</span>
-          </>}
-        />
 
         <div className="page-inner" style={{ maxWidth:960 }}>
 

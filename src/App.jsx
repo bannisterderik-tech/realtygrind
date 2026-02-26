@@ -902,6 +902,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [xpPop,          setXpPop]          = useState(null)
   const [animCell,       setAnimCell]       = useState(null)
   const [sessionPipeline,setSessionPipeline]= useState({ offer_made:0, offer_received:0, went_pending:0, closed:0 })
+  const [celebration,    setCelebration]    = useState(null) // { address, commission, ytdComm }
 
   // Listings
   const [listings,  setListings]  = useState([])
@@ -926,6 +927,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [showWeeklyUpdate, setShowWeeklyUpdate] = useState(false)
   const [showBuyersUpdate, setShowBuyersUpdate] = useState(false)
   const [habitPrefs,       setHabitPrefs]       = useState({ hidden:[], order:[], edits:{} })
+  const [goals,            setGoals]            = useState({}) // { xp, prospecting, appointments, showing, closed }
 
   // Custom tasks
   const [customTasks,   setCustomTasks]   = useState([])
@@ -995,6 +997,7 @@ function Dashboard({ theme, onToggleTheme }) {
       setStreak(profRes.data.streak||0)
       setShowCommSummary(profRes.data.show_commission||false)
       if (profRes.data.habit_prefs) setHabitPrefs(profRes.data.habit_prefs)
+      if (profRes.data.goals)       setGoals(profRes.data.goals)
     }
     setDbLoading(false)
   }
@@ -1171,7 +1174,11 @@ function Dashboard({ theme, onToggleTheme }) {
     } else if (newStatus === 'closed') {
       // NON-DESTRUCTIVE: keep entry in its current section, also create a Closed record
       const data = await dbInsert('closed', row, 'Offers')
-      if (data) setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:'Offers'}])
+      if (data) {
+        setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:'Offers'}])
+        const comm = parseFloat(String(row.commission||'').replace(/[^0-9.]/g,''))||0
+        setCelebration({ address:row.address||'Deal Closed', commission:row.commission||'', newComm:comm })
+      }
       await awardPipelineXp('closed', '#10b981')
     }
   }
@@ -1180,7 +1187,11 @@ function Dashboard({ theme, onToggleTheme }) {
     if (newStatus === 'closed') {
       // NON-DESTRUCTIVE: keep entry in Went Pending, also create a Closed record
       const data = await dbInsert('closed', row, row.closedFrom||'Pending')
-      if (data) setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:row.closedFrom||'Pending'}])
+      if (data) {
+        setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:row.closedFrom||'Pending'}])
+        const comm = parseFloat(String(row.commission||'').replace(/[^0-9.]/g,''))||0
+        setCelebration({ address:row.address||'Deal Closed', commission:row.commission||'', newComm:comm })
+      }
       await awardPipelineXp('closed', '#10b981')
     }
   }
@@ -1231,7 +1242,11 @@ function Dashboard({ theme, onToggleTheme }) {
       // NON-DESTRUCTIVE: listing stays with 'closed' status, Closed entry created
       await updateListing(listing.id, 'status', 'closed')
       const data = await dbInsert('closed', {address:listing.address, price:lPrice, commission:lComm}, 'Listing')
-      if (data) setClosedDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'closed',closedFrom:'Listing'}])
+      if (data) {
+        setClosedDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'closed',closedFrom:'Listing'}])
+        const comm = parseFloat(String(lComm||'').replace(/[^0-9.]/g,''))||0
+        setCelebration({ address:listing.address||'Deal Closed', commission:lComm||'', newComm:comm })
+      }
       await awardPipelineXp('closed', '#10b981')
     }
   }
@@ -1343,10 +1358,7 @@ function Dashboard({ theme, onToggleTheme }) {
   ]
   const quote = quotes[new Date().getDay()]
 
-  if (page==='teams')       return <TeamsPage     onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
-  if (page==='profile')     return <ProfilePage   onBack={()=>setPage('dashboard')} theme={theme} onToggleTheme={onToggleTheme}/>
-  if (page==='directory')   return <DirectoryPage onBack={()=>setPage('dashboard')} onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>
-  if (page==='apod')        return <APODPage      onBack={()=>setPage('directory')} theme={theme} onToggleTheme={onToggleTheme}/>
+  
 
   return (
     <div className="page">
@@ -1359,10 +1371,81 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
       )}
 
+      {/* ── Deal Celebration ───────────────────────────────── */}
+      {celebration && (() => {
+        const ytd = closedDeals.reduce((a,r)=>{ const n=parseFloat(String(r.commission||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
+        const year = new Date().getFullYear()
+        const confettiColors = ['#10b981','#f59e0b','#3b82f6','#f43f5e','#8b5cf6','#fb923c','#06b6d4','#d97706']
+        const pieces = Array.from({length:22},(_,i)=>({
+          left:`${4+i*4.2}%`, color:confettiColors[i%confettiColors.length],
+          delay:`${(i*0.09).toFixed(2)}s`, dur:`${2.2+(i%4)*0.3}s`,
+          size:i%3===0?10:i%3===1?7:5, rot:i%2===0?1:-1
+        }))
+        return (
+          <div style={{ position:'fixed',inset:0,zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center',
+            background:'rgba(0,0,0,.72)', backdropFilter:'blur(6px)' }}
+            onClick={()=>setCelebration(null)}>
+            {/* Confetti */}
+            <style>{`
+              @keyframes fallConfetti {
+                0%   { transform: translateY(-20px) rotate(0deg) scaleX(1); opacity:1 }
+                50%  { scaleX: 0.6 }
+                100% { transform: translateY(105vh) rotate(720deg) scaleX(0.4); opacity:0 }
+              }
+            `}</style>
+            {pieces.map((p,i)=>(
+              <div key={i} style={{ position:'fixed', top:0, left:p.left,
+                width:p.size, height:p.size*2.4, background:p.color, borderRadius:2,
+                animation:`fallConfetti ${p.dur} ${p.delay} ease-in forwards`, pointerEvents:'none',
+                transform:`rotate(${p.rot*35}deg)` }}/>
+            ))}
+            {/* Card */}
+            <div style={{ background:'var(--surface)', border:'1px solid rgba(255,255,255,.1)', borderRadius:20,
+              padding:'42px 52px', textAlign:'center', maxWidth:400, width:'90%', position:'relative',
+              boxShadow:'0 30px 80px rgba(0,0,0,.5)' }}
+              onClick={e=>e.stopPropagation()}>
+              <div style={{ fontSize:52, marginBottom:8 }}>🎉</div>
+              <div className="serif" style={{ fontSize:28, fontWeight:700, color:'var(--text)', marginBottom:4 }}>
+                Deal Closed!
+              </div>
+              {celebration.address && (
+                <div style={{ fontSize:13, color:'var(--muted)', marginBottom:20, fontStyle:'italic' }}>
+                  {celebration.address}
+                </div>
+              )}
+              {celebration.commission && (
+                <div style={{ fontSize:36, fontWeight:800, color:'#10b981', marginBottom:6,
+                  fontFamily:"'Fraunces',serif" }}>
+                  💰 {celebration.commission}
+                </div>
+              )}
+              <div style={{ fontSize:13, color:'var(--text2)', marginBottom:4 }}>
+                Commission earned
+              </div>
+              {ytd > 0 && (
+                <div style={{ marginTop:14, padding:'10px 18px', background:'rgba(16,185,129,.08)',
+                  border:'1px solid rgba(16,185,129,.2)', borderRadius:10, fontSize:13, color:'#10b981' }}>
+                  📈 {year} Total Commission: <strong>${ytd.toLocaleString()}</strong>
+                </div>
+              )}
+              <div style={{ marginTop:16, fontSize:18, fontWeight:700, color:'#f59e0b',
+                fontFamily:"'Fraunces',serif", letterSpacing:.5 }}>
+                ✨ +300 XP
+              </div>
+              <button onClick={()=>setCelebration(null)} style={{ marginTop:24, padding:'11px 32px',
+                background:'#10b981', border:'none', color:'#fff', borderRadius:10,
+                fontWeight:700, fontSize:14, cursor:'pointer', letterSpacing:.3 }}>
+                🚀 Keep Going!
+              </button>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* ── Nav ─────────────────────────────────────────────── */}
       <nav className="topnav">
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <Wordmark light/>
+          <button style={{ background:'none', border:'none', cursor:'pointer', padding:0 }} onClick={()=>setPage('dashboard')}><Wordmark light/></button>
           <span className="mob-hide" style={{ width:1, height:20, background:'rgba(255,255,255,.1)', display:'block', flexShrink:0 }}/>
           <span className="mob-hide" style={{ fontSize:10, color:'var(--nav-sub)', fontFamily:"'JetBrains Mono',monospace",
             letterSpacing:.5 }}>{MONTH_YEAR}</span>
@@ -1372,9 +1455,9 @@ function Dashboard({ theme, onToggleTheme }) {
 
           {/* Board + Teams — hidden on mobile */}
           <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
-          <button className="nav-btn mob-hide" onClick={()=>setPage('teams')}>👥 Teams</button>
+          <button className={`nav-btn mob-hide${page==='teams'?' active':''}`} onClick={()=>setPage('teams')}>👥 Teams</button>
 
-          <button className="nav-btn" onClick={()=>setPage('directory')}>🔗 Tools</button>
+          <button className={`nav-btn${(page==='directory'||page==='apod')?' active':''}`} onClick={()=>setPage('directory')}>🔗 Tools</button>
 
           {/* Rank + Streak chips — hidden on mobile */}
           <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
@@ -1396,7 +1479,7 @@ function Dashboard({ theme, onToggleTheme }) {
             <div className="serif" style={{ fontSize:15, color:'#fb923c', lineHeight:1.2 }}>🔥 {streak}</div>
           </div>
 
-          <button className="nav-btn active" onClick={()=>setPage('profile')}>
+          <button className={`nav-btn${page==='profile'?' active':''}`} onClick={()=>setPage('profile')}>
             {profile?.full_name?.split(' ')[0]||'Profile'}
           </button>
           <button className="btn-ghost mob-hide" style={{ background:'transparent', border:'1px solid rgba(255,255,255,.09)', color:'var(--nav-sub)', fontSize:12 }}
@@ -1404,7 +1487,12 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
       </nav>
 
-      {dbLoading ? <Loader/> : (
+      {page==='teams'     && <TeamsPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
+      {page==='profile'   && <ProfilePage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
+      {page==='directory' && <DirectoryPage onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
+      {page==='apod'      && <APODPage      onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
+
+      {page==='dashboard' && (dbLoading ? <Loader/> : (
       <div className="page-inner">
 
         {/* ── Header ─────────────────────────────────────────── */}
@@ -1429,14 +1517,20 @@ function Dashboard({ theme, onToggleTheme }) {
             sub={`${todayChecks}/${builtInEffective.length} habits`}
             accent={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'}/>
           <StatCard icon="📅" label="Month"        value={`${monthPct}%`}   color="var(--gold)"  sub={`${totalHabitChecks} checks`}/>
-          <StatCard icon="📅" label="Appointments" value={totalAppts}        color="var(--green)" sub="this month"/>
-          <StatCard icon="🔑" label="Showings"      value={totalShowings}    color="var(--blue)"/>
+          <StatCard icon="📅" label="Appointments" value={totalAppts}        color="var(--green)"
+            sub={goals?.appointments ? `${totalAppts}/${goals.appointments} goal` : 'this month'}
+            accent={goals?.appointments && totalAppts>=goals.appointments ? '#10b981' : undefined}/>
+          <StatCard icon="🔑" label="Showings"      value={totalShowings}    color="var(--blue)"
+            sub={goals?.showing ? `${totalShowings}/${goals.showing} goal` : undefined}
+            accent={goals?.showing && totalShowings>=goals.showing ? '#3b82f6' : undefined}/>
           <StatCard icon="🏡" label="Listed"        value={totalListings}         color="var(--purple)"/>
           <StatCard icon="🤝" label="Buyer Reps"   value={totalBuyerReps}        color="var(--blue)"/>
           <StatCard icon="📤" label="Offers Made"   value={offersMade.length}     color="var(--blue)"/>
           <StatCard icon="📥" label="Offers Rec'd"  value={offersReceived.length} color="var(--purple)"/>
           <StatCard icon="⏳" label="Went Pending"  value={wentPendingCount}      color="var(--gold2)"/>
-          <StatCard icon="🎉" label="Closed"         value={closedDeals.length}    color="var(--green)" sub={closedVol>0?fmtMoney(closedVol):null}/>
+          <StatCard icon="🎉" label="Closed"         value={closedDeals.length}    color="var(--green)"
+            sub={goals?.closed ? `${closedDeals.length}/${goals.closed} goal${closedVol>0?' · '+fmtMoney(closedVol):''}` : closedVol>0?fmtMoney(closedVol):null}
+            accent={goals?.closed && closedDeals.length>=goals.closed ? '#10b981' : undefined}/>
           {showCommSummary && closedComm>0 && <StatCard icon="💰" label="Commission" value={fmtMoney(closedComm)||'$0'} color="var(--green)" accent="#10b981"/>}
         </div>
 
@@ -1463,7 +1557,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
         {/* ── Tabs ──────────────────────────────────────────── */}
         <div className="tabs">
-          {[{id:'today',l:'Today'},{id:'monthly',l:'Monthly Grid'},{id:'weekly',l:'Week View'}].map(t=>(
+          {[{id:'today',l:'Today'},{id:'monthly',l:'Monthly Grid'},{id:'weekly',l:'Week View'},{id:'trends',l:'📈 Trends'}].map(t=>(
             <button key={t.id} className={`tab-item${tab===t.id?' on':''}`} onClick={()=>setTab(t.id)}>{t.l}</button>
           ))}
         </div>
@@ -1667,6 +1761,20 @@ function Dashboard({ theme, onToggleTheme }) {
                 <div style={{ fontSize:10, color:'var(--muted)', marginTop:3, textAlign:'center' }}>
                   all-time: {xp.toLocaleString()} XP
                 </div>
+                {goals?.xp > 0 && (() => {
+                  const pct = Math.min(Math.round(xp / goals.xp * 100), 100)
+                  return (
+                    <div style={{ marginTop:10, padding:'8px 0' }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'var(--muted)', marginBottom:5 }}>
+                        <span>Monthly XP Goal</span>
+                        <span style={{ color:pct>=100?'#10b981':'var(--gold)', fontWeight:700 }}>{xp.toLocaleString()} / {goals.xp.toLocaleString()}</span>
+                      </div>
+                      <div style={{ height:6, background:'rgba(255,255,255,.1)', borderRadius:99, overflow:'hidden' }}>
+                        <div style={{ height:'100%', width:`${pct}%`, background:pct>=100?'#10b981':'var(--gold)', borderRadius:99, transition:'width .5s' }}/>
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {/* Breakdown by source */}
                 {todayXp > 0 && (
@@ -1854,6 +1962,138 @@ function Dashboard({ theme, onToggleTheme }) {
             })}
           </div>
         )}
+
+        {/* ══ TRENDS ══════════════════════════════════════════ */}
+        {tab==='trends' && (() => {
+          // ── Week-by-week completion ──
+          const weekBars = Array.from({length:WEEKS},(_,wi)=>{
+            const checks = builtInEffective.reduce((a,h)=>a+habits[h.id][wi].filter(Boolean).length,0)
+            const total  = Math.max(builtInEffective.length*7,1)
+            return { pct:Math.round(checks/total*100), checks, wi }
+          })
+          // ── Category breakdown ──
+          const cats = {}
+          HABITS.forEach(h=>{
+            if(!cats[h.cat]) cats[h.cat]={ label:h.cat, color:CAT[h.cat]?.color||'#888', done:0, total:0 }
+            cats[h.cat].done  += habits[h.id].flat().filter(Boolean).length
+            cats[h.cat].total += WEEKS*7
+          })
+          const catArr = Object.values(cats).sort((a,b)=>b.done-a.done)
+          const maxCat = Math.max(...catArr.map(c=>c.done),1)
+          // ── Pipeline funnel ──
+          const funnel = [
+            { label:'Appts Booked', val:totalAppts, color:'#0ea5e9' },
+            { label:'Showings',     val:totalShowings, color:'#10b981' },
+            { label:'Offers Made',  val:offersMade.length, color:'#f59e0b' },
+            { label:'Closed',       val:closedDeals.length, color:'#8b5cf6' },
+          ]
+          const maxFunnel = Math.max(...funnel.map(f=>f.val),1)
+          // ── XP breakdown ──
+          const totalMonthHabitXp = builtInEffective.reduce((acc,h)=>{
+            return acc + habits[h.id].flat().reduce((a,done,i)=>{
+              if(!done) return a
+              const wi=Math.floor(i/7), di=i%7
+              const ckey=`${h.id}-${wi}-${di}`
+              const cnt=counters[ckey]||0
+              return a + h.xp + (cnt>0?Math.max(0,cnt-1)*(h.xpEach||0):0)
+            },0)
+          },0)
+          const totalPipeXp = sessionPipelineXp
+          const totalXpShown = totalMonthHabitXp + totalPipeXp || 1
+          return (
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:18, animation:'fadeUp .3s ease', paddingBottom:8 }}>
+
+              {/* Week-by-week */}
+              <div className="card" style={{ padding:22 }}>
+                <div style={{ fontWeight:700, fontSize:13, color:'var(--text)', marginBottom:16 }}>📅 Week-by-Week Completion</div>
+                <div style={{ display:'flex', gap:14, alignItems:'flex-end', height:120 }}>
+                  {weekBars.map(({pct,checks,wi})=>(
+                    <div key={wi} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:pct>=70?'#10b981':pct>=40?'#f59e0b':'#dc2626' }}>{pct}%</div>
+                      <div style={{ width:'100%', background:'var(--b1)', borderRadius:6, overflow:'hidden', height:80 }}>
+                        <div style={{ width:'100%', height:`${Math.max(pct,2)}%`, background:pct>=70?'#10b981':pct>=40?'#f59e0b':'#dc2626',
+                          borderRadius:6, marginTop:`${100-Math.max(pct,2)}%`, transition:'height .5s' }}/>
+                      </div>
+                      <div style={{ fontSize:10, color:'var(--muted)' }}>Wk {wi+1}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Category breakdown */}
+              <div className="card" style={{ padding:22 }}>
+                <div style={{ fontWeight:700, fontSize:13, color:'var(--text)', marginBottom:16 }}>🏷 Habit Category Breakdown</div>
+                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                  {catArr.map(c=>(
+                    <div key={c.label}>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:4 }}>
+                        <span style={{ color:c.color, fontWeight:600, textTransform:'capitalize' }}>{c.label}</span>
+                        <span style={{ color:'var(--muted)' }}>{c.done} / {c.total}</span>
+                      </div>
+                      <div style={{ height:8, background:'var(--b1)', borderRadius:99, overflow:'hidden' }}>
+                        <div style={{ height:'100%', width:`${Math.round(c.done/maxCat*100)}%`,
+                          background:c.color, borderRadius:99, transition:'width .6s' }}/>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Pipeline funnel */}
+              <div className="card" style={{ padding:22 }}>
+                <div style={{ fontWeight:700, fontSize:13, color:'var(--text)', marginBottom:16 }}>🔽 Pipeline This Month</div>
+                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                  {funnel.map(f=>(
+                    <div key={f.label}>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:4 }}>
+                        <span style={{ color:f.color, fontWeight:600 }}>{f.label}</span>
+                        <span style={{ fontWeight:700, color:'var(--text)' }}>{f.val}</span>
+                      </div>
+                      <div style={{ height:10, background:'var(--b1)', borderRadius:99, overflow:'hidden' }}>
+                        <div style={{ height:'100%', width:`${Math.max(Math.round(f.val/maxFunnel*100),f.val>0?4:0)}%`,
+                          background:f.color, borderRadius:99, transition:'width .6s' }}/>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* XP breakdown */}
+              <div className="card" style={{ padding:22 }}>
+                <div style={{ fontWeight:700, fontSize:13, color:'var(--text)', marginBottom:16 }}>⚡ XP Sources (Session)</div>
+                <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:18 }}>
+                  <div style={{ fontSize:32, fontWeight:800, color:'var(--gold)', fontFamily:"'Fraunces',serif" }}>
+                    {(totalMonthHabitXp+totalPipeXp).toLocaleString()}
+                  </div>
+                  <div style={{ fontSize:11, color:'var(--muted)' }}>total XP this session</div>
+                </div>
+                {[
+                  { label:'Habits', val:totalMonthHabitXp, color:'#0ea5e9' },
+                  { label:'Pipeline', val:totalPipeXp, color:'#10b981' },
+                ].map(s=>(
+                  <div key={s.label} style={{ marginBottom:10 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:4 }}>
+                      <span style={{ color:s.color, fontWeight:600 }}>{s.label}</span>
+                      <span style={{ color:'var(--text)' }}>+{s.val} XP</span>
+                    </div>
+                    <div style={{ height:8, background:'var(--b1)', borderRadius:99, overflow:'hidden' }}>
+                      <div style={{ height:'100%', width:`${Math.max(Math.round(s.val/totalXpShown*100),s.val>0?3:0)}%`,
+                        background:s.color, borderRadius:99, transition:'width .6s' }}/>
+                    </div>
+                  </div>
+                ))}
+                <div style={{ marginTop:16, padding:'10px 14px', background:'rgba(255,255,255,.03)',
+                  border:'1px solid var(--b1)', borderRadius:10, fontSize:12 }}>
+                  <div style={{ color:'var(--muted)', marginBottom:2 }}>Lifetime XP</div>
+                  <div style={{ fontWeight:700, color:'var(--gold)', fontFamily:"'Fraunces',serif", fontSize:18 }}>
+                    {xp.toLocaleString()} XP — {rank.icon} {rank.name}
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          )
+        })()}
 
         {/* ══ LISTINGS ════════════════════════════════════════ */}
         <div style={{ marginTop:36 }}>
@@ -2139,7 +2379,7 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
 
       </div>
-      )}
+      ))}
 
       {/* ── Offer Modal ─────────────────────────────────── */}
       {offerModal && (

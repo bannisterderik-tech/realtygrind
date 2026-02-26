@@ -1379,6 +1379,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const todaySkipped       = (habitPrefs.skipped||{})[todayDate] || []
   const effectiveToday     = effectiveHabits.filter(h => !todaySkipped.includes(String(h.id)))
   const todayBuiltInActive = builtInEffective.filter(h => !todaySkipped.includes(h.id))
+  const skippedBuiltInToday = builtInEffective.filter(h => todaySkipped.includes(String(h.id)))
 
   const totalHabitChecks = builtInEffective.reduce((a,h)=>a+habits[h.id].flat().filter(Boolean).length,0)
   const totalPossible    = Math.max(builtInEffective.length,1)*WEEKS*7
@@ -1812,11 +1813,23 @@ function Dashboard({ theme, onToggleTheme }) {
                       + Add task for today
                     </button>
 
-                    {/* Skipped custom tasks — restore inline */}
-                    {skippedTodayTasks.length > 0 && (
+                    {/* Skipped habits & tasks — restore inline */}
+                    {(skippedBuiltInToday.length > 0 || skippedTodayTasks.length > 0) && (
                       <div style={{ marginTop:16, paddingTop:14, borderTop:'1px dashed var(--b2)' }}>
                         <div style={{ fontSize:10, color:'var(--dim)', fontWeight:700, letterSpacing:1,
                           marginBottom:8, textTransform:'uppercase' }}>Skipped Today</div>
+                        {skippedBuiltInToday.map(h => (
+                          <div key={h.id} style={{ display:'flex', alignItems:'center', gap:8,
+                            padding:'8px 4px', borderBottom:'1px solid var(--b1)', opacity:.55 }}>
+                            <span style={{ fontSize:15, flexShrink:0 }}>{h.icon}</span>
+                            <span style={{ flex:1, fontSize:13, color:'var(--muted)',
+                              textDecoration:'line-through', minWidth:0 }}>{h.label}</span>
+                            <span style={{ fontSize:11, color:'var(--dim)',
+                              fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>+{h.xp} XP</span>
+                            <button className="btn-outline" style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }}
+                              onClick={()=>unSkipHabitToday(h.id)}>Restore</button>
+                          </div>
+                        ))}
                         {skippedTodayTasks.map(t => (
                           <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8,
                             padding:'8px 4px', borderBottom:'1px solid var(--b1)', opacity:.55 }}>

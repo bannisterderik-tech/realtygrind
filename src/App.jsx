@@ -2088,7 +2088,7 @@ function Dashboard({ theme, onToggleTheme }) {
           })
           // ── Category breakdown ──
           const cats = {}
-          HABITS.forEach(h=>{
+          builtInEffective.forEach(h=>{
             if(!cats[h.cat]) cats[h.cat]={ label:h.cat, color:CAT[h.cat]?.color||'#888', done:0, total:0 }
             cats[h.cat].done  += habits[h.id].flat().filter(Boolean).length
             cats[h.cat].total += WEEKS*7
@@ -2113,9 +2113,12 @@ function Dashboard({ theme, onToggleTheme }) {
               return a + h.xp + (cnt>0?Math.max(0,cnt-1)*(h.xpEach||0):0)
             },0)
           },0)
-          const totalPipeXp  = sessionPipelineXp
-          const otherXp      = Math.max(0, xp - totalMonthHabitXp - totalPipeXp)
-          const totalXpShown = totalMonthHabitXp + totalPipeXp + otherXp || 1
+          const estimatedPipeXp =
+            offersMade.length     * PIPELINE_XP.offer_made    +
+            offersReceived.length * PIPELINE_XP.offer_received +
+            wentPendingCount      * PIPELINE_XP.went_pending  +
+            closedDeals.length    * PIPELINE_XP.closed
+          const totalXpShown = Math.max(totalMonthHabitXp + estimatedPipeXp, 1)
           return (
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:18, animation:'fadeUp .3s ease', paddingBottom:8 }}>
 
@@ -2126,9 +2129,10 @@ function Dashboard({ theme, onToggleTheme }) {
                   {weekBars.map(({pct,checks,wi})=>(
                     <div key={wi} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
                       <div style={{ fontSize:11, fontWeight:700, color:pct>=70?'#10b981':pct>=40?'#f59e0b':'#dc2626' }}>{pct}%</div>
-                      <div style={{ width:'100%', background:'var(--b1)', borderRadius:6, overflow:'hidden', height:80 }}>
+                      <div style={{ width:'100%', background:'var(--b1)', borderRadius:6, overflow:'hidden', height:80,
+                        display:'flex', flexDirection:'column', justifyContent:'flex-end' }}>
                         <div style={{ width:'100%', height:`${Math.max(pct,2)}%`, background:pct>=70?'#10b981':pct>=40?'#f59e0b':'#dc2626',
-                          borderRadius:6, marginTop:`${100-Math.max(pct,2)}%`, transition:'height .5s' }}/>
+                          borderRadius:6, transition:'height .5s' }}/>
                       </div>
                       <div style={{ fontSize:10, color:'var(--muted)' }}>Wk {wi+1}</div>
                     </div>
@@ -2184,9 +2188,8 @@ function Dashboard({ theme, onToggleTheme }) {
                   <div style={{ fontSize:11, color:'var(--muted)' }}>lifetime XP total</div>
                 </div>
                 {[
-                  { label:'Habits',   val:totalMonthHabitXp, color:'#0ea5e9' },
-                  { label:'Pipeline', val:totalPipeXp,        color:'#10b981' },
-                  ...(otherXp > 0 ? [{ label:'🏆 Bonuses', val:otherXp, color:'#f59e0b' }] : []),
+                  { label:'Habits (this month)',   val:totalMonthHabitXp, color:'#0ea5e9' },
+                  { label:'Pipeline (this month)', val:estimatedPipeXp,   color:'#10b981' },
                 ].map(s=>(
                   <div key={s.label} style={{ marginBottom:10 }}>
                     <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:4 }}>

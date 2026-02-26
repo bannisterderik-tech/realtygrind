@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { CSS, Loader, Wordmark, PageNav, ThemeToggle, Ring, getRank, CAT } from '../design'
+import { CSS, Loader, Wordmark, ThemeToggle, Ring, getRank, CAT } from '../design'
 
 const HABITS_FOR_DISPLAY = [
   { id:'prospecting', label:'Prospecting', cat:'leads' },
@@ -11,7 +11,7 @@ const HABITS_FOR_DISPLAY = [
   { id:'market', label:'Market', cat:'market' },
 ]
 
-export default function TeamsPage({ onBack, theme, onToggleTheme }) {
+export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const { user, profile, refreshProfile } = useAuth()
   const [mode,       setMode]       = useState('menu')
   const [teamName,   setTeamName]   = useState('')
@@ -22,6 +22,8 @@ export default function TeamsPage({ onBack, theme, onToggleTheme }) {
   const [success,    setSuccess]    = useState('')
   const [teamData,   setTeamData]   = useState(null)
   const [memberStats,setMemberStats]= useState({})
+  const [challengeForm, setChallengeForm] = useState(null) // null | { title, metric, bonusXp }
+  const [challengeSaving, setChallengeSaving] = useState(false)
 
   const MONTH_YEAR = new Date().toISOString().slice(0,7)
 
@@ -97,20 +99,70 @@ export default function TeamsPage({ onBack, theme, onToggleTheme }) {
     setMode('menu'); setMembers([]); setTeamData(null)
   }
 
+  const CHALLENGE_METRICS = [
+    { value:'prospecting',  label:'Prospecting Calls' },
+    { value:'appointments', label:'Appointments Booked' },
+    { value:'showing',      label:'Property Showings' },
+    { value:'newlisting',   label:'Listings Taken' },
+    { value:'closed',       label:'Deals Closed' },
+    { value:'xp',           label:'Total XP' },
+  ]
+
+  function getMemberMetricVal(memberId, metric) {
+    const s = memberStats[memberId]||{}
+    if (metric === 'xp') return members.find(m=>m.id===memberId)?.xp || 0
+    if (metric === 'closed') return s.closed||0
+    return s.habits?.[metric]||0
+  }
+
+  async function saveChallenge() {
+    if (!challengeForm?.title?.trim() || !challengeForm?.metric) return
+    setChallengeSaving(true)
+    const newC = {
+      id: Date.now().toString(36),
+      title: challengeForm.title.trim(),
+      metric: challengeForm.metric,
+      bonusXp: parseInt(challengeForm.bonusXp)||0,
+      createdAt: new Date().toISOString(),
+      status: 'active',
+      winnerId: null
+    }
+    const existing = teamData?.team_prefs?.challenges || []
+    const updated = { ...(teamData?.team_prefs||{}), challenges: [...existing, newC] }
+    await supabase.from('teams').update({ team_prefs: updated }).eq('id', profile.team_id)
+    setTeamData(td => ({ ...td, team_prefs: updated }))
+    setChallengeForm(null)
+    setChallengeSaving(false)
+  }
+
+  async function endChallenge(challengeId) {
+    const challenge = (teamData?.team_prefs?.challenges||[]).find(c=>c.id===challengeId)
+    if (!challenge) return
+    // Find winner
+    const ranked = [...members].sort((a,b) => getMemberMetricVal(b.id, challenge.metric) - getMemberMetricVal(a.id, challenge.metric))
+    const winner = ranked[0]
+    if (!winner) return
+    // Award bonus XP
+    if (challenge.bonusXp > 0) {
+      const newXp = (winner.xp||0) + challenge.bonusXp
+      await supabase.from('profiles').update({ xp: newXp }).eq('id', winner.id)
+      setMembers(ms => ms.map(m => m.id===winner.id ? {...m, xp:newXp} : m))
+    }
+    // Mark ended
+    const updated = {
+      ...(teamData?.team_prefs||{}),
+      challenges: (teamData.team_prefs?.challenges||[]).map(c =>
+        c.id===challengeId ? { ...c, status:'ended', winnerId:winner.id } : c
+      )
+    }
+    await supabase.from('teams').update({ team_prefs: updated }).eq('id', profile.team_id)
+    setTeamData(td => ({ ...td, team_prefs: updated }))
+  }
+
   return (
     <>
       <style>{CSS}</style>
       <div className="page">
-        <PageNav
-          left={<>
-            <button className="nav-btn" onClick={onBack}>← Back</button>
-            <Wordmark light/>
-          </>}
-          right={<>
-            <ThemeToggle theme={theme} onToggle={onToggleTheme}/>
-            <span style={{ fontSize:12, color:'var(--nav-sub)', fontStyle:'italic' }}>Teams</span>
-          </>}
-        />
 
         <div className="page-inner" style={{ maxWidth:860 }}>
 
@@ -283,6 +335,138 @@ export default function TeamsPage({ onBack, theme, onToggleTheme }) {
                       )
                     })}
                   </div>
+
+                  {/* ── Team Challenges ── */}
+                  {(() => {
+                    const isOwner = teamData?.created_by === user?.id
+                    const allChallenges = teamData?.team_prefs?.challenges || []
+                    const active  = allChallenges.filter(c=>c.status==='active')
+                    const ended   = allChallenges.filter(c=>c.status==='ended').slice(-3).reverse()
+                    return (
+                      <div style={{ marginTop:28 }}>
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+                          <div className="serif" style={{ fontSize:20, color:'var(--text)' }}>🏆 Team Challenges</div>
+                          {isOwner && !challengeForm && (
+                            <button className="btn-outline" onClick={()=>setChallengeForm({ title:'', metric:'prospecting', bonusXp:'100' })}
+                              style={{ fontSize:12 }}>+ New Challenge</button>
+                          )}
+                        </div>
+
+                        {/* Create form (owner only) */}
+                        {isOwner && challengeForm && (
+                          <div className="card" style={{ padding:20, marginBottom:16, border:'1px solid rgba(217,119,6,.3)', background:'var(--gold3)' }}>
+                            <div className="serif" style={{ fontSize:15, color:'var(--text)', marginBottom:14 }}>New Challenge</div>
+                            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                              <div>
+                                <div className="label" style={{ marginBottom:5 }}>Challenge Title</div>
+                                <input className="field-input" value={challengeForm.title}
+                                  onChange={e=>setChallengeForm(f=>({...f,title:e.target.value}))}
+                                  placeholder="e.g. Most Prospecting Calls This Week 📞"
+                                  style={{ width:'100%' }}/>
+                              </div>
+                              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                                <div>
+                                  <div className="label" style={{ marginBottom:5 }}>Metric</div>
+                                  <select className="field-input" value={challengeForm.metric}
+                                    onChange={e=>setChallengeForm(f=>({...f,metric:e.target.value}))}
+                                    style={{ width:'100%' }}>
+                                    {CHALLENGE_METRICS.map(m=>(
+                                      <option key={m.value} value={m.value}>{m.label}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <div className="label" style={{ marginBottom:5 }}>Bonus XP for Winner</div>
+                                  <input type="number" className="field-input" value={challengeForm.bonusXp}
+                                    onChange={e=>setChallengeForm(f=>({...f,bonusXp:e.target.value}))}
+                                    placeholder="e.g. 300" style={{ width:'100%' }}/>
+                                </div>
+                              </div>
+                              <div style={{ display:'flex', gap:8, marginTop:4 }}>
+                                <button className="btn-primary" onClick={saveChallenge} disabled={challengeSaving}
+                                  style={{ fontSize:13, padding:'9px 22px' }}>
+                                  {challengeSaving?'Saving…':'🚀 Launch Challenge'}
+                                </button>
+                                <button className="btn-outline" onClick={()=>setChallengeForm(null)}
+                                  style={{ fontSize:13 }}>Cancel</button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Active challenges */}
+                        {active.length===0 && !challengeForm && (
+                          <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic', padding:'16px 0' }}>
+                            {isOwner ? 'No active challenges. Create one to motivate your team!' : 'No active challenges right now.'}
+                          </div>
+                        )}
+                        {active.map(c=>{
+                          const metricLabel = CHALLENGE_METRICS.find(m=>m.value===c.metric)?.label || c.metric
+                          const ranked = [...members]
+                            .map(m=>({ ...m, val: getMemberMetricVal(m.id, c.metric) }))
+                            .sort((a,b)=>b.val-a.val)
+                          const maxVal = Math.max(...ranked.map(r=>r.val), 1)
+                          return (
+                            <div key={c.id} className="card" style={{ padding:20, marginBottom:12, border:'1px solid rgba(217,119,6,.2)' }}>
+                              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14, gap:8 }}>
+                                <div>
+                                  <div style={{ fontWeight:700, fontSize:15, color:'var(--text)' }}>{c.title}</div>
+                                  <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>
+                                    {metricLabel} · {c.bonusXp > 0 ? `+${c.bonusXp} XP for winner` : 'Bragging rights'}
+                                  </div>
+                                </div>
+                                {isOwner && (
+                                  <button onClick={()=>{ if(confirm('End challenge and award XP to leader?')) endChallenge(c.id) }}
+                                    style={{ background:'rgba(220,38,38,.08)', border:'1px solid rgba(220,38,38,.2)',
+                                      color:'var(--red)', borderRadius:7, padding:'6px 12px', fontSize:11, cursor:'pointer', fontWeight:600, whiteSpace:'nowrap' }}>
+                                    End & Award
+                                  </button>
+                                )}
+                              </div>
+                              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                                {ranked.map((m,i)=>(
+                                  <div key={m.id}>
+                                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:3 }}>
+                                      <span style={{ color:i===0?'var(--gold)':'var(--text)', fontWeight:i===0?700:400 }}>
+                                        {i===0?'🥇 ':i===1?'🥈 ':i===2?'🥉 ':''}{m.full_name||'Agent'}
+                                        {m.id===user.id && <span style={{ marginLeft:5, fontSize:9, color:'var(--muted)' }}>(you)</span>}
+                                      </span>
+                                      <span style={{ fontWeight:700, color:i===0?'var(--gold)':'var(--text)' }}>{m.val}</span>
+                                    </div>
+                                    <div style={{ height:6, background:'var(--b1)', borderRadius:99, overflow:'hidden' }}>
+                                      <div style={{ height:'100%', width:`${Math.max(Math.round(m.val/maxVal*100),m.val>0?4:0)}%`,
+                                        background:i===0?'var(--gold)':i===1?'#94a3b8':'#cd7c32', borderRadius:99, transition:'width .5s' }}/>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        })}
+
+                        {/* Recently ended */}
+                        {ended.length>0 && (
+                          <details style={{ marginTop:8 }}>
+                            <summary style={{ fontSize:12, color:'var(--muted)', cursor:'pointer', userSelect:'none' }}>
+                              Past challenges ({ended.length})
+                            </summary>
+                            <div style={{ marginTop:8, display:'flex', flexDirection:'column', gap:8 }}>
+                              {ended.map(c=>{
+                                const winner = members.find(m=>m.id===c.winnerId)
+                                return (
+                                  <div key={c.id} style={{ padding:'10px 14px', borderRadius:9, background:'var(--bg2)',
+                                    border:'1px solid var(--b1)', fontSize:12, color:'var(--muted)' }}>
+                                    <span style={{ fontWeight:600, color:'var(--text)' }}>{c.title}</span>
+                                    {winner && <span> — 🏆 {winner.full_name||'Agent'} won {c.bonusXp>0?`+${c.bonusXp} XP`:''}</span>}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </>
               )}
             </div>

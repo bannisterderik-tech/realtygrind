@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { CSS, PageNav, Wordmark, ThemeToggle } from '../design'
+import { CSS, Wordmark, ThemeToggle } from '../design'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -368,7 +368,7 @@ function ApodRow({ label, m, y, pct, bold, highlight }) {
 
 // ─── APOD Calculator Page ─────────────────────────────────────────────────────
 
-export default function APODPage({ onBack, theme, onToggleTheme }) {
+export default function APODPage({ onNavigate, theme, onToggleTheme }) {
 
   // ── Inputs ──
   const [address, setAddress]     = useState('')
@@ -632,16 +632,6 @@ export default function APODPage({ onBack, theme, onToggleTheme }) {
     <>
       <style>{CSS}</style>
       <div className="page">
-        <PageNav
-          left={<>
-            <button className="nav-btn" onClick={onBack}>← Back</button>
-            <Wordmark light />
-          </>}
-          right={<>
-            <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-            <span style={{ fontSize: 12, color: 'var(--nav-sub)', fontStyle: 'italic' }}>APOD Calculator</span>
-          </>}
-        />
 
         <div className="page-inner" style={{ maxWidth: 1000 }}>
 

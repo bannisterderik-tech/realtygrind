@@ -969,7 +969,7 @@ function Dashboard({ theme, onToggleTheme }) {
     if (ctRes.data) {
       const toTask = t => ({ id:t.id, label:t.label, icon:t.icon, xp:t.xp, isDefault:t.is_default, specificDate:t.specific_date })
       setCustomTasks(ctRes.data.filter(t => !t.is_deleted).map(toTask))
-      setDeletedDefaultTasks(ctRes.data.filter(t => t.is_deleted && t.is_default).map(toTask))
+      setDeletedDefaultTasks(ctRes.data.filter(t => t.is_deleted).map(toTask))
     }
 
     if (listRes.data) {
@@ -1154,8 +1154,10 @@ function Dashboard({ theme, onToggleTheme }) {
   }
 
   async function deleteCustomTask(id) {
-    await supabase.from('custom_tasks').delete().eq('id',id).eq('user_id',user.id)
+    await supabase.from('custom_tasks').update({ is_deleted: true }).eq('id',id).eq('user_id',user.id)
+    const task = customTasks.find(t => t.id === id)
     setCustomTasks(prev => prev.filter(t => t.id !== id))
+    if (task) setDeletedDefaultTasks(prev => [...prev, { ...task }])
   }
 
   async function restoreCustomTask(task) {

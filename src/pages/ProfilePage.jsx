@@ -42,6 +42,9 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   const [goals,        setGoals]        = useState({ xp:'', prospecting:'', appointments:'', showing:'', closed:'' })
   const [goalsSaving,  setGoalsSaving]  = useState(false)
   const [goalsMsg,     setGoalsMsg]     = useState('')
+  const [gciTarget,     setGciTarget]     = useState('')
+  const [avgCommission, setAvgCommission] = useState('')
+  const [calcResult,    setCalcResult]    = useState(null)
 
   useEffect(()=>{ fetchAnnual(year) },[year])
   useEffect(()=>{ if(activeTab==='history' && !histFetched) fetchHistory() },[activeTab])
@@ -75,7 +78,11 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
     if (!user) return
     supabase.from('profiles').select('goals').eq('id', user.id).single()
       .then(({data}) => {
-        if (data?.goals) setGoals(g=>({ ...g, ...Object.fromEntries(Object.entries(data.goals).map(([k,v])=>[k,v||''])) }))
+        if (data?.goals) {
+          setGoals(g=>({ ...g, ...Object.fromEntries(Object.entries(data.goals).map(([k,v])=>[k,v||''])) }))
+          if (data.goals.gci_target)     setGciTarget(String(data.goals.gci_target))
+          if (data.goals.avg_commission) setAvgCommission(String(data.goals.avg_commission))
+        }
       })
   },[user])
 
@@ -83,6 +90,8 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
     setGoalsSaving(true)
     const parsed = {}
     Object.entries(goals).forEach(([k,v])=>{ const n=parseInt(v); if(n>0) parsed[k]=n })
+    if (parseInt(gciTarget) > 0)     parsed.gci_target     = parseInt(gciTarget)
+    if (parseInt(avgCommission) > 0) parsed.avg_commission = parseInt(avgCommission)
     await supabase.from('profiles').update({ goals: parsed }).eq('id', user.id)
     setGoalsSaving(false)
     setGoalsMsg('Goals saved!')
@@ -262,7 +271,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   }
 
   const curMonth = new Date().toISOString().slice(0,7)
-  const tabs = [{id:'profile',l:'Profile'},{id:'annual',l:'Annual Summary'},{id:'history',l:'Offer History'},{id:'settings',l:'Settings'}]
+  const tabs = [{id:'profile',l:'Profile'},{id:'goals',l:'Goals'},{id:'annual',l:'Annual Summary'},{id:'history',l:'Offer History'},{id:'settings',l:'Settings'}]
 
   // Team role
   const isOnTeam    = !!profile?.team_id
@@ -282,6 +291,49 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   }
   const effectiveHabits = allHabItems
   const hiddenBuiltIns  = HABITS.filter(h => (habitPrefs.hidden||[]).includes(h.id))
+
+  // ── Income Goal Calculator helpers ──────────────────────────────────────────
+  function getMonthsRemaining() {
+    const now = new Date()
+    const diff = (new Date(now.getFullYear(), 11, 31).getMonth() - now.getMonth())
+    return Math.max(diff, 1)
+  }
+  const monthsRemaining = getMonthsRemaining()
+
+  function computeCalc() {
+    const gci  = parseFloat(String(gciTarget).replace(/[^0-9.]/g,''))
+    const comm = parseFloat(String(avgCommission).replace(/[^0-9.]/g,'')) || 10000
+    if (!gci || gci <= 0) return
+    const mo = monthsRemaining, wd = mo * 22
+    const c = gci / comm
+    const s = c * 3
+    const a = s / 0.7
+    const k = a * 20
+    setCalcResult({
+      closings: { year:c, month:c/mo, day:c/wd },
+      showings: { year:s, month:s/mo, day:s/wd },
+      appts:    { year:a, month:a/mo, day:a/wd },
+      calls:    { year:k, month:k/mo, day:k/wd },
+    })
+  }
+
+  async function applyCalcAsGoals() {
+    if (!calcResult) return
+    const newGoals = {
+      ...goals,
+      appointments: String(Math.ceil(calcResult.appts.month)),
+      showing:      String(Math.ceil(calcResult.showings.month)),
+      closed:       String(Math.ceil(calcResult.closings.month)),
+    }
+    setGoals(newGoals)
+    const parsed = {}
+    Object.entries(newGoals).forEach(([k,v])=>{ const n=parseInt(v); if(n>0) parsed[k]=n })
+    if (parseInt(gciTarget) > 0)     parsed.gci_target     = parseInt(gciTarget)
+    if (parseInt(avgCommission) > 0) parsed.avg_commission = parseInt(avgCommission)
+    await supabase.from('profiles').update({ goals: parsed }).eq('id', user.id)
+    setGoalsMsg('Goals applied from calculator!')
+    setTimeout(()=>setGoalsMsg(''), 3000)
+  }
 
   return (
     <>
@@ -583,6 +635,127 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
             </div>
           )}
 
+          {/* ── Goals tab ── */}
+          {activeTab==='goals' && (
+            <div style={{ display:'flex', flexDirection:'column', gap:14, animation:'fadeUp .25s ease' }}>
+
+              {/* Monthly Goals card */}
+              <div className="card" style={{ padding:24 }}>
+                <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:4 }}>🎯 Monthly Goals</div>
+                <div style={{ fontSize:13, color:'var(--muted)', marginBottom:20 }}>
+                  Set targets to track progress on your dashboard. Leave blank to hide.
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(155px,1fr))', gap:14 }}>
+                  {[
+                    { key:'xp',           label:'Monthly XP Target',      icon:'⚡', placeholder:'e.g. 2000' },
+                    { key:'prospecting',  label:'Prospecting Calls',       icon:'📞', placeholder:'e.g. 40' },
+                    { key:'appointments', label:'Appointments Booked',     icon:'📅', placeholder:'e.g. 10' },
+                    { key:'showing',      label:'Property Showings',       icon:'🔑', placeholder:'e.g. 20' },
+                    { key:'closed',       label:'Deals to Close',          icon:'🎉', placeholder:'e.g. 3' },
+                  ].map(f=>(
+                    <div key={f.key}>
+                      <div className="label" style={{ marginBottom:5 }}>{f.icon} {f.label}</div>
+                      <input type="number" min="0" className="field-input"
+                        value={goals[f.key]||''}
+                        onChange={e=>setGoals(g=>({...g,[f.key]:e.target.value}))}
+                        placeholder={f.placeholder}
+                        style={{ width:'100%' }}/>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop:18, display:'flex', alignItems:'center', gap:12 }}>
+                  <button className="btn-primary" onClick={saveGoals} disabled={goalsSaving}
+                    style={{ padding:'9px 22px', fontSize:13 }}>
+                    {goalsSaving ? 'Saving…' : 'Save Goals'}
+                  </button>
+                  {goalsMsg && <span style={{ fontSize:12, color:'var(--green)' }}>{goalsMsg}</span>}
+                </div>
+              </div>
+
+              {/* Income Goal Calculator card */}
+              <div className="card" style={{ padding:24 }}>
+                <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:4 }}>🧮 Income Goal Calculator</div>
+                <div style={{ fontSize:13, color:'var(--muted)', marginBottom:20 }}>
+                  Enter your annual GCI target — we'll reverse-engineer your daily activity requirements.
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:14, marginBottom:18 }}>
+                  <div>
+                    <div className="label" style={{ marginBottom:5 }}>💰 Annual GCI Target</div>
+                    <input type="number" min="0" className="field-input"
+                      value={gciTarget}
+                      onChange={e=>{ setGciTarget(e.target.value); setCalcResult(null) }}
+                      placeholder="e.g. 200000"
+                      style={{ width:'100%', fontFamily:"'JetBrains Mono',monospace", color:'var(--gold2)' }}/>
+                  </div>
+                  <div>
+                    <div className="label" style={{ marginBottom:5 }}>🤝 Avg Commission Per Deal</div>
+                    <input type="number" min="0" className="field-input"
+                      value={avgCommission}
+                      onChange={e=>{ setAvgCommission(e.target.value); setCalcResult(null) }}
+                      placeholder="e.g. 10000"
+                      style={{ width:'100%', fontFamily:"'JetBrains Mono',monospace", color:'var(--green)' }}/>
+                  </div>
+                  <div>
+                    <div className="label" style={{ marginBottom:5 }}>📅 Months Remaining (this year)</div>
+                    <div style={{ padding:'8px 12px', borderRadius:8, background:'var(--bg2)', border:'1px solid var(--b1)',
+                      fontFamily:"'JetBrains Mono',monospace", fontSize:14, color:'var(--muted)' }}>
+                      {monthsRemaining} month{monthsRemaining!==1?'s':''}
+                    </div>
+                  </div>
+                </div>
+                <button className="btn-primary" onClick={computeCalc}
+                  style={{ padding:'9px 24px', fontSize:13, marginBottom: calcResult ? 20 : 0 }}>
+                  Calculate
+                </button>
+                {calcResult && (
+                  <>
+                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, marginBottom:12 }}>
+                      <thead>
+                        <tr style={{ borderBottom:'1.5px solid var(--b1)' }}>
+                          {['Activity','Per Year','Per Month','Per Day'].map((h,i)=>(
+                            <th key={i} style={{ padding:'8px 10px', textAlign:i===0?'left':'right',
+                              color:'var(--muted)', fontWeight:500, fontSize:11, whiteSpace:'nowrap' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          { icon:'📞', label:'Prospecting Calls', key:'calls',    color:'var(--gold2)' },
+                          { icon:'📅', label:'Appointments',      key:'appts',    color:'var(--green)' },
+                          { icon:'🔑', label:'Showings',          key:'showings', color:'#0ea5e9' },
+                          { icon:'🎉', label:'Closings',          key:'closings', color:'var(--green)' },
+                        ].map((row,i)=>(
+                          <tr key={i} style={{ borderBottom:'1px solid var(--b1)' }}>
+                            <td style={{ padding:'10px 10px', color:'var(--text)', fontWeight:500 }}>{row.icon} {row.label}</td>
+                            <td style={{ padding:'10px 10px', textAlign:'right', fontFamily:"'JetBrains Mono',monospace", color:row.color, fontWeight:600 }}>
+                              {Math.ceil(calcResult[row.key].year)}
+                            </td>
+                            <td style={{ padding:'10px 10px', textAlign:'right', fontFamily:"'JetBrains Mono',monospace", color:row.color, fontWeight:600 }}>
+                              {Math.ceil(calcResult[row.key].month)}
+                            </td>
+                            <td style={{ padding:'10px 10px', textAlign:'right', fontFamily:"'JetBrains Mono',monospace", color:row.color, fontWeight:600 }}>
+                              {calcResult[row.key].day < 1
+                                ? `${(calcResult[row.key].day * 22).toFixed(1)}/wk`
+                                : Math.ceil(calcResult[row.key].day)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div style={{ fontSize:10, color:'var(--dim)', marginBottom:16 }}>
+                      Ratios: 3 showings/closing · 70% appt→showing · 20 calls/appt · {monthsRemaining} months × 22 work days
+                    </div>
+                    <button className="btn-primary" onClick={applyCalcAsGoals}
+                      style={{ padding:'9px 24px', fontSize:13, background:'var(--green)', borderColor:'var(--green)' }}>
+                      ✓ Apply as My Goals
+                    </button>
+                  </>
+                )}
+              </div>
+
+            </div>
+          )}
+
           {/* ── Annual tab ── */}
           {activeTab==='annual' && (
             <div style={{ animation:'fadeUp .25s ease' }}>
@@ -804,39 +977,6 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                       <span style={{ fontSize:13, fontWeight:500, color:'var(--text)', fontFamily:"'JetBrains Mono',monospace" }}>{row.v}</span>
                     </div>
                   ))}
-                </div>
-              </div>
-
-              {/* ── Monthly Goals ── */}
-              <div className="card" style={{ padding:24 }}>
-                <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:4 }}>🎯 Monthly Goals</div>
-                <div style={{ fontSize:13, color:'var(--muted)', marginBottom:20 }}>
-                  Set targets to track progress on your dashboard. Leave blank to hide.
-                </div>
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(155px,1fr))', gap:14 }}>
-                  {[
-                    { key:'xp',           label:'Monthly XP Target',      icon:'⚡', placeholder:'e.g. 2000' },
-                    { key:'prospecting',  label:'Prospecting Calls',       icon:'📞', placeholder:'e.g. 40' },
-                    { key:'appointments', label:'Appointments Booked',     icon:'📅', placeholder:'e.g. 10' },
-                    { key:'showing',      label:'Property Showings',       icon:'🔑', placeholder:'e.g. 20' },
-                    { key:'closed',       label:'Deals to Close',          icon:'🎉', placeholder:'e.g. 3' },
-                  ].map(f=>(
-                    <div key={f.key}>
-                      <div className="label" style={{ marginBottom:5 }}>{f.icon} {f.label}</div>
-                      <input type="number" min="0" className="field-input"
-                        value={goals[f.key]||''}
-                        onChange={e=>setGoals(g=>({...g,[f.key]:e.target.value}))}
-                        placeholder={f.placeholder}
-                        style={{ width:'100%' }}/>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ marginTop:18, display:'flex', alignItems:'center', gap:12 }}>
-                  <button className="btn-primary" onClick={saveGoals} disabled={goalsSaving}
-                    style={{ padding:'9px 22px', fontSize:13 }}>
-                    {goalsSaving ? 'Saving…' : 'Save Goals'}
-                  </button>
-                  {goalsMsg && <span style={{ fontSize:12, color:'var(--green)' }}>{goalsMsg}</span>}
                 </div>
               </div>
 

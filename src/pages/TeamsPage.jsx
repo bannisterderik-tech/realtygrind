@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { CSS, Loader, Wordmark, ThemeToggle, Ring, getRank, CAT } from '../design'
+import { CSS, Loader, Wordmark, ThemeToggle, Ring, getRank, CAT, StatCard, fmtMoney } from '../design'
 
 const HABITS_FOR_DISPLAY = [
   { id:'prospecting', label:'Prospecting', cat:'leads' },
@@ -10,6 +10,11 @@ const HABITS_FOR_DISPLAY = [
   { id:'newlisting', label:'Listings', cat:'listings' },
   { id:'market', label:'Market', cat:'market' },
 ]
+
+function getTodayIndices() {
+  const d = new Date()
+  return { week: Math.min(Math.floor((d.getDate()-1)/7),3), day: d.getDay() }
+}
 
 export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const { user, profile, refreshProfile } = useAuth()
@@ -24,6 +29,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [memberStats,setMemberStats]= useState({})
   const [challengeForm, setChallengeForm] = useState(null) // null | { title, metric, bonusXp }
   const [challengeSaving, setChallengeSaving] = useState(false)
+  const [teamsTab,       setTeamsTab]       = useState('roster') // 'roster' | 'admin'
+  const [podForm,        setPodForm]        = useState(null)     // null | { name, memberIds, editingId }
+  const [podSaving,      setPodSaving]      = useState(false)
+  const [podMemberStats, setPodMemberStats] = useState({})       // { [userId]: { todayPct, monthlyPct, xp, streak } }
+  const [podStatsLoaded, setPodStatsLoaded] = useState(false)
+  const [nudgeToast,     setNudgeToast]     = useState('')
 
   const MONTH_YEAR = new Date().toISOString().slice(0,7)
 
@@ -40,10 +51,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     // Load habit stats for all members
     if (mems?.length) {
       const ids = mems.map(m=>m.id)
-      const {data:habs} = await supabase.from('habit_completions').select('user_id,habit_id,counter_value')
+      const {data:habs} = await supabase.from('habit_completions').select('user_id,habit_id,counter_value,week_index,day_index')
         .in('user_id',ids).eq('month_year',MONTH_YEAR)
       const {data:txs} = await supabase.from('transactions').select('user_id,type,price,commission')
         .in('user_id',ids).eq('month_year',MONTH_YEAR)
+      const todayIdx = getTodayIndices()
+      const TOTAL_DAILY = 11
       const stats = {}
       ids.forEach(id=>{
         const mh = (habs||[]).filter(h=>h.user_id===id)
@@ -52,9 +65,22 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
         HABITS_FOR_DISPLAY.forEach(h=>{ habits[h.id] = mh.filter(x=>x.habit_id===h.id).reduce((a,x)=>a+(x.counter_value||1),0) })
         const closedVol  = mt.filter(t=>t.type==='closed').reduce((a,t)=>{ const n=parseFloat(String(t.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
         const closedComm = mt.filter(t=>t.type==='closed').reduce((a,t)=>{ const n=parseFloat(String(t.commission||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
-        stats[id] = { habits, closed:mt.filter(t=>t.type==='closed').length, closedVol, closedComm, totalHabits:mh.length }
+        const todayRows  = mh.filter(h => h.week_index===todayIdx.week && h.day_index===todayIdx.day)
+        const todayDone  = new Set(todayRows.map(h=>h.habit_id)).size
+        const monthDays  = new Set(mh.map(h=>`${h.habit_id}-${h.week_index}-${h.day_index}`)).size
+        const activeDays = new Set(mh.map(h=>`${h.week_index}-${h.day_index}`)).size
+        const monthlyPct = activeDays > 0 ? Math.round(monthDays / (activeDays * TOTAL_DAILY) * 100) : 0
+        stats[id] = {
+          habits, closed:mt.filter(t=>t.type==='closed').length, closedVol, closedComm, totalHabits:mh.length,
+          todayDone, todayPct: Math.round(todayDone / TOTAL_DAILY * 100), monthlyPct, activeDays,
+          appts: habits.appointments||0, showings: habits.showing||0,
+        }
       })
       setMemberStats(stats)
+      // Fetch pod stats if user is in a pod
+      const pods = team?.team_prefs?.pods || []
+      const myPod_ = pods.find(p => p.memberIds?.includes(user?.id))
+      if (myPod_) fetchPodStats(myPod_, mems)
     }
     setLoading(false)
   }
@@ -158,6 +184,76 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     await supabase.from('teams').update({ team_prefs: updated }).eq('id', profile.team_id)
     setTeamData(td => ({ ...td, team_prefs: updated }))
   }
+
+  // ── Accountability Pods ────────────────────────────────────────────────────
+  async function fetchPodStats(pod, mems) {
+    const ids = pod.memberIds.filter(id => id !== user?.id)
+    if (!ids.length) { setPodStatsLoaded(true); return }
+    const todayIdx = getTodayIndices()
+    const { data:habs } = await supabase.from('habit_completions')
+      .select('user_id,habit_id,week_index,day_index')
+      .in('user_id', ids).eq('month_year', MONTH_YEAR)
+    const stats = {}
+    ids.forEach(id => {
+      const member = mems.find(m => m.id === id)
+      if (!member) return
+      const mh = (habs||[]).filter(h => h.user_id === id)
+      const todayRows  = mh.filter(h => h.week_index===todayIdx.week && h.day_index===todayIdx.day)
+      const todayDone  = new Set(todayRows.map(h=>h.habit_id)).size
+      const monthDays  = new Set(mh.map(h=>`${h.habit_id}-${h.week_index}-${h.day_index}`)).size
+      const activeDays = new Set(mh.map(h=>`${h.week_index}-${h.day_index}`)).size
+      stats[id] = {
+        full_name:  member.full_name,
+        xp:         member.xp || 0,
+        streak:     member.streak || 0,
+        todayPct:   Math.round(todayDone / 11 * 100),
+        monthlyPct: activeDays > 0 ? Math.round(monthDays / (activeDays * 11) * 100) : 0,
+      }
+    })
+    setPodMemberStats(stats)
+    setPodStatsLoaded(true)
+  }
+
+  async function savePod() {
+    if (!podForm?.name?.trim() || podForm.memberIds.length < 3 || podForm.memberIds.length > 5) return
+    setPodSaving(true)
+    const allPods_ = teamData?.team_prefs?.pods || []
+    let updatedPods
+    if (podForm.editingId) {
+      updatedPods = allPods_.map(p => p.id===podForm.editingId
+        ? { ...p, name:podForm.name.trim(), memberIds:podForm.memberIds } : p)
+    } else {
+      const occupied = allPods_.flatMap(p => p.memberIds)
+      if (podForm.memberIds.some(id => occupied.includes(id))) {
+        alert('One or more members are already in a pod.')
+        setPodSaving(false); return
+      }
+      updatedPods = [...allPods_, { id:Date.now().toString(36), name:podForm.name.trim(), memberIds:podForm.memberIds }]
+    }
+    const updatedPrefs = { ...(teamData?.team_prefs||{}), pods: updatedPods }
+    await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile.team_id)
+    setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
+    setPodForm(null); setPodSaving(false)
+  }
+
+  async function deletePod(podId) {
+    if (!confirm('Delete this pod?')) return
+    const updatedPods = (teamData?.team_prefs?.pods || []).filter(p => p.id !== podId)
+    const updatedPrefs = { ...(teamData?.team_prefs||{}), pods: updatedPods }
+    await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile.team_id)
+    setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
+  }
+
+  function sendNudge(name) {
+    setNudgeToast(`Nudge sent to ${name}! 👊`)
+    setTimeout(()=>setNudgeToast(''), 3000)
+  }
+
+  // ── Derived values ─────────────────────────────────────────────────────────
+  const isTeamOwner = !!(teamData?.created_by === user?.id)
+  const allPods     = teamData?.team_prefs?.pods || []
+  const myPod       = allPods.find(p => p.memberIds?.includes(user?.id)) || null
+  const myPodMates  = myPod ? members.filter(m => myPod.memberIds.includes(m.id) && m.id !== user?.id) : []
 
   return (
     <>
@@ -271,6 +367,106 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                     </div>
                   )}
 
+                  {/* Nudge toast */}
+                  {nudgeToast && (
+                    <div className="card" style={{ borderColor:'rgba(139,92,246,.3)', color:'#8b5cf6',
+                      padding:'12px 18px', marginBottom:12, display:'flex', justifyContent:'space-between', alignItems:'center',
+                      background:'rgba(139,92,246,.06)', fontSize:13 }}>
+                      {nudgeToast}
+                      <button onClick={()=>setNudgeToast('')} style={{ background:'none', border:'none', cursor:'pointer', fontSize:16, color:'#8b5cf6' }}>✕</button>
+                    </div>
+                  )}
+
+                  {/* My Pod section */}
+                  {myPod ? (
+                    <div className="card" style={{ padding:20, marginBottom:16, border:'1px solid rgba(139,92,246,.25)', background:'rgba(139,92,246,.04)' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
+                        <span style={{ fontSize:16 }}>🫂</span>
+                        <span className="serif" style={{ fontSize:16, color:'var(--text)' }}>{myPod.name}</span>
+                        <span style={{ fontSize:11, color:'var(--muted)' }}>{myPod.memberIds.length} members</span>
+                      </div>
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:12 }}>
+                        {(() => {
+                          const me = members.find(m => m.id===user?.id)
+                          if (!me) return null
+                          const myRank  = getRank(me.xp||0)
+                          const myStats = memberStats[me.id]||{}
+                          return (
+                            <div className="card" style={{ padding:14, border:'1px solid rgba(217,119,6,.3)', background:'var(--gold3)' }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                                <span style={{ fontSize:18 }}>{myRank.icon}</span>
+                                <div style={{ flex:1 }}>
+                                  <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{me.full_name||'Agent'}</div>
+                                  <div style={{ fontSize:10, color:'var(--muted)' }}>{myRank.name} · 🔥 {me.streak||0}</div>
+                                </div>
+                                <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>YOU</span>
+                              </div>
+                              <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
+                                <div style={{ textAlign:'center' }}>
+                                  <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>TODAY</div>
+                                  <Ring pct={myStats.todayPct||0} size={52} color={myRank.color}/>
+                                </div>
+                                <div style={{ textAlign:'center' }}>
+                                  <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>MONTH</div>
+                                  <Ring pct={myStats.monthlyPct||0} size={52} color='#0ea5e9'/>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })()}
+                        {myPodMates.map(mate=>{
+                          const mateRank  = getRank(mate.xp||0)
+                          const mateStats = podMemberStats[mate.id]
+                          return (
+                            <div key={mate.id} className="card" style={{ padding:14 }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                                <span style={{ fontSize:18 }}>{mateRank.icon}</span>
+                                <div style={{ flex:1 }}>
+                                  <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{mate.full_name||'Agent'}</div>
+                                  <div style={{ fontSize:10, color:'var(--muted)' }}>{mateRank.name} · 🔥 {mate.streak||0}</div>
+                                </div>
+                              </div>
+                              {podStatsLoaded && mateStats ? (
+                                <div style={{ display:'flex', gap:10, justifyContent:'center', marginBottom:8 }}>
+                                  <div style={{ textAlign:'center' }}>
+                                    <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>TODAY</div>
+                                    <Ring pct={mateStats.todayPct} size={52} color={mateRank.color}/>
+                                  </div>
+                                  <div style={{ textAlign:'center' }}>
+                                    <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>MONTH</div>
+                                    <Ring pct={mateStats.monthlyPct} size={52} color='#0ea5e9'/>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div style={{ textAlign:'center', padding:'12px 0', marginBottom:8 }}><Loader/></div>
+                              )}
+                              <button className="btn-outline" onClick={()=>sendNudge(mate.full_name||'Agent')}
+                                style={{ width:'100%', fontSize:12, padding:'6px' }}>👊 Nudge</button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ border:'1.5px dashed var(--b2)', borderRadius:10, padding:'18px 20px',
+                      fontSize:13, color:'var(--muted)', textAlign:'center', marginBottom:16 }}>
+                      {isTeamOwner
+                        ? '🫂 No pods yet — create pods from the Admin tab to boost accountability.'
+                        : '🫂 Not in a pod yet. Ask your team owner to add you.'}
+                    </div>
+                  )}
+
+                  {/* Tab bar */}
+                  <div className="tabs" style={{ marginBottom:16 }}>
+                    <button className={`tab-item${teamsTab==='roster'?' on':''}`} onClick={()=>setTeamsTab('roster')}>👥 Roster</button>
+                    {isTeamOwner && (
+                      <button className={`tab-item${teamsTab==='admin'?' on':''}`} onClick={()=>setTeamsTab('admin')}>📊 Admin</button>
+                    )}
+                  </div>
+
+                  {/* Roster tab */}
+                  {teamsTab==='roster' && (
+                  <>
                   {/* Members */}
                   <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                     {members.map((m,i)=>{
@@ -467,6 +663,185 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       </div>
                     )
                   })()}
+                  </>
+                  )} {/* end roster tab */}
+
+                  {/* Admin tab */}
+                  {teamsTab==='admin' && isTeamOwner && (
+                    <div>
+                      {/* Team Performance Overview */}
+                      {(() => {
+                        const now = new Date()
+                        const monthLabel = now.toLocaleString('en-US',{month:'long', year:'numeric'})
+                        const allStats = Object.values(memberStats)
+                        const avgToday   = allStats.length ? Math.round(allStats.reduce((a,s)=>a+(s.todayPct||0),0)/allStats.length) : 0
+                        const avgMonth   = allStats.length ? Math.round(allStats.reduce((a,s)=>a+(s.monthlyPct||0),0)/allStats.length) : 0
+                        const totalAppts = allStats.reduce((a,s)=>a+(s.appts||0),0)
+                        const totalShows = allStats.reduce((a,s)=>a+(s.showings||0),0)
+                        const totalClosed = allStats.reduce((a,s)=>a+(s.closed||0),0)
+                        const totalVol   = allStats.reduce((a,s)=>a+(s.closedVol||0),0)
+                        const totalComm  = allStats.reduce((a,s)=>a+(s.closedComm||0),0)
+                        return (
+                          <>
+                            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+                              <div className="serif" style={{ fontSize:20, color:'var(--text)' }}>📊 Team Performance — {monthLabel}</div>
+                              <div style={{ fontSize:12, color:'var(--muted)' }}>{members.length} agent{members.length!==1?'s':''}</div>
+                            </div>
+                            {/* Summary card */}
+                            <div className="card" style={{ padding:18, marginBottom:20, border:'1px solid rgba(217,119,6,.3)', background:'var(--gold3)' }}>
+                              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))', gap:12 }}>
+                                {[
+                                  { l:'Avg Today %',  v:`${avgToday}%`,        c:'var(--green)' },
+                                  { l:'Avg Month %',  v:`${avgMonth}%`,        c:'#0ea5e9' },
+                                  { l:'Total Appts',  v:totalAppts,             c:'var(--green)' },
+                                  { l:'Total Shows',  v:totalShows,             c:'#0ea5e9' },
+                                  { l:'Total Closed', v:totalClosed,            c:'var(--green)' },
+                                  ...(totalVol  >0?[{l:'Volume',    v:fmtMoney(totalVol),  c:'var(--green)'}]:[]),
+                                  ...(totalComm >0?[{l:'Commission',v:fmtMoney(totalComm), c:'var(--green)'}]:[]),
+                                ].map((s,i)=>(
+                                  <div key={i} style={{ textAlign:'center' }}>
+                                    <div className="label" style={{ marginBottom:4 }}>{s.l}</div>
+                                    <div className="serif" style={{ fontSize:20, color:s.c, fontWeight:700 }}>{s.v}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            {/* Per-agent admin cards */}
+                            <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:28 }}>
+                              {members.map((m,i)=>{
+                                const rank   = getRank(m.xp||0)
+                                const isMe   = m.id===user?.id
+                                const stats  = memberStats[m.id]||{}
+                                return (
+                                  <div key={m.id} className="card" style={{
+                                    padding:18, border:`1px solid ${isMe?'rgba(217,119,6,.35)':'var(--b2)'}`,
+                                    background:isMe?'var(--gold3)':'var(--surface)',
+                                  }}>
+                                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14, flexWrap:'wrap' }}>
+                                      <div className="mono" style={{ width:22, fontSize:11, color:'var(--dim)', fontWeight:700 }}>{i+1}</div>
+                                      <div style={{ width:32, height:32, borderRadius:'50%', background:`${rank.color}18`,
+                                        border:`1.5px solid ${rank.color}33`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>
+                                        {rank.icon}
+                                      </div>
+                                      <div style={{ flex:1 }}>
+                                        <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                                          <span style={{ fontSize:14, fontWeight:600, color:'var(--text)' }}>{m.full_name||'Agent'}</span>
+                                          {isMe && <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>YOU</span>}
+                                        </div>
+                                        <div style={{ fontSize:11, color:'var(--muted)' }}>{rank.name} · 🔥 {m.streak||0} streak</div>
+                                      </div>
+                                      <div className="serif" style={{ fontSize:20, color:rank.color, fontWeight:700 }}>{(m.xp||0).toLocaleString()} XP</div>
+                                    </div>
+                                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(100px,1fr))', gap:10, alignItems:'center' }}>
+                                      <div style={{ textAlign:'center' }}>
+                                        <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>TODAY</div>
+                                        <Ring pct={stats.todayPct||0} size={52} color={rank.color}/>
+                                      </div>
+                                      <div style={{ textAlign:'center' }}>
+                                        <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>MONTH</div>
+                                        <Ring pct={stats.monthlyPct||0} size={52} color='#0ea5e9'/>
+                                      </div>
+                                      <StatCard icon='📅' label='Appts' value={stats.appts||0} color='var(--green)'/>
+                                      <StatCard icon='🔑' label='Showings' value={stats.showings||0} color='#0ea5e9'/>
+                                      <StatCard icon='🎉' label='Closed' value={stats.closed||0} color='var(--green)'
+                                        sub={stats.closedVol>0 ? fmtMoney(stats.closedVol) : undefined}/>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </>
+                        )
+                      })()}
+
+                      {/* Pod Management */}
+                      <div style={{ marginTop:4 }}>
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+                          <div className="serif" style={{ fontSize:20, color:'var(--text)' }}>🫂 Accountability Pods</div>
+                          {!podForm && (
+                            <button className="btn-outline" onClick={()=>setPodForm({ name:'', memberIds:[], editingId:null })}
+                              style={{ fontSize:12 }}>+ New Pod</button>
+                          )}
+                        </div>
+
+                        {/* Create/edit form */}
+                        {podForm && (
+                          <div className="card" style={{ padding:20, marginBottom:16, border:'1px solid rgba(139,92,246,.3)', background:'rgba(139,92,246,.04)' }}>
+                            <div className="serif" style={{ fontSize:15, color:'var(--text)', marginBottom:14 }}>
+                              {podForm.editingId ? 'Edit Pod' : 'New Pod'}
+                            </div>
+                            <div style={{ marginBottom:12 }}>
+                              <div className="label" style={{ marginBottom:5 }}>Pod Name</div>
+                              <input className="field-input" value={podForm.name}
+                                onChange={e=>setPodForm(f=>({...f,name:e.target.value}))}
+                                placeholder="e.g. Alpha Pod" style={{ width:'100%' }}/>
+                            </div>
+                            <div style={{ marginBottom:12 }}>
+                              <div className="label" style={{ marginBottom:8 }}>Members (3–5)</div>
+                              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                                {members.map(m=>{
+                                  const checked = podForm.memberIds.includes(m.id)
+                                  const atMax   = !checked && podForm.memberIds.length >= 5
+                                  const mRank   = getRank(m.xp||0)
+                                  return (
+                                    <label key={m.id} style={{ display:'flex', alignItems:'center', gap:8, cursor:atMax?'not-allowed':'pointer',
+                                      opacity:atMax?0.45:1, padding:'6px 10px', borderRadius:6,
+                                      background:checked?'rgba(139,92,246,.08)':'var(--bg2)', border:`1px solid ${checked?'rgba(139,92,246,.3)':'var(--b1)'}` }}>
+                                      <input type="checkbox" checked={checked} disabled={atMax}
+                                        onChange={e=>setPodForm(f=>({...f, memberIds: e.target.checked
+                                          ? [...f.memberIds, m.id]
+                                          : f.memberIds.filter(id=>id!==m.id)
+                                        }))}/>
+                                      <span style={{ fontSize:14 }}>{mRank.icon}</span>
+                                      <span style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{m.full_name||'Agent'}</span>
+                                      <span style={{ fontSize:11, color:'var(--muted)' }}>{mRank.name}</span>
+                                    </label>
+                                  )
+                                })}
+                              </div>
+                              {podForm.memberIds.length > 0 && podForm.memberIds.length < 3 && (
+                                <div style={{ fontSize:11, color:'var(--gold2)', marginTop:6 }}>⚠ Select at least 3 members</div>
+                              )}
+                            </div>
+                            <div style={{ display:'flex', gap:8 }}>
+                              <button className="btn-primary" onClick={savePod} disabled={podSaving||podForm.memberIds.length<3||!podForm.name.trim()}
+                                style={{ fontSize:13, padding:'9px 22px' }}>
+                                {podSaving?'Saving…':'Save Pod'}
+                              </button>
+                              <button className="btn-outline" onClick={()=>setPodForm(null)} style={{ fontSize:13 }}>Cancel</button>
+                            </div>
+                          </div>
+                        )}
+
+                        {allPods.length===0 && !podForm && (
+                          <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic', padding:'12px 0' }}>
+                            No pods yet. Create a pod to group agents into accountability circles.
+                          </div>
+                        )}
+                        {allPods.map(pod=>(
+                          <div key={pod.id} className="card" style={{ padding:16, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10 }}>
+                            <div>
+                              <div style={{ fontWeight:600, fontSize:14, color:'var(--text)', marginBottom:4 }}>🫂 {pod.name}</div>
+                              <div style={{ fontSize:12, color:'var(--muted)' }}>
+                                {pod.memberIds.length} members · {pod.memberIds.map(id=>members.find(m=>m.id===id)?.full_name||'?').join(', ')}
+                              </div>
+                            </div>
+                            <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                              <button className="btn-outline" style={{ fontSize:11, padding:'5px 10px' }}
+                                onClick={()=>setPodForm({ name:pod.name, memberIds:[...pod.memberIds], editingId:pod.id })}>
+                                Edit
+                              </button>
+                              <button onClick={()=>deletePod(pod.id)}
+                                style={{ background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.2)',
+                                  color:'var(--red)', borderRadius:7, padding:'5px 10px', cursor:'pointer', fontSize:11, fontWeight:600 }}>
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>

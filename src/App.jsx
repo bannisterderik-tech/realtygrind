@@ -966,7 +966,7 @@ function Dashboard({ theme, onToggleTheme }) {
     }
 
     if (ctRes.data) {
-      setCustomTasks(ctRes.data.map(t => ({
+      setCustomTasks(ctRes.data.filter(t => !t.is_deleted).map(t => ({
         id:t.id, label:t.label, icon:t.icon, xp:t.xp,
         isDefault:t.is_default, specificDate:t.specific_date
       })))

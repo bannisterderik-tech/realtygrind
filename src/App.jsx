@@ -931,8 +931,9 @@ function Dashboard({ theme, onToggleTheme }) {
   const [menuOpen,         setMenuOpen]         = useState(false)
 
   // Custom tasks
-  const [customTasks,   setCustomTasks]   = useState([])
-  const [customDone,    setCustomDone]    = useState({}) // { 'uuid-week-day': true }
+  const [customTasks,         setCustomTasks]         = useState([])
+  const [deletedDefaultTasks, setDeletedDefaultTasks] = useState([])
+  const [customDone,          setCustomDone]          = useState({}) // { 'uuid-week-day': true }
   const [addTaskModal,  setAddTaskModal]  = useState(false)
   const todayDate = new Date().toISOString().slice(0,10)
 
@@ -966,10 +967,9 @@ function Dashboard({ theme, onToggleTheme }) {
     }
 
     if (ctRes.data) {
-      setCustomTasks(ctRes.data.filter(t => !t.is_deleted).map(t => ({
-        id:t.id, label:t.label, icon:t.icon, xp:t.xp,
-        isDefault:t.is_default, specificDate:t.specific_date
-      })))
+      const toTask = t => ({ id:t.id, label:t.label, icon:t.icon, xp:t.xp, isDefault:t.is_default, specificDate:t.specific_date })
+      setCustomTasks(ctRes.data.filter(t => !t.is_deleted).map(toTask))
+      setDeletedDefaultTasks(ctRes.data.filter(t => t.is_deleted && t.is_default).map(toTask))
     }
 
     if (listRes.data) {
@@ -1156,6 +1156,12 @@ function Dashboard({ theme, onToggleTheme }) {
   async function deleteCustomTask(id) {
     await supabase.from('custom_tasks').delete().eq('id',id).eq('user_id',user.id)
     setCustomTasks(prev => prev.filter(t => t.id !== id))
+  }
+
+  async function restoreCustomTask(task) {
+    await supabase.from('custom_tasks').update({ is_deleted: false }).eq('id',task.id).eq('user_id',user.id)
+    setDeletedDefaultTasks(prev => prev.filter(t => t.id !== task.id))
+    setCustomTasks(prev => [...prev, { ...task }])
   }
 
   // ── Pipeline helpers ───────────────────────────────────────────────────────
@@ -1762,6 +1768,26 @@ function Dashboard({ theme, onToggleTheme }) {
                       style={{ marginTop:12, fontSize:12, width:'100%', justifyContent:'center' }}>
                       + Add task for today
                     </button>
+
+                    {/* Deleted default tasks — restore inline */}
+                    {deletedDefaultTasks.length > 0 && (
+                      <div style={{ marginTop:16, paddingTop:14, borderTop:'1px dashed var(--b2)' }}>
+                        <div style={{ fontSize:10, color:'var(--dim)', fontWeight:700, letterSpacing:1,
+                          marginBottom:8, textTransform:'uppercase' }}>Deleted Tasks</div>
+                        {deletedDefaultTasks.map(t => (
+                          <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8,
+                            padding:'8px 4px', borderBottom:'1px solid var(--b1)', opacity:.55 }}>
+                            <span style={{ fontSize:15, flexShrink:0 }}>{t.icon}</span>
+                            <span style={{ flex:1, fontSize:13, color:'var(--muted)',
+                              textDecoration:'line-through', minWidth:0 }}>{t.label}</span>
+                            <span style={{ fontSize:11, color:'var(--dim)',
+                              fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>+{t.xp} XP</span>
+                            <button className="btn-outline" style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }}
+                              onClick={()=>restoreCustomTask(t)}>Restore</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </>
                 )
               })()}

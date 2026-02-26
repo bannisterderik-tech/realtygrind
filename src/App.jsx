@@ -2094,7 +2094,6 @@ function Dashboard({ theme, onToggleTheme }) {
             cats[h.cat].total += WEEKS*7
           })
           const catArr = Object.values(cats).sort((a,b)=>b.done-a.done)
-          const maxCat = Math.max(...catArr.map(c=>c.done),1)
           // ── Pipeline funnel ──
           const funnel = [
             { label:'Appts Booked', val:totalAppts, color:'#0ea5e9' },
@@ -2151,7 +2150,7 @@ function Dashboard({ theme, onToggleTheme }) {
                         <span style={{ color:'var(--muted)' }}>{c.done} / {c.total}</span>
                       </div>
                       <div style={{ height:8, background:'var(--b1)', borderRadius:99, overflow:'hidden' }}>
-                        <div style={{ height:'100%', width:`${Math.round(c.done/maxCat*100)}%`,
+                        <div style={{ height:'100%', width:`${Math.round(c.done/Math.max(c.total,1)*100)}%`,
                           background:c.color, borderRadius:99, transition:'width .6s' }}/>
                       </div>
                     </div>

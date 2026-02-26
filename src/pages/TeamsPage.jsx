@@ -309,7 +309,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                           </div>
 
                           {stats && stats.totalHabits > 0 && (
-                            <div style={{ display:'flex', gap:8, flexWrap:'wrap', paddingLeft:50, marginTop:8 }}>
+                            <div style={{ display:'flex', gap:8, flexWrap:'wrap', paddingLeft:0, marginTop:8 }}>
                               {HABITS_FOR_DISPLAY.map(h=>{
                                 const v = stats.habits?.[h.id]||0
                                 const cs = CAT[h.cat]

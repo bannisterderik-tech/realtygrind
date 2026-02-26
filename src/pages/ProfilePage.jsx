@@ -800,7 +800,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme }) {
                 <div style={{ fontSize:13, color:'var(--muted)', marginBottom:20 }}>
                   Set targets to track progress on your dashboard. Leave blank to hide.
                 </div>
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:14 }}>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(155px,1fr))', gap:14 }}>
                   {[
                     { key:'xp',           label:'Monthly XP Target',      icon:'⚡', placeholder:'e.g. 2000' },
                     { key:'prospecting',  label:'Prospecting Calls',       icon:'📞', placeholder:'e.g. 40' },

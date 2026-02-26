@@ -1458,7 +1458,7 @@ function Dashboard({ theme, onToggleTheme }) {
           <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
           <button className={`nav-btn mob-hide${page==='teams'?' active':''}`} onClick={()=>setPage('teams')}>👥 Teams</button>
 
-          <button className={`nav-btn${(page==='directory'||page==='apod')?' active':''}`} onClick={()=>setPage('directory')}>🔗 Tools</button>
+          <button className={`nav-btn mob-hide${(page==='directory'||page==='apod')?' active':''}`} onClick={()=>setPage('directory')}>🔗 Tools</button>
 
           {/* Rank + Streak chips — hidden on mobile */}
           <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
@@ -1584,19 +1584,9 @@ function Dashboard({ theme, onToggleTheme }) {
           {showCommSummary && closedComm>0 && <StatCard icon="💰" label="Commission" value={fmtMoney(closedComm)||'$0'} color="var(--green)" accent="#10b981"/>}
         </div>
 
-        {/* Pipeline XP info */}
-        <div className="card-flat" style={{ padding:'10px 16px', marginBottom:20, display:'flex', alignItems:'center', gap:16, flexWrap:'wrap' }}>
-          <span className="label">Pipeline XP</span>
-          {[{l:'Offer Made',xp:75,c:'#0ea5e9'},{l:'Went Pending',xp:150,c:'#f59e0b'},{l:'Closed',xp:300,c:'#10b981'}].map((p,i)=>(
-            <div key={i} style={{ display:'flex', alignItems:'center', gap:5 }}>
-              <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700,
-                fontFamily:"'JetBrains Mono',monospace", background:`${p.c}14`, color:p.c, border:`1px solid ${p.c}28` }}>
-                +{p.xp} XP
-              </span>
-              <span style={{ fontSize:11, color:'var(--muted)' }}>{p.l}</span>
-            </div>
-          ))}
-          <label style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:6, fontSize:12, color:'var(--muted)', cursor:'pointer' }}>
+        {/* Show commission toggle */}
+        <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
+          <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'var(--muted)', cursor:'pointer' }}>
             <input type="checkbox" checked={showCommSummary} onChange={async e=>{
               setShowCommSummary(e.target.checked)
               await supabase.from('profiles').update({show_commission:e.target.checked}).eq('id',user.id)
@@ -2175,9 +2165,9 @@ function Dashboard({ theme, onToggleTheme }) {
           </div>
 
           <div className="card" style={{ padding:20 }}>
-            <div className="resp-table"><div className="resp-table-inner" style={{ minWidth:480 }}>
+            <div className="resp-table"><div className="resp-table-inner" style={{ minWidth:680 }}>
             {/* Column headers */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 115px 320px 30px', gap:8, padding:'3px 13px', marginBottom:6, border:'1px solid transparent' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 115px 280px 30px', gap:8, padding:'3px 13px', marginBottom:6, border:'1px solid transparent' }}>
               <span className="label">Address</span>
               <span className="label">List Price</span>
               <span className="label">Commission</span>
@@ -2193,7 +2183,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
             <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:12 }}>
               {listings.map(l => (
-                <div key={l.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 105px 115px 320px 30px' }}>
+                <div key={l.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 105px 115px 280px 30px' }}>
                   {/* Address + optional cross-month badge */}
                   <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
                     <input className="pipe-input" value={l.address||''}
@@ -2259,7 +2249,7 @@ function Dashboard({ theme, onToggleTheme }) {
             </div>
 
             {/* Add new listing */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 115px 320px 30px', gap:8,
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 115px 280px 30px', gap:8,
               borderTop:'1px solid var(--b1)', paddingTop:12, alignItems:'center' }}>
               <input className="field-input" value={newAddr} onChange={e=>setNewAddr(e.target.value)}
                 onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="New listing address…"
@@ -2310,9 +2300,9 @@ function Dashboard({ theme, onToggleTheme }) {
           </div>
 
           <div className="card" style={{ padding:20 }}>
-            <div className="resp-table"><div className="resp-table-inner" style={{ minWidth:420 }}>
+            <div className="resp-table"><div className="resp-table-inner" style={{ minWidth:450 }}>
             {/* Column headers */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 300px 30px', gap:8, padding:'3px 13px', marginBottom:6, border:'1px solid transparent' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 240px 30px', gap:8, padding:'3px 13px', marginBottom:6, border:'1px solid transparent' }}>
               <span className="label">Client Name</span>
               <span className="label">Status &amp; Actions</span>
               <span/>
@@ -2326,7 +2316,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
             <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:12 }}>
               {buyerReps.map(rep => (
-                <div key={rep.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 300px 30px' }}>
+                <div key={rep.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 240px 30px' }}>
                   {/* Client name + optional month badge */}
                   <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
                     <input className="pipe-input" value={rep.clientName||''}
@@ -2369,7 +2359,7 @@ function Dashboard({ theme, onToggleTheme }) {
             </div>
 
             {/* Add new buyer rep */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 300px 30px', gap:8,
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 240px 30px', gap:8,
               borderTop:'1px solid var(--b1)', paddingTop:12, alignItems:'center' }}>
               <input className="field-input" value={newRepClient}
                 onChange={e => setNewRepClient(e.target.value)}

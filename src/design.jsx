@@ -441,14 +441,17 @@ body,.page { background: var(--bg); color: var(--text); }
 .print-todo-line { flex: 1; border-bottom: 1px solid #ccc; height: 20px; }
 
 @media print {
+  /* Force letter-size regardless of device viewport */
+  @page { size: 8.5in 11in; margin: 0; }
+  html, body { width: 8.5in !important; height: 11in !important; overflow: hidden !important; }
   body * { visibility: hidden; }
   .print-sheet, .print-sheet * { visibility: visible; }
   .print-modal-header { display: none !important; }
   .print-sheet {
-    position: fixed; inset: 0; padding: 14mm 16mm;
-    background: white; border-radius: 0;
+    position: fixed; inset: 0; width: 8.5in !important; height: 11in !important;
+    padding: 14mm 16mm; background: white; border-radius: 0;
+    font-size: 12px !important; /* lock base size so mobile scaling doesn't inflate it */
   }
-  @page { margin: 0; }
 }
 `
 

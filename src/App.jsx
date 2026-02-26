@@ -1073,13 +1073,14 @@ function Dashboard({ theme, onToggleTheme }) {
     if (newVal) {
       await addXp(h.xp, cat.color)
       const ckey = `${hid}-${week}-${day}`
+      if (h.counter) setCounters(prev=>({...prev,[ckey]:1}))
       await supabase.from('habit_completions').upsert({
         user_id:user.id, habit_id:hid, week_index:week, day_index:day,
-        month_year:MONTH_YEAR, xp_earned:h.xp, counter_value:h.counter?(counters[ckey]||0):0
+        month_year:MONTH_YEAR, xp_earned:h.xp, counter_value:h.counter?1:0
       },{onConflict:'user_id,habit_id,week_index,day_index,month_year'})
     } else {
       const ckey = `${hid}-${week}-${day}`
-      const lost = h.xp + (counters[ckey]||0)*(h.xpEach||0)
+      const lost = h.xp + Math.max(0,(counters[ckey]||1)-1)*(h.xpEach||0)
       const nxp  = Math.max(0, xp - lost)
       setXp(nxp)
       await supabase.from('profiles').update({xp:nxp}).eq('id',user.id)
@@ -1091,19 +1092,24 @@ function Dashboard({ theme, onToggleTheme }) {
     setTimeout(()=>setAnimCell(null),300)
   }
 
-  async function incrementCounter(hid, week, day) {
+  async function setCounterValue(hid, week, day, rawVal) {
+    const v     = Math.max(1, parseInt(rawVal) || 1)
     const hBase = HABITS.find(x=>x.id===hid)
     const hEd   = (activePrefs.edits||{})[hid] || {}
     const h     = { ...hBase, xp: hEd.xp || hBase.xp }
-    const cat   = CAT[h.cat]
-    const ckey = `${hid}-${week}-${day}`
-    if (!habits[hid][week][day]) { await toggleHabit(hid,week,day); return }
-    const newCnt = (counters[ckey]||1) + 1
-    setCounters(prev=>({...prev,[ckey]:newCnt}))
-    if (h.xpEach) await addXp(h.xpEach, cat.color)
+    const ckey  = `${hid}-${week}-${day}`
+    const oldCnt = counters[ckey] || 1
+    setCounters(prev=>({...prev,[ckey]:v}))
+    // XP delta: difference in extra-unit XP between old and new count
+    const xpDiff = (v - oldCnt) * (h.xpEach || 0)
+    if (xpDiff !== 0) {
+      const nxp = Math.max(0, xp + xpDiff)
+      setXp(nxp)
+      await supabase.from('profiles').update({xp:nxp}).eq('id',user.id)
+    }
     await supabase.from('habit_completions').upsert({
       user_id:user.id, habit_id:hid, week_index:week, day_index:day,
-      month_year:MONTH_YEAR, xp_earned:(h.xp||0)+newCnt*(h.xpEach||0), counter_value:newCnt
+      month_year:MONTH_YEAR, xp_earned:(h.xp||0)+Math.max(0,v-1)*(h.xpEach||0), counter_value:v
     },{onConflict:'user_id,habit_id,week_index,day_index,month_year'})
   }
 
@@ -1652,7 +1658,7 @@ function Dashboard({ theme, onToggleTheme }) {
                           <div style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
                             textDecoration:done?'line-through':'none', transition:'all .15s' }}>{h.label}</div>
                           <div style={{ fontSize:10, color:'var(--dim)' }}>
-                            +{h.xp} XP{h.xpEach?` · +${h.xpEach} per extra`:''}
+                            +{h.xp} XP{h.xpEach?` · +${h.xpEach} per ${h.unit||'extra'}`:''}
                           </div>
                         </div>
                         <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:500, flexShrink:0,
@@ -1660,17 +1666,28 @@ function Dashboard({ theme, onToggleTheme }) {
                           {h.cat}
                         </span>
                         {h.counter && done && (
-                          <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
-                            <span className="mono" style={{ fontSize:15, color:cs.color, fontWeight:700, minWidth:22, textAlign:'center' }}>
-                              {cnt||1}
-                            </span>
-                            <button className="cnt-btn" onClick={()=>incrementCounter(h.id,today.week,today.day)}
-                              style={{ borderColor:cs.color, color:cs.color }}>+</button>
+                          <div style={{ display:'flex', alignItems:'center', gap:5, flexShrink:0 }}>
+                            <input
+                              type="number" min="1"
+                              value={cnt || 1}
+                              onChange={e => {
+                                const v = Math.max(1, parseInt(e.target.value)||1)
+                                setCounters(prev=>({...prev,[ckey]:v}))
+                              }}
+                              onBlur={e => setCounterValue(h.id, today.week, today.day, e.target.value)}
+                              style={{
+                                width:48, textAlign:'center', background:'var(--bg2)',
+                                border:`1px solid ${cs.color}55`, borderRadius:6,
+                                color:cs.color, fontWeight:700, fontSize:14,
+                                padding:'3px 6px', fontFamily:"'JetBrains Mono',monospace",
+                                WebkitAppearance:'none', MozAppearance:'textfield', outline:'none',
+                              }}
+                            />
+                            <span style={{ fontSize:10, color:'var(--muted)', flexShrink:0 }}>{h.unit||'×'}</span>
                           </div>
                         )}
                         {h.counter && !done && (
-                          <button className="cnt-btn" onClick={()=>incrementCounter(h.id,today.week,today.day)}
-                            style={{ borderColor:'var(--b3)', color:'var(--dim)' }}>+</button>
+                          <span style={{ fontSize:10, color:'var(--dim)', opacity:.45, flexShrink:0 }}>0 {h.unit||'×'}</span>
                         )}
                         {!done && (
                           <button onClick={()=>skipHabitToday(h.id)} title="Skip for today"

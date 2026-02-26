@@ -534,17 +534,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme }) {
           {activeTab==='annual' && (
             <div style={{ animation:'fadeUp .25s ease' }}>
               <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20, flexWrap:'wrap' }}>
-                <div className="serif" style={{ fontSize:18, color:'var(--text)' }}>Annual Summary</div>
-                <div style={{ display:'flex', gap:6 }}>
-                  {[CUR_YEAR,CUR_YEAR-1,CUR_YEAR-2].map(y=>(
-                    <button key={y} onClick={()=>setYear(y)} style={{
-                      padding:'5px 14px', borderRadius:7, border:'1.5px solid', cursor:'pointer', fontSize:12, fontWeight:600, transition:'background .15s, border-color .15s, color .15s',
-                      background:year===y?'var(--text)':'transparent',
-                      borderColor:year===y?'var(--text)':'var(--b3)',
-                      color:year===y?'var(--bg)':'var(--text2)',
-                    }}>{y}</button>
-                  ))}
-                </div>
+                <div className="serif" style={{ fontSize:18, color:'var(--text)' }}>Annual Summary — {CUR_YEAR}</div>
               </div>
 
               {annLoad ? <Loader/> : annual && (

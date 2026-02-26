@@ -1064,6 +1064,17 @@ function Dashboard({ theme, onToggleTheme }) {
     saveProfileHabitPrefs(newPrefs)
   }
 
+  function unSkipHabitToday(hid) {
+    const newPrefs = {
+      ...habitPrefs,
+      skipped: {
+        ...(habitPrefs.skipped||{}),
+        [todayDate]: ((habitPrefs.skipped||{})[todayDate]||[]).filter(id => id !== String(hid))
+      }
+    }
+    saveProfileHabitPrefs(newPrefs)
+  }
+
   // ── Habits ─────────────────────────────────────────────────────────────────
   async function toggleHabit(hid, week, day) {
     const newVal = !habits[hid][week][day]
@@ -1157,10 +1168,8 @@ function Dashboard({ theme, onToggleTheme }) {
   }
 
   async function deleteCustomTask(id) {
-    await supabase.from('custom_tasks').update({ is_deleted: true }).eq('id',id).eq('user_id',user.id)
-    const task = customTasks.find(t => t.id === id)
+    await supabase.from('custom_tasks').delete().eq('id',id).eq('user_id',user.id)
     setCustomTasks(prev => prev.filter(t => t.id !== id))
-    if (task) setDeletedDefaultTasks(prev => [...prev, { ...task }])
   }
 
   async function restoreCustomTask(task) {
@@ -1786,25 +1795,31 @@ function Dashboard({ theme, onToggleTheme }) {
                       + Add task for today
                     </button>
 
-                    {/* Deleted default tasks — restore inline */}
-                    {deletedDefaultTasks.length > 0 && (
-                      <div style={{ marginTop:16, paddingTop:14, borderTop:'1px dashed var(--b2)' }}>
-                        <div style={{ fontSize:10, color:'var(--dim)', fontWeight:700, letterSpacing:1,
-                          marginBottom:8, textTransform:'uppercase' }}>Deleted Tasks</div>
-                        {deletedDefaultTasks.map(t => (
-                          <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8,
-                            padding:'8px 4px', borderBottom:'1px solid var(--b1)', opacity:.55 }}>
-                            <span style={{ fontSize:15, flexShrink:0 }}>{t.icon}</span>
-                            <span style={{ flex:1, fontSize:13, color:'var(--muted)',
-                              textDecoration:'line-through', minWidth:0 }}>{t.label}</span>
-                            <span style={{ fontSize:11, color:'var(--dim)',
-                              fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>+{t.xp} XP</span>
-                            <button className="btn-outline" style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }}
-                              onClick={()=>restoreCustomTask(t)}>Restore</button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    {/* Skipped custom tasks — restore inline */}
+                    {(()=>{
+                      const skippedCustoms = customTasks.filter(
+                        t => t.isDefault && todaySkipped.includes(String(t.id))
+                      )
+                      if (!skippedCustoms.length) return null
+                      return (
+                        <div style={{ marginTop:16, paddingTop:14, borderTop:'1px dashed var(--b2)' }}>
+                          <div style={{ fontSize:10, color:'var(--dim)', fontWeight:700, letterSpacing:1,
+                            marginBottom:8, textTransform:'uppercase' }}>Skipped Today</div>
+                          {skippedCustoms.map(t => (
+                            <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8,
+                              padding:'8px 4px', borderBottom:'1px solid var(--b1)', opacity:.55 }}>
+                              <span style={{ fontSize:15, flexShrink:0 }}>{t.icon}</span>
+                              <span style={{ flex:1, fontSize:13, color:'var(--muted)',
+                                textDecoration:'line-through', minWidth:0 }}>{t.label}</span>
+                              <span style={{ fontSize:11, color:'var(--dim)',
+                                fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>+{t.xp} XP</span>
+                              <button className="btn-outline" style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }}
+                                onClick={()=>unSkipHabitToday(t.id)}>Restore</button>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })()}
                   </>
                 )
               })()}

@@ -969,7 +969,7 @@ function Dashboard({ theme, onToggleTheme }) {
     if (ctRes.data) {
       const toTask = t => ({ id:t.id, label:t.label, icon:t.icon, xp:t.xp, isDefault:t.is_default, specificDate:t.specific_date })
       setCustomTasks(ctRes.data.filter(t => !t.is_deleted).map(toTask))
-      setDeletedDefaultTasks(ctRes.data.filter(t => t.is_deleted && t.is_default).map(toTask))
+      setDeletedDefaultTasks(ctRes.data.filter(t => t.is_deleted).map(toTask))
     }
 
     if (listRes.data) {
@@ -1154,12 +1154,25 @@ function Dashboard({ theme, onToggleTheme }) {
   }
 
   async function deleteCustomTask(id) {
-    await supabase.from('custom_tasks').delete().eq('id',id).eq('user_id',user.id)
+    await supabase.from('custom_tasks').update({ is_deleted: true }).eq('id',id).eq('user_id',user.id)
+    const task = customTasks.find(t => t.id === id)
     setCustomTasks(prev => prev.filter(t => t.id !== id))
+    if (task) setDeletedDefaultTasks(prev => [...prev, { ...task }])
   }
 
   async function restoreCustomTask(task) {
     await supabase.from('custom_tasks').update({ is_deleted: false }).eq('id',task.id).eq('user_id',user.id)
+    setDeletedDefaultTasks(prev => prev.filter(t => t.id !== task.id))
+    setCustomTasks(prev => [...prev, { ...task }])
+  }
+
+  // Called by ProfilePage when a default task is soft-deleted or restored
+  // so App.jsx state stays in sync without a full reload
+  function syncTaskDeleted(task) {
+    setCustomTasks(prev => prev.filter(t => t.id !== task.id))
+    setDeletedDefaultTasks(prev => [...prev, { ...task }])
+  }
+  function syncTaskRestored(task) {
     setDeletedDefaultTasks(prev => prev.filter(t => t.id !== task.id))
     setCustomTasks(prev => [...prev, { ...task }])
   }
@@ -1550,7 +1563,8 @@ function Dashboard({ theme, onToggleTheme }) {
       )}
 
       {page==='teams'     && <TeamsPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
-      {page==='profile'   && <ProfilePage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
+      {page==='profile'   && <ProfilePage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}
+                                             onTaskDeleted={syncTaskDeleted} onTaskRestored={syncTaskRestored}/>}
       {page==='directory' && <DirectoryPage onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
       {page==='apod'      && <APODPage      onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
 

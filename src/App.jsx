@@ -1590,17 +1590,6 @@ function Dashboard({ theme, onToggleTheme }) {
           {showCommSummary && closedComm>0 && <StatCard icon="💰" label="Commission" value={fmtMoney(closedComm)||'$0'} color="var(--green)" accent="#10b981"/>}
         </div>
 
-        {/* Show commission toggle */}
-        <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
-          <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'var(--muted)', cursor:'pointer' }}>
-            <input type="checkbox" checked={showCommSummary} onChange={async e=>{
-              setShowCommSummary(e.target.checked)
-              await supabase.from('profiles').update({show_commission:e.target.checked}).eq('id',user.id)
-            }} style={{ accentColor:'var(--gold)' }}/>
-            Show commission
-          </label>
-        </div>
-
         {/* ── Tabs ──────────────────────────────────────────── */}
         <div className="tabs">
           {[{id:'today',l:'Today'},{id:'monthly',l:'Monthly Grid'},{id:'weekly',l:'Week View'},{id:'trends',l:'📈 Trends'}].map(t=>(

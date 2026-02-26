@@ -32,8 +32,9 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme }) {
   const [histFetched,setHistFetched]= useState(false)
 
   // Custom tasks
-  const [customTasks,  setCustomTasks]  = useState([])
-  const [ctLoaded,     setCtLoaded]     = useState(false)
+  const [customTasks,   setCustomTasks]  = useState([])
+  const [deletedTasks,  setDeletedTasks] = useState([])
+  const [ctLoaded,      setCtLoaded]     = useState(false)
   const [newTaskForm,  setNewTaskForm]  = useState(null) // null | {label,icon,xp}
   const [editingTask,  setEditingTask]  = useState(null) // null | task object
   const [habitPrefs,   setHabitPrefs]   = useState({ hidden:[], order:[], edits:{} })
@@ -49,7 +50,13 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme }) {
     supabase.from('custom_tasks').select('*')
       .eq('user_id', user.id).eq('is_default', true)
       .order('created_at')
-      .then(({data}) => { if (data) setCustomTasks(data); setCtLoaded(true) })
+      .then(({data}) => {
+        if (data) {
+          setCustomTasks(data.filter(t => !t.is_deleted))
+          setDeletedTasks(data.filter(t => t.is_deleted))
+        }
+        setCtLoaded(true)
+      })
   },[user])
 
   useEffect(()=>{
@@ -185,8 +192,16 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme }) {
   }
 
   async function deleteDefaultTask(id) {
-    await supabase.from('custom_tasks').delete().eq('id',id).eq('user_id',user.id)
+    await supabase.from('custom_tasks').update({ is_deleted: true }).eq('id',id).eq('user_id',user.id)
+    const task = customTasks.find(t => t.id === id)
     setCustomTasks(prev => prev.filter(t => t.id !== id))
+    if (task) setDeletedTasks(prev => [...prev, { ...task, is_deleted: true }])
+  }
+
+  async function restoreTask(task) {
+    await supabase.from('custom_tasks').update({ is_deleted: false }).eq('id',task.id).eq('user_id',user.id)
+    setDeletedTasks(prev => prev.filter(t => t.id !== task.id))
+    setCustomTasks(prev => [...prev, { ...task, is_deleted: false }])
   }
 
   // ── Habit prefs helpers ────────────────────────────────────────────────────
@@ -499,6 +514,25 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme }) {
                         <span style={{ fontSize:11, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>+{h.xp} XP</span>
                         <button className="btn-outline" style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }}
                           onClick={()=>restoreBuiltIn(h.id)}>Restore</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Deleted custom tasks — restore section */}
+                {deletedTasks.length > 0 && !isMemberOnly && (
+                  <div style={{ marginTop:18, paddingTop:14, borderTop:'1px dashed var(--b2)' }}>
+                    <div style={{ fontSize:10, color:'var(--dim)', fontWeight:700, letterSpacing:1,
+                      marginBottom:10, textTransform:'uppercase' }}>Deleted Tasks</div>
+                    {deletedTasks.map(t => (
+                      <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 4px',
+                        borderBottom:'1px solid var(--b1)', opacity:.55 }}>
+                        <span style={{ width:24, flexShrink:0 }}/>
+                        <span style={{ fontSize:16, flexShrink:0 }}>{t.icon}</span>
+                        <span style={{ flex:1, fontSize:13, color:'var(--muted)', textDecoration:'line-through' }}>{t.label}</span>
+                        <span style={{ fontSize:11, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>+{t.xp} XP</span>
+                        <button className="btn-outline" style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }}
+                          onClick={()=>restoreTask(t)}>Restore</button>
                       </div>
                     ))}
                   </div>

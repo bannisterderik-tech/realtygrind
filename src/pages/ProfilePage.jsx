@@ -310,24 +310,38 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme }) {
           {/* ── Profile tab ── */}
           {activeTab==='profile' && (
             <div style={{ display:'flex', flexDirection:'column', gap:16, animation:'fadeUp .25s ease' }}>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-                <div className="card" style={{ padding:22 }}>
-                  <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:14 }}>Display Name</div>
-                  <div className="label" style={{ marginBottom:6 }}>Name</div>
-                  <input className="field-input" value={name} onChange={e=>setName(e.target.value)} placeholder="Full name" style={{ marginBottom:12 }}/>
-                  {saveMsg && <div style={{ fontSize:12, color:'var(--green)', marginBottom:8 }}>{saveMsg}</div>}
-                  <button className="btn-primary" onClick={saveName} disabled={saving||!name.trim()} style={{ width:'100%' }}>
-                    {saving?'Saving…':'Save Name'}
-                  </button>
+              {/* Account Settings — name + password stacked */}
+              <div className="card" style={{ padding:24 }}>
+                <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:20 }}>Account Settings</div>
+
+                {/* Display name row */}
+                <div style={{ marginBottom:20 }}>
+                  <div className="label" style={{ marginBottom:7 }}>Display Name</div>
+                  <div style={{ display:'flex', gap:8 }}>
+                    <input className="field-input" value={name} onChange={e=>setName(e.target.value)}
+                      placeholder="Full name" style={{ flex:1 }}/>
+                    <button className="btn-primary" onClick={saveName} disabled={saving||!name.trim()}
+                      style={{ padding:'0 18px', whiteSpace:'nowrap' }}>
+                      {saving ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                  {saveMsg && <div style={{ fontSize:12, color:'var(--green)', marginTop:7 }}>{saveMsg}</div>}
                 </div>
-                <div className="card" style={{ padding:22 }}>
-                  <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:14 }}>Change Password</div>
-                  <div className="label" style={{ marginBottom:6 }}>New Password</div>
-                  <input className="field-input" type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 6 chars" style={{ marginBottom:12 }}/>
-                  {pwMsg && <div style={{ fontSize:12, color:pwMsg.includes('Error')?'var(--red)':'var(--green)', marginBottom:8 }}>{pwMsg}</div>}
-                  <button className="btn-primary" onClick={savePassword} disabled={pwSaving||pw.length<6} style={{ width:'100%' }}>
-                    {pwSaving?'Updating…':'Update Password'}
-                  </button>
+
+                <div style={{ height:1, background:'var(--b1)', marginBottom:20 }}/>
+
+                {/* Password row */}
+                <div>
+                  <div className="label" style={{ marginBottom:7 }}>Change Password</div>
+                  <div style={{ display:'flex', gap:8 }}>
+                    <input className="field-input" type="password" value={pw} onChange={e=>setPw(e.target.value)}
+                      placeholder="New password — min 6 characters" style={{ flex:1 }}/>
+                    <button className="btn-primary" onClick={savePassword} disabled={pwSaving||pw.length<6}
+                      style={{ padding:'0 18px', whiteSpace:'nowrap' }}>
+                      {pwSaving ? 'Saving…' : 'Update'}
+                    </button>
+                  </div>
+                  {pwMsg && <div style={{ fontSize:12, color:pwMsg.includes('Error')?'var(--red)':'var(--green)', marginTop:7 }}>{pwMsg}</div>}
                 </div>
               </div>
 

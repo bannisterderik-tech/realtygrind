@@ -372,6 +372,11 @@ body,.page { background: var(--bg); color: var(--text); }
   .topnav     { padding: 0 14px; }
 }
 
+/* ── Desktop: hide mobile-only elements ─────────────────── */
+@media (min-width: 701px) {
+  .mob-show { display: none !important; }
+}
+
 /* ── Mobile ≤ 700px ─────────────────────────────────────── */
 @media (max-width: 700px) {
   .page-inner  { padding: 16px 12px; }

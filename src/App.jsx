@@ -1164,6 +1164,17 @@ function Dashboard({ theme, onToggleTheme }) {
     setCustomTasks(prev => [...prev, { ...task }])
   }
 
+  // Called by ProfilePage when a default task is soft-deleted or restored
+  // so App.jsx state stays in sync without a full reload
+  function syncTaskDeleted(task) {
+    setCustomTasks(prev => prev.filter(t => t.id !== task.id))
+    setDeletedDefaultTasks(prev => [...prev, { ...task }])
+  }
+  function syncTaskRestored(task) {
+    setDeletedDefaultTasks(prev => prev.filter(t => t.id !== task.id))
+    setCustomTasks(prev => [...prev, { ...task }])
+  }
+
   // ── Pipeline helpers ───────────────────────────────────────────────────────
   async function dbInsert(type, item, closedFrom='') {
     const {data} = await supabase.from('transactions').insert({
@@ -1550,7 +1561,8 @@ function Dashboard({ theme, onToggleTheme }) {
       )}
 
       {page==='teams'     && <TeamsPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
-      {page==='profile'   && <ProfilePage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
+      {page==='profile'   && <ProfilePage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}
+                                             onTaskDeleted={syncTaskDeleted} onTaskRestored={syncTaskRestored}/>}
       {page==='directory' && <DirectoryPage onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
       {page==='apod'      && <APODPage      onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
 

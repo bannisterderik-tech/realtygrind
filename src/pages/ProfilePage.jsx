@@ -7,7 +7,7 @@ import { HABITS } from '../habits'
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 const CUR_YEAR = new Date().getFullYear()
 
-export default function ProfilePage({ onNavigate, theme, onToggleTheme }) {
+export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDeleted, onTaskRestored }) {
   const { user, profile, refreshProfile } = useAuth()
   const rank     = getRank(profile?.xp||0)
   const nextRank = RANKS.find(r => r.min > (profile?.xp||0))
@@ -195,13 +195,18 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme }) {
     await supabase.from('custom_tasks').update({ is_deleted: true }).eq('id',id).eq('user_id',user.id)
     const task = customTasks.find(t => t.id === id)
     setCustomTasks(prev => prev.filter(t => t.id !== id))
-    if (task) setDeletedTasks(prev => [...prev, { ...task, is_deleted: true }])
+    if (task) {
+      const deleted = { ...task, is_deleted: true }
+      setDeletedTasks(prev => [...prev, deleted])
+      onTaskDeleted?.({ id:task.id, label:task.label, icon:task.icon, xp:task.xp, isDefault:true })
+    }
   }
 
   async function restoreTask(task) {
     await supabase.from('custom_tasks').update({ is_deleted: false }).eq('id',task.id).eq('user_id',user.id)
     setDeletedTasks(prev => prev.filter(t => t.id !== task.id))
     setCustomTasks(prev => [...prev, { ...task, is_deleted: false }])
+    onTaskRestored?.({ id:task.id, label:task.label, icon:task.icon, xp:task.xp, isDefault:true })
   }
 
   // ── Habit prefs helpers ────────────────────────────────────────────────────

@@ -928,6 +928,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [showBuyersUpdate, setShowBuyersUpdate] = useState(false)
   const [habitPrefs,       setHabitPrefs]       = useState({ hidden:[], order:[], edits:{} })
   const [goals,            setGoals]            = useState({}) // { xp, prospecting, appointments, showing, closed }
+  const [menuOpen,         setMenuOpen]         = useState(false)
 
   // Custom tasks
   const [customTasks,   setCustomTasks]   = useState([])
@@ -1484,8 +1485,57 @@ function Dashboard({ theme, onToggleTheme }) {
           </button>
           <button className="btn-ghost mob-hide" style={{ background:'transparent', border:'1px solid rgba(255,255,255,.09)', color:'var(--nav-sub)', fontSize:12 }}
             onClick={()=>supabase.auth.signOut()}>Sign out</button>
+          {/* Hamburger — mobile only */}
+          <button className="nav-btn mob-show" onClick={()=>setMenuOpen(o=>!o)}
+            style={{ fontSize:16, padding:'7px 11px', lineHeight:1 }}>
+            {menuOpen ? '✕' : '☰'}
+          </button>
         </div>
       </nav>
+
+      {/* Mobile menu backdrop */}
+      {menuOpen && (
+        <div style={{ position:'fixed', inset:0, zIndex:198 }}
+          onClick={()=>setMenuOpen(false)}/>
+      )}
+
+      {/* Mobile dropdown menu */}
+      {menuOpen && (
+        <div style={{
+          position:'fixed', top:52, left:0, right:0, zIndex:199,
+          background:'var(--nav-bg)', borderBottom:'1px solid rgba(255,255,255,.08)',
+          display:'flex', flexDirection:'column', padding:'8px 10px 14px',
+          animation:'fadeUp .18s ease', boxShadow:'0 8px 24px rgba(0,0,0,.4)'
+        }}>
+          {[
+            { p:'dashboard', icon:'🏠', label:'Home' },
+            { p:'teams',     icon:'👥', label:'Teams' },
+            { p:'directory', icon:'🔗', label:'Tools' },
+            { p:'profile',   icon:'👤', label:'Profile' },
+          ].map(({p, icon, label})=>(
+            <button key={p} onClick={()=>{ setPage(p); setMenuOpen(false) }} style={{
+              display:'flex', alignItems:'center', gap:12,
+              background: page===p ? 'var(--gold4)' : 'transparent',
+              border: page===p ? '1px solid rgba(217,119,6,.3)' : '1px solid transparent',
+              color: page===p ? 'var(--gold2)' : 'var(--nav-text)',
+              borderRadius:9, padding:'12px 14px', cursor:'pointer',
+              fontSize:14, fontWeight: page===p ? 700 : 400,
+              textAlign:'left', width:'100%',
+            }}>
+              <span style={{ fontSize:16 }}>{icon}</span> {label}
+            </button>
+          ))}
+          <div style={{ height:1, background:'rgba(255,255,255,.07)', margin:'8px 0' }}/>
+          <button onClick={()=>{ setMenuOpen(false); supabase.auth.signOut() }} style={{
+            display:'flex', alignItems:'center', gap:12,
+            background:'transparent', border:'1px solid transparent',
+            color:'rgba(255,255,255,.4)', borderRadius:9, padding:'10px 14px',
+            cursor:'pointer', fontSize:13, textAlign:'left', width:'100%',
+          }}>
+            <span>🚪</span> Sign Out
+          </button>
+        </div>
+      )}
 
       {page==='teams'     && <TeamsPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
       {page==='profile'   && <ProfilePage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
@@ -1998,8 +2048,9 @@ function Dashboard({ theme, onToggleTheme }) {
               return a + h.xp + (cnt>0?Math.max(0,cnt-1)*(h.xpEach||0):0)
             },0)
           },0)
-          const totalPipeXp = sessionPipelineXp
-          const totalXpShown = totalMonthHabitXp + totalPipeXp || 1
+          const totalPipeXp  = sessionPipelineXp
+          const otherXp      = Math.max(0, xp - totalMonthHabitXp - totalPipeXp)
+          const totalXpShown = totalMonthHabitXp + totalPipeXp + otherXp || 1
           return (
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:18, animation:'fadeUp .3s ease', paddingBottom:8 }}>
 
@@ -2060,16 +2111,17 @@ function Dashboard({ theme, onToggleTheme }) {
 
               {/* XP breakdown */}
               <div className="card" style={{ padding:22 }}>
-                <div style={{ fontWeight:700, fontSize:13, color:'var(--text)', marginBottom:16 }}>⚡ XP Sources (Session)</div>
+                <div style={{ fontWeight:700, fontSize:13, color:'var(--text)', marginBottom:16 }}>⚡ XP Sources</div>
                 <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:18 }}>
                   <div style={{ fontSize:32, fontWeight:800, color:'var(--gold)', fontFamily:"'Fraunces',serif" }}>
-                    {(totalMonthHabitXp+totalPipeXp).toLocaleString()}
+                    {xp.toLocaleString()}
                   </div>
-                  <div style={{ fontSize:11, color:'var(--muted)' }}>total XP this session</div>
+                  <div style={{ fontSize:11, color:'var(--muted)' }}>lifetime XP total</div>
                 </div>
                 {[
-                  { label:'Habits', val:totalMonthHabitXp, color:'#0ea5e9' },
-                  { label:'Pipeline', val:totalPipeXp, color:'#10b981' },
+                  { label:'Habits',   val:totalMonthHabitXp, color:'#0ea5e9' },
+                  { label:'Pipeline', val:totalPipeXp,        color:'#10b981' },
+                  ...(otherXp > 0 ? [{ label:'🏆 Bonuses', val:otherXp, color:'#f59e0b' }] : []),
                 ].map(s=>(
                   <div key={s.label} style={{ marginBottom:10 }}>
                     <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:4 }}>
@@ -2084,9 +2136,9 @@ function Dashboard({ theme, onToggleTheme }) {
                 ))}
                 <div style={{ marginTop:16, padding:'10px 14px', background:'rgba(255,255,255,.03)',
                   border:'1px solid var(--b1)', borderRadius:10, fontSize:12 }}>
-                  <div style={{ color:'var(--muted)', marginBottom:2 }}>Lifetime XP</div>
-                  <div style={{ fontWeight:700, color:'var(--gold)', fontFamily:"'Fraunces',serif", fontSize:18 }}>
-                    {xp.toLocaleString()} XP — {rank.icon} {rank.name}
+                  <div style={{ color:'var(--muted)', marginBottom:2 }}>Current Rank</div>
+                  <div style={{ fontWeight:700, color:rank.color, fontFamily:"'Fraunces',serif", fontSize:18 }}>
+                    {rank.icon} {rank.name}
                   </div>
                 </div>
               </div>

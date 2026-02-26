@@ -135,7 +135,7 @@ function OfferModal({ repName, onSubmit, onClose }) {
 
 // ─── Print Daily Modal ────────────────────────────────────────────────────────
 
-function PrintDailyModal({ habits, counters, today, todayDate, customTasks, customDone, offersMade, offersReceived, pendingDeals, closedDeals, buyerReps, onClose }) {
+function PrintDailyModal({ habits, counters, today, todayDate, effectiveToday, customTasks, customDone, offersMade, offersReceived, pendingDeals, closedDeals, buyerReps, onClose }) {
   const dateStr = new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' })
   const prospectCount  = counters[`prospecting-${today.week}-${today.day}`]  || 0
   const apptCount      = counters[`appointments-${today.week}-${today.day}`] || 0
@@ -181,7 +181,7 @@ function PrintDailyModal({ habits, counters, today, todayDate, customTasks, cust
             {/* Left: Habits Checklist */}
             <div>
               <div className="print-section-title">Daily Habits Checklist</div>
-              {HABITS.map(h => {
+              {(effectiveToday||[]).filter(h => h.isBuiltIn).map(h => {
                 const done = habits[h.id]?.[today.week]?.[today.day]
                 const cnt  = h.counter ? (counters[`${h.id}-${today.week}-${today.day}`] || 0) : 0
                 return (
@@ -195,7 +195,10 @@ function PrintDailyModal({ habits, counters, today, todayDate, customTasks, cust
                 )
               })}
               {(()=>{
-                const ct = (customTasks||[]).filter(t => t.isDefault || t.specificDate === todayDate)
+                // Custom defaults (from Settings) + today-specific tasks added on the day
+                const customDefaults  = (effectiveToday||[]).filter(h => !h.isBuiltIn)
+                const todaySpecific   = (customTasks||[]).filter(t => !t.isDefault && t.specificDate === todayDate)
+                const ct = [...customDefaults, ...todaySpecific]
                 if (!ct.length) return null
                 return (
                   <>
@@ -2493,6 +2496,7 @@ function Dashboard({ theme, onToggleTheme }) {
           counters={counters}
           today={today}
           todayDate={todayDate}
+          effectiveToday={effectiveToday}
           customTasks={customTasks}
           customDone={customDone}
           offersMade={offersMade}

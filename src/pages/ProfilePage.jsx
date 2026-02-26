@@ -735,36 +735,6 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme }) {
           {activeTab==='settings' && (
             <div style={{ display:'flex', flexDirection:'column', gap:14, animation:'fadeUp .25s ease' }}>
 
-              {/* Theme */}
-              <div className="card" style={{ padding:24 }}>
-                <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:4 }}>Appearance</div>
-                <div style={{ fontSize:13, color:'var(--muted)', marginBottom:20 }}>Choose how RealtyGrind looks for you.</div>
-                <div style={{ display:'flex', gap:12 }}>
-                  {['light','dark'].map(t => (
-                    <button key={t} onClick={()=>{ if(theme!==t) onToggleTheme() }} style={{
-                      flex:1, padding:'18px 16px', borderRadius:10, cursor:'pointer', transition:'background .15s, border-color .15s, color .15s',
-                      border:`2px solid ${theme===t?'var(--gold)':'var(--b2)'}`,
-                      background: theme===t ? 'var(--gold3)' : 'var(--surface2)',
-                      display:'flex', flexDirection:'column', alignItems:'center', gap:8,
-                    }}>
-                      <span style={{ fontSize:28 }}>{t==='light'?'☀️':'🌙'}</span>
-                      <span style={{ fontSize:13, fontWeight:600, color:theme===t?'var(--gold)':'var(--text2)',
-                        textTransform:'capitalize' }}>{t} Mode</span>
-                      {theme===t && <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, background:'var(--gold4)',
-                        color:'var(--gold)', fontWeight:700, letterSpacing:.8 }}>ACTIVE</span>}
-                    </button>
-                  ))}
-                </div>
-                <div style={{ marginTop:16, display:'flex', alignItems:'center', justifyContent:'space-between',
-                  padding:'12px 16px', borderRadius:9, background:'var(--bg2)', border:'1px solid var(--b1)' }}>
-                  <div>
-                    <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>Quick Toggle</div>
-                    <div style={{ fontSize:11, color:'var(--muted)' }}>Also available in the top nav bar</div>
-                  </div>
-                  <ThemeToggle theme={theme} onToggle={onToggleTheme}/>
-                </div>
-              </div>
-
               {/* Account info */}
               <div className="card" style={{ padding:24 }}>
                 <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:14 }}>Account</div>

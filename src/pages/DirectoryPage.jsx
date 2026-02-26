@@ -195,7 +195,7 @@ export default function DirectoryPage({ onNavigate, theme, onToggleTheme }) {
           ) : (
             <div style={{
               display:'grid',
-              gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))',
+              gridTemplateColumns:'repeat(auto-fill, minmax(240px, 1fr))',
               gap:14,
             }}>
               {visible.map(app => (

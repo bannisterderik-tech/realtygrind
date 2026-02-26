@@ -388,7 +388,7 @@ body,.page { background: var(--bg); color: var(--text); }
   .tab-item    { font-size: 12px; padding: 8px 12px; }
   .section-sub { font-size: 11px; }
   .section-divider { margin: 22px 0 16px; }
-  .resp-table-inner { min-width: 450px; }
+  .resp-table-inner { min-width: 540px; }
   /* Larger tap targets */
   .chk     { width: 26px !important; height: 26px !important; }
   .btn-del { width: 34px !important; height: 34px !important; }

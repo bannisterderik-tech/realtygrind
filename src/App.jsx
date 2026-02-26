@@ -1619,7 +1619,7 @@ function Dashboard({ theme, onToggleTheme }) {
         <div className="stat-grid" style={{ marginBottom:18 }}>
           <StatCard icon="⚡" label="Today" value={`${todayPct}%`}
             color={todayPct>=80?'var(--green)':todayPct>=50?'var(--gold)':'var(--red)'}
-            sub={`${todayChecks}/${builtInEffective.length} habits`}
+            sub={`${todayChecks}/${todayBuiltInActive.length} habits`}
             accent={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'}/>
           <StatCard icon="📅" label="Month"        value={`${monthPct}%`}   color="var(--gold)"  sub={`${totalHabitChecks} checks`}/>
           <StatCard icon="📅" label="Appointments" value={totalAppts}        color="var(--green)"
@@ -1845,7 +1845,7 @@ function Dashboard({ theme, onToggleTheme }) {
                   {todayPct===100?'Perfect day! 🎉':todayPct>=80?'Almost there!':todayPct>=50?'Good progress':'Keep going'}
                 </div>
                 <div style={{ fontSize:11, color:'var(--muted)', marginTop:4 }}>
-                  {HABITS.length-todayChecks} habit{HABITS.length-todayChecks!==1?'s':''} left
+                  {todayBuiltInActive.length-todayChecks} habit{todayBuiltInActive.length-todayChecks!==1?'s':''} left
                 </div>
               </div>
 

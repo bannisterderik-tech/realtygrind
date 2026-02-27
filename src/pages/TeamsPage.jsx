@@ -921,7 +921,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                         <div>
                           {/* Agent filter pills */}
                           <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:20 }}>
-                            {[{id:'all',label:'All Agents'}, ...members.map(m=>({id:m.id,label:m.full_name||'Agent'}))].map(opt=>(
+                            {[{id:'all',label:'All Agents'}, ...members.filter(m=>m.id!==user?.id).map(m=>({id:m.id,label:m.full_name||'Agent'}))].map(opt=>(
                               <button key={opt.id} onClick={()=>setFilterAgent(opt.id)} style={{
                                 padding:'5px 14px', borderRadius:20, fontSize:12, fontWeight:600, cursor:'pointer',
                                 border: filterAgent===opt.id ? 'none' : '1px solid var(--b2)',

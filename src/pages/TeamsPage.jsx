@@ -220,7 +220,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({ email, teamId: profile.team_id }),
+          body: JSON.stringify({ email, teamId: profile.team_id, token: session.access_token }),
         }
       )
       const result = await resp.json()

@@ -921,7 +921,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                         <div>
                           {/* Agent filter pills */}
                           <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:20 }}>
-                            {[{id:'all',label:'All Agents'}, ...members.map(m=>({id:m.id,label:m.full_name||'Agent'}))].map(opt=>(
+                            {[{id:'all',label:'All Agents'}, ...members.filter(m=>m.id!==user?.id).map(m=>({id:m.id,label:m.full_name||'Agent'}))].map(opt=>(
                               <button key={opt.id} onClick={()=>setFilterAgent(opt.id)} style={{
                                 padding:'5px 14px', borderRadius:20, fontSize:12, fontWeight:600, cursor:'pointer',
                                 border: filterAgent===opt.id ? 'none' : '1px solid var(--b2)',
@@ -1069,7 +1069,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 </div>
                                 <div style={{ display:'flex', gap:8 }}>
                                   <button className="btn-primary" onClick={saveNote}
-                                    disabled={noteSaving||!noteForm.text?.trim()||!noteForm.agentId}
+                                    disabled={noteSaving||!noteForm.text?.trim()||!noteForm.agentId||noteForm.agentId===user?.id}
                                     style={{ fontSize:13, padding:'9px 22px' }}>
                                     {noteSaving ? 'Saving…' : 'Save Note'}
                                   </button>
@@ -1079,7 +1079,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                             </div>
                           ) : (
                             <button className="btn-outline"
-                              onClick={()=>setNoteForm({ agentId: filterAgent==='all' ? '' : filterAgent, text:'', type:'general', editingId:null })}
+                              onClick={()=>setNoteForm({ agentId: (filterAgent==='all'||filterAgent===user?.id) ? '' : filterAgent, text:'', type:'general', editingId:null })}
                               style={{ fontSize:13 }}>+ Add Coaching Note</button>
                           )}
                         </div>

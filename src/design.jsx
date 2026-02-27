@@ -274,9 +274,9 @@ body,.page { background: var(--bg); color: var(--text); }
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; }
 .stat-card {
   background: var(--surface); border: 1px solid var(--b2); border-radius: var(--r2);
-  padding: 15px 16px; transition: transform .18s cubic-bezier(.4,0,.2,1), box-shadow .2s, background .25s, border-color .15s; cursor: default;
+  padding: 15px 16px; transition: transform .2s cubic-bezier(.4,0,.2,1), box-shadow .2s, background .25s, border-color .15s; cursor: default;
 }
-.stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow2); border-color: var(--b3); }
+.stat-card:hover { transform: translateY(-3px) scale(1.01); box-shadow: var(--shadow2); }
 
 /* ── Pipeline ── */
 .pipe-row {
@@ -571,13 +571,12 @@ export function Ring({ pct, size=72, color='#b45309', sw=5, label, sub }) {
 }
 
 export function StatCard({ icon, label, value, color='#b45309', sub, accent }) {
-  const tintBg = accent ? `${accent}07` : undefined
-  const tintBorder = accent ? `${accent}28` : undefined
+  const tintColor = accent || color
   return (
-    <div className="stat-card" style={{ ...(accent ? { borderColor: tintBorder, background: tintBg } : {}) }}>
+    <div className="stat-card" style={{ background:`${tintColor}07`, borderColor:`${tintColor}22` }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
         <span className="label">{label}</span>
-        {icon && <span style={{ fontSize:14, lineHeight:1, opacity:.65 }}>{icon}</span>}
+        {icon && <span style={{ fontSize:14, lineHeight:1, opacity:.7 }}>{icon}</span>}
       </div>
       <div className="serif" style={{ fontSize:26, color, lineHeight:1.05, fontWeight:700, letterSpacing:'-.02em' }}>{value}</div>
       {sub && <div style={{ fontSize:10.5, color:'var(--muted)', marginTop:6, fontFamily:"'JetBrains Mono',monospace", lineHeight:1.4 }}>{sub}</div>}

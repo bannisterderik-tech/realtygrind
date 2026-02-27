@@ -209,10 +209,22 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     }
     setInviteSending(true); setInviteMsg(null)
     try {
-      const { error } = await supabase.functions.invoke('invite-member', {
-        body: { email, teamId: profile.team_id },
-      })
-      if (error) throw new Error(error.message)
+      // Use raw fetch — supabase.functions.invoke doesn't support the new publishable key format
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Not authenticated')
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-member`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ email, teamId: profile.team_id }),
+        }
+      )
+      const result = await resp.json()
+      if (!resp.ok) throw new Error(result.error || 'Failed to send invite.')
       // Track in team_prefs.pending_invites
       const existing = teamData?.team_prefs?.pending_invites || []
       if (!existing.find(i => i.email === email)) {

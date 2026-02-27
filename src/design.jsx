@@ -30,13 +30,15 @@ export const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Montserrat:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { font-size: 16px; }
+html { font-size: 16px; background: var(--bg); }
 body {
   font-family: 'Poppins', sans-serif;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   transition: background .25s, color .25s;
+  min-height: 100vh;
 }
+#root { min-height: 100vh; background: var(--bg); }
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { border-radius: 5px; }

@@ -51,6 +51,9 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [teamsTab,       setTeamsTab]       = useState('roster') // 'roster' | 'admin'
   const [groupForm,      setGroupForm]      = useState(null)     // null | { name, leaderId, memberIds, editingId }
   const [groupSaving,    setGroupSaving]    = useState(false)
+  const [groupView,      setGroupView]      = useState(null)     // null | groupId — full group dashboard
+  const [groupChallengeForm,   setGroupChallengeForm]   = useState(null)  // null | { title, metric, bonusXp }
+  const [groupChallengeSaving, setGroupChallengeSaving] = useState(false)
   const [adminSubTab,    setAdminSubTab]    = useState('coaching') // 'coaching'|'groups'|'standup'
   const [filterAgent,    setFilterAgent]    = useState('all')         // 'all' | memberId
   const [noteForm,       setNoteForm]       = useState(null)          // null | { agentId, text, type, editingId }
@@ -304,6 +307,52 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     setReplySaving(null)
   }
 
+  // ── Group Challenges ──────────────────────────────────────────────────────
+  async function saveGroupChallenge(groupId) {
+    if (!groupChallengeForm?.title?.trim()) return
+    setGroupChallengeSaving(true)
+    const groups = teamData?.team_prefs?.groups || []
+    const newChallenge = {
+      id: Date.now().toString(36),
+      title: groupChallengeForm.title.trim(),
+      metric: groupChallengeForm.metric,
+      bonusXp: parseInt(groupChallengeForm.bonusXp) || 0,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+    }
+    const updatedGroups = groups.map(g => g.id === groupId
+      ? { ...g, challenges: [...(g.challenges||[]), newChallenge] } : g)
+    const newPrefs = { ...(teamData.team_prefs||{}), groups: updatedGroups }
+    await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+    setGroupChallengeForm(null)
+    setGroupChallengeSaving(false)
+  }
+
+  async function endGroupChallenge(groupId, challengeId) {
+    const groups = teamData?.team_prefs?.groups || []
+    const group  = groups.find(g => g.id === groupId)
+    if (!group) return
+    const challenge = (group.challenges||[]).find(c => c.id === challengeId)
+    if (!challenge) return
+    const groupMems = members.filter(m => group.memberIds.includes(m.id))
+    const ranked = [...groupMems].sort((a,b) => getMemberMetricVal(b.id, challenge.metric) - getMemberMetricVal(a.id, challenge.metric))
+    const winner = ranked[0]
+    if (!winner) return
+    if (challenge.bonusXp > 0) {
+      const newXp = (winner.xp||0) + challenge.bonusXp
+      await supabase.from('profiles').update({ xp: newXp }).eq('id', winner.id)
+      setMembers(ms => ms.map(m => m.id===winner.id ? { ...m, xp:newXp } : m))
+    }
+    const updatedGroups = groups.map(g => g.id === groupId
+      ? { ...g, challenges: (g.challenges||[]).map(c =>
+          c.id===challengeId ? { ...c, status:'ended', winnerId: winner.id } : c) }
+      : g)
+    const newPrefs = { ...(teamData.team_prefs||{}), groups: updatedGroups }
+    await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+  }
+
   // ── Coaching Notes ────────────────────────────────────────────────────────
   async function saveNote() {
     if (!noteForm?.text?.trim() || !noteForm?.agentId) return
@@ -476,6 +525,274 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
             <div style={{ animation:'fadeUp .25s ease' }}>
               {loading && !members.length ? <Loader/> : (
                 <>
+
+                  {/* ── Group Dashboard (full-page view when a group is selected) ── */}
+                  {groupView && (()=>{
+                    const group = allGroups.find(g => g.id === groupView)
+                    if (!group) { setGroupView(null); return null }
+                    const groupLeaderMember = members.find(m => m.id === group.leaderId)
+                    const groupMems   = members.filter(m => group.memberIds.includes(m.id))
+                    const todayStr    = new Date().toISOString().slice(0,10)
+                    const canManageGroup = isTeamOwner || group.leaderId === user?.id
+                    const activeChallenges = (group.challenges||[]).filter(c=>c.status==='active')
+                    const endedChallenges  = (group.challenges||[]).filter(c=>c.status==='ended').slice(-3).reverse()
+                    return (
+                      <div style={{ animation:'fadeUp .2s ease' }}>
+                        {/* Header */}
+                        <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:24, flexWrap:'wrap' }}>
+                          <button className="btn-outline" style={{ fontSize:12, padding:'7px 14px' }}
+                            onClick={()=>{ setGroupView(null); setGroupChallengeForm(null) }}>← Back</button>
+                          <div>
+                            <div className="serif" style={{ fontSize:26, color:'var(--text)', lineHeight:1.1 }}>🫂 {group.name}</div>
+                            <div style={{ fontSize:12, color:'var(--muted)', marginTop:3 }}>
+                              {groupMems.length} member{groupMems.length!==1?'s':''} ·{' '}
+                              {groupLeaderMember ? `👑 ${groupLeaderMember.full_name}` : 'No leader assigned'}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Members grid */}
+                        <div style={{ marginBottom:32 }}>
+                          <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:14 }}>👥 Members</div>
+                          {groupMems.length === 0 && <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic' }}>No members yet.</div>}
+                          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:12 }}>
+                            {groupMems.map(m => {
+                              const rank    = getRank(m.xp||0)
+                              const stats   = memberStats[m.id]||{}
+                              const isLead  = m.id === group.leaderId
+                              return (
+                                <div key={m.id} className="card" style={{ padding:14,
+                                  cursor: canViewDetail(m) ? 'pointer' : 'default',
+                                  border: isLead ? '1px solid rgba(139,92,246,.3)' : '1px solid var(--b2)' }}
+                                  onClick={canViewDetail(m) && !memberDetailLoading ? ()=>fetchMemberDetail(m) : undefined}>
+                                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                                    <div style={{ width:34, height:34, borderRadius:'50%',
+                                      background:`linear-gradient(135deg,${rank.color},${rank.color}99)`,
+                                      display:'flex', alignItems:'center', justifyContent:'center',
+                                      fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
+                                      {(m.full_name||'A').charAt(0).toUpperCase()}
+                                    </div>
+                                    <div style={{ flex:1, minWidth:0 }}>
+                                      <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{m.full_name||'Agent'}</div>
+                                      <div style={{ fontSize:10, color:'var(--muted)' }}>{rank.name} · 🔥{m.streak||0}</div>
+                                    </div>
+                                    {isLead && <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background:'rgba(139,92,246,.12)', color:'#8b5cf6', fontWeight:700, flexShrink:0 }}>LEAD</span>}
+                                  </div>
+                                  <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
+                                    <div style={{ textAlign:'center' }}>
+                                      <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>TODAY</div>
+                                      <Ring pct={stats.todayPct||0} size={52} color={rank.color}/>
+                                    </div>
+                                    <div style={{ textAlign:'center' }}>
+                                      <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>MONTH</div>
+                                      <Ring pct={stats.monthlyPct||0} size={52} color='#0ea5e9'/>
+                                    </div>
+                                  </div>
+                                  {canViewDetail(m) && <div style={{ marginTop:8, fontSize:10, color:'var(--dim)', textAlign:'center' }}>Click to view details</div>}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Group Challenges */}
+                        <div style={{ marginBottom:32 }}>
+                          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+                            <div className="serif" style={{ fontSize:20, color:'var(--text)' }}>🏆 Group Challenges</div>
+                            {canManageGroup && !groupChallengeForm && (
+                              <button className="btn-outline" style={{ fontSize:12 }}
+                                onClick={()=>setGroupChallengeForm({ title:'', metric:'prospecting', bonusXp:'100' })}>
+                                + New Challenge
+                              </button>
+                            )}
+                          </div>
+                          {canManageGroup && groupChallengeForm && (
+                            <div className="card" style={{ padding:20, marginBottom:16, border:'1px solid rgba(217,119,6,.3)', background:'var(--gold3)' }}>
+                              <div className="serif" style={{ fontSize:15, color:'var(--text)', marginBottom:14 }}>New Group Challenge</div>
+                              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                                <div>
+                                  <div className="label" style={{ marginBottom:5 }}>Title</div>
+                                  <input className="field-input" value={groupChallengeForm.title}
+                                    onChange={e=>setGroupChallengeForm(f=>({...f,title:e.target.value}))}
+                                    placeholder="e.g. Most Calls This Week 📞" style={{ width:'100%' }}/>
+                                </div>
+                                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                                  <div>
+                                    <div className="label" style={{ marginBottom:5 }}>Metric</div>
+                                    <select className="field-input" value={groupChallengeForm.metric}
+                                      onChange={e=>setGroupChallengeForm(f=>({...f,metric:e.target.value}))} style={{ width:'100%' }}>
+                                      {CHALLENGE_METRICS.map(m=><option key={m.value} value={m.value}>{m.label}</option>)}
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <div className="label" style={{ marginBottom:5 }}>Bonus XP</div>
+                                    <input type="number" className="field-input" value={groupChallengeForm.bonusXp}
+                                      onChange={e=>setGroupChallengeForm(f=>({...f,bonusXp:e.target.value}))}
+                                      placeholder="e.g. 300" style={{ width:'100%' }}/>
+                                  </div>
+                                </div>
+                                <div style={{ display:'flex', gap:8 }}>
+                                  <button className="btn-primary" onClick={()=>saveGroupChallenge(group.id)}
+                                    disabled={groupChallengeSaving||!groupChallengeForm.title.trim()}
+                                    style={{ fontSize:13, padding:'9px 22px' }}>
+                                    {groupChallengeSaving?'Saving…':'🚀 Launch Challenge'}
+                                  </button>
+                                  <button className="btn-outline" onClick={()=>setGroupChallengeForm(null)} style={{ fontSize:13 }}>Cancel</button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          {activeChallenges.length===0 && !groupChallengeForm && (
+                            <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic', padding:'8px 0' }}>
+                              {canManageGroup ? 'No active challenges — create one to motivate your group!' : 'No active challenges right now.'}
+                            </div>
+                          )}
+                          {activeChallenges.map(c=>{
+                            const metricLabel = CHALLENGE_METRICS.find(m=>m.value===c.metric)?.label || c.metric
+                            const ranked = [...groupMems].map(m=>({ ...m, val:getMemberMetricVal(m.id,c.metric) })).sort((a,b)=>b.val-a.val)
+                            const maxVal = Math.max(...ranked.map(r=>r.val), 1)
+                            return (
+                              <div key={c.id} className="card" style={{ padding:20, marginBottom:12, border:'1px solid rgba(217,119,6,.2)' }}>
+                                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14, gap:8 }}>
+                                  <div>
+                                    <div style={{ fontWeight:700, fontSize:15, color:'var(--text)' }}>{c.title}</div>
+                                    <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>
+                                      {metricLabel} · {c.bonusXp>0?`+${c.bonusXp} XP for winner`:'Bragging rights'}
+                                    </div>
+                                  </div>
+                                  {canManageGroup && (
+                                    <button onClick={()=>{ if(confirm('End challenge and award XP to leader?')) endGroupChallenge(group.id,c.id) }}
+                                      style={{ background:'rgba(220,38,38,.08)', border:'1px solid rgba(220,38,38,.2)',
+                                        color:'var(--red)', borderRadius:7, padding:'6px 12px', fontSize:11, cursor:'pointer', fontWeight:600, whiteSpace:'nowrap' }}>
+                                      End & Award
+                                    </button>
+                                  )}
+                                </div>
+                                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                                  {ranked.map((m,i)=>(
+                                    <div key={m.id}>
+                                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:3 }}>
+                                        <span style={{ color:i===0?'var(--gold)':'var(--text)', fontWeight:i===0?700:400 }}>
+                                          {i===0?'🥇 ':i===1?'🥈 ':i===2?'🥉 ':''}{m.full_name||'Agent'}
+                                          {m.id===user?.id && <span style={{ marginLeft:5, fontSize:9, color:'var(--muted)' }}>(you)</span>}
+                                        </span>
+                                        <span style={{ fontWeight:700, color:i===0?'var(--gold)':'var(--text)' }}>{m.val}</span>
+                                      </div>
+                                      <div style={{ height:6, background:'var(--b1)', borderRadius:99, overflow:'hidden' }}>
+                                        <div style={{ height:'100%', width:`${Math.max(Math.round(m.val/maxVal*100),m.val>0?4:0)}%`,
+                                          background:i===0?'var(--gold)':i===1?'#94a3b8':'#cd7c32', borderRadius:99, transition:'width .5s' }}/>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )
+                          })}
+                          {endedChallenges.length>0 && (
+                            <details style={{ marginTop:8 }}>
+                              <summary style={{ fontSize:12, color:'var(--muted)', cursor:'pointer', userSelect:'none' }}>Past challenges ({endedChallenges.length})</summary>
+                              <div style={{ marginTop:8, display:'flex', flexDirection:'column', gap:8 }}>
+                                {endedChallenges.map(c=>{
+                                  const winner = groupMems.find(m=>m.id===c.winnerId)
+                                  return (
+                                    <div key={c.id} style={{ padding:'10px 14px', borderRadius:9, background:'var(--bg2)', border:'1px solid var(--b1)', fontSize:12, color:'var(--muted)' }}>
+                                      <span style={{ fontWeight:600, color:'var(--text)' }}>{c.title}</span>
+                                      {winner && <span> — 🏆 {winner.full_name||'Agent'} won {c.bonusXp>0?`+${c.bonusXp} XP`:''}</span>}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </details>
+                          )}
+                        </div>
+
+                        {/* Standup Feed */}
+                        <div>
+                          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+                            <div className="serif" style={{ fontSize:20, color:'var(--text)' }}>⚡ Today's Standups</div>
+                            <div style={{ fontSize:12, color:'var(--muted)' }}>
+                              {groupMems.filter(m=>m.habit_prefs?.standup_today?.date===todayStr).length}/{groupMems.length} submitted
+                            </div>
+                          </div>
+                          {groupMems.length===0 && <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic' }}>No members yet.</div>}
+                          {groupMems.map(m=>{
+                            const sd = m.habit_prefs?.standup_today
+                            const submitted = sd?.date === todayStr
+                            const rank = getRank(m.xp||0)
+                            const key  = `${m.id}_${todayStr}`
+                            const replies = teamData?.team_prefs?.standup_replies?.[key] || []
+                            return (
+                              <div key={m.id} className="card" style={{ padding:18, marginBottom:12,
+                                borderLeft: submitted ? '3px solid var(--green)' : '3px solid var(--b2)',
+                                opacity: submitted ? 1 : 0.65 }}>
+                                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:submitted?14:0 }}>
+                                  <div style={{ width:34, height:34, borderRadius:'50%',
+                                    background:`linear-gradient(135deg,${rank.color},${rank.color}88)`,
+                                    display:'flex', alignItems:'center', justifyContent:'center',
+                                    fontSize:14, fontWeight:700, color:'#fff', flexShrink:0 }}>
+                                    {(m.full_name||'?').charAt(0).toUpperCase()}
+                                  </div>
+                                  <div style={{ flex:1 }}>
+                                    <div style={{ fontSize:14, fontWeight:600, color:'var(--text)' }}>{m.full_name||'Agent'}</div>
+                                    <div style={{ fontSize:11, color:'var(--muted)' }}>{submitted ? 'Submitted today' : 'Not submitted yet'}</div>
+                                  </div>
+                                  {submitted && <span style={{ fontSize:11, color:'var(--green)', fontWeight:600 }}>✓ Done</span>}
+                                </div>
+                                {submitted && (
+                                  <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                                    {[
+                                      { label:'Accomplished yesterday', value:sd.q1 },
+                                      { label:'#1 priority today',      value:sd.q2 },
+                                      ...(sd.q3?.trim() ? [{ label:'Blocker', value:sd.q3 }] : []),
+                                    ].map(({label,value})=>(
+                                      <div key={label}>
+                                        <div style={{ fontSize:10, color:'var(--dim)', fontWeight:700, textTransform:'uppercase', letterSpacing:.6, marginBottom:3 }}>{label}</div>
+                                        <div style={{ fontSize:13, color:'var(--text)', lineHeight:1.55 }}>{value}</div>
+                                      </div>
+                                    ))}
+                                    {replies.length>0 && (
+                                      <div style={{ borderLeft:'2px solid var(--b2)', paddingLeft:10, marginTop:4, display:'flex', flexDirection:'column', gap:8 }}>
+                                        {replies.map(r=>{
+                                          const author = members.find(x=>x.id===r.authorId)
+                                          return (
+                                            <div key={r.id}>
+                                              <div style={{ fontSize:11, fontWeight:600, color:'var(--gold)', marginBottom:2 }}>
+                                                {author?.full_name||'Leader'} <span style={{ fontSize:9, color:'var(--dim)', fontWeight:400 }}>{relativeTime(r.createdAt)}</span>
+                                              </div>
+                                              <div style={{ fontSize:12, color:'var(--text2)', lineHeight:1.5 }}>{r.text}</div>
+                                            </div>
+                                          )
+                                        })}
+                                      </div>
+                                    )}
+                                    {canManageGroup && (
+                                      <div style={{ display:'flex', gap:6, marginTop:4 }}>
+                                        <input className="field-input" value={replyForms[key]||''}
+                                          onChange={e=>setReplyForms(f=>({...f,[key]:e.target.value.slice(0,300)}))}
+                                          onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&saveStandupReply(m.id,todayStr)}
+                                          placeholder="Reply to standup…"
+                                          style={{ flex:1, padding:'6px 10px', fontSize:12 }}/>
+                                        <button onClick={()=>saveStandupReply(m.id,todayStr)}
+                                          disabled={replySaving===key||!(replyForms[key]||'').trim()}
+                                          style={{ fontSize:11, padding:'6px 12px', borderRadius:6, cursor:'pointer',
+                                            background:'var(--text)', border:'none', color:'var(--bg)', fontWeight:600, flexShrink:0 }}>
+                                          {replySaving===key ? '…' : 'Send'}
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })()}
+
+                  {/* ── Normal team view (hidden when group dashboard is open) ── */}
+                  {!groupView && <>
+
                   {/* Team header */}
                   {teamData && (
                     <div className="card" style={{ padding:22, marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:14,
@@ -502,100 +819,111 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                     </div>
                   )}
 
-                  {/* My Group section */}
+                  {/* My Groups section — shows ALL groups the user belongs to */}
                   {(()=>{
-                    // Find which group this user belongs to (as member OR leader)
-                    const myGroup = allGroups.find(g => g.memberIds.includes(user?.id) || g.leaderId===user?.id) || null
-                    if (!myGroup && !isTeamOwner) return (
+                    const myGroups = allGroups.filter(g => g.memberIds.includes(user?.id) || g.leaderId===user?.id)
+                    if (myGroups.length === 0 && !isTeamOwner) return (
                       <div style={{ border:'1.5px dashed var(--b2)', borderRadius:10, padding:'18px 20px',
                         fontSize:13, color:'var(--muted)', textAlign:'center', marginBottom:16 }}>
                         🫂 Not in a group yet. Ask your team owner to add you.
                       </div>
                     )
-                    if (!myGroup) return null // owner sees no group header
-                    const isLeader = myGroup.leaderId === user?.id
-                    const groupMates = members.filter(m => myGroup.memberIds.includes(m.id) || myGroup.leaderId===m.id).filter(m=>m.id!==user?.id)
+                    if (myGroups.length === 0) return null
                     return (
-                      <div className="card" style={{ padding:20, marginBottom:16, border:'1px solid rgba(139,92,246,.3)',
-                        background:'linear-gradient(135deg, rgba(139,92,246,.05) 0%, var(--surface) 70%)' }}>
-                        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
-                          <span style={{ fontSize:18 }}>🫂</span>
-                          <span className="serif" style={{ fontSize:18, color:'var(--text)' }}>{myGroup.name}</span>
-                          {isLeader && <span style={{ fontSize:10, padding:'2px 8px', borderRadius:10, background:'rgba(139,92,246,.12)', color:'#8b5cf6', fontWeight:700 }}>LEADER</span>}
-                          <span style={{ fontSize:11, padding:'2px 8px', borderRadius:10, background:'rgba(139,92,246,.08)', color:'#8b5cf6', fontWeight:600, marginLeft:2 }}>{myGroup.memberIds.length} members</span>
-                        </div>
-                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:12 }}>
-                          {(() => {
-                            const me = members.find(m => m.id===user?.id)
-                            if (!me) return null
-                            const myRank  = getRank(me.xp||0)
-                            const myStats = memberStats[me.id]||{}
-                            return (
-                              <div className="card" style={{ padding:14, border:'1px solid rgba(217,119,6,.3)', background:'var(--gold3)' }}>
-                                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                                  <div style={{ width:34, height:34, borderRadius:'50%',
-                                    background:`linear-gradient(135deg,${myRank.color},${myRank.color}99)`,
-                                    display:'flex', alignItems:'center', justifyContent:'center',
-                                    fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
-                                    {(me.full_name||'A').charAt(0).toUpperCase()}
-                                  </div>
-                                  <div style={{ flex:1 }}>
-                                    <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{me.full_name||'Agent'}</div>
-                                    <div style={{ fontSize:10, color:'var(--muted)' }}>{myRank.name} · 🔥 {me.streak||0}</div>
-                                  </div>
-                                  <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>YOU</span>
-                                </div>
-                                <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
-                                  <div style={{ textAlign:'center' }}>
-                                    <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>TODAY</div>
-                                    <Ring pct={myStats.todayPct||0} size={52} color={myRank.color}/>
-                                  </div>
-                                  <div style={{ textAlign:'center' }}>
-                                    <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>MONTH</div>
-                                    <Ring pct={myStats.monthlyPct||0} size={52} color='#0ea5e9'/>
-                                  </div>
-                                </div>
+                      <>
+                        {myGroups.map(myGroup => {
+                          const isLeader  = myGroup.leaderId === user?.id
+                          const groupMates = members.filter(m => (myGroup.memberIds.includes(m.id) || myGroup.leaderId===m.id) && m.id!==user?.id)
+                          const me = members.find(m => m.id===user?.id)
+                          return (
+                            <div key={myGroup.id} className="card" style={{ padding:20, marginBottom:16,
+                              border:'1px solid rgba(139,92,246,.3)',
+                              background:'linear-gradient(135deg, rgba(139,92,246,.05) 0%, var(--surface) 70%)' }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14, flexWrap:'wrap' }}>
+                                <span style={{ fontSize:18 }}>🫂</span>
+                                <span className="serif" style={{ fontSize:18, color:'var(--text)' }}>{myGroup.name}</span>
+                                {isLeader && <span style={{ fontSize:10, padding:'2px 8px', borderRadius:10, background:'rgba(139,92,246,.12)', color:'#8b5cf6', fontWeight:700 }}>LEADER</span>}
+                                <span style={{ fontSize:11, padding:'2px 8px', borderRadius:10, background:'rgba(139,92,246,.08)', color:'#8b5cf6', fontWeight:600 }}>{myGroup.memberIds.length} members</span>
+                                {(isLeader || isTeamOwner) && (
+                                  <button className="btn-outline" style={{ marginLeft:'auto', fontSize:11, padding:'5px 12px' }}
+                                    onClick={()=>{ setGroupView(myGroup.id); setGroupChallengeForm(null) }}>
+                                    View Dashboard →
+                                  </button>
+                                )}
                               </div>
-                            )
-                          })()}
-                          {groupMates.map(mate=>{
-                            const mateRank  = getRank(mate.xp||0)
-                            const mateStats = memberStats[mate.id]||{}
-                            const isLeaderMate = myGroup.leaderId === mate.id
-                            return (
-                              <div key={mate.id} className="card" style={{ padding:14,
-                                cursor: isLeader ? 'pointer' : 'default',
-                                border: isLeaderMate ? '1px solid rgba(139,92,246,.3)' : '1px solid var(--b2)' }}
-                                onClick={isLeader && !memberDetailLoading && !viewingMember ? ()=>fetchMemberDetail(mate) : undefined}>
-                                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                                  <div style={{ width:34, height:34, borderRadius:'50%',
-                                    background:`linear-gradient(135deg,${mateRank.color},${mateRank.color}99)`,
-                                    display:'flex', alignItems:'center', justifyContent:'center',
-                                    fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
-                                    {(mate.full_name||'A').charAt(0).toUpperCase()}
-                                  </div>
-                                  <div style={{ flex:1 }}>
-                                    <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{mate.full_name||'Agent'}</div>
-                                    <div style={{ fontSize:10, color:'var(--muted)' }}>{mateRank.name} · 🔥 {mate.streak||0}</div>
-                                  </div>
-                                  {isLeaderMate && <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background:'rgba(139,92,246,.1)', color:'#8b5cf6', fontWeight:700 }}>LEAD</span>}
-                                </div>
-                                <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
-                                  <div style={{ textAlign:'center' }}>
-                                    <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>TODAY</div>
-                                    <Ring pct={mateStats.todayPct||0} size={52} color={mateRank.color}/>
-                                  </div>
-                                  <div style={{ textAlign:'center' }}>
-                                    <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>MONTH</div>
-                                    <Ring pct={mateStats.monthlyPct||0} size={52} color='#0ea5e9'/>
-                                  </div>
-                                </div>
-                                {isLeader && <div style={{ marginTop:8, fontSize:10, color:'var(--dim)', textAlign:'center' }}>Click to view details</div>}
+                              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:12 }}>
+                                {me && (()=>{
+                                  const myRank  = getRank(me.xp||0)
+                                  const myStats = memberStats[me.id]||{}
+                                  return (
+                                    <div className="card" style={{ padding:14, border:'1px solid rgba(217,119,6,.3)', background:'var(--gold3)' }}>
+                                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                                        <div style={{ width:34, height:34, borderRadius:'50%',
+                                          background:`linear-gradient(135deg,${myRank.color},${myRank.color}99)`,
+                                          display:'flex', alignItems:'center', justifyContent:'center',
+                                          fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
+                                          {(me.full_name||'A').charAt(0).toUpperCase()}
+                                        </div>
+                                        <div style={{ flex:1 }}>
+                                          <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{me.full_name||'Agent'}</div>
+                                          <div style={{ fontSize:10, color:'var(--muted)' }}>{myRank.name} · 🔥 {me.streak||0}</div>
+                                        </div>
+                                        <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>YOU</span>
+                                      </div>
+                                      <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
+                                        <div style={{ textAlign:'center' }}>
+                                          <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>TODAY</div>
+                                          <Ring pct={myStats.todayPct||0} size={52} color={myRank.color}/>
+                                        </div>
+                                        <div style={{ textAlign:'center' }}>
+                                          <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>MONTH</div>
+                                          <Ring pct={myStats.monthlyPct||0} size={52} color='#0ea5e9'/>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )
+                                })()}
+                                {groupMates.map(mate=>{
+                                  const mateRank  = getRank(mate.xp||0)
+                                  const mateStats = memberStats[mate.id]||{}
+                                  const isLeaderMate = myGroup.leaderId === mate.id
+                                  return (
+                                    <div key={mate.id} className="card" style={{ padding:14,
+                                      cursor: isLeader ? 'pointer' : 'default',
+                                      border: isLeaderMate ? '1px solid rgba(139,92,246,.3)' : '1px solid var(--b2)' }}
+                                      onClick={isLeader && !memberDetailLoading && !viewingMember ? ()=>fetchMemberDetail(mate) : undefined}>
+                                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                                        <div style={{ width:34, height:34, borderRadius:'50%',
+                                          background:`linear-gradient(135deg,${mateRank.color},${mateRank.color}99)`,
+                                          display:'flex', alignItems:'center', justifyContent:'center',
+                                          fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
+                                          {(mate.full_name||'A').charAt(0).toUpperCase()}
+                                        </div>
+                                        <div style={{ flex:1 }}>
+                                          <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{mate.full_name||'Agent'}</div>
+                                          <div style={{ fontSize:10, color:'var(--muted)' }}>{mateRank.name} · 🔥 {mate.streak||0}</div>
+                                        </div>
+                                        {isLeaderMate && <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background:'rgba(139,92,246,.1)', color:'#8b5cf6', fontWeight:700 }}>LEAD</span>}
+                                      </div>
+                                      <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
+                                        <div style={{ textAlign:'center' }}>
+                                          <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>TODAY</div>
+                                          <Ring pct={mateStats.todayPct||0} size={52} color={mateRank.color}/>
+                                        </div>
+                                        <div style={{ textAlign:'center' }}>
+                                          <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>MONTH</div>
+                                          <Ring pct={mateStats.monthlyPct||0} size={52} color='#0ea5e9'/>
+                                        </div>
+                                      </div>
+                                      {isLeader && <div style={{ marginTop:8, fontSize:10, color:'var(--dim)', textAlign:'center' }}>Click to view details</div>}
+                                    </div>
+                                  )
+                                })}
                               </div>
-                            )
-                          })}
-                        </div>
-                      </div>
+                            </div>
+                          )
+                        })}
+                      </>
                     )
                   })()}
 
@@ -1169,8 +1497,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                   </div>
                                   <div style={{ display:'flex', gap:6, flexShrink:0 }}>
                                     <button className="btn-outline" style={{ fontSize:11, padding:'5px 10px' }}
+                                      onClick={()=>{ setGroupView(grp.id); setGroupChallengeForm(null) }}>
+                                      📊 Dashboard
+                                    </button>
+                                    <button className="btn-outline" style={{ fontSize:11, padding:'5px 10px' }}
                                       onClick={()=>{
-                                        // Always ensure the current leader is in memberIds when opening edit form
                                         const safeMemberIds = grp.leaderId && !grp.memberIds.includes(grp.leaderId)
                                           ? [...grp.memberIds, grp.leaderId]
                                           : [...grp.memberIds]
@@ -1282,6 +1613,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       })()}
                     </div>
                   )}
+                  </>} {/* end !groupView normal view */}
+
                 </>
               )}
             </div>

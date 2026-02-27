@@ -218,9 +218,10 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
             'Authorization': `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({ email, teamId: profile.team_id, token: session.access_token }),
+          body: JSON.stringify({ email, teamId: profile.team_id }),
         }
       )
       const result = await resp.json()

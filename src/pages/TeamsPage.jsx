@@ -54,7 +54,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [groupView,      setGroupView]      = useState(null)     // null | groupId — full group dashboard
   const [groupChallengeForm,   setGroupChallengeForm]   = useState(null)  // null | { title, metric, bonusXp }
   const [groupChallengeSaving, setGroupChallengeSaving] = useState(false)
-  const [adminSubTab,    setAdminSubTab]    = useState('coaching') // 'coaching'|'groups'|'standup'
+  const [adminSubTab,    setAdminSubTab]    = useState('coaching') // 'coaching'|'groups'|'standup'|'settings'
   const [filterAgent,    setFilterAgent]    = useState('all')         // 'all' | memberId
   const [noteForm,       setNoteForm]       = useState(null)          // null | { agentId, text, type, editingId }
   const [noteSaving,     setNoteSaving]     = useState(false)
@@ -66,6 +66,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [inviteEmail,   setInviteEmail]   = useState('')
   const [inviteSending, setInviteSending] = useState(false)
   const [inviteMsg,     setInviteMsg]     = useState(null)   // null | { type:'ok'|'err', text }
+  const [removeConfirm, setRemoveConfirm] = useState(null)   // null | memberId
+  const [removeSaving,  setRemoveSaving]  = useState(false)
+  const [transferTarget, setTransferTarget] = useState('')   // '' | memberId
+  const [transferSaving, setTransferSaving] = useState(false)
+  const [transferConfirm, setTransferConfirm] = useState(false) // two-step confirm
   const fetchSeqRef = useRef(0)  // increments per fetch; stale results are discarded
 
   const MONTH_YEAR = new Date().toISOString().slice(0,7)
@@ -85,6 +90,17 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       if (!groups.find(g => g.id === groupView)) setGroupView(null)
     }
   },[groupView, teamData])
+
+  // Escape key listener for member detail panel — attached via useEffect so it
+  // doesn't interfere with the rest of the page while no panel is open.
+  useEffect(()=>{
+    if (!viewingMember) return
+    const handleKey = (e) => {
+      if (e.key === 'Escape') { setViewingMember(null); setMemberDetail(null) }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  },[viewingMember])
 
   async function fetchMembers(tid) {
     setLoading(true)
@@ -214,6 +230,50 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     await supabase.from('profiles').update({ team_id: null }).eq('id', user.id)
     await refreshProfile()
     setMode('menu'); setMembers([]); setTeamData(null)
+  }
+
+  // ── Remove Member (owner-only) ────────────────────────────────────────────
+  async function removeMember(memberId) {
+    setRemoveSaving(true)
+    // Clean up the removed member from groups and admins in team_prefs
+    const groups = (teamData?.team_prefs?.groups || []).map(g => ({
+      ...g,
+      leaderId:  g.leaderId  === memberId ? '' : g.leaderId,
+      memberIds: g.memberIds.filter(id => id !== memberId),
+    }))
+    const admins = (teamData?.team_prefs?.admins || []).filter(id => id !== memberId)
+    const newPrefs = { ...(teamData.team_prefs || {}), groups, admins }
+    await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+    await supabase.from('team_members').delete().eq('user_id', memberId).eq('team_id', profile.team_id)
+    await supabase.from('profiles').update({ team_id: null }).eq('id', memberId)
+    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+    setMembers(ms => ms.filter(m => m.id !== memberId))
+    setRemoveConfirm(null)
+    setViewingMember(null); setMemberDetail(null)
+    setRemoveSaving(false)
+  }
+
+  // ── Transfer Ownership (owner-only) ──────────────────────────────────────
+  async function transferOwnership(newOwnerId) {
+    if (!newOwnerId) return
+    setTransferSaving(true)
+    await supabase.from('teams').update({ created_by: newOwnerId }).eq('id', profile.team_id)
+    setTeamData(td => ({ ...td, created_by: newOwnerId }))
+    setTransferTarget('')
+    setTransferConfirm(false)
+    setTransferSaving(false)
+    await refreshProfile()  // current user is now a regular member
+  }
+
+  // ── Toggle Co-admin (owner-only) ──────────────────────────────────────────
+  async function toggleAdmin(memberId) {
+    const current = teamData?.team_prefs?.admins || []
+    const updated = current.includes(memberId)
+      ? current.filter(id => id !== memberId)
+      : [...current, memberId]
+    const newPrefs = { ...(teamData.team_prefs || {}), admins: updated }
+    await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
   }
 
   // ── Email Invite ──────────────────────────────────────────────────────────
@@ -506,13 +566,17 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
 
   // ── Derived values ─────────────────────────────────────────────────────────
   const isTeamOwner      = !!(teamData?.created_by === user?.id)
+  const teamAdmins       = teamData?.team_prefs?.admins || []
+  const isAdmin          = teamAdmins.includes(user?.id) && !isTeamOwner
   const allGroups        = teamData?.team_prefs?.groups || []
   const myLedGroup       = allGroups.find(g => g.leaderId === user?.id) || null
-  const isGroupLeader    = !!myLedGroup && !isTeamOwner
+  const isGroupLeader    = !!myLedGroup && !isTeamOwner && !isAdmin
   const myGroupMembers   = myLedGroup ? members.filter(m => myLedGroup.memberIds.includes(m.id)) : []
-  const canViewDetail    = (m) => isTeamOwner || (isGroupLeader && myLedGroup.memberIds.includes(m.id))
-  const isAdminOrOwner   = isTeamOwner || isGroupLeader
-  const coachableMembers = isGroupLeader ? myGroupMembers : members.filter(m=>m.id!==user?.id)
+  const canViewDetail    = (m) => isTeamOwner || isAdmin || (isGroupLeader && myLedGroup?.memberIds.includes(m.id))
+  const isAdminOrOwner   = isTeamOwner || isAdmin || isGroupLeader
+  const coachableMembers = (isGroupLeader && !isAdmin && !isTeamOwner)
+    ? myGroupMembers
+    : members.filter(m => m.id !== user?.id)
   const allCoachingNotes = teamData?.team_prefs?.coaching_notes || []
   const myCoachingNotes  = allCoachingNotes.filter(n => n.agentId === user?.id)
   const pendingInvites   = teamData?.team_prefs?.pending_invites || []
@@ -1077,6 +1141,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       const isMe  = m.id===user.id
                       const stats = memberStats[m.id]||{}
                       const isOwner = teamData?.created_by===m.id
+                      const isAdminMember = teamAdmins.includes(m.id)
+                      const bio   = m.habit_prefs?.bio || {}
                       return (
                         <div key={m.id} className={`card${isMe?' ':' '}`}
                           onClick={(canViewDetail(m) && !memberDetailLoading && !viewingMember) ? ()=>fetchMemberDetail(m) : undefined}
@@ -1103,6 +1169,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 <span style={{ fontSize:14, fontWeight:600, color:'var(--text)' }}>{m.full_name||'Agent'}</span>
                                 {isMe && <span style={{ fontSize:9, padding:'2px 6px', borderRadius:4, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>YOU</span>}
                                 {isOwner && <span style={{ fontSize:9, padding:'2px 6px', borderRadius:4, background:'rgba(139,92,246,.12)', color:'#8b5cf6', fontWeight:700 }}>OWNER</span>}
+                                {isAdminMember && !isOwner && <span style={{ fontSize:9, padding:'2px 6px', borderRadius:4, background:'rgba(14,165,233,.12)', color:'#0ea5e9', fontWeight:700 }}>ADMIN</span>}
                               </div>
                               <div style={{ fontSize:11, color:'var(--muted)' }}>{rank.name}</div>
                             </div>
@@ -1135,6 +1202,18 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                   Closed: {stats.closed}
                                 </span>
                               )}
+                            </div>
+                          )}
+                          {/* Bio snippet — specialty + phone */}
+                          {(bio.specialty || bio.phone) && (
+                            <div style={{ marginTop:7, display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                              {bio.specialty && <span style={{ fontSize:10, padding:'2px 7px', borderRadius:4,
+                                background:'rgba(14,165,233,.1)', color:'#0ea5e9', border:'1px solid rgba(14,165,233,.2)' }}>
+                                {bio.specialty}
+                              </span>}
+                              {bio.phone && <span style={{ fontSize:10, color:'var(--muted)', fontFamily:'monospace' }}>
+                                📞 {bio.phone}
+                              </span>}
                             </div>
                           )}
                         </div>
@@ -1351,8 +1430,9 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       {/* Admin sub-tab bar */}
                       <div className="tabs" style={{ marginBottom:20 }}>
                         <button className={`tab-item${adminSubTab==='coaching'?' on':''}`} onClick={()=>setAdminSubTab('coaching')}>📝 Coaching</button>
-                        {isTeamOwner && <button className={`tab-item${adminSubTab==='groups'?' on':''}`} onClick={()=>setAdminSubTab('groups')}>🫂 Groups</button>}
+                        {(isTeamOwner||isAdmin) && <button className={`tab-item${adminSubTab==='groups'?' on':''}`} onClick={()=>setAdminSubTab('groups')}>🫂 Groups</button>}
                         <button className={`tab-item${adminSubTab==='standup'?' on':''}`} onClick={()=>setAdminSubTab('standup')}>⚡ Standup</button>
+                        {isTeamOwner && <button className={`tab-item${adminSubTab==='settings'?' on':''}`} onClick={()=>setAdminSubTab('settings')}>⚙️ Settings</button>}
                       </div>
 
                       {/* Coaching sub-tab */}
@@ -1536,13 +1616,13 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:2 }}>🫂 Accountability Groups</div>
                               <div style={{ fontSize:12, color:'var(--muted)' }}>Assign a leader to each group — leaders can coach and view their members' activity.</div>
                             </div>
-                            {!groupForm && (
+                            {isTeamOwner && !groupForm && (
                               <button className="btn-outline" onClick={()=>setGroupForm({ name:'', leaderId:'', memberIds:[], editingId:null })}
                                 style={{ fontSize:12 }}>+ New Group</button>
                             )}
                           </div>
 
-                          {groupForm && (
+                          {isTeamOwner && groupForm && (
                             <div className="card" style={{ padding:20, marginBottom:16, border:'1px solid rgba(139,92,246,.3)', background:'rgba(139,92,246,.04)' }}>
                               <div className="serif" style={{ fontSize:15, color:'var(--text)', marginBottom:14 }}>
                                 {groupForm.editingId ? 'Edit Group' : 'New Group'}
@@ -1632,20 +1712,22 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                       onClick={()=>{ setGroupView(grp.id); setGroupChallengeForm(null) }}>
                                       📊 Dashboard
                                     </button>
-                                    <button className="btn-outline" style={{ fontSize:11, padding:'5px 10px' }}
-                                      onClick={()=>{
-                                        const safeMemberIds = grp.leaderId && !grp.memberIds.includes(grp.leaderId)
-                                          ? [...grp.memberIds, grp.leaderId]
-                                          : [...grp.memberIds]
-                                        setGroupForm({ name:grp.name, leaderId:grp.leaderId, memberIds:safeMemberIds, editingId:grp.id })
-                                      }}>
-                                      Edit
-                                    </button>
-                                    <button onClick={()=>deleteGroup(grp.id)}
-                                      style={{ background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.2)',
-                                        color:'var(--red)', borderRadius:7, padding:'5px 10px', cursor:'pointer', fontSize:11, fontWeight:600 }}>
-                                      ✕
-                                    </button>
+                                    {isTeamOwner && (<>
+                                      <button className="btn-outline" style={{ fontSize:11, padding:'5px 10px' }}
+                                        onClick={()=>{
+                                          const safeMemberIds = grp.leaderId && !grp.memberIds.includes(grp.leaderId)
+                                            ? [...grp.memberIds, grp.leaderId]
+                                            : [...grp.memberIds]
+                                          setGroupForm({ name:grp.name, leaderId:grp.leaderId, memberIds:safeMemberIds, editingId:grp.id })
+                                        }}>
+                                        Edit
+                                      </button>
+                                      <button onClick={()=>deleteGroup(grp.id)}
+                                        style={{ background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.2)',
+                                          color:'var(--red)', borderRadius:7, padding:'5px 10px', cursor:'pointer', fontSize:11, fontWeight:600 }}>
+                                        ✕
+                                      </button>
+                                    </>)}
                                   </div>
                                 </div>
                               </div>
@@ -1745,6 +1827,89 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       })()}
                     </div>
                   )}
+
+                      {/* ── Settings sub-tab (owner only) ─────────────────── */}
+                      {adminSubTab==='settings' && isTeamOwner && (
+                        <div>
+                          {/* Team Admins */}
+                          <div style={{ marginBottom:32 }}>
+                            <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:6 }}>👑 Team Admins</div>
+                            <div style={{ fontSize:13, color:'var(--muted)', marginBottom:16, lineHeight:1.6 }}>
+                              Admins can view all member details, write coaching notes for any agent, and see all standups. They cannot manage groups or transfer ownership.
+                            </div>
+                            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                              {members.filter(m=>m.id!==user?.id).map(m => {
+                                const isAdminMember = teamAdmins.includes(m.id)
+                                const rank = getRank(m.xp||0)
+                                return (
+                                  <div key={m.id} className="card" style={{ padding:'12px 16px', display:'flex', alignItems:'center', gap:12 }}>
+                                    <div style={{ width:32, height:32, borderRadius:'50%', flexShrink:0,
+                                      background:`linear-gradient(135deg,${rank.color},${rank.color}99)`,
+                                      display:'flex', alignItems:'center', justifyContent:'center',
+                                      fontSize:13, fontWeight:700, color:'#fff' }}>
+                                      {(m.full_name||'A').charAt(0).toUpperCase()}
+                                    </div>
+                                    <div style={{ flex:1 }}>
+                                      <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{m.full_name||'Agent'}</div>
+                                      <div style={{ fontSize:11, color:'var(--muted)' }}>{rank.name}</div>
+                                    </div>
+                                    {isAdminMember && <span style={{ fontSize:9, padding:'2px 6px', borderRadius:4, background:'rgba(14,165,233,.12)', color:'#0ea5e9', fontWeight:700 }}>ADMIN</span>}
+                                    <button onClick={()=>toggleAdmin(m.id)}
+                                      style={{ fontSize:11, padding:'6px 14px', borderRadius:6, cursor:'pointer', flexShrink:0,
+                                        border: isAdminMember ? '1px solid rgba(220,38,38,.3)' : '1px solid rgba(14,165,233,.3)',
+                                        background: isAdminMember ? 'rgba(220,38,38,.07)' : 'rgba(14,165,233,.07)',
+                                        color: isAdminMember ? 'var(--red)' : '#0ea5e9', fontWeight:600 }}>
+                                      {isAdminMember ? 'Remove Admin' : 'Make Admin'}
+                                    </button>
+                                  </div>
+                                )
+                              })}
+                              {members.filter(m=>m.id!==user?.id).length===0 && (
+                                <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic' }}>No other members yet.</div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Transfer Ownership — danger zone */}
+                          <div style={{ border:'1px solid rgba(220,38,38,.25)', borderRadius:12, padding:24 }}>
+                            <div className="serif" style={{ fontSize:18, color:'var(--red)', marginBottom:8 }}>⚠️ Transfer Ownership</div>
+                            <div style={{ fontSize:13, color:'var(--muted)', marginBottom:16, lineHeight:1.6 }}>
+                              This is permanent. You will become a regular member and lose all owner controls. The selected member will become the new team owner.
+                            </div>
+                            <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
+                              <select className="field-input" value={transferTarget}
+                                onChange={e=>{ setTransferTarget(e.target.value); setTransferConfirm(false) }}
+                                style={{ flex:1, minWidth:160 }}>
+                                <option value="">— Select new owner —</option>
+                                {members.filter(m=>m.id!==user?.id).map(m=>(
+                                  <option key={m.id} value={m.id}>{m.full_name||'Agent'}</option>
+                                ))}
+                              </select>
+                              {!transferConfirm ? (
+                                <button onClick={()=>setTransferConfirm(true)}
+                                  disabled={!transferTarget}
+                                  style={{ fontSize:12, padding:'9px 18px', borderRadius:7, cursor: transferTarget ? 'pointer' : 'not-allowed',
+                                    border:'1px solid rgba(220,38,38,.3)', background:'rgba(220,38,38,.08)',
+                                    color: transferTarget ? 'var(--red)' : 'var(--dim)', fontWeight:600, flexShrink:0 }}>
+                                  Transfer Ownership
+                                </button>
+                              ) : (
+                                <div style={{ display:'flex', gap:8 }}>
+                                  <button className="btn-outline" style={{ fontSize:12 }}
+                                    onClick={()=>setTransferConfirm(false)} disabled={transferSaving}>Cancel</button>
+                                  <button onClick={()=>transferOwnership(transferTarget)} disabled={transferSaving}
+                                    style={{ fontSize:12, padding:'9px 18px', borderRadius:7,
+                                      border:'1px solid var(--red)', background:'rgba(220,38,38,.15)',
+                                      color:'var(--red)', cursor:'pointer', fontWeight:700, flexShrink:0 }}>
+                                    {transferSaving ? 'Transferring…' : '⚠️ Confirm Transfer'}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                   </>} {/* end !groupView normal view */}
 
                 </>
@@ -1753,8 +1918,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
           )}
         </div>
       </div>
-      {/* ── Member detail overlay (team owner or group leader for their members) ── */}
-      {viewingMember && (isTeamOwner || isGroupLeader) && (() => {
+      {/* ── Member detail overlay (owner / admin / group leader) ── */}
+      {viewingMember && isAdminOrOwner && (() => {
         const rank  = getRank(viewingMember.xp || 0)
         const stats = memberStats[viewingMember.id] || {}
         const txs   = memberDetail?.txs || []
@@ -1777,17 +1942,16 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
           pending:        { label:'Pending',      color:'#6366f1' },
           closed:         { label:'Closed',       color:'var(--green)' },
         }
-        const closePanel = () => { setViewingMember(null); setMemberDetail(null) }
+        const closePanel = () => { setViewingMember(null); setMemberDetail(null); setRemoveConfirm(null) }
         return (
-          <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex' }}
-            onKeyDown={e => e.key === 'Escape' && closePanel()} tabIndex={-1}
-            ref={el => el && el.focus()}>
+          <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex',
+            animation:'panelFadeIn .18s ease' }}>
             {/* Backdrop — click anywhere left of panel to close */}
-            <div style={{ flex:1, background:'rgba(0,0,0,.55)', cursor:'pointer',
+            <div style={{ flex:1, background:'rgba(0,0,0,.42)', cursor:'pointer',
               display:'flex', alignItems:'flex-end', justifyContent:'flex-start',
               padding:'0 0 24px 24px' }}
               onClick={closePanel}>
-              <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', letterSpacing:'.5px', userSelect:'none' }}>
+              <div style={{ fontSize:11, color:'rgba(255,255,255,.4)', letterSpacing:'.5px', userSelect:'none' }}>
                 ESC or click to close
               </div>
             </div>
@@ -1795,7 +1959,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
             <div style={{ width:'min(480px,100vw)', background:'var(--surface)', overflowY:'auto',
               borderLeft:'3px solid var(--b3)',
               boxShadow:'-8px 0 32px rgba(0,0,0,.45)',
-              display:'flex', flexDirection:'column', contain:'strict' }}>
+              display:'flex', flexDirection:'column' }}>
 
               {/* Header */}
               <div style={{ padding:'24px 24px 20px', borderBottom:'1px solid var(--b2)', flexShrink:0,
@@ -1822,6 +1986,24 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                     lineHeight:1, flexShrink:0 }}>×</button>
                 </div>
               </div>
+
+              {/* Bio card — only shown if member has filled in Professional Info */}
+              {(()=>{ const bio = viewingMember.habit_prefs?.bio || {}
+                return (bio.phone||bio.license||bio.specialty||bio.about) ? (
+                  <div style={{ padding:'14px 24px', borderBottom:'1px solid var(--b2)',
+                    display:'flex', flexDirection:'column', gap:6 }}>
+                    {bio.about && <div style={{ fontSize:13, color:'var(--text)', fontStyle:'italic' }}>"{bio.about}"</div>}
+                    <div style={{ display:'flex', gap:12, flexWrap:'wrap', alignItems:'center' }}>
+                      {bio.specialty && <span style={{ fontSize:11, padding:'2px 8px', borderRadius:4,
+                        background:'rgba(14,165,233,.1)', color:'#0ea5e9', border:'1px solid rgba(14,165,233,.2)' }}>
+                        {bio.specialty}
+                      </span>}
+                      {bio.phone && <span style={{ fontSize:11, color:'var(--muted)' }}>📞 {bio.phone}</span>}
+                      {bio.license && <span style={{ fontSize:11, color:'var(--muted)' }}>🪪 {bio.license}</span>}
+                    </div>
+                  </div>
+                ) : null
+              })()}
 
               {memberDetailLoading ? (
                 <div style={{ padding:48, textAlign:'center', color:'var(--muted)',
@@ -1938,6 +2120,31 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                     </div>
                   )}
 
+                </div>
+              )}
+
+              {/* Remove Member footer — owner only, not for self */}
+              {isTeamOwner && viewingMember.id !== user?.id && (
+                <div style={{ padding:'20px 24px', borderTop:'1px solid var(--b2)', flexShrink:0 }}>
+                  {removeConfirm === viewingMember.id ? (
+                    <div style={{ display:'flex', gap:8 }}>
+                      <button className="btn-outline" style={{ fontSize:12 }}
+                        onClick={() => setRemoveConfirm(null)} disabled={removeSaving}>Cancel</button>
+                      <button onClick={() => removeMember(viewingMember.id)} disabled={removeSaving}
+                        style={{ fontSize:12, padding:'8px 16px', borderRadius:7,
+                          border:'1px solid var(--red)', background:'rgba(220,38,38,.1)',
+                          color:'var(--red)', cursor:'pointer', fontWeight:600 }}>
+                        {removeSaving ? 'Removing…' : 'Confirm Remove'}
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setRemoveConfirm(viewingMember.id)}
+                      style={{ fontSize:12, padding:'8px 16px', borderRadius:7,
+                        border:'1px solid rgba(220,38,38,.25)', background:'none',
+                        color:'var(--red)', cursor:'pointer' }}>
+                      Remove from Team
+                    </button>
+                  )}
                 </div>
               )}
             </div>

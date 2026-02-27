@@ -45,6 +45,9 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   const [gciTarget,     setGciTarget]     = useState('')
   const [avgCommission, setAvgCommission] = useState('')
   const [calcResult,    setCalcResult]    = useState(null)
+  const [bio,      setBio]      = useState({ phone:'', license:'', specialty:'', about:'' })
+  const [bioSaving, setBioSaving] = useState(false)
+  const [bioMsg,    setBioMsg]   = useState('')
 
   useEffect(()=>{ fetchAnnual(year) },[year])
   useEffect(()=>{ if(activeTab==='history' && !histFetched) fetchHistory() },[activeTab])
@@ -85,6 +88,30 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
         }
       })
   },[user])
+
+  // Load professional bio from habit_prefs.bio (always per-user, never from team_prefs)
+  useEffect(()=>{
+    if (!user) return
+    supabase.from('profiles').select('habit_prefs').eq('id', user.id).single()
+      .then(({ data }) => {
+        if (data?.habit_prefs?.bio)
+          setBio(b => ({ ...b, ...data.habit_prefs.bio }))
+      })
+  },[user])
+
+  async function saveBio() {
+    setBioSaving(true)
+    try {
+      const { data } = await supabase.from('profiles').select('habit_prefs').eq('id', user.id).single()
+      const current = data?.habit_prefs || {}
+      await supabase.from('profiles').update({ habit_prefs: { ...current, bio } }).eq('id', user.id)
+      setBioMsg('Saved ✓'); setTimeout(() => setBioMsg(''), 3000)
+    } catch (err) {
+      console.error('saveBio error:', err)
+      setBioMsg('Failed to save')
+    }
+    setBioSaving(false)
+  }
 
   async function saveGoals() {
     setGoalsSaving(true)
@@ -437,6 +464,45 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                 </div>
               </div>
 
+              {/* Professional Info */}
+              <div className="card" style={{ padding:24 }}>
+                <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:4 }}>Professional Info</div>
+                <div style={{ fontSize:12, color:'var(--muted)', marginBottom:18 }}>Shown to your team on the roster and member detail panel.</div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+                  <div>
+                    <div className="label" style={{ marginBottom:4 }}>Phone</div>
+                    <input className="field-input" value={bio.phone}
+                      onChange={e => setBio(b => ({ ...b, phone: e.target.value }))} placeholder="416-555-1234" />
+                  </div>
+                  <div>
+                    <div className="label" style={{ marginBottom:4 }}>License #</div>
+                    <input className="field-input" value={bio.license}
+                      onChange={e => setBio(b => ({ ...b, license: e.target.value }))} placeholder="ON-12345" />
+                  </div>
+                </div>
+                <div style={{ marginTop:14 }}>
+                  <div className="label" style={{ marginBottom:4 }}>Specialty</div>
+                  <select className="field-input" value={bio.specialty}
+                    onChange={e => setBio(b => ({ ...b, specialty: e.target.value }))}>
+                    <option value="">— Select —</option>
+                    {['Buyers','Sellers','Both','Commercial','Rentals'].map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div style={{ marginTop:14 }}>
+                  <div className="label" style={{ marginBottom:4 }}>
+                    About <span style={{ color:'var(--dim)', fontWeight:400 }}>(tagline · max 100 chars)</span>
+                  </div>
+                  <input className="field-input" value={bio.about} maxLength={100}
+                    onChange={e => setBio(b => ({ ...b, about: e.target.value }))}
+                    placeholder="Helping families find home in the GTA since 2015" />
+                </div>
+                <div style={{ marginTop:16, display:'flex', alignItems:'center', gap:12 }}>
+                  <button className="btn-primary" onClick={saveBio} disabled={bioSaving} style={{ fontSize:13 }}>
+                    {bioSaving ? 'Saving…' : 'Save Info'}
+                  </button>
+                  {bioMsg && <span style={{ fontSize:12, color: bioMsg.includes('Failed') ? 'var(--red)' : 'var(--green)' }}>{bioMsg}</span>}
+                </div>
+              </div>
 
               {/* Daily Habits & Tasks */}
               <div className="card" style={{ padding:22 }}>

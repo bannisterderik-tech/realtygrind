@@ -128,8 +128,9 @@ input:focus, select:focus, textarea:focus, button:focus { outline: none; }
 @keyframes spin     { to{transform:rotate(360deg)} }
 @keyframes pulse    { 0%,100%{opacity:1} 50%{opacity:.55} }
 @keyframes scaleIn  { from{opacity:0;transform:scale(.96)} to{opacity:1;transform:scale(1)} }
-@keyframes slideDown{ from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
-@keyframes glow     { 0%,100%{box-shadow:0 0 8px currentColor} 50%{box-shadow:0 0 18px currentColor} }
+@keyframes slideDown    { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+@keyframes glow         { 0%,100%{box-shadow:0 0 8px currentColor} 50%{box-shadow:0 0 18px currentColor} }
+@keyframes panelFadeIn  { from{opacity:0} to{opacity:1} }
 
 body,.page { background: var(--bg); color: var(--text); }
 

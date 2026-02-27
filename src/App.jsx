@@ -2277,7 +2277,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
             <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:12 }}>
               {listings.map(l => (
-                <div key={l.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 105px 115px 280px 30px' }}>
+                <div key={l.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 105px 115px auto' }}>
                   {/* Address + optional cross-month badge */}
                   <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
                     <input className="pipe-input" value={l.address||''}
@@ -2309,41 +2309,35 @@ function Dashboard({ theme, onToggleTheme }) {
                     placeholder="comm."
                     style={{ color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
 
-                  {/* Status + action buttons (no delete here) */}
-                  <div style={{ display:'flex', alignItems:'center', gap:5, flexShrink:0, flexWrap:'nowrap' }}>
+                  {/* Status + action buttons + delete in one row */}
+                  <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'nowrap' }}>
                     <span className={`status-pill sp-${l.status||'active'}`}>
                       {l.status==='pending' ? '⏳ Pending' : l.status==='closed' ? '✓ Closed' : '● Active'}
                     </span>
-                    {/* Action buttons only shown for non-closed listings */}
                     {l.status !== 'closed' && (
                       <>
-                        {/* Offer received on this listing */}
                         <button className="act-btn act-btn-blue" onClick={()=>handleListingOfferReceived(l)}
                           title="Log an offer received on this listing">
                           Offer Rec'd
                         </button>
-                        {/* Move to pending — only if not already pending */}
                         {(l.status==='active' || !l.status) && (
                           <button className="act-btn act-btn-amber" onClick={()=>handleListingStatus(l,'pending')}>
                             → Pending
                           </button>
                         )}
-                        {/* Close the deal */}
                         <button className="act-btn act-btn-green" onClick={()=>handleListingStatus(l,'closed')}>
                           ✓ Closed
                         </button>
                       </>
                     )}
+                    <button className="btn-del" style={{ marginLeft:4, flexShrink:0 }} onClick={()=>removeListing(l)}>✕</button>
                   </div>
-
-                  {/* Delete — own grid cell */}
-                  <button className="btn-del" onClick={()=>removeListing(l)}>✕</button>
                 </div>
               ))}
             </div>
 
             {/* Add new listing */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 115px 280px 30px', gap:8,
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 115px auto', gap:8,
               borderTop:'1px solid var(--b1)', paddingTop:12, alignItems:'center' }}>
               <input className="field-input" value={newAddr} onChange={e=>setNewAddr(e.target.value)}
                 onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="New listing address…"
@@ -2410,7 +2404,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
             <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:12 }}>
               {buyerReps.map(rep => (
-                <div key={rep.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 240px 30px' }}>
+                <div key={rep.id} className="pipe-row" style={{ gridTemplateColumns:'1fr auto' }}>
                   {/* Client name + optional month badge */}
                   <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
                     <input className="pipe-input" value={rep.clientName||''}
@@ -2428,8 +2422,8 @@ function Dashboard({ theme, onToggleTheme }) {
                     )}
                   </div>
 
-                  {/* Status + actions (no delete here) */}
-                  <div style={{ display:'flex', alignItems:'center', gap:5, flexShrink:0, flexWrap:'nowrap' }}>
+                  {/* Status + actions + delete in one row */}
+                  <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'nowrap' }}>
                     <span className={`status-pill sp-${rep.status||'active'}`}>
                       {rep.status === 'closed' ? '✓ Closed' : '● Active'}
                     </span>
@@ -2444,10 +2438,8 @@ function Dashboard({ theme, onToggleTheme }) {
                         </button>
                       </>
                     )}
+                    <button className="btn-del" style={{ marginLeft:4, flexShrink:0 }} onClick={() => removeBuyerRep(rep)}>✕</button>
                   </div>
-
-                  {/* Delete — own grid cell */}
-                  <button className="btn-del" onClick={() => removeBuyerRep(rep)}>✕</button>
                 </div>
               ))}
             </div>

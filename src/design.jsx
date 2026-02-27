@@ -27,12 +27,12 @@ export const CAT = {
 // ─── CSS ───────────────────────────────────────────────────────────────────────
 
 export const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Montserrat:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 16px; }
 body {
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Poppins', sans-serif;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   transition: background .25s, color .25s;
@@ -42,7 +42,7 @@ body {
 ::-webkit-scrollbar-thumb { border-radius: 5px; }
 [data-theme="light"] ::-webkit-scrollbar-thumb { background: rgba(0,0,0,.14); }
 [data-theme="dark"]  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); }
-input, select, textarea, button { font-family: 'DM Sans', sans-serif; }
+input, select, textarea, button { font-family: 'Poppins', sans-serif; }
 input:focus, select:focus, textarea:focus, button:focus { outline: none; }
 
 /* ── Light theme ── */
@@ -149,7 +149,7 @@ body,.page { background: var(--bg); color: var(--text); }
 .card-interactive:hover { transform: translateY(-3px); box-shadow: var(--shadow2); border-color: var(--b3); }
 
 /* ── Typography ── */
-.serif { font-family: 'Fraunces', serif; }
+.serif { font-family: 'Montserrat', sans-serif; letter-spacing: -.01em; }
 .mono  { font-family: 'JetBrains Mono', monospace; }
 .label { font-size: 11px; font-weight: 600; letter-spacing: .7px; text-transform: uppercase; color: var(--muted); }
 
@@ -214,7 +214,7 @@ body,.page { background: var(--bg); color: var(--text); }
   display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px;
   border-radius: 20px; font-size: 10px; font-weight: 700; letter-spacing: .4px;
   text-transform: uppercase; white-space: nowrap; flex-shrink: 0;
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Poppins', sans-serif;
 }
 .sp-active  { background: rgba(14,165,233,.1);  color: #0ea5e9;      border: 1px solid rgba(14,165,233,.25);  }
 .sp-pending { background: rgba(245,158,11,.11); color: var(--gold2); border: 1px solid rgba(245,158,11,.3);   }
@@ -225,7 +225,7 @@ body,.page { background: var(--bg); color: var(--text); }
   display: inline-flex; align-items: center; gap: 3px; padding: 4px 10px;
   border-radius: 7px; font-size: 11px; font-weight: 600; cursor: pointer;
   border: 1.5px solid; transition: all .18s; white-space: nowrap; flex-shrink: 0;
-  font-family: 'DM Sans', sans-serif; line-height: 1.2;
+  font-family: 'Poppins', sans-serif; line-height: 1.2;
 }
 .act-btn:active { transform: scale(.97); }
 .act-btn-amber { background: rgba(245,158,11,.08); color: var(--gold2); border-color: rgba(245,158,11,.28); }
@@ -265,7 +265,7 @@ body,.page { background: var(--bg); color: var(--text); }
   margin-bottom: -1.5px; color: var(--muted); font-size: 13px; font-weight: 500;
   cursor: pointer; transition: all .18s; white-space: nowrap;
   border-radius: 8px 8px 0 0;
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Poppins', sans-serif;
 }
 .tab-item:hover { color: var(--text2); background: var(--b1); }
 .tab-item.on { color: var(--text); border-bottom-color: var(--gold2); font-weight: 700; }
@@ -377,7 +377,7 @@ body,.page { background: var(--bg); color: var(--text); }
   min-width: 20px; height: 20px; padding: 0 6px;
   background: var(--gold); color: #fff;
   border-radius: 10px; font-size: 10px; font-weight: 700;
-  font-family: 'DM Sans', sans-serif; line-height: 1; flex-shrink: 0;
+  font-family: 'Poppins', sans-serif; line-height: 1; flex-shrink: 0;
 }
 .badge-red   { background: var(--red); }
 .badge-green { background: var(--green); }
@@ -502,7 +502,7 @@ body,.page { background: var(--bg); color: var(--text); }
 .print-section-title {
   font-size: 10px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .09em; border-bottom: 2px solid #111;
-  padding-bottom: 4px; margin-bottom: 9px; font-family: 'DM Sans', sans-serif;
+  padding-bottom: 4px; margin-bottom: 9px; font-family: 'Poppins', sans-serif;
 }
 .print-habit-row {
   display: flex; align-items: center; gap: 6px; font-size: 12.5px; margin-bottom: 5px;
@@ -516,7 +516,7 @@ body,.page { background: var(--bg); color: var(--text); }
   display: flex; justify-content: space-between; align-items: center;
   font-size: 12.5px; margin-bottom: 7px;
   border-bottom: 1px solid #ddd; padding-bottom: 4px;
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Poppins', sans-serif;
 }
 .print-tracker-val { font-weight: 700; min-width: 28px; text-align: right; }
 .print-ruled { border: none; border-bottom: 1px solid #ccc; height: 26px; margin-bottom: 1px; }
@@ -559,7 +559,7 @@ export function Ring({ pct, size=72, color='#b45309', sw=5, label, sub }) {
             }}/>
         )}
         <text x={size/2} y={size/2} textAnchor="middle" dominantBaseline="middle"
-          fill={color} fontSize={fs} fontWeight="700" fontFamily="'DM Sans',sans-serif"
+          fill={color} fontSize={fs} fontWeight="700" fontFamily="'Poppins',sans-serif"
           style={{ transform:`rotate(90deg)`, transformOrigin:`${size/2}px ${size/2}px` }}>
           {Math.round(pct)}%
         </text>

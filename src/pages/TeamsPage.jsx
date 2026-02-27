@@ -48,6 +48,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [filterAgent,    setFilterAgent]    = useState('all')         // 'all' | memberId
   const [noteForm,       setNoteForm]       = useState(null)          // null | { agentId, text, type, editingId }
   const [noteSaving,     setNoteSaving]     = useState(false)
+  const [replyForms,     setReplyForms]     = useState({})            // { [noteId]: string }
+  const [replySaving,    setReplySaving]    = useState(null)          // noteId being saved, or null
 
   const MONTH_YEAR = new Date().toISOString().slice(0,7)
 
@@ -298,6 +300,20 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     const updatedPrefs = { ...(teamData?.team_prefs||{}), coaching_notes: updated }
     await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile.team_id)
     setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
+  }
+
+  async function saveReply(noteId) {
+    const text = (replyForms[noteId]||'').trim()
+    if (!text) return
+    setReplySaving(noteId)
+    const newReply = { id: Date.now().toString(36), authorId: user.id, text, createdAt: new Date().toISOString() }
+    const updated = (teamData?.team_prefs?.coaching_notes||[]).map(n=>
+      n.id===noteId ? { ...n, replies: [...(n.replies||[]), newReply] } : n)
+    const updatedPrefs = { ...(teamData?.team_prefs||{}), coaching_notes: updated }
+    await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile.team_id)
+    setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
+    setReplyForms(f => ({ ...f, [noteId]: '' }))
+    setReplySaving(null)
   }
 
   // ── Derived values ─────────────────────────────────────────────────────────
@@ -727,7 +743,42 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                   {note.pinned && <span style={{ fontSize:10, color:'var(--gold2)' }}>📌 Pinned</span>}
                                   <span style={{ marginLeft:'auto', fontSize:11, color:'var(--dim)' }}>{relativeTime(note.createdAt)}</span>
                                 </div>
-                                <div style={{ fontSize:13, color:'var(--text)', lineHeight:1.6 }}>{note.text}</div>
+                                <div style={{ fontSize:13, color:'var(--text)', lineHeight:1.6, marginBottom:10 }}>{note.text}</div>
+
+                                {/* Replies */}
+                                {(note.replies||[]).length > 0 && (
+                                  <div style={{ borderLeft:'2px solid var(--b2)', paddingLeft:10, marginBottom:10, display:'flex', flexDirection:'column', gap:8 }}>
+                                    {note.replies.map(r=>{
+                                      const isCoach = r.authorId===teamData?.created_by
+                                      const rName = isCoach ? (members.find(m=>m.id===r.authorId)?.full_name||'Coach') : 'You'
+                                      return (
+                                        <div key={r.id}>
+                                          <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
+                                            <span style={{ fontSize:11, fontWeight:600, color: isCoach ? 'var(--gold)' : 'var(--text)' }}>{rName}</span>
+                                            {isCoach && <span style={{ fontSize:9, padding:'1px 5px', borderRadius:3, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>COACH</span>}
+                                            <span style={{ fontSize:10, color:'var(--dim)' }}>{relativeTime(r.createdAt)}</span>
+                                          </div>
+                                          <div style={{ fontSize:12, color:'var(--text2)', lineHeight:1.5 }}>{r.text}</div>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+
+                                {/* Agent reply form */}
+                                <div style={{ display:'flex', gap:6 }}>
+                                  <input className="field-input" value={replyForms[note.id]||''}
+                                    onChange={e=>setReplyForms(f=>({...f,[note.id]:e.target.value.slice(0,300)}))}
+                                    onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&saveReply(note.id)}
+                                    placeholder="Reply to your coach…"
+                                    style={{ flex:1, padding:'6px 10px', fontSize:12 }}/>
+                                  <button onClick={()=>saveReply(note.id)}
+                                    disabled={replySaving===note.id||!(replyForms[note.id]||'').trim()}
+                                    style={{ fontSize:11, padding:'6px 12px', borderRadius:6, cursor:'pointer',
+                                      background:'var(--text)', border:'none', color:'var(--bg)', fontWeight:600, flexShrink:0 }}>
+                                    {replySaving===note.id ? '…' : 'Send'}
+                                  </button>
+                                </div>
                               </div>
                             )
                           })}
@@ -886,6 +937,43 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                             <span style={{ marginLeft:'auto', fontSize:11, color:'var(--dim)' }}>{relativeTime(note.createdAt)}</span>
                                           </div>
                                           <div style={{ fontSize:13, color:'var(--text)', lineHeight:1.6, marginBottom:8 }}>{note.text}</div>
+
+                                          {/* Replies thread */}
+                                          {(note.replies||[]).length > 0 && (
+                                            <div style={{ borderLeft:'2px solid var(--b2)', paddingLeft:10, marginBottom:10, display:'flex', flexDirection:'column', gap:8 }}>
+                                              {note.replies.map(r=>{
+                                                const author = members.find(m=>m.id===r.authorId)
+                                                const authorName = author?.full_name || (r.authorId===user.id ? 'You' : 'Agent')
+                                                const isCoach = r.authorId===teamData?.created_by
+                                                return (
+                                                  <div key={r.id}>
+                                                    <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
+                                                      <span style={{ fontSize:11, fontWeight:600, color: isCoach ? 'var(--gold)' : 'var(--text)' }}>{authorName}</span>
+                                                      {isCoach && <span style={{ fontSize:9, padding:'1px 5px', borderRadius:3, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>COACH</span>}
+                                                      <span style={{ fontSize:10, color:'var(--dim)' }}>{relativeTime(r.createdAt)}</span>
+                                                    </div>
+                                                    <div style={{ fontSize:12, color:'var(--text2)', lineHeight:1.5 }}>{r.text}</div>
+                                                  </div>
+                                                )
+                                              })}
+                                            </div>
+                                          )}
+
+                                          {/* Reply form (coach) */}
+                                          <div style={{ display:'flex', gap:6, marginBottom:8 }}>
+                                            <input className="field-input" value={replyForms[note.id]||''}
+                                              onChange={e=>setReplyForms(f=>({...f,[note.id]:e.target.value.slice(0,300)}))}
+                                              onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&saveReply(note.id)}
+                                              placeholder="Reply…"
+                                              style={{ flex:1, padding:'6px 10px', fontSize:12 }}/>
+                                            <button onClick={()=>saveReply(note.id)}
+                                              disabled={replySaving===note.id||!(replyForms[note.id]||'').trim()}
+                                              style={{ fontSize:11, padding:'6px 12px', borderRadius:6, cursor:'pointer',
+                                                background:'var(--text)', border:'none', color:'var(--bg)', fontWeight:600, flexShrink:0 }}>
+                                              {replySaving===note.id ? '…' : 'Send'}
+                                            </button>
+                                          </div>
+
                                           <div style={{ display:'flex', gap:6 }}>
                                             <button onClick={()=>pinNote(note.id)} style={{ fontSize:11, padding:'4px 10px', borderRadius:6,
                                               cursor:'pointer', background: note.pinned ? 'rgba(217,119,6,.12)' : 'var(--bg2)',
@@ -918,7 +1006,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                   <select className="field-input" value={noteForm.agentId}
                                     onChange={e=>setNoteForm(f=>({...f,agentId:e.target.value}))} style={{ width:'100%' }}>
                                     <option value="">Select agent…</option>
-                                    {members.map(m=><option key={m.id} value={m.id}>{m.full_name||'Agent'}</option>)}
+                                    {members.filter(m=>m.id!==user?.id).map(m=><option key={m.id} value={m.id}>{m.full_name||'Agent'}</option>)}
                                   </select>
                                 </div>
                                 <div>

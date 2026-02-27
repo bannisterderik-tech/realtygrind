@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { CSS, Loader, Wordmark, ThemeToggle, Ring, getRank, CAT, StatCard, fmtMoney } from '../design'
+import { HABITS } from '../habits'
 
 const HABITS_FOR_DISPLAY = [
   { id:'prospecting', label:'Prospecting', cat:'leads' },
@@ -58,6 +59,9 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [noteSaving,     setNoteSaving]     = useState(false)
   const [replyForms,     setReplyForms]     = useState({})            // { [noteId]: string }
   const [replySaving,    setReplySaving]    = useState(null)          // noteId being saved, or null
+  const [viewingMember,        setViewingMember]        = useState(null)  // member object | null
+  const [memberDetail,         setMemberDetail]         = useState(null)  // { txs, habitCounts } | null
+  const [memberDetailLoading,  setMemberDetailLoading]  = useState(false)
 
   const MONTH_YEAR = new Date().toISOString().slice(0,7)
 
@@ -113,6 +117,26 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       if (myPod_) fetchPodStats(myPod_, mems, TOTAL_DAILY)
     }
     setLoading(false)
+  }
+
+  async function fetchMemberDetail(member) {
+    setViewingMember(member)
+    setMemberDetail(null)
+    setMemberDetailLoading(true)
+    const [{ data: txs }, { data: habs }] = await Promise.all([
+      supabase.from('transactions').select('id,type,price,commission,address')
+        .eq('user_id', member.id).eq('month_year', MONTH_YEAR),
+      supabase.from('habit_completions').select('habit_id,counter_value')
+        .eq('user_id', member.id).eq('month_year', MONTH_YEAR),
+    ])
+    const habitCounts = {}
+    BUILT_IN_HABIT_IDS.forEach(id => {
+      habitCounts[id] = (habs||[])
+        .filter(h => h.habit_id === id)
+        .reduce((a, h) => a + (h.counter_value || 1), 0)
+    })
+    setMemberDetail({ txs: txs||[], habitCounts })
+    setMemberDetailLoading(false)
   }
 
   async function createTeam() {
@@ -575,10 +599,13 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       const stats = memberStats[m.id]||{}
                       const isOwner = teamData?.created_by===m.id
                       return (
-                        <div key={m.id} className={`card${isMe?' ':' '}`} style={{
-                          padding:18, border:`1px solid ${isMe?'rgba(217,119,6,.35)':'var(--b2)'}`,
-                          background:isMe?'var(--gold3)':'var(--surface)',
-                        }}>
+                        <div key={m.id} className={`card${isMe?' ':' '}`}
+                          onClick={isTeamOwner ? ()=>fetchMemberDetail(m) : undefined}
+                          style={{
+                            padding:18, border:`1px solid ${isMe?'rgba(217,119,6,.35)':'var(--b2)'}`,
+                            background:isMe?'var(--gold3)':'var(--surface)',
+                            cursor: isTeamOwner ? 'pointer' : 'default',
+                          }}>
                           <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:stats?10:0 }}>
                             <div className="mono" style={{ width:26, fontSize:12, color:'var(--dim)', textAlign:'center', fontWeight:700 }}>
                               {i+1}
@@ -1111,6 +1138,187 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
           )}
         </div>
       </div>
+      {/* ── Member detail overlay (team owner only) ───────────────────────── */}
+      {viewingMember && isTeamOwner && (() => {
+        const rank  = getRank(viewingMember.xp || 0)
+        const stats = memberStats[viewingMember.id] || {}
+        const txs   = memberDetail?.txs || []
+        const habitCounts = memberDetail?.habitCounts || {}
+        const parseAmt = str => { const n = parseFloat(String(str||'').replace(/[^0-9.]/g,'')); return isNaN(n)?0:n }
+        const byType = t => txs.filter(x => x.type === t)
+        const closed     = byType('closed')
+        const pending    = byType('pending')
+        const offersMade = byType('offer_made')
+        const offersRec  = byType('offer_received')
+        const listings   = byType('listing')
+        const buyerReps  = byType('buyer_rep')
+        const closedVol  = closed.reduce((a,t) => a + parseAmt(t.price), 0)
+        const closedComm = closed.reduce((a,t) => a + parseAmt(t.commission), 0)
+        const TYPE_META  = {
+          listing:        { label:'Listing',      color:'#8b5cf6' },
+          buyer_rep:      { label:'Buyer Rep',    color:'#0ea5e9' },
+          offer_made:     { label:'Offer Made',   color:'#d97706' },
+          offer_received: { label:"Offer Rec'd",  color:'#f97316' },
+          pending:        { label:'Pending',      color:'#6366f1' },
+          closed:         { label:'Closed',       color:'var(--green)' },
+        }
+        const closePanel = () => { setViewingMember(null); setMemberDetail(null) }
+        return (
+          <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex' }}>
+            {/* Backdrop */}
+            <div style={{ flex:1, background:'rgba(0,0,0,.5)', cursor:'pointer' }} onClick={closePanel}/>
+            {/* Slide-in panel */}
+            <div style={{ width:'min(480px,100vw)', background:'var(--bg)', overflowY:'auto',
+              borderLeft:'1px solid var(--b2)', boxShadow:'-12px 0 48px rgba(0,0,0,.25)',
+              display:'flex', flexDirection:'column' }}>
+
+              {/* Header */}
+              <div style={{ padding:'24px 24px 20px', borderBottom:'1px solid var(--b2)', flexShrink:0,
+                background:`linear-gradient(135deg,${rank.color}0c 0%,var(--surface) 60%)`,
+                borderTop:`3px solid ${rank.color}` }}>
+                <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+                  <div style={{ width:52, height:52, borderRadius:'50%', flexShrink:0,
+                    background:`linear-gradient(135deg,${rank.color},${rank.color}99)`,
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    fontSize:22, fontWeight:700, color:'#fff',
+                    boxShadow:`0 4px 16px ${rank.color}44` }}>
+                    {(viewingMember.full_name||'A').charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <div className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:700 }}>{viewingMember.full_name||'Agent'}</div>
+                    <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>{rank.icon} {rank.name} · 🔥 {viewingMember.streak||0} day streak</div>
+                  </div>
+                  <div style={{ textAlign:'right', flexShrink:0 }}>
+                    <div className="serif" style={{ fontSize:22, color:rank.color, fontWeight:700, lineHeight:1 }}>{(viewingMember.xp||0).toLocaleString()}</div>
+                    <div style={{ fontSize:10, color:'var(--dim)', marginTop:2 }}>XP</div>
+                  </div>
+                  <button onClick={closePanel} style={{ background:'none', border:'none', fontSize:24,
+                    color:'var(--muted)', cursor:'pointer', padding:'4px 8px', borderRadius:6,
+                    lineHeight:1, flexShrink:0 }}>×</button>
+                </div>
+              </div>
+
+              {memberDetailLoading ? (
+                <div style={{ padding:48, textAlign:'center', color:'var(--muted)',
+                  display:'flex', flexDirection:'column', alignItems:'center', gap:14 }}>
+                  <Loader/>
+                  <div style={{ fontSize:13 }}>Loading activity…</div>
+                </div>
+              ) : (
+                <div style={{ padding:24, display:'flex', flexDirection:'column', gap:24 }}>
+
+                  {/* Activity rings */}
+                  <div>
+                    <div className="serif" style={{ fontSize:15, color:'var(--text)', marginBottom:14 }}>Activity</div>
+                    <div style={{ display:'flex', gap:28 }}>
+                      <div style={{ textAlign:'center' }}>
+                        <Ring pct={stats.todayPct||0} size={72} sw={6} color={rank.color}/>
+                        <div style={{ fontSize:10, color:'var(--muted)', marginTop:6, fontWeight:700, letterSpacing:'.5px' }}>TODAY</div>
+                      </div>
+                      <div style={{ textAlign:'center' }}>
+                        <Ring pct={stats.monthlyPct||0} size={72} sw={6} color='#0ea5e9'/>
+                        <div style={{ fontSize:10, color:'var(--muted)', marginTop:6, fontWeight:700, letterSpacing:'.5px' }}>MONTH</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Habit pills */}
+                  {HABITS.filter(h => (habitCounts[h.id]||0) > 0).length > 0 && (
+                    <div>
+                      <div className="serif" style={{ fontSize:15, color:'var(--text)', marginBottom:10 }}>Habits This Month</div>
+                      <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                        {HABITS.filter(h => (habitCounts[h.id]||0) > 0).map(h => {
+                          const cs = CAT[h.cat] || CAT.leads
+                          return (
+                            <span key={h.id} style={{ fontSize:11, padding:'4px 10px', borderRadius:6,
+                              background:cs.light, color:cs.color, border:`1px solid ${cs.border}`,
+                              fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}>
+                              {h.icon} {h.label}: {habitCounts[h.id]}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pipeline summary */}
+                  <div>
+                    <div className="serif" style={{ fontSize:15, color:'var(--text)', marginBottom:12 }}>Pipeline</div>
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))', gap:10 }}>
+                      {[
+                        { l:'Listings',    v:listings.length,   c:'#8b5cf6' },
+                        { l:'Buyer Reps',  v:buyerReps.length,  c:'#0ea5e9' },
+                        { l:'Offers Made', v:offersMade.length, c:'#d97706' },
+                        { l:"Offers Rec'd",v:offersRec.length,  c:'#f97316' },
+                        { l:'Pending',     v:pending.length,    c:'#6366f1' },
+                        { l:'Closed',      v:closed.length,     c:'var(--green)' },
+                        ...(closedVol >0 ? [{l:'Volume',     v:fmtMoney(closedVol),  c:'var(--green)'}] : []),
+                        ...(closedComm>0 ? [{l:'Commission', v:fmtMoney(closedComm), c:'var(--green)'}] : []),
+                      ].map((s,i) => (
+                        <div key={i} className="card" style={{ padding:'10px 12px', textAlign:'center' }}>
+                          <div style={{ fontSize:9, color:'var(--dim)', fontWeight:700,
+                            letterSpacing:'.5px', textTransform:'uppercase', marginBottom:4 }}>{s.l}</div>
+                          <div className="serif" style={{ fontSize:20, color:s.c, fontWeight:700 }}>{s.v}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Transaction rows */}
+                  {txs.length > 0 && (
+                    <div>
+                      <div className="serif" style={{ fontSize:15, color:'var(--text)', marginBottom:12 }}>Transactions</div>
+                      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                        {txs.map(t => {
+                          const meta  = TYPE_META[t.type] || { label:t.type, color:'var(--muted)' }
+                          const price = parseAmt(t.price)
+                          const comm  = parseAmt(t.commission)
+                          return (
+                            <div key={t.id} className="card" style={{ padding:'12px 14px', border:'1px solid var(--b2)' }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:(t.address||price>0||comm>0)?6:0 }}>
+                                <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700,
+                                  background:`${meta.color}15`, color:meta.color, border:`1px solid ${meta.color}30`,
+                                  textTransform:'uppercase', letterSpacing:'.5px', flexShrink:0 }}>{meta.label}</span>
+                                {t.address && (
+                                  <span style={{ fontSize:12, color:'var(--text)', fontWeight:500, flex:1, minWidth:0,
+                                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t.address}</span>
+                                )}
+                              </div>
+                              {(price>0 || comm>0) && (
+                                <div style={{ display:'flex', gap:16 }}>
+                                  {price>0 && (
+                                    <div>
+                                      <div style={{ fontSize:9, color:'var(--dim)', fontWeight:700, letterSpacing:'.5px' }}>PRICE</div>
+                                      <div style={{ fontSize:13, color:'var(--text)', fontWeight:600 }}>{fmtMoney(price)}</div>
+                                    </div>
+                                  )}
+                                  {comm>0 && (
+                                    <div>
+                                      <div style={{ fontSize:9, color:'var(--dim)', fontWeight:700, letterSpacing:'.5px' }}>COMMISSION</div>
+                                      <div style={{ fontSize:13, color:'var(--green)', fontWeight:600 }}>{fmtMoney(comm)}</div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {txs.length === 0 && (
+                    <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic', textAlign:'center', padding:'8px 0' }}>
+                      No transactions logged this month.
+                    </div>
+                  )}
+
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
     </>
   )
 }

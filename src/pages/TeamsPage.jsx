@@ -953,6 +953,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                           {(() => {
                             const NC = { praise:'#10b981', goal:'#d97706', concern:'#f43f5e', general:'#0ea5e9' }
                             const visible = [...allCoachingNotes]
+                              .filter(n => n.agentId !== user?.id)
                               .filter(n => filterAgent==='all' || n.agentId===filterAgent)
                               .sort((a,b) => (b.pinned?1:0)-(a.pinned?1:0) || new Date(b.createdAt)-new Date(a.createdAt))
                             return (

@@ -70,12 +70,25 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
 
   const MONTH_YEAR = new Date().toISOString().slice(0,7)
 
+  // Depend only on team_id — prevents re-fetching every time the profile object
+  // is recreated (e.g. on token refresh) while nothing meaningful has changed.
   useEffect(()=>{
     if (profile?.team_id) { setMode('myteam'); fetchMembers(profile.team_id) }
-  },[profile])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.team_id])
+
+  // If groupView points to a group that no longer exists (e.g. was deleted),
+  // reset it — do this in an effect, NOT during render.
+  useEffect(()=>{
+    if (groupView) {
+      const groups = teamData?.team_prefs?.groups || []
+      if (!groups.find(g => g.id === groupView)) setGroupView(null)
+    }
+  },[groupView, teamData])
 
   async function fetchMembers(tid) {
     setLoading(true)
+    try {
     const {data:mems} = await supabase.from('profiles').select('id,full_name,xp,streak,goals,habit_prefs').eq('team_id',tid).order('xp',{ascending:false})
     setMembers(mems||[])
     const {data:team} = await supabase.from('teams').select('*').eq('id',tid).single()
@@ -117,7 +130,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       })
       setMemberStats(stats)
     }
-    setLoading(false)
+    } catch (err) {
+      console.error('fetchMembers error:', err)
+      setError('Failed to load team data. Please refresh.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function fetchMemberDetail(member) {
@@ -593,7 +611,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                   {/* ── Group Dashboard (full-page view when a group is selected) ── */}
                   {groupView && (()=>{
                     const group = allGroups.find(g => g.id === groupView)
-                    if (!group) { setGroupView(null); return null }
+                    if (!group) return null // useEffect above will reset groupView
                     const groupLeaderMember = members.find(m => m.id === group.leaderId)
                     const groupMems   = members.filter(m => group.memberIds.includes(m.id))
                     const todayStr    = new Date().toISOString().slice(0,10)

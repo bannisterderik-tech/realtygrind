@@ -20,7 +20,8 @@ const PIPELINE_XP = { offer_made:75, offer_received:75, went_pending:150, closed
 const DAYS        = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 const FULL_DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
 const WEEKS       = 4
-const MONTH_YEAR  = new Date().toISOString().slice(0,7)
+// NOTE: MONTH_YEAR is intentionally computed inside the App component (see below)
+// so it never goes stale if the user keeps the tab open across a month boundary.
 const MONTHS      = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 function fmtMonth(my) {
   if (!my) return ''
@@ -908,6 +909,8 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
 function Dashboard({ theme, onToggleTheme }) {
   const { user, profile } = useAuth()
   const today = getToday()
+  // Computed per-render so it never goes stale if tab stays open across a month boundary
+  const MONTH_YEAR = new Date().toISOString().slice(0, 7)
 
   const [page, setPage] = useState('dashboard')
   const [tab,  setTab]  = useState('today')
@@ -966,18 +969,22 @@ function Dashboard({ theme, onToggleTheme }) {
   const [standupSaving, setStandupSaving] = useState(false)
   const todayDate = new Date().toISOString().slice(0,10)
 
-  useEffect(()=>{ loadAll() },[user])
+  // Depend on user.id only — prevents re-running when a new user object is created
+  // (e.g. on token refresh) while the same user is still logged in.
+  useEffect(()=>{ if (user?.id) loadAll() },[user?.id])
 
   async function loadAll() {
     if (!user) return
     setDbLoading(true)
-    const [habRes, listRes, txRes, profRes, ctRes] = await Promise.all([
-      supabase.from('habit_completions').select('*').eq('user_id',user.id).eq('month_year',MONTH_YEAR),
-      supabase.from('listings').select('*').eq('user_id',user.id), // no month filter — listings persist until closed
-      supabase.from('transactions').select('*').eq('user_id',user.id).eq('month_year',MONTH_YEAR),
-      supabase.from('profiles').select('*').eq('id',user.id).single(),
-      supabase.from('custom_tasks').select('*').eq('user_id',user.id),
-    ])
+    let habRes, listRes, txRes, profRes, ctRes
+    try {
+      ;[habRes, listRes, txRes, profRes, ctRes] = await Promise.all([
+        supabase.from('habit_completions').select('*').eq('user_id',user.id).eq('month_year',MONTH_YEAR),
+        supabase.from('listings').select('*').eq('user_id',user.id),
+        supabase.from('transactions').select('*').eq('user_id',user.id).eq('month_year',MONTH_YEAR),
+        supabase.from('profiles').select('*').eq('id',user.id).single(),
+        supabase.from('custom_tasks').select('*').eq('user_id',user.id),
+      ])
 
     if (habRes.data?.length) {
       const g={}; HABITS.forEach(h=>{g[h.id]=Array(WEEKS).fill(null).map(()=>Array(7).fill(false))})
@@ -1038,7 +1045,11 @@ function Dashboard({ theme, onToggleTheme }) {
         setStandupDone(true)
       }
     }
-    setDbLoading(false)
+    } catch (err) {
+      console.error('Dashboard loadAll error:', err)
+    } finally {
+      setDbLoading(false)
+    }
   }
 
   async function submitStandup() {

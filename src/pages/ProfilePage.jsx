@@ -100,28 +100,33 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
 
   async function fetchHistory() {
     setHistLoad(true)
-    const {data} = await supabase.from('transactions')
-      .select('*')
-      .eq('user_id', user.id)
-      .in('type', ['offer_made','offer_received'])
-      .order('month_year', {ascending:false})
-    if (data) {
-      // Group by month_year, preserving descending order
-      const order = []
-      const map   = {}
-      data.forEach(t => {
-        const mk = t.month_year || 'Unknown'
-        if (!map[mk]) { map[mk] = []; order.push(mk) }
-        map[mk].push(t)
-      })
-      setHistory(order.map(mk => ({ mk, items: map[mk] })))
+    try {
+      const {data} = await supabase.from('transactions')
+        .select('*')
+        .eq('user_id', user.id)
+        .in('type', ['offer_made','offer_received'])
+        .order('month_year', {ascending:false})
+      if (data) {
+        const order = []
+        const map   = {}
+        data.forEach(t => {
+          const mk = t.month_year || 'Unknown'
+          if (!map[mk]) { map[mk] = []; order.push(mk) }
+          map[mk].push(t)
+        })
+        setHistory(order.map(mk => ({ mk, items: map[mk] })))
+      }
+    } catch (err) {
+      console.error('fetchHistory error:', err)
+    } finally {
+      setHistFetched(true)
+      setHistLoad(false)
     }
-    setHistFetched(true)
-    setHistLoad(false)
   }
 
   async function fetchAnnual(yr) {
     setAnnLoad(true)
+    try {
     const mks = Array.from({length:12},(_,i)=>`${yr}-${String(i+1).padStart(2,'0')}`)
     const [h,t,l] = await Promise.all([
       supabase.from('habit_completions').select('month_year,habit_id,counter_value,xp_earned').eq('user_id',user.id).like('month_year',`${yr}-%`),
@@ -149,7 +154,12 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
       listed:a.listed+m.listed, offers:a.offers+m.offers, pending:a.pending+m.pending,
       closed:a.closed+m.closed, vol:a.vol+m.vol, comm:a.comm+m.comm,
     }),{days:0,xp:0,appts:0,shows:0,listed:0,offers:0,pending:0,closed:0,vol:0,comm:0})
-    setAnnual({byMonth,tot}); setAnnLoad(false)
+    setAnnual({byMonth,tot})
+    } catch (err) {
+      console.error('fetchAnnual error:', err)
+    } finally {
+      setAnnLoad(false)
+    }
   }
 
   async function saveName() {

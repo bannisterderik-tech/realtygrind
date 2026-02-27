@@ -256,17 +256,22 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   async function saveGroup() {
     if (!groupForm?.name?.trim()) return
     setGroupSaving(true)
+    // Safety: always ensure the leader is included in memberIds
+    const leaderId   = groupForm.leaderId || ''
+    const memberIds  = leaderId && !groupForm.memberIds.includes(leaderId)
+      ? [...groupForm.memberIds, leaderId]
+      : groupForm.memberIds
     const existing = teamData?.team_prefs?.groups || []
     let updated
     if (groupForm.editingId) {
       updated = existing.map(g => g.id===groupForm.editingId
-        ? { ...g, name:groupForm.name.trim(), leaderId:groupForm.leaderId, memberIds:groupForm.memberIds } : g)
+        ? { ...g, name:groupForm.name.trim(), leaderId, memberIds } : g)
     } else {
       updated = [...existing, {
         id: Date.now().toString(36),
         name: groupForm.name.trim(),
-        leaderId: groupForm.leaderId || '',
-        memberIds: groupForm.memberIds || [],
+        leaderId,
+        memberIds,
       }]
     }
     const newPrefs = { ...(teamData?.team_prefs||{}), groups: updated }
@@ -1164,7 +1169,13 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                   </div>
                                   <div style={{ display:'flex', gap:6, flexShrink:0 }}>
                                     <button className="btn-outline" style={{ fontSize:11, padding:'5px 10px' }}
-                                      onClick={()=>setGroupForm({ name:grp.name, leaderId:grp.leaderId, memberIds:[...grp.memberIds], editingId:grp.id })}>
+                                      onClick={()=>{
+                                        // Always ensure the current leader is in memberIds when opening edit form
+                                        const safeMemberIds = grp.leaderId && !grp.memberIds.includes(grp.leaderId)
+                                          ? [...grp.memberIds, grp.leaderId]
+                                          : [...grp.memberIds]
+                                        setGroupForm({ name:grp.name, leaderId:grp.leaderId, memberIds:safeMemberIds, editingId:grp.id })
+                                      }}>
                                       Edit
                                     </button>
                                     <button onClick={()=>deleteGroup(grp.id)}

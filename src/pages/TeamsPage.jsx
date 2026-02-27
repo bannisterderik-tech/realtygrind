@@ -63,6 +63,9 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [viewingMember,        setViewingMember]        = useState(null)  // member object | null
   const [memberDetail,         setMemberDetail]         = useState(null)  // { txs, habitCounts } | null
   const [memberDetailLoading,  setMemberDetailLoading]  = useState(false)
+  const [inviteEmail,   setInviteEmail]   = useState('')
+  const [inviteSending, setInviteSending] = useState(false)
+  const [inviteMsg,     setInviteMsg]     = useState(null)   // null | { type:'ok'|'err', text }
   const fetchSeqRef = useRef(0)  // increments per fetch; stale results are discarded
 
   const MONTH_YEAR = new Date().toISOString().slice(0,7)
@@ -193,6 +196,40 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     await supabase.from('profiles').update({ team_id: null }).eq('id', user.id)
     await refreshProfile()
     setMode('menu'); setMembers([]); setTeamData(null)
+  }
+
+  // ── Email Invite ──────────────────────────────────────────────────────────
+  async function sendInvite() {
+    const email = inviteEmail.trim().toLowerCase()
+    if (!email) return
+    setInviteSending(true); setInviteMsg(null)
+    try {
+      const { error } = await supabase.functions.invoke('invite-member', {
+        body: { email, teamId: profile.team_id },
+      })
+      if (error) throw new Error(error.message)
+      // Track in team_prefs.pending_invites
+      const existing = teamData?.team_prefs?.pending_invites || []
+      if (!existing.find(i => i.email === email)) {
+        const newPrefs = { ...(teamData?.team_prefs||{}),
+          pending_invites: [...existing, { email, invitedAt: new Date().toISOString(), invitedBy: user.id }]
+        }
+        await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+        setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+      }
+      setInviteEmail('')
+      setInviteMsg({ type:'ok', text:`Invite sent to ${email}` })
+    } catch(e) {
+      setInviteMsg({ type:'err', text: e.message || 'Failed to send invite.' })
+    }
+    setInviteSending(false)
+  }
+
+  async function removeInvite(email) {
+    const updated = (teamData?.team_prefs?.pending_invites || []).filter(i => i.email !== email)
+    const newPrefs = { ...(teamData?.team_prefs||{}), pending_invites: updated }
+    await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
   }
 
   const CHALLENGE_METRICS = [
@@ -434,6 +471,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const coachableMembers = isGroupLeader ? myGroupMembers : members.filter(m=>m.id!==user?.id)
   const allCoachingNotes = teamData?.team_prefs?.coaching_notes || []
   const myCoachingNotes  = allCoachingNotes.filter(n => n.agentId === user?.id)
+  const pendingInvites   = teamData?.team_prefs?.pending_invites || []
 
   return (
     <>
@@ -816,6 +854,52 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                           }}>Leave Team</button>
                         )}
                       </div>
+                    </div>
+                  )}
+
+                  {/* ── Invite by Email (owner only) ─────────────────────── */}
+                  {isTeamOwner && (
+                    <div className="card" style={{ padding:'18px 20px', marginBottom:16 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+                        <span style={{ fontSize:16 }}>✉️</span>
+                        <span className="serif" style={{ fontSize:15, color:'var(--text)', fontWeight:600 }}>Invite Members by Email</span>
+                        <span style={{ fontSize:11, color:'var(--muted)', marginLeft:'auto' }}>They'll receive a setup link</span>
+                      </div>
+                      <div style={{ display:'flex', gap:8, marginBottom: inviteMsg ? 10 : 0 }}>
+                        <input className="field-input" type="email" value={inviteEmail}
+                          onChange={e=>{ setInviteEmail(e.target.value); setInviteMsg(null) }}
+                          onKeyDown={e=>e.key==='Enter'&&sendInvite()}
+                          placeholder="agent@brokerage.com" style={{ flex:1 }}/>
+                        <button className="btn-primary" onClick={sendInvite}
+                          disabled={inviteSending || !inviteEmail.trim()}
+                          style={{ fontSize:13, padding:'9px 20px', whiteSpace:'nowrap' }}>
+                          {inviteSending ? 'Sending…' : 'Send Invite'}
+                        </button>
+                      </div>
+                      {inviteMsg && (
+                        <div style={{ fontSize:12, marginBottom: pendingInvites.length ? 12 : 0,
+                          color: inviteMsg.type==='ok' ? 'var(--green)' : 'var(--red)' }}>
+                          {inviteMsg.type==='ok' ? '✓ ' : '✗ '}{inviteMsg.text}
+                        </div>
+                      )}
+                      {pendingInvites.length > 0 && (
+                        <div>
+                          <div style={{ fontSize:10, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px',
+                            textTransform:'uppercase', marginBottom:6, borderTop:'1px solid var(--b2)', paddingTop:10 }}>
+                            Pending Invites
+                          </div>
+                          {pendingInvites.map(inv => (
+                            <div key={inv.email} style={{ display:'flex', alignItems:'center', gap:8,
+                              padding:'6px 0', borderBottom:'1px solid var(--b2)' }}>
+                              <div style={{ flex:1, fontSize:12, color:'var(--text)' }}>{inv.email}</div>
+                              <div style={{ fontSize:11, color:'var(--muted)' }}>{relativeTime(inv.invitedAt)}</div>
+                              <button onClick={()=>removeInvite(inv.email)} style={{ background:'none', border:'none',
+                                cursor:'pointer', color:'var(--muted)', fontSize:15, padding:'0 4px', lineHeight:1 }}
+                                title="Remove invite">✕</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
 

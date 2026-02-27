@@ -612,19 +612,32 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                 <div style={{ fontSize:13, color:'var(--muted)', marginBottom:14 }}>
                   Permanently delete your account and all data. Cannot be undone.
                 </div>
-                {!showDel ? (
-                  <button onClick={()=>setShowDel(true)} style={{
-                    background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.25)',
-                    color:'var(--red)', borderRadius:8, padding:'9px 18px', cursor:'pointer', fontSize:13, fontWeight:600
-                  }}>Delete Account</button>
-                ) : (
-                  <div style={{ background:'rgba(220,38,38,.04)', border:'1px solid rgba(220,38,38,.15)', borderRadius:10, padding:18 }}>
-                    <div style={{ fontSize:13, color:'var(--text2)', marginBottom:14, lineHeight:1.7 }}>
-                      This will permanently erase all habits, listings, transactions and profile data.
+                <button onClick={()=>setShowDel(true)} style={{
+                  background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.25)',
+                  color:'var(--red)', borderRadius:8, padding:'9px 18px', cursor:'pointer', fontSize:13, fontWeight:600
+                }}>Delete Account</button>
+              </div>
+
+              {/* Delete confirmation modal */}
+              {showDel && (
+                <div style={{
+                  position:'fixed', inset:0, zIndex:900,
+                  background:'rgba(0,0,0,.65)', backdropFilter:'blur(4px)',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  padding:24, animation:'fadeIn .15s ease',
+                }} onClick={e=>{ if(e.target===e.currentTarget){setShowDel(false);setDelText('');setDelError(null)} }}>
+                  <div className="card" style={{
+                    padding:28, maxWidth:420, width:'100%',
+                    borderTop:'3px solid var(--red)', animation:'fadeUp .2s ease',
+                  }}>
+                    <div className="serif" style={{ fontSize:18, color:'var(--red)', marginBottom:8 }}>Delete Account</div>
+                    <div style={{ fontSize:13, color:'var(--text2)', marginBottom:18, lineHeight:1.7 }}>
+                      This will permanently erase all habits, listings, transactions and profile data. This cannot be undone.
                     </div>
                     <div className="label" style={{ marginBottom:6 }}>Type DELETE to confirm</div>
-                    <input className="field-input" value={delText} onChange={e=>setDelText(e.target.value)} placeholder="DELETE"
-                      style={{ marginBottom:14, maxWidth:200, fontWeight:700, letterSpacing:3, color:'var(--red)' }}/>
+                    <input className="field-input" value={delText} onChange={e=>setDelText(e.target.value)}
+                      placeholder="DELETE" autoFocus
+                      style={{ marginBottom:18, width:'100%', fontWeight:700, letterSpacing:3, color:'var(--red)' }}/>
                     <div style={{ display:'flex', gap:8 }}>
                       <button className="btn-outline" onClick={()=>{setShowDel(false);setDelText('');setDelError(null)}}>Cancel</button>
                       <button onClick={deleteAccount} disabled={delLoading||delText!=='DELETE'}
@@ -640,8 +653,8 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                       </div>
                     )}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
 

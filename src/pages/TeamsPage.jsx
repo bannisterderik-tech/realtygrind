@@ -1091,7 +1091,17 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               <div style={{ marginBottom:12 }}>
                                 <div className="label" style={{ marginBottom:5 }}>Group Leader</div>
                                 <select className="field-input" value={groupForm.leaderId}
-                                  onChange={e=>setGroupForm(f=>({...f,leaderId:e.target.value}))} style={{ width:'100%' }}>
+                                  onChange={e=>{
+                                    const newLeaderId = e.target.value
+                                    setGroupForm(f=>({
+                                      ...f,
+                                      leaderId: newLeaderId,
+                                      // auto-add the new leader to members if not already included
+                                      memberIds: newLeaderId && !f.memberIds.includes(newLeaderId)
+                                        ? [...f.memberIds, newLeaderId]
+                                        : f.memberIds,
+                                    }))
+                                  }} style={{ width:'100%' }}>
                                   <option value="">Select a leader…</option>
                                   {members.map(m=><option key={m.id} value={m.id}>{m.full_name||'Agent'}</option>)}
                                 </select>
@@ -1100,20 +1110,26 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 <div className="label" style={{ marginBottom:8 }}>Members (any number)</div>
                                 <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                                   {members.map(m=>{
-                                    const checked = groupForm.memberIds.includes(m.id)
-                                    const mRank   = getRank(m.xp||0)
+                                    const isLeader = groupForm.leaderId === m.id
+                                    const checked  = isLeader || groupForm.memberIds.includes(m.id)
+                                    const mRank    = getRank(m.xp||0)
                                     return (
-                                      <label key={m.id} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
+                                      <label key={m.id} style={{ display:'flex', alignItems:'center', gap:8,
+                                        cursor: isLeader ? 'not-allowed' : 'pointer',
                                         padding:'6px 10px', borderRadius:6,
-                                        background:checked?'rgba(139,92,246,.08)':'var(--bg2)', border:`1px solid ${checked?'rgba(139,92,246,.3)':'var(--b1)'}` }}>
-                                        <input type="checkbox" checked={checked}
-                                          onChange={e=>setGroupForm(f=>({...f, memberIds: e.target.checked
+                                        background:checked?'rgba(139,92,246,.08)':'var(--bg2)',
+                                        border:`1px solid ${checked?'rgba(139,92,246,.3)':'var(--b1)'}`,
+                                        opacity: isLeader ? 0.85 : 1 }}>
+                                        <input type="checkbox" checked={checked} disabled={isLeader}
+                                          title={isLeader ? 'Leader is always a member of their group' : undefined}
+                                          onChange={e=>!isLeader && setGroupForm(f=>({...f, memberIds: e.target.checked
                                             ? [...f.memberIds, m.id]
                                             : f.memberIds.filter(id=>id!==m.id)
                                           }))}/>
                                         <span style={{ fontSize:14 }}>{mRank.icon}</span>
                                         <span style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{m.full_name||'Agent'}</span>
-                                        {groupForm.leaderId===m.id && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:4, background:'rgba(139,92,246,.18)', color:'#8b5cf6', fontWeight:700 }}>LEADER</span>}
+                                        {isLeader && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:4, background:'rgba(139,92,246,.18)', color:'#8b5cf6', fontWeight:700 }}>LEADER</span>}
+                                        {isLeader && <span style={{ fontSize:10, color:'var(--dim)', marginLeft:'auto' }}>always a member</span>}
                                       </label>
                                     )
                                   })}

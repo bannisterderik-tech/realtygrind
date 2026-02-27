@@ -43,9 +43,8 @@ export function AuthProvider({ children }) {
         { onConflict: 'user_id' }
       )
       await supabase.from('profiles').update({ team_id: pendingTeamId }).eq('id', userId)
-      // Clear team_id from metadata so this doesn't re-fire on subsequent logins
-      await supabase.auth.updateUser({ data: { team_id: null } })
       // Re-fetch with the updated team relationship
+      // (no need to clear user_metadata — profile.team_id being set prevents re-joining)
       const { data: updated } = await supabase
         .from('profiles')
         .select('*, teams(name, invite_code, created_by, team_prefs)')

@@ -773,11 +773,12 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
     : `1fr 110px 110px ${actionOpts.length > 1 ? '168px' : '90px'} 30px`
 
   return (
-    <div className="card" style={{ padding:22, marginBottom:12 }}>
+    <div className="card" style={{ padding:22, marginBottom:12, borderLeft:`3px solid ${accentColor}55`,
+      background:`linear-gradient(135deg, ${accentColor}05 0%, var(--surface) 40%)` }}>
       {/* Header */}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16, flexWrap:'wrap', gap:10 }}>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <div style={{ width:38, height:38, borderRadius:10, background:`${accentColor}14`, border:`1px solid ${accentColor}28`,
+          <div style={{ width:38, height:38, borderRadius:10, background:`${accentColor}16`, border:`1px solid ${accentColor}30`,
             display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>
             {icon}
           </div>
@@ -1414,8 +1415,7 @@ function Dashboard({ theme, onToggleTheme }) {
     "Discipline bridges goals and achievement.", "Listings don't find agents. Agents find listings.",
   ]
   const quote = quotes[new Date().getDay()]
-
-  
+  const timeGreeting = (() => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening' })()
 
   return (
     <div className="page">
@@ -1602,18 +1602,47 @@ function Dashboard({ theme, onToggleTheme }) {
       {page==='dashboard' && (dbLoading ? <Loader/> : (
       <div className="page-inner">
 
-        {/* ── Header ─────────────────────────────────────────── */}
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:26, flexWrap:'wrap', gap:12 }}>
+        {/* ── Hero Header ─────────────────────────────────────── */}
+        <div className="card" style={{
+          padding:'24px 28px', marginBottom:22,
+          background:`linear-gradient(135deg, ${rank.color}0b 0%, var(--surface) 55%)`,
+          borderLeft:`3px solid ${rank.color}`,
+          display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:16,
+        }}>
           <div>
-            <div style={{ fontSize:11, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", letterSpacing:.6, textTransform:'uppercase', marginBottom:7 }}>
-              {dateStr.split(',').slice(1).join(',').trim()}
+            <div style={{ fontSize:10, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace",
+              letterSpacing:.7, textTransform:'uppercase', marginBottom:6 }}>
+              {timeGreeting}, {profile?.full_name?.split(' ')[0]||'Agent'} · {dateStr.split(',').slice(1).join(',').trim()}
             </div>
-            <div className="serif" style={{ fontSize:38, color:'var(--text)', lineHeight:1.02, letterSpacing:'-.015em', fontWeight:600 }}>
-              {dateStr.split(',')[0]}<span style={{ color:'var(--gold2)' }}>.</span>
+            <div className="serif" style={{ fontSize:42, color:'var(--text)', lineHeight:1, letterSpacing:'-.02em', fontWeight:600, marginBottom:12 }}>
+              {dateStr.split(',')[0]}<span style={{ color:rank.color }}>.</span>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:7, padding:'4px 10px 4px 5px',
+                background:`${rank.color}12`, border:`1px solid ${rank.color}28`, borderRadius:20 }}>
+                <div style={{ width:20, height:20, borderRadius:'50%',
+                  background:`linear-gradient(135deg, ${rank.color}, ${rank.color}88)`,
+                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:11 }}>{rank.icon}</div>
+                <span style={{ fontSize:11, fontWeight:700, color:rank.color,
+                  fontFamily:"'JetBrains Mono',monospace" }}>{rank.name} · {xp.toLocaleString()} XP</span>
+              </div>
+              {streak > 0 && (
+                <div style={{ display:'flex', alignItems:'center', gap:5, padding:'4px 10px',
+                  background:'rgba(251,146,60,.1)', border:'1px solid rgba(251,146,60,.25)', borderRadius:20 }}>
+                  <span style={{ fontSize:12 }}>🔥</span>
+                  <span style={{ fontSize:11, fontWeight:700, color:'#fb923c',
+                    fontFamily:"'JetBrains Mono',monospace" }}>{streak}-day streak</span>
+                </div>
+              )}
             </div>
           </div>
-          <div className="serif" style={{ fontStyle:'italic', fontSize:13.5, color:'var(--dim)', maxWidth:320, textAlign:'right', lineHeight:1.75, paddingBottom:4 }}>
-            "{quote}"
+          <div style={{ display:'flex', alignItems:'center', gap:18, flexShrink:0 }}>
+            <div className="serif mob-hide" style={{ fontStyle:'italic', fontSize:13, color:'var(--dim)',
+              maxWidth:220, textAlign:'right', lineHeight:1.75 }}>
+              "{quote}"
+            </div>
+            <Ring pct={todayPct} size={80} sw={6}
+              color={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'}/>
           </div>
         </div>
 
@@ -1666,7 +1695,7 @@ function Dashboard({ theme, onToggleTheme }) {
           <div className="today-grid">
 
             {/* Habits checklist */}
-            <div className="card" style={{ padding:24 }}>
+            <div className="card" style={{ padding:24, borderTop:`2.5px solid ${todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'}` }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
                 <div>
                   <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:3, letterSpacing:'-.015em' }}>Daily Habits</div>
@@ -1862,9 +1891,13 @@ function Dashboard({ theme, onToggleTheme }) {
 
             {/* Sidebar */}
             <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-              <div className="card" style={{ padding:22, textAlign:'center' }}>
-                <Ring pct={todayPct} size={104}
-                  color={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'} sw={7}/>
+              {(() => {
+                const ringColor = todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'
+                return (
+              <div className="card" style={{ padding:22, textAlign:'center',
+                background:`linear-gradient(180deg, ${ringColor}0d 0%, var(--surface) 65%)`,
+                borderTop:`2.5px solid ${ringColor}` }}>
+                <Ring pct={todayPct} size={104} color={ringColor} sw={7}/>
                 <div className="serif" style={{ marginTop:14, fontSize:16, color:'var(--text)', letterSpacing:'-.01em', fontWeight:600 }}>
                   {todayPct===100?'Perfect day! 🎉':todayPct>=80?'Almost there!':todayPct>=50?'Good progress':'Keep going'}
                 </div>
@@ -1878,6 +1911,8 @@ function Dashboard({ theme, onToggleTheme }) {
                   </div>
                 )}
               </div>
+                )
+              })()}
 
               {HABITS.filter(h=>h.counter&&habits[h.id][today.week][today.day]).length>0 && (
                 <div className="card" style={{ padding:16 }}>
@@ -1898,10 +1933,13 @@ function Dashboard({ theme, onToggleTheme }) {
                 </div>
               )}
 
-              <div className="card" style={{ padding:18, background:'var(--gold5)', border:'1px solid var(--gold4)' }}>
-                <div className="label" style={{ marginBottom:8, color:'var(--gold)', textAlign:'center' }}>Today's XP</div>
-                <div className="serif" style={{ fontSize:40, color:'var(--gold2)', fontWeight:700, textAlign:'center', lineHeight:1.05, letterSpacing:'-.025em' }}>
-                  {todayXp > 0 ? `+${todayXp.toLocaleString()}` : '0'}
+              <div className="card" style={{ padding:18,
+                background:'linear-gradient(160deg, rgba(217,119,6,.13) 0%, var(--gold5) 100%)',
+                border:'1px solid var(--gold4)', borderTop:'2.5px solid var(--gold)' }}>
+                <div className="label" style={{ marginBottom:8, color:'var(--gold)', textAlign:'center', letterSpacing:.8 }}>Today's XP</div>
+                <div className="serif" style={{ fontSize:40, color:'var(--gold2)', fontWeight:700, textAlign:'center', lineHeight:1.05, letterSpacing:'-.025em',
+                  textShadow:`0 0 28px rgba(217,119,6,${todayXp>0?.35:0})` }}>
+                  {todayXp > 0 ? `+${todayXp.toLocaleString()}` : <span style={{ opacity:.35, fontSize:32 }}>—</span>}
                 </div>
                 <div style={{ fontSize:11, color:'var(--muted)', marginTop:5, textAlign:'center', fontFamily:"'JetBrains Mono',monospace" }}>
                   {xp.toLocaleString()} XP all-time

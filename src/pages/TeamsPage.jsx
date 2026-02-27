@@ -225,7 +225,15 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
         }
       )
       const result = await resp.json()
-      if (!resp.ok) throw new Error(result.error || 'Failed to send invite.')
+      if (!resp.ok) {
+        const raw = result.error || 'Failed to send invite.'
+        const alreadyExists = /already (registered|exists|invited)/i.test(raw) || /user.*exist/i.test(raw)
+        throw new Error(
+          alreadyExists
+            ? `${email} already has an account. Share your invite code with them and they can join directly.`
+            : raw
+        )
+      }
       // Track in team_prefs.pending_invites
       const existing = teamData?.team_prefs?.pending_invites || []
       if (!existing.find(i => i.email === email)) {

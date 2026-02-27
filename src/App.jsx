@@ -1603,16 +1603,16 @@ function Dashboard({ theme, onToggleTheme }) {
       <div className="page-inner">
 
         {/* ── Header ─────────────────────────────────────────── */}
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:22, flexWrap:'wrap', gap:12 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:26, flexWrap:'wrap', gap:12 }}>
           <div>
-            <div className="serif" style={{ fontSize:34, color:'var(--text)', lineHeight:1.1, marginBottom:5 }}>
-              {dateStr.split(',')[0]}<span style={{ color:'var(--gold)' }}>,</span>
-            </div>
-            <div style={{ fontSize:12, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", letterSpacing:.3 }}>
+            <div style={{ fontSize:11, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", letterSpacing:.6, textTransform:'uppercase', marginBottom:7 }}>
               {dateStr.split(',').slice(1).join(',').trim()}
             </div>
+            <div className="serif" style={{ fontSize:38, color:'var(--text)', lineHeight:1.02, letterSpacing:'-.015em', fontWeight:600 }}>
+              {dateStr.split(',')[0]}<span style={{ color:'var(--gold2)' }}>.</span>
+            </div>
           </div>
-          <div className="serif" style={{ fontStyle:'italic', fontSize:14, color:'var(--dim)', maxWidth:340, textAlign:'right', lineHeight:1.65 }}>
+          <div className="serif" style={{ fontStyle:'italic', fontSize:13.5, color:'var(--dim)', maxWidth:320, textAlign:'right', lineHeight:1.75, paddingBottom:4 }}>
             "{quote}"
           </div>
         </div>
@@ -1654,27 +1654,34 @@ function Dashboard({ theme, onToggleTheme }) {
         {/* ══ TODAY ══════════════════════════════════════════ */}
         {tab==='today' && (
           <>
-          <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:10 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+            <div style={{ fontSize:12, color:'var(--muted)' }}>
+              {todayXp > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", color:'var(--gold)', fontWeight:700 }}>+{todayXp.toLocaleString()} XP</span>} {todayXp > 0 ? 'earned today' : ''}
+            </div>
             <button className="btn-outline" onClick={() => setShowPrint(true)}
-              style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}>
-              🖨️ Print Daily Tasks
+              style={{ fontSize:12, display:'flex', alignItems:'center', gap:5, padding:'7px 14px' }}>
+              🖨️ Print Daily Sheet
             </button>
           </div>
           <div className="today-grid">
 
             {/* Habits checklist */}
             <div className="card" style={{ padding:24 }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
                 <div>
-                  <div className="serif" style={{ fontSize:21, color:'var(--text)', marginBottom:2 }}>Daily Habits</div>
-                  <div style={{ fontSize:12, color:'var(--muted)' }}>{FULL_DAYS[today.day]} check-ins</div>
-                </div>
-                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                  <Ring pct={todayPct} size={54} color={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'}/>
-                  <div>
-                    <div className="serif" style={{ fontSize:22, color:'var(--text)', lineHeight:1 }}>{todayChecks}/{todayBuiltInActive.length}</div>
-                    <div style={{ fontSize:10, color:'var(--muted)' }}>completed</div>
+                  <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:3, letterSpacing:'-.015em' }}>Daily Habits</div>
+                  <div style={{ fontSize:12, color:'var(--muted)' }}>
+                    {FULL_DAYS[today.day]} · {todayBuiltInActive.length - todayChecks > 0 ? `${todayBuiltInActive.length - todayChecks} remaining` : 'All done! 🎉'}
                   </div>
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                  <div style={{ textAlign:'right' }}>
+                    <div className="serif" style={{ fontSize:24, color: todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626', lineHeight:1, fontWeight:700, letterSpacing:'-.02em' }}>
+                      {todayChecks}<span style={{ fontSize:14, color:'var(--dim)', fontWeight:400 }}>/{todayBuiltInActive.length}</span>
+                    </div>
+                    <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>completed</div>
+                  </div>
+                  <Ring pct={todayPct} size={58} color={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'} sw={5}/>
                 </div>
               </div>
 
@@ -1855,15 +1862,21 @@ function Dashboard({ theme, onToggleTheme }) {
 
             {/* Sidebar */}
             <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-              <div className="card" style={{ padding:20, textAlign:'center' }}>
-                <Ring pct={todayPct} size={100}
-                  color={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'} sw={8}/>
-                <div className="serif" style={{ marginTop:12, fontSize:15, color:'var(--text)' }}>
+              <div className="card" style={{ padding:22, textAlign:'center' }}>
+                <Ring pct={todayPct} size={104}
+                  color={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'} sw={7}/>
+                <div className="serif" style={{ marginTop:14, fontSize:16, color:'var(--text)', letterSpacing:'-.01em', fontWeight:600 }}>
                   {todayPct===100?'Perfect day! 🎉':todayPct>=80?'Almost there!':todayPct>=50?'Good progress':'Keep going'}
                 </div>
-                <div style={{ fontSize:11, color:'var(--muted)', marginTop:4 }}>
-                  {todayBuiltInActive.length-todayChecks} habit{todayBuiltInActive.length-todayChecks!==1?'s':''} left
+                <div style={{ fontSize:12, color:'var(--muted)', marginTop:4 }}>
+                  {todayBuiltInActive.length-todayChecks === 0 ? 'All habits done' : `${todayBuiltInActive.length-todayChecks} habit${todayBuiltInActive.length-todayChecks!==1?'s':''} remaining`}
                 </div>
+                {streak > 0 && (
+                  <div style={{ marginTop:14, padding:'8px 14px', background:'rgba(251,146,60,.08)', border:'1px solid rgba(251,146,60,.2)', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                    <span style={{ fontSize:14 }}>🔥</span>
+                    <span className="serif" style={{ fontSize:14, color:'#fb923c', fontWeight:600, letterSpacing:'-.01em' }}>{streak}-day streak</span>
+                  </div>
+                )}
               </div>
 
               {HABITS.filter(h=>h.counter&&habits[h.id][today.week][today.day]).length>0 && (
@@ -1885,24 +1898,24 @@ function Dashboard({ theme, onToggleTheme }) {
                 </div>
               )}
 
-              <div className="card" style={{ padding:16, background:'var(--gold3)', border:'1px solid var(--gold4)' }}>
-                <div className="label" style={{ marginBottom:6, color:'var(--gold)', textAlign:'center' }}>XP Earned Today</div>
-                <div className="serif" style={{ fontSize:36, color:'var(--gold)', fontWeight:700, textAlign:'center', lineHeight:1 }}>
-                  {todayXp.toLocaleString()}
+              <div className="card" style={{ padding:18, background:'var(--gold5)', border:'1px solid var(--gold4)' }}>
+                <div className="label" style={{ marginBottom:8, color:'var(--gold)', textAlign:'center' }}>Today's XP</div>
+                <div className="serif" style={{ fontSize:40, color:'var(--gold2)', fontWeight:700, textAlign:'center', lineHeight:1.05, letterSpacing:'-.025em' }}>
+                  {todayXp > 0 ? `+${todayXp.toLocaleString()}` : '0'}
                 </div>
-                <div style={{ fontSize:10, color:'var(--muted)', marginTop:3, textAlign:'center' }}>
-                  all-time: {xp.toLocaleString()} XP
+                <div style={{ fontSize:11, color:'var(--muted)', marginTop:5, textAlign:'center', fontFamily:"'JetBrains Mono',monospace" }}>
+                  {xp.toLocaleString()} XP all-time
                 </div>
                 {goals?.xp > 0 && (() => {
                   const pct = Math.min(Math.round(xp / goals.xp * 100), 100)
                   return (
-                    <div style={{ marginTop:10, padding:'8px 0' }}>
-                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'var(--muted)', marginBottom:5 }}>
+                    <div style={{ marginTop:12, padding:'10px 0 4px' }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'var(--muted)', marginBottom:6 }}>
                         <span>Monthly XP Goal</span>
-                        <span style={{ color:pct>=100?'#10b981':'var(--gold)', fontWeight:700 }}>{xp.toLocaleString()} / {goals.xp.toLocaleString()}</span>
+                        <span style={{ color:pct>=100?'#10b981':'var(--gold2)', fontWeight:700 }}>{xp.toLocaleString()} / {goals.xp.toLocaleString()}</span>
                       </div>
-                      <div style={{ height:6, background:'rgba(255,255,255,.1)', borderRadius:99, overflow:'hidden' }}>
-                        <div style={{ height:'100%', width:`${pct}%`, background:pct>=100?'#10b981':'var(--gold)', borderRadius:99, transition:'width .5s' }}/>
+                      <div className="progress-track">
+                        <div className="progress-fill" style={{ width:`${pct}%`, background:pct>=100?'#10b981':'var(--gold2)' }}/>
                       </div>
                     </div>
                   )

@@ -429,10 +429,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                 <>
                   {/* Team header */}
                   {teamData && (
-                    <div className="card" style={{ padding:22, marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:14 }}>
+                    <div className="card" style={{ padding:22, marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:14,
+                      background:'linear-gradient(135deg, rgba(217,119,6,.04) 0%, var(--surface) 60%)', borderTop:'2px solid rgba(217,119,6,.3)' }}>
                       <div>
-                        <div className="serif" style={{ fontSize:26, color:'var(--text)', marginBottom:3 }}>{teamData.name}</div>
-                        <div style={{ fontSize:13, color:'var(--muted)' }}>{members.length} member{members.length!==1?'s':''} · all-time</div>
+                        <div className="serif" style={{ fontSize:28, color:'var(--text)', marginBottom:4, letterSpacing:'-.01em' }}>{teamData.name}</div>
+                        <div style={{ fontSize:12, color:'var(--muted)' }}>{members.length} member{members.length!==1?'s':''}</div>
                       </div>
                       <div style={{ display:'flex', gap:12, alignItems:'center' }}>
                         <div className="card-inset" style={{ padding:'10px 20px', textAlign:'center' }}>
@@ -451,11 +452,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
 
                   {/* My Pod section */}
                   {myPod ? (
-                    <div className="card" style={{ padding:20, marginBottom:16, border:'1px solid rgba(139,92,246,.25)', background:'rgba(139,92,246,.04)' }}>
+                    <div className="card" style={{ padding:20, marginBottom:16, border:'1px solid rgba(139,92,246,.3)', background:'linear-gradient(135deg, rgba(139,92,246,.05) 0%, var(--surface) 70%)' }}>
                       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
-                        <span style={{ fontSize:16 }}>🫂</span>
-                        <span className="serif" style={{ fontSize:16, color:'var(--text)' }}>{myPod.name}</span>
-                        <span style={{ fontSize:11, color:'var(--muted)' }}>{myPod.memberIds.length} members</span>
+                        <span style={{ fontSize:18 }}>🫂</span>
+                        <span className="serif" style={{ fontSize:18, color:'var(--text)', letterSpacing:'-.01em' }}>{myPod.name}</span>
+                        <span style={{ fontSize:11, padding:'2px 8px', borderRadius:10, background:'rgba(139,92,246,.1)', color:'#8b5cf6', fontWeight:600, marginLeft:2 }}>{myPod.memberIds.length} members</span>
                       </div>
                       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:12 }}>
                         {(() => {
@@ -466,7 +467,13 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                           return (
                             <div className="card" style={{ padding:14, border:'1px solid rgba(217,119,6,.3)', background:'var(--gold3)' }}>
                               <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                                <span style={{ fontSize:18 }}>{myRank.icon}</span>
+                                <div style={{ width:34, height:34, borderRadius:'50%',
+                                  background:`linear-gradient(135deg, ${myRank.color}, ${myRank.color}99)`,
+                                  display:'flex', alignItems:'center', justifyContent:'center',
+                                  fontSize:13, fontWeight:700, color:'#fff', flexShrink:0,
+                                  boxShadow:`0 2px 6px ${myRank.color}44` }}>
+                                  {(me.full_name||'A').charAt(0).toUpperCase()}
+                                </div>
                                 <div style={{ flex:1 }}>
                                   <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{me.full_name||'Agent'}</div>
                                   <div style={{ fontSize:10, color:'var(--muted)' }}>{myRank.name} · 🔥 {me.streak||0}</div>
@@ -492,7 +499,13 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                           return (
                             <div key={mate.id} className="card" style={{ padding:14 }}>
                               <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                                <span style={{ fontSize:18 }}>{mateRank.icon}</span>
+                                <div style={{ width:34, height:34, borderRadius:'50%',
+                                  background:`linear-gradient(135deg, ${mateRank.color}, ${mateRank.color}99)`,
+                                  display:'flex', alignItems:'center', justifyContent:'center',
+                                  fontSize:13, fontWeight:700, color:'#fff', flexShrink:0,
+                                  boxShadow:`0 2px 6px ${mateRank.color}44` }}>
+                                  {(mate.full_name||'A').charAt(0).toUpperCase()}
+                                </div>
                                 <div style={{ flex:1 }}>
                                   <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{mate.full_name||'Agent'}</div>
                                   <div style={{ fontSize:10, color:'var(--muted)' }}>{mateRank.name} · 🔥 {mate.streak||0}</div>
@@ -553,10 +566,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                             <div className="mono" style={{ width:26, fontSize:12, color:'var(--dim)', textAlign:'center', fontWeight:700 }}>
                               {i+1}
                             </div>
-                            <div style={{ width:36, height:36, borderRadius:'50%', background:`${rank.color}18`,
-                              border:`1.5px solid ${rank.color}33`, display:'flex', alignItems:'center', justifyContent:'center',
-                              fontSize:18, flexShrink:0 }}>
-                              {rank.icon}
+                            <div style={{ width:38, height:38, borderRadius:'50%',
+                              background:`linear-gradient(135deg, ${rank.color}, ${rank.color}99)`,
+                              display:'flex', alignItems:'center', justifyContent:'center',
+                              fontSize:15, fontWeight:700, color:'#fff', flexShrink:0, letterSpacing:0,
+                              boxShadow:`0 2px 8px ${rank.color}44` }}>
+                              {(m.full_name||'A').charAt(0).toUpperCase()}
                             </div>
                             <div style={{ flex:1 }}>
                               <div style={{ display:'flex', alignItems:'center', gap:7, flexWrap:'wrap' }}>
@@ -736,7 +751,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                   {/* ── My Coaching Notes (visible to all members) ── */}
                   {myCoachingNotes.length > 0 && (
                     <div style={{ marginTop:28 }}>
-                      <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:12 }}>📋 My Coaching Notes</div>
+                      <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:14, letterSpacing:'-.01em' }}>📋 My Coaching Notes</div>
                       <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                         {[...myCoachingNotes]
                           .sort((a,b) => (b.pinned?1:0)-(a.pinned?1:0) || new Date(b.createdAt)-new Date(a.createdAt))
@@ -863,9 +878,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                   }}>
                                     <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14, flexWrap:'wrap' }}>
                                       <div className="mono" style={{ width:22, fontSize:11, color:'var(--dim)', fontWeight:700 }}>{i+1}</div>
-                                      <div style={{ width:32, height:32, borderRadius:'50%', background:`${rank.color}18`,
-                                        border:`1.5px solid ${rank.color}33`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>
-                                        {rank.icon}
+                                      <div style={{ width:34, height:34, borderRadius:'50%',
+                                        background:`linear-gradient(135deg, ${rank.color}, ${rank.color}99)`,
+                                        display:'flex', alignItems:'center', justifyContent:'center',
+                                        fontSize:13, fontWeight:700, color:'#fff', flexShrink:0,
+                                        boxShadow:`0 2px 6px ${rank.color}44` }}>
+                                        {(m.full_name||'A').charAt(0).toUpperCase()}
                                       </div>
                                       <div style={{ flex:1 }}>
                                         <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>

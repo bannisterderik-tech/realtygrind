@@ -344,29 +344,38 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
         <div className="page-inner" style={{ maxWidth:880 }}>
 
           {/* Rank banner */}
-          <div className="card" style={{ padding:24, marginBottom:20, borderTop:`3px solid ${rank.color}`, display:'flex', gap:20, alignItems:'center', flexWrap:'wrap' }}>
-            <div style={{ width:58, height:58, borderRadius:14, background:`${rank.color}15`, border:`1.5px solid ${rank.color}33`,
-              display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, flexShrink:0 }}>
-              {rank.icon}
+          <div className="card" style={{ padding:28, marginBottom:20, borderTop:`3px solid ${rank.color}`,
+            background:`linear-gradient(135deg, ${rank.color}0d 0%, var(--surface) 55%)`,
+            display:'flex', gap:22, alignItems:'center', flexWrap:'wrap' }}>
+            <div style={{ position:'relative', flexShrink:0 }}>
+              <Ring pct={rankPct} size={84} sw={6} color={rank.color}/>
+              <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:32 }}>
+                {rank.icon}
+              </div>
             </div>
             <div style={{ flex:1, minWidth:180 }}>
-              <div className="serif" style={{ fontSize:28, color:'var(--text)', lineHeight:1, marginBottom:3 }}>{profile?.full_name||'Agent'}</div>
-              <div style={{ fontSize:12, color:'var(--muted)', marginBottom:10 }}>{user?.email}</div>
-              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                <span style={{ fontSize:12, fontWeight:600, color:rank.color }}>{rank.icon} {rank.name}</span>
-                <div style={{ flex:1, maxWidth:200, height:5, background:'var(--bg3)', borderRadius:3 }}>
-                  <div style={{ height:'100%', background:rank.color, borderRadius:3, width:`${rankPct}%`, transition:'width .6s' }}/>
-                </div>
-                <span className="mono" style={{ fontSize:11, color:'var(--muted)' }}>{(profile?.xp||0).toLocaleString()} XP</span>
+              <div style={{ fontSize:10, color:rank.color, fontFamily:"'JetBrains Mono',monospace", letterSpacing:.8,
+                textTransform:'uppercase', fontWeight:700, marginBottom:5 }}>
+                {rank.name}
               </div>
-              {nextRank && <div style={{ fontSize:11, color:'var(--dim)', marginTop:4 }}>
-                {(nextRank.min-(profile?.xp||0)).toLocaleString()} XP to {nextRank.name}
+              <div className="serif" style={{ fontSize:32, color:'var(--text)', lineHeight:1.05, marginBottom:4, letterSpacing:'-.02em', fontWeight:600 }}>
+                {profile?.full_name||'Agent'}
+              </div>
+              <div style={{ fontSize:12, color:'var(--muted)', marginBottom:12 }}>{user?.email}</div>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <div className="progress-track" style={{ flex:1, maxWidth:220 }}>
+                  <div className="progress-fill" style={{ width:`${rankPct}%`, background:rank.color }}/>
+                </div>
+                <span className="mono" style={{ fontSize:11, color:rank.color, fontWeight:700 }}>{(profile?.xp||0).toLocaleString()} XP</span>
+              </div>
+              {nextRank && <div style={{ fontSize:11, color:'var(--dim)', marginTop:5 }}>
+                {(nextRank.min-(profile?.xp||0)).toLocaleString()} XP until {nextRank.icon} {nextRank.name}
               </div>}
             </div>
             <div style={{ display:'flex', gap:10 }}>
               {[{l:'Total XP',v:(profile?.xp||0).toLocaleString(),c:rank.color},{l:'Streak',v:`🔥 ${profile?.streak||0}`,c:'#f97316'}].map((s,i)=>(
-                <div key={i} className="card-inset" style={{ padding:'10px 16px', textAlign:'center', minWidth:80 }}>
-                  <div className="label" style={{ marginBottom:4 }}>{s.l}</div>
+                <div key={i} className="card-inset" style={{ padding:'12px 18px', textAlign:'center', minWidth:88 }}>
+                  <div className="label" style={{ marginBottom:5 }}>{s.l}</div>
                   <div className="serif" style={{ fontSize:22, color:s.c, fontWeight:700 }}>{s.v}</div>
                 </div>
               ))}
@@ -642,9 +651,11 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
 
               {/* Monthly Goals card */}
               <div className="card" style={{ padding:24 }}>
-                <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:4 }}>🎯 Monthly Goals</div>
-                <div style={{ fontSize:13, color:'var(--muted)', marginBottom:20 }}>
-                  Set targets to track progress on your dashboard. Leave blank to hide.
+                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:20, gap:12, flexWrap:'wrap' }}>
+                  <div>
+                    <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:3, letterSpacing:'-.01em' }}>🎯 Monthly Goals</div>
+                    <div style={{ fontSize:12, color:'var(--muted)' }}>Set targets to track progress on your dashboard.</div>
+                  </div>
                 </div>
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(155px,1fr))', gap:14 }}>
                   {[
@@ -675,8 +686,8 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
 
               {/* Income Goal Calculator card */}
               <div className="card" style={{ padding:24 }}>
-                <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:4 }}>🧮 Income Goal Calculator</div>
-                <div style={{ fontSize:13, color:'var(--muted)', marginBottom:20 }}>
+                <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:3, letterSpacing:'-.01em' }}>🧮 Income Goal Calculator</div>
+                <div style={{ fontSize:12, color:'var(--muted)', marginBottom:20 }}>
                   Enter your annual GCI target — we'll reverse-engineer your daily activity requirements.
                 </div>
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:14, marginBottom:18 }}>
@@ -746,8 +757,8 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                     <div style={{ fontSize:10, color:'var(--dim)', marginBottom:16 }}>
                       Ratios: 3 showings/closing · 70% appt→showing · 20 calls/appt · {monthsRemaining} months × 22 work days
                     </div>
-                    <button className="btn-primary" onClick={applyCalcAsGoals}
-                      style={{ padding:'9px 24px', fontSize:13, background:'var(--green)', borderColor:'var(--green)' }}>
+                    <button className="btn-gold" onClick={applyCalcAsGoals}
+                      style={{ padding:'9px 24px', fontSize:13 }}>
                       ✓ Apply as My Goals
                     </button>
                   </>

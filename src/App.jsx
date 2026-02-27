@@ -957,9 +957,10 @@ function Dashboard({ theme, onToggleTheme }) {
   const [customDone,          setCustomDone]          = useState({}) // { 'uuid-week-day': true }
   const [skippedTodayTasks,   setSkippedTodayTasks]   = useState([]) // custom default tasks skipped for today
   const [addTaskModal,    setAddTaskModal]    = useState(false)
-  const [plannerPrint,    setPlannerPrint]    = useState(null)  // { wi, di, dateStr } | null
-  const [plannerTaskForm, setPlannerTaskForm] = useState(null)  // { wi, di } | null (inline add-task)
-  const [plannerForm,     setPlannerForm]     = useState({ label:'', icon:'🏠', xp:15 })
+  const [plannerPrint,        setPlannerPrint]        = useState(null)  // { wi, di, dateStr } | null
+  const [plannerTaskForm,     setPlannerTaskForm]     = useState(null)  // { wi, di } | null
+  const [plannerForm,         setPlannerForm]         = useState({ label:'', icon:'🏠', xp:15 })
+  const [plannerDeletedTasks, setPlannerDeletedTasks] = useState([])    // day-specific tasks deleted this session
   const todayDate = new Date().toISOString().slice(0,10)
 
   useEffect(()=>{ loadAll() },[user])
@@ -1101,6 +1102,25 @@ function Dashboard({ theme, onToggleTheme }) {
     saveProfileHabitPrefs(newPrefs)
   }
 
+  // Generic skip/unskip for any date (used by week planner — also affects Today view on that date)
+  function skipHabitForDate(hid, dateStr) {
+    const prev = (habitPrefs.skipped||{})[dateStr] || []
+    if (prev.includes(String(hid))) return
+    saveProfileHabitPrefs({
+      ...habitPrefs,
+      skipped: { ...(habitPrefs.skipped||{}), [dateStr]: [...prev, String(hid)] }
+    })
+  }
+  function unSkipHabitForDate(hid, dateStr) {
+    saveProfileHabitPrefs({
+      ...habitPrefs,
+      skipped: {
+        ...(habitPrefs.skipped||{}),
+        [dateStr]: ((habitPrefs.skipped||{})[dateStr]||[]).filter(id => id !== String(hid))
+      }
+    })
+  }
+
   // Custom default task skip/restore — moves task object between states for instant UI feedback
   function skipCustomTaskToday(task) {
     setCustomTasks(prev => prev.filter(t => t.id !== task.id))
@@ -1218,6 +1238,24 @@ function Dashboard({ theme, onToggleTheme }) {
     }])
     setPlannerTaskForm(null)
     setPlannerForm({ label:'', icon:'🏠', xp:15 })
+  }
+
+  // Planner-only: move a day-specific task to a recoverable deleted list, hard-delete from DB
+  async function deleteDayTask(task) {
+    setPlannerDeletedTasks(prev => [...prev, task])
+    setCustomTasks(prev => prev.filter(t => t.id !== task.id))
+    await supabase.from('custom_tasks').delete().eq('id', task.id).eq('user_id', user.id)
+  }
+  // Re-insert and bring back into view
+  async function restoreDayTask(task) {
+    const { data } = await supabase.from('custom_tasks').insert({
+      user_id: user.id, label: task.label, icon: task.icon, xp: task.xp,
+      is_default: false, specific_date: task.specificDate,
+    }).select().single()
+    if (data) {
+      setCustomTasks(prev => [...prev, { id:data.id, label:data.label, icon:data.icon, xp:data.xp, isDefault:false, specificDate:data.specific_date }])
+      setPlannerDeletedTasks(prev => prev.filter(t => t.id !== task.id))
+    }
   }
 
   async function deleteCustomTask(id) {
@@ -2137,21 +2175,52 @@ function Dashboard({ theme, onToggleTheme }) {
         {/* ══ WEEKLY ══════════════════════════════════════════ */}
         {tab==='weekly' && (
           <div style={{ animation:'fadeUp .3s ease' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
-              <div style={{ fontSize:13, color:'var(--muted)' }}>
-                Week {today.week+1} — click any habit to toggle · use <b>+</b> to add day tasks · 🖨️ to print
-              </div>
+            <div style={{ marginBottom:16, fontSize:13, color:'var(--muted)' }}>
+              Week {today.week+1} — ✓ toggle · × remove from day · ↩ restore · + add · 🖨️ print
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(210px,1fr))', gap:12 }}>
               {DAYS.map((dayName,di)=>{
-                const wi      = today.week
-                const dateStr = dateStrForDay(wi, di)
-                const done    = builtInEffective.filter(h=>habits[h.id][wi][di])
-                const pct     = Math.round(done.length/Math.max(builtInEffective.length,1)*100)
-                const isToday = di===today.day
-                const dc      = weekColors[di%4]
-                const dayTasks = customTasks.filter(t => !t.isDefault && t.specificDate===dateStr)
-                const isFormOpen = plannerTaskForm?.wi===wi && plannerTaskForm?.di===di
+                const wi         = today.week
+                const dateStr    = dateStrForDay(wi, di)
+                const skipped    = (habitPrefs.skipped||{})[dateStr] || []
+                // Active tasks for this day
+                const activeBuiltIn  = builtInEffective.filter(h => !skipped.includes(String(h.id)))
+                const activeDefaults = customTasks.filter(t => t.isDefault && !skipped.includes(String(t.id)))
+                const activeDayTasks = customTasks.filter(t => !t.isDefault && t.specificDate===dateStr)
+                // Hidden/removed tasks for this day
+                const hiddenBuiltIn  = builtInEffective.filter(h => skipped.includes(String(h.id)))
+                const hiddenDefaults = customTasks.filter(t => t.isDefault && skipped.includes(String(t.id)))
+                const hiddenDayTasks = plannerDeletedTasks.filter(t => t.specificDate===dateStr)
+                const hasHidden      = hiddenBuiltIn.length + hiddenDefaults.length + hiddenDayTasks.length > 0
+                // Completion count
+                const doneBuiltIn  = activeBuiltIn.filter(h => habits[h.id][wi][di]).length
+                const doneDefaults = activeDefaults.filter(t => !!(customDone[`${t.id}-${wi}-${di}`])).length
+                const doneDayTasks = activeDayTasks.filter(t => !!(customDone[`${t.id}-${wi}-${di}`])).length
+                const totalDone    = doneBuiltIn + doneDefaults + doneDayTasks
+                const totalActive  = activeBuiltIn.length + activeDefaults.length + activeDayTasks.length
+                const pct          = Math.round(totalDone / Math.max(totalActive, 1) * 100)
+                const isToday      = di===today.day
+                const dc           = weekColors[di%4]
+                const isFormOpen   = plannerTaskForm?.wi===wi && plannerTaskForm?.di===di
+
+                // Shared row style helpers
+                const rowStyle = (checked, cs) => ({
+                  display:'flex', alignItems:'center', gap:6, flex:1, textAlign:'left',
+                  background:checked?cs.light:'transparent', border:`1px solid ${checked?cs.border:'transparent'}`,
+                  borderRadius:7, padding:'5px 7px', cursor:'pointer', transition:'all .15s',
+                })
+                const checkBox = (checked, color) => (
+                  <div style={{ width:11, height:11, borderRadius:3, flexShrink:0,
+                    border:`1.5px solid ${checked?color:'var(--b3)'}`,
+                    background:checked?color:'transparent' }}/>
+                )
+                const removeBtn = (onClick) => (
+                  <button onClick={onClick} title="Remove from this day" style={{
+                    background:'none', border:'none', cursor:'pointer', fontSize:14,
+                    color:'var(--muted)', padding:'2px 5px', lineHeight:1, borderRadius:4, flexShrink:0,
+                  }}>×</button>
+                )
+
                 return (
                   <div key={di} className="card" style={{
                     padding:16,
@@ -2172,59 +2241,94 @@ function Dashboard({ theme, onToggleTheme }) {
 
                     {/* Built-in habits */}
                     <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
-                      {builtInEffective.map(h=>{
+                      {activeBuiltIn.map(h=>{
                         const checked = habits[h.id][wi][di]
                         const cs = CAT[h.cat]
                         return (
-                          <button key={h.id} onClick={()=>toggleHabit(h.id,wi,di)} style={{
-                            display:'flex', alignItems:'center', gap:6, width:'100%', textAlign:'left',
-                            background:checked?cs.light:'transparent', border:`1px solid ${checked?cs.border:'transparent'}`,
-                            borderRadius:7, padding:'5px 7px', cursor:'pointer', transition:'all .15s',
-                          }}>
-                            <div style={{ width:11, height:11, borderRadius:3, flexShrink:0,
-                              border:`1.5px solid ${checked?cs.color:'var(--b3)'}`,
-                              background:checked?cs.color:'transparent' }}/>
-                            <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
-                              textDecoration:checked?'line-through':'none' }}>{h.icon} {h.label}</span>
-                            <span className="mono" style={{ fontSize:9, color:cs.color }}>+{h.xp}</span>
-                          </button>
+                          <div key={h.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
+                            <button onClick={()=>toggleHabit(h.id,wi,di)} style={rowStyle(checked,cs)}>
+                              {checkBox(checked, cs.color)}
+                              <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
+                                textDecoration:checked?'line-through':'none' }}>{h.icon} {h.label}</span>
+                              <span className="mono" style={{ fontSize:9, color:cs.color }}>+{h.xp}</span>
+                            </button>
+                            {removeBtn(()=>dateStr && skipHabitForDate(h.id, dateStr))}
+                          </div>
                         )
                       })}
                     </div>
 
-                    {/* Day-specific custom tasks */}
-                    {dayTasks.length > 0 && (
-                      <div style={{ marginTop:8, paddingTop:8, borderTop:'1px solid var(--b1)', display:'flex', flexDirection:'column', gap:3 }}>
-                        {dayTasks.map(t => {
+                    {/* Default custom tasks */}
+                    {activeDefaults.length > 0 && (
+                      <div style={{ marginTop:6, display:'flex', flexDirection:'column', gap:3 }}>
+                        {activeDefaults.map(t=>{
                           const checked = !!(customDone[`${t.id}-${wi}-${di}`])
+                          const cs = { light:'rgba(6,182,212,.1)', color:'#06b6d4', border:'rgba(6,182,212,.3)' }
                           return (
-                            <div key={t.id} style={{ display:'flex', alignItems:'center', gap:4 }}>
-                              <button onClick={()=>toggleCustomTask(t.id,wi,di)} style={{
-                                display:'flex', alignItems:'center', gap:6, flex:1, textAlign:'left',
-                                background:checked?'rgba(6,182,212,.1)':'transparent',
-                                border:`1px solid ${checked?'rgba(6,182,212,.3)':'transparent'}`,
-                                borderRadius:7, padding:'5px 7px', cursor:'pointer', transition:'all .15s',
-                              }}>
-                                <div style={{ width:11, height:11, borderRadius:3, flexShrink:0,
-                                  border:`1.5px solid ${checked?'#06b6d4':'var(--b3)'}`,
-                                  background:checked?'#06b6d4':'transparent' }}/>
+                            <div key={t.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
+                              <button onClick={()=>toggleCustomTask(t.id,wi,di)} style={rowStyle(checked,cs)}>
+                                {checkBox(checked,'#06b6d4')}
                                 <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
                                   textDecoration:checked?'line-through':'none' }}>{t.icon} {t.label}</span>
                               </button>
-                              <button onClick={()=>deleteCustomTask(t.id)} title="Remove" style={{
-                                background:'none', border:'none', cursor:'pointer', fontSize:13,
-                                color:'var(--muted)', padding:'2px 4px', lineHeight:1, borderRadius:4,
-                              }}>×</button>
+                              {removeBtn(()=>dateStr && skipHabitForDate(t.id, dateStr))}
                             </div>
                           )
                         })}
                       </div>
                     )}
 
+                    {/* Day-specific custom tasks */}
+                    {activeDayTasks.length > 0 && (
+                      <div style={{ marginTop:6, paddingTop:6, borderTop:'1px solid var(--b1)', display:'flex', flexDirection:'column', gap:3 }}>
+                        {activeDayTasks.map(t=>{
+                          const checked = !!(customDone[`${t.id}-${wi}-${di}`])
+                          const cs = { light:'rgba(139,92,246,.1)', color:'#8b5cf6', border:'rgba(139,92,246,.3)' }
+                          return (
+                            <div key={t.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
+                              <button onClick={()=>toggleCustomTask(t.id,wi,di)} style={rowStyle(checked,cs)}>
+                                {checkBox(checked,'#8b5cf6')}
+                                <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
+                                  textDecoration:checked?'line-through':'none' }}>{t.icon} {t.label}</span>
+                              </button>
+                              {removeBtn(()=>deleteDayTask(t))}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {/* Restore strip — hidden tasks */}
+                    {hasHidden && (
+                      <div style={{ marginTop:8, padding:'6px 8px', borderRadius:7,
+                        background:'var(--bg)', border:'1px solid var(--b1)' }}>
+                        <div style={{ fontSize:9, color:'var(--dim)', fontWeight:700,
+                          textTransform:'uppercase', letterSpacing:'.5px', marginBottom:5 }}>Hidden this day</div>
+                        <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                          {[...hiddenBuiltIn, ...hiddenDefaults].map(h=>(
+                            <div key={h.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:6 }}>
+                              <span style={{ fontSize:10, color:'var(--muted)' }}>{h.icon} {h.label}</span>
+                              <button onClick={()=>dateStr && unSkipHabitForDate(h.id, dateStr)} style={{
+                                fontSize:10, padding:'1px 7px', borderRadius:4, cursor:'pointer',
+                                background:'none', border:'1px solid var(--b2)', color:'var(--text2)' }}>↩ Restore</button>
+                            </div>
+                          ))}
+                          {hiddenDayTasks.map(t=>(
+                            <div key={t.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:6 }}>
+                              <span style={{ fontSize:10, color:'var(--muted)' }}>{t.icon} {t.label}</span>
+                              <button onClick={()=>restoreDayTask(t)} style={{
+                                fontSize:10, padding:'1px 7px', borderRadius:4, cursor:'pointer',
+                                background:'none', border:'1px solid var(--b2)', color:'var(--text2)' }}>↩ Restore</button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Footer */}
                     <div style={{ marginTop:10, display:'flex', justifyContent:'space-between', alignItems:'center',
                       fontSize:10, color:'var(--dim)', borderTop:'1px solid var(--b1)', paddingTop:8 }}>
-                      <span style={{ color:dc, fontWeight:600 }}>✓ {done.length + dayTasks.filter(t=>customDone[`${t.id}-${wi}-${di}`]).length}</span>
+                      <span style={{ color:dc, fontWeight:600 }}>✓ {totalDone} / {totalActive}</span>
                       <div style={{ display:'flex', gap:5 }}>
                         <button title="Add task to this day"
                           onClick={()=>{ setPlannerTaskForm(isFormOpen?null:{wi,di}); setPlannerForm({label:'',icon:'🏠',xp:15}) }}
@@ -2728,24 +2832,29 @@ function Dashboard({ theme, onToggleTheme }) {
         />
       )}
 
-      {plannerPrint && (
-        <PrintDailyModal
-          habits={habits}
-          counters={counters}
-          today={today}
-          todayDate={todayDate}
-          effectiveToday={effectiveHabits}
-          customTasks={customTasks}
-          customDone={customDone}
-          offersMade={offersMade}
-          offersReceived={offersReceived}
-          pendingDeals={pendingDeals}
-          closedDeals={closedDeals}
-          buyerReps={buyerReps}
-          target={plannerPrint}
-          onClose={() => setPlannerPrint(null)}
-        />
-      )}
+      {plannerPrint && (() => {
+        const printSkipped = (habitPrefs.skipped||{})[plannerPrint.dateStr] || []
+        const printEffective = effectiveHabits.filter(h => !printSkipped.includes(String(h.id)))
+        const printCustom    = customTasks.filter(t => !t.isDefault || !printSkipped.includes(String(t.id)))
+        return (
+          <PrintDailyModal
+            habits={habits}
+            counters={counters}
+            today={today}
+            todayDate={todayDate}
+            effectiveToday={printEffective}
+            customTasks={printCustom}
+            customDone={customDone}
+            offersMade={offersMade}
+            offersReceived={offersReceived}
+            pendingDeals={pendingDeals}
+            closedDeals={closedDeals}
+            buyerReps={buyerReps}
+            target={plannerPrint}
+            onClose={() => setPlannerPrint(null)}
+          />
+        )
+      })()}
 
       {/* ── Listings Weekly Update Modal ──────────────────── */}
       {showWeeklyUpdate && (

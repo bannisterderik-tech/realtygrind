@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { CSS, Loader, Wordmark, ThemeToggle, Ring, getRank, CAT, StatCard, fmtMoney } from '../design'
@@ -62,6 +62,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [viewingMember,        setViewingMember]        = useState(null)  // member object | null
   const [memberDetail,         setMemberDetail]         = useState(null)  // { txs, habitCounts } | null
   const [memberDetailLoading,  setMemberDetailLoading]  = useState(false)
+  const fetchSeqRef = useRef(0)  // increments per fetch; stale results are discarded
 
   const MONTH_YEAR = new Date().toISOString().slice(0,7)
 
@@ -120,23 +121,29 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   }
 
   async function fetchMemberDetail(member) {
+    // Prevent concurrent fetches from stomping each other
+    const seq = ++fetchSeqRef.current
     setViewingMember(member)
     setMemberDetail(null)
     setMemberDetailLoading(true)
-    const [{ data: txs }, { data: habs }] = await Promise.all([
-      supabase.from('transactions').select('id,type,price,commission,address')
-        .eq('user_id', member.id).eq('month_year', MONTH_YEAR),
-      supabase.from('habit_completions').select('habit_id,counter_value')
-        .eq('user_id', member.id).eq('month_year', MONTH_YEAR),
-    ])
-    const habitCounts = {}
-    BUILT_IN_HABIT_IDS.forEach(id => {
-      habitCounts[id] = (habs||[])
-        .filter(h => h.habit_id === id)
-        .reduce((a, h) => a + (h.counter_value || 1), 0)
-    })
-    setMemberDetail({ txs: txs||[], habitCounts })
-    setMemberDetailLoading(false)
+    try {
+      const [{ data: txs }, { data: habs }] = await Promise.all([
+        supabase.from('transactions').select('id,type,price,commission,address')
+          .eq('user_id', member.id).eq('month_year', MONTH_YEAR),
+        supabase.from('habit_completions').select('habit_id,counter_value')
+          .eq('user_id', member.id).eq('month_year', MONTH_YEAR),
+      ])
+      if (seq !== fetchSeqRef.current) return  // a newer click fired — discard these results
+      const habitCounts = {}
+      BUILT_IN_HABIT_IDS.forEach(id => {
+        habitCounts[id] = (habs||[])
+          .filter(h => h.habit_id === id)
+          .reduce((a, h) => a + (h.counter_value || 1), 0)
+      })
+      setMemberDetail({ txs: txs||[], habitCounts })
+    } finally {
+      if (seq === fetchSeqRef.current) setMemberDetailLoading(false)
+    }
   }
 
   async function createTeam() {
@@ -600,11 +607,13 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       const isOwner = teamData?.created_by===m.id
                       return (
                         <div key={m.id} className={`card${isMe?' ':' '}`}
-                          onClick={isTeamOwner ? ()=>fetchMemberDetail(m) : undefined}
+                          onClick={(isTeamOwner && !memberDetailLoading && !viewingMember) ? ()=>fetchMemberDetail(m) : undefined}
                           style={{
                             padding:18, border:`1px solid ${isMe?'rgba(217,119,6,.35)':'var(--b2)'}`,
                             background:isMe?'var(--gold3)':'var(--surface)',
-                            cursor: isTeamOwner ? 'pointer' : 'default',
+                            cursor: (isTeamOwner && !memberDetailLoading && !viewingMember) ? 'pointer' : 'default',
+                            transition:'opacity .15s',
+                            opacity: (isTeamOwner && memberDetailLoading) ? 0.6 : 1,
                           }}>
                           <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:stats?10:0 }}>
                             <div className="mono" style={{ width:26, fontSize:12, color:'var(--dim)', textAlign:'center', fontWeight:700 }}>
@@ -1169,8 +1178,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
             <div style={{ flex:1, background:'rgba(0,0,0,.5)', cursor:'pointer' }} onClick={closePanel}/>
             {/* Slide-in panel */}
             <div style={{ width:'min(480px,100vw)', background:'var(--bg)', overflowY:'auto',
-              borderLeft:'1px solid var(--b2)', boxShadow:'-12px 0 48px rgba(0,0,0,.25)',
-              display:'flex', flexDirection:'column' }}>
+              borderLeft:'2px solid var(--b2)',
+              display:'flex', flexDirection:'column', contain:'strict' }}>
 
               {/* Header */}
               <div style={{ padding:'24px 24px 20px', borderBottom:'1px solid var(--b2)', flexShrink:0,

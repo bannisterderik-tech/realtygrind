@@ -321,6 +321,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
     if (!calcResult) return
     const newGoals = {
       ...goals,
+      prospecting:  String(Math.ceil(calcResult.calls.month)),
       appointments: String(Math.ceil(calcResult.appts.month)),
       showing:      String(Math.ceil(calcResult.showings.month)),
       closed:       String(Math.ceil(calcResult.closings.month)),

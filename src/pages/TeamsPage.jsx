@@ -202,6 +202,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   async function sendInvite() {
     const email = inviteEmail.trim().toLowerCase()
     if (!email) return
+    // Basic email format check before hitting the API
+    if (!email.includes('@') || !email.includes('.')) {
+      setInviteMsg({ type:'err', text: 'Please enter a valid email address.' })
+      return
+    }
     setInviteSending(true); setInviteMsg(null)
     try {
       const { error } = await supabase.functions.invoke('invite-member', {
@@ -859,18 +864,22 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
 
                   {/* ── Invite by Email (owner only) ─────────────────────── */}
                   {isTeamOwner && (
-                    <div className="card" style={{ padding:'18px 20px', marginBottom:16 }}>
+                    <div className="card" style={{
+                      padding:'18px 20px', marginBottom:16,
+                      borderLeft:'3px solid var(--gold2)',
+                      background:'linear-gradient(135deg, rgba(217,119,6,.06) 0%, var(--surface) 55%)',
+                    }}>
                       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
                         <span style={{ fontSize:16 }}>✉️</span>
                         <span className="serif" style={{ fontSize:15, color:'var(--text)', fontWeight:600 }}>Invite Members by Email</span>
                         <span style={{ fontSize:11, color:'var(--muted)', marginLeft:'auto' }}>They'll receive a setup link</span>
                       </div>
                       <div style={{ display:'flex', gap:8, marginBottom: inviteMsg ? 10 : 0 }}>
-                        <input className="field-input" type="email" value={inviteEmail}
+                        <input className="field-input" type="text" value={inviteEmail}
                           onChange={e=>{ setInviteEmail(e.target.value); setInviteMsg(null) }}
                           onKeyDown={e=>e.key==='Enter'&&sendInvite()}
                           placeholder="agent@brokerage.com" style={{ flex:1 }}/>
-                        <button className="btn-primary" onClick={sendInvite}
+                        <button type="button" className="btn-primary" onClick={sendInvite}
                           disabled={inviteSending || !inviteEmail.trim()}
                           style={{ fontSize:13, padding:'9px 20px', whiteSpace:'nowrap' }}>
                           {inviteSending ? 'Sending…' : 'Send Invite'}
@@ -893,7 +902,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               padding:'6px 0', borderBottom:'1px solid var(--b2)' }}>
                               <div style={{ flex:1, fontSize:12, color:'var(--text)' }}>{inv.email}</div>
                               <div style={{ fontSize:11, color:'var(--muted)' }}>{relativeTime(inv.invitedAt)}</div>
-                              <button onClick={()=>removeInvite(inv.email)} style={{ background:'none', border:'none',
+                              <button type="button" onClick={()=>removeInvite(inv.email)} style={{ background:'none', border:'none',
                                 cursor:'pointer', color:'var(--muted)', fontSize:15, padding:'0 4px', lineHeight:1 }}
                                 title="Remove invite">✕</button>
                             </div>

@@ -30,6 +30,17 @@ function fmtMonth(my) {
 
 function getToday()  { const d=new Date(); return { week:Math.min(Math.floor((d.getDate()-1)/7),3), day:d.getDay() } }
 
+// Returns "YYYY-MM-DD" for a given (week_index, day_index) in the current month
+function dateStrForDay(weekIdx, dayIdx) {
+  const now=new Date(), year=now.getFullYear(), month=now.getMonth()
+  const lastDay=new Date(year,month+1,0).getDate(), start=weekIdx*7+1
+  for (let d=start; d<=Math.min(start+6,lastDay); d++) {
+    if (new Date(year,month,d).getDay()===dayIdx)
+      return `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+  }
+  return null
+}
+
 // ─── Add Task Modal ───────────────────────────────────────────────────────────
 
 function AddTaskModal({ onSubmit, onClose }) {
@@ -135,10 +146,16 @@ function OfferModal({ repName, onSubmit, onClose }) {
 
 // ─── Print Daily Modal ────────────────────────────────────────────────────────
 
-function PrintDailyModal({ habits, counters, today, todayDate, effectiveToday, customTasks, customDone, offersMade, offersReceived, pendingDeals, closedDeals, buyerReps, onClose }) {
-  const dateStr = new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' })
-  const prospectCount  = counters[`prospecting-${today.week}-${today.day}`]  || 0
-  const apptCount      = counters[`appointments-${today.week}-${today.day}`] || 0
+function PrintDailyModal({ habits, counters, today, todayDate, effectiveToday, customTasks, customDone, offersMade, offersReceived, pendingDeals, closedDeals, buyerReps, onClose, target }) {
+  // target = { wi, di, dateStr } for a specific day, or null for today
+  const wi        = target ? target.wi      : today.week
+  const di        = target ? target.di      : today.day
+  const printDate = target ? target.dateStr : todayDate
+  const dateStr   = target
+    ? new Date(target.dateStr+'T12:00:00').toLocaleDateString('en-US',{ weekday:'long', month:'long', day:'numeric', year:'numeric' })
+    : new Date().toLocaleDateString('en-US',{ weekday:'long', month:'long', day:'numeric', year:'numeric' })
+  const prospectCount  = counters[`prospecting-${wi}-${di}`]  || 0
+  const apptCount      = counters[`appointments-${wi}-${di}`] || 0
   const braSignedCount = buyerReps.filter(r => r.status === 'closed').length
   const tracker = [
     { label:'Prospecting Calls',            val: prospectCount },
@@ -182,8 +199,8 @@ function PrintDailyModal({ habits, counters, today, todayDate, effectiveToday, c
             <div>
               <div className="print-section-title">Daily Habits Checklist</div>
               {(effectiveToday||[]).filter(h => h.isBuiltIn).map(h => {
-                const done = habits[h.id]?.[today.week]?.[today.day]
-                const cnt  = h.counter ? (counters[`${h.id}-${today.week}-${today.day}`] || 0) : 0
+                const done = habits[h.id]?.[wi]?.[di]
+                const cnt  = h.counter ? (counters[`${h.id}-${wi}-${di}`] || 0) : 0
                 return (
                   <div key={h.id} className="print-habit-row">
                     <span className={`print-checkbox${done ? ' checked' : ''}`}/>
@@ -197,7 +214,7 @@ function PrintDailyModal({ habits, counters, today, todayDate, effectiveToday, c
               {(()=>{
                 // Custom defaults (from Settings) + today-specific tasks added on the day
                 const customDefaults  = (effectiveToday||[]).filter(h => !h.isBuiltIn)
-                const todaySpecific   = (customTasks||[]).filter(t => !t.isDefault && t.specificDate === todayDate)
+                const todaySpecific   = (customTasks||[]).filter(t => !t.isDefault && t.specificDate === printDate)
                 const ct = [...customDefaults, ...todaySpecific]
                 if (!ct.length) return null
                 return (
@@ -207,7 +224,7 @@ function PrintDailyModal({ habits, counters, today, todayDate, effectiveToday, c
                       Custom Tasks
                     </div>
                     {ct.map(t => {
-                      const done = !!(customDone||{})[`${t.id}-${today.week}-${today.day}`]
+                      const done = !!(customDone||{})[`${t.id}-${wi}-${di}`]
                       return (
                         <div key={t.id} className="print-habit-row">
                           <span className={`print-checkbox${done ? ' checked' : ''}`}/>
@@ -939,7 +956,10 @@ function Dashboard({ theme, onToggleTheme }) {
   const [deletedDefaultTasks, setDeletedDefaultTasks] = useState([])
   const [customDone,          setCustomDone]          = useState({}) // { 'uuid-week-day': true }
   const [skippedTodayTasks,   setSkippedTodayTasks]   = useState([]) // custom default tasks skipped for today
-  const [addTaskModal,  setAddTaskModal]  = useState(false)
+  const [addTaskModal,    setAddTaskModal]    = useState(false)
+  const [plannerPrint,    setPlannerPrint]    = useState(null)  // { wi, di, dateStr } | null
+  const [plannerTaskForm, setPlannerTaskForm] = useState(null)  // { wi, di } | null (inline add-task)
+  const [plannerForm,     setPlannerForm]     = useState({ label:'', icon:'🏠', xp:15 })
   const todayDate = new Date().toISOString().slice(0,10)
 
   useEffect(()=>{ loadAll() },[user])
@@ -1183,6 +1203,21 @@ function Dashboard({ theme, onToggleTheme }) {
       isDefault:false, specificDate:data.specific_date
     }])
     setAddTaskModal(false)
+  }
+
+  async function addTaskForDay(weekIdx, dayIdx, label, icon, xp) {
+    const specificDate = dateStrForDay(weekIdx, dayIdx)
+    if (!specificDate || !label.trim()) return
+    const { data } = await supabase.from('custom_tasks').insert({
+      user_id:user.id, label, icon, xp:Number(xp)||15,
+      is_default:false, specific_date:specificDate,
+    }).select().single()
+    if (data) setCustomTasks(prev => [...prev, {
+      id:data.id, label:data.label, icon:data.icon, xp:data.xp,
+      isDefault:false, specificDate:data.specific_date,
+    }])
+    setPlannerTaskForm(null)
+    setPlannerForm({ label:'', icon:'🏠', xp:15 })
   }
 
   async function deleteCustomTask(id) {
@@ -2101,48 +2136,145 @@ function Dashboard({ theme, onToggleTheme }) {
 
         {/* ══ WEEKLY ══════════════════════════════════════════ */}
         {tab==='weekly' && (
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(178px,1fr))', gap:12, animation:'fadeUp .3s ease' }}>
-            {DAYS.map((dayName,di)=>{
-              const done    = HABITS.filter(h=>habits[h.id][today.week][di])
-              const pct     = Math.round(done.length/HABITS.length*100)
-              const isToday = di===today.day
-              const dc      = weekColors[di%4]
-              return (
-                <div key={di} className="card" style={{ padding:16, border:isToday?`2px solid ${dc}44`:'1px solid var(--b2)', background:isToday?`color-mix(in srgb, var(--surface) 94%, ${dc})`:'' }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-                    <div>
-                      <div style={{ fontWeight:600, fontSize:13, color:isToday?dc:'var(--text)' }}>{dayName}</div>
-                      {isToday && <div style={{ fontSize:9, color:dc, fontWeight:700, letterSpacing:.8 }}>TODAY</div>}
+          <div style={{ animation:'fadeUp .3s ease' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+              <div style={{ fontSize:13, color:'var(--muted)' }}>
+                Week {today.week+1} — click any habit to toggle · use <b>+</b> to add day tasks · 🖨️ to print
+              </div>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(210px,1fr))', gap:12 }}>
+              {DAYS.map((dayName,di)=>{
+                const wi      = today.week
+                const dateStr = dateStrForDay(wi, di)
+                const done    = builtInEffective.filter(h=>habits[h.id][wi][di])
+                const pct     = Math.round(done.length/Math.max(builtInEffective.length,1)*100)
+                const isToday = di===today.day
+                const dc      = weekColors[di%4]
+                const dayTasks = customTasks.filter(t => !t.isDefault && t.specificDate===dateStr)
+                const isFormOpen = plannerTaskForm?.wi===wi && plannerTaskForm?.di===di
+                return (
+                  <div key={di} className="card" style={{
+                    padding:16,
+                    border: isToday ? `2px solid ${dc}55` : '1px solid var(--b2)',
+                    background: isToday ? `color-mix(in srgb, var(--surface) 92%, ${dc})` : 'var(--surface)',
+                  }}>
+                    {/* Day header */}
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+                      <div>
+                        <div style={{ fontWeight:700, fontSize:13, color:isToday?dc:'var(--text)' }}>{dayName}</div>
+                        {dateStr && <div style={{ fontSize:10, color:'var(--dim)' }}>
+                          {new Date(dateStr+'T12:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}
+                        </div>}
+                        {isToday && <div style={{ fontSize:9, color:dc, fontWeight:700, letterSpacing:.8 }}>TODAY</div>}
+                      </div>
+                      <Ring pct={pct} size={42} color={dc} sw={4}/>
                     </div>
-                    <Ring pct={pct} size={44} color={dc} sw={4}/>
+
+                    {/* Built-in habits */}
+                    <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                      {builtInEffective.map(h=>{
+                        const checked = habits[h.id][wi][di]
+                        const cs = CAT[h.cat]
+                        return (
+                          <button key={h.id} onClick={()=>toggleHabit(h.id,wi,di)} style={{
+                            display:'flex', alignItems:'center', gap:6, width:'100%', textAlign:'left',
+                            background:checked?cs.light:'transparent', border:`1px solid ${checked?cs.border:'transparent'}`,
+                            borderRadius:7, padding:'5px 7px', cursor:'pointer', transition:'all .15s',
+                          }}>
+                            <div style={{ width:11, height:11, borderRadius:3, flexShrink:0,
+                              border:`1.5px solid ${checked?cs.color:'var(--b3)'}`,
+                              background:checked?cs.color:'transparent' }}/>
+                            <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
+                              textDecoration:checked?'line-through':'none' }}>{h.icon} {h.label}</span>
+                            <span className="mono" style={{ fontSize:9, color:cs.color }}>+{h.xp}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {/* Day-specific custom tasks */}
+                    {dayTasks.length > 0 && (
+                      <div style={{ marginTop:8, paddingTop:8, borderTop:'1px solid var(--b1)', display:'flex', flexDirection:'column', gap:3 }}>
+                        {dayTasks.map(t => {
+                          const checked = !!(customDone[`${t.id}-${wi}-${di}`])
+                          return (
+                            <div key={t.id} style={{ display:'flex', alignItems:'center', gap:4 }}>
+                              <button onClick={()=>toggleCustomTask(t.id,wi,di)} style={{
+                                display:'flex', alignItems:'center', gap:6, flex:1, textAlign:'left',
+                                background:checked?'rgba(6,182,212,.1)':'transparent',
+                                border:`1px solid ${checked?'rgba(6,182,212,.3)':'transparent'}`,
+                                borderRadius:7, padding:'5px 7px', cursor:'pointer', transition:'all .15s',
+                              }}>
+                                <div style={{ width:11, height:11, borderRadius:3, flexShrink:0,
+                                  border:`1.5px solid ${checked?'#06b6d4':'var(--b3)'}`,
+                                  background:checked?'#06b6d4':'transparent' }}/>
+                                <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
+                                  textDecoration:checked?'line-through':'none' }}>{t.icon} {t.label}</span>
+                              </button>
+                              <button onClick={()=>deleteCustomTask(t.id)} title="Remove" style={{
+                                background:'none', border:'none', cursor:'pointer', fontSize:13,
+                                color:'var(--muted)', padding:'2px 4px', lineHeight:1, borderRadius:4,
+                              }}>×</button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {/* Footer */}
+                    <div style={{ marginTop:10, display:'flex', justifyContent:'space-between', alignItems:'center',
+                      fontSize:10, color:'var(--dim)', borderTop:'1px solid var(--b1)', paddingTop:8 }}>
+                      <span style={{ color:dc, fontWeight:600 }}>✓ {done.length + dayTasks.filter(t=>customDone[`${t.id}-${wi}-${di}`]).length}</span>
+                      <div style={{ display:'flex', gap:5 }}>
+                        <button title="Add task to this day"
+                          onClick={()=>{ setPlannerTaskForm(isFormOpen?null:{wi,di}); setPlannerForm({label:'',icon:'🏠',xp:15}) }}
+                          style={{ background:isFormOpen?dc:'none', color:isFormOpen?'#fff':'var(--text2)',
+                            border:`1px solid ${isFormOpen?dc:'var(--b2)'}`, borderRadius:5,
+                            cursor:'pointer', fontSize:12, padding:'2px 7px', fontWeight:600 }}>+</button>
+                        {dateStr && (
+                          <button title="Print this day's sheet"
+                            onClick={()=>setPlannerPrint({wi,di,dateStr})}
+                            style={{ background:'none', border:'1px solid var(--b2)', borderRadius:5,
+                              cursor:'pointer', fontSize:11, padding:'2px 6px', color:'var(--text2)' }}>🖨️</button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Inline add-task form */}
+                    {isFormOpen && (
+                      <div style={{ marginTop:10, padding:'10px 10px 8px', borderRadius:8,
+                        background:'var(--bg)', border:'1px solid var(--b2)' }}>
+                        <div style={{ fontSize:10, color:'var(--dim)', fontWeight:700,
+                          textTransform:'uppercase', letterSpacing:'.5px', marginBottom:6 }}>Add task for {dayName}</div>
+                        <input value={plannerForm.label}
+                          onChange={e=>setPlannerForm(p=>({...p,label:e.target.value}))}
+                          onKeyDown={e=>{ if(e.key==='Enter'&&plannerForm.label.trim()) addTaskForDay(wi,di,plannerForm.label,plannerForm.icon,plannerForm.xp) }}
+                          placeholder="Task name…"
+                          style={{ width:'100%', padding:'6px 8px', fontSize:12, borderRadius:6,
+                            border:'1px solid var(--b2)', background:'var(--surface)', color:'var(--text)',
+                            outline:'none', boxSizing:'border-box', marginBottom:6 }}
+                          autoFocus/>
+                        <div style={{ display:'flex', gap:6 }}>
+                          <input value={plannerForm.icon}
+                            onChange={e=>setPlannerForm(p=>({...p,icon:e.target.value}))}
+                            style={{ width:38, padding:'5px 6px', fontSize:14, borderRadius:6,
+                              border:'1px solid var(--b2)', background:'var(--surface)', color:'var(--text)',
+                              textAlign:'center', outline:'none' }}/>
+                          <input type="number" value={plannerForm.xp}
+                            onChange={e=>setPlannerForm(p=>({...p,xp:e.target.value}))}
+                            style={{ width:54, padding:'5px 8px', fontSize:12, borderRadius:6,
+                              border:'1px solid var(--b2)', background:'var(--surface)', color:'var(--text)', outline:'none' }}
+                            placeholder="XP"/>
+                          <button className="btn-gold" disabled={!plannerForm.label.trim()}
+                            onClick={()=>addTaskForDay(wi,di,plannerForm.label,plannerForm.icon,plannerForm.xp)}
+                            style={{ fontSize:12, flex:1, padding:'5px 10px' }}>Add</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
-                    {HABITS.map(h=>{
-                      const checked = habits[h.id][today.week][di]
-                      const cs      = CAT[h.cat]
-                      return (
-                        <button key={h.id} onClick={()=>toggleHabit(h.id,today.week,di)} style={{
-                          display:'flex', alignItems:'center', gap:6, width:'100%', textAlign:'left',
-                          background:checked?cs.light:'transparent', border:`1px solid ${checked?cs.border:'transparent'}`,
-                          borderRadius:7, padding:'5px 7px', cursor:'pointer', transition:'all .15s',
-                        }}>
-                          <div style={{ width:11, height:11, borderRadius:3, border:`1.5px solid ${checked?cs.color:'var(--b3)'}`,
-                            background:checked?cs.color:'transparent', flexShrink:0 }}/>
-                          <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
-                            textDecoration:checked?'line-through':'none' }}>{h.icon} {h.label}</span>
-                          <span className="mono" style={{ fontSize:9, color:cs.color }}>+{h.xp}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                  <div style={{ marginTop:10, display:'flex', justifyContent:'space-between',
-                    fontSize:10, color:'var(--dim)', borderTop:'1px solid var(--b1)', paddingTop:8 }}>
-                    <span style={{ color:dc, fontWeight:600 }}>✓ {done.length}</span>
-                    <span>○ {HABITS.length-done.length}</span>
-                  </div>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
           </div>
         )}
 
@@ -2593,6 +2725,25 @@ function Dashboard({ theme, onToggleTheme }) {
           closedDeals={closedDeals}
           buyerReps={buyerReps}
           onClose={() => setShowPrint(false)}
+        />
+      )}
+
+      {plannerPrint && (
+        <PrintDailyModal
+          habits={habits}
+          counters={counters}
+          today={today}
+          todayDate={todayDate}
+          effectiveToday={effectiveHabits}
+          customTasks={customTasks}
+          customDone={customDone}
+          offersMade={offersMade}
+          offersReceived={offersReceived}
+          pendingDeals={pendingDeals}
+          closedDeals={closedDeals}
+          buyerReps={buyerReps}
+          target={plannerPrint}
+          onClose={() => setPlannerPrint(null)}
         />
       )}
 

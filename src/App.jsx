@@ -961,6 +961,9 @@ function Dashboard({ theme, onToggleTheme }) {
   const [plannerTaskForm,     setPlannerTaskForm]     = useState(null)  // { wi, di } | null
   const [plannerForm,         setPlannerForm]         = useState({ label:'', icon:'🏠', xp:15 })
   const [plannerDeletedTasks, setPlannerDeletedTasks] = useState([])    // day-specific tasks deleted this session
+  const [standup,       setStandup]       = useState({ q1:'', q2:'', q3:'' })
+  const [standupDone,   setStandupDone]   = useState(false)
+  const [standupSaving, setStandupSaving] = useState(false)
   const todayDate = new Date().toISOString().slice(0,10)
 
   useEffect(()=>{ loadAll() },[user])
@@ -1029,8 +1032,23 @@ function Dashboard({ theme, onToggleTheme }) {
       setShowCommSummary(profRes.data.show_commission||false)
       if (profRes.data.habit_prefs) setHabitPrefs(profRes.data.habit_prefs)
       if (profRes.data.goals)       setGoals(profRes.data.goals)
+      const sd = profRes.data?.habit_prefs?.standup_today
+      if (sd?.date === todayDate) {
+        setStandup({ q1: sd.q1||'', q2: sd.q2||'', q3: sd.q3||'' })
+        setStandupDone(true)
+      }
     }
     setDbLoading(false)
+  }
+
+  async function submitStandup() {
+    if (!standup.q1.trim() || !standup.q2.trim()) return
+    setStandupSaving(true)
+    const newPrefs = { ...habitPrefs, standup_today: { date: todayDate, ...standup } }
+    setHabitPrefs(newPrefs)
+    await supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id)
+    setStandupDone(true)
+    setStandupSaving(false)
   }
 
   // ── XP ─────────────────────────────────────────────────────────────────────
@@ -1765,6 +1783,51 @@ function Dashboard({ theme, onToggleTheme }) {
               🖨️ Print Daily Sheet
             </button>
           </div>
+
+          {/* ── Daily Standup (team members only, not owner) ── */}
+          {isOnTeam && !isTeamOwner && (
+            <div className="card" style={{ padding:20, marginBottom:20,
+              borderLeft: standupDone ? '3px solid var(--green)' : '3px solid var(--gold2)' }}>
+              {standupDone ? (
+                <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                  <span style={{ fontSize:22 }}>✅</span>
+                  <div>
+                    <div style={{ fontSize:14, fontWeight:600, color:'var(--text)' }}>Daily standup submitted</div>
+                    <div style={{ fontSize:12, color:'var(--muted)' }}>Your team leader can see your update</div>
+                  </div>
+                  <button className="btn-outline" style={{ marginLeft:'auto', fontSize:11 }}
+                    onClick={()=>setStandupDone(false)}>Edit</button>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
+                    <span style={{ fontSize:16 }}>⚡</span>
+                    <div className="serif" style={{ fontSize:16, color:'var(--text)', fontWeight:600 }}>Daily Standup</div>
+                    <span style={{ fontSize:11, color:'var(--muted)', marginLeft:'auto' }}>~60 sec</span>
+                  </div>
+                  {[
+                    { key:'q1', label:'What did you accomplish yesterday?',  placeholder:'Logged 15 calls, booked 2 appointments…' },
+                    { key:'q2', label:"What's your #1 priority today?",      placeholder:'Follow up with the Hendersons, prospect 1 hr…' },
+                    { key:'q3', label:'Anything blocking you? (optional)',   placeholder:'Nothing — or describe what\'s in the way…' },
+                  ].map(({key,label,placeholder}) => (
+                    <div key={key} style={{ marginBottom:10 }}>
+                      <div className="label" style={{ marginBottom:4 }}>{label}</div>
+                      <textarea className="field-input" value={standup[key]}
+                        onChange={e=>setStandup(s=>({...s,[key]:e.target.value}))}
+                        placeholder={placeholder} rows={2}
+                        style={{ width:'100%', resize:'none', fontSize:13 }}/>
+                    </div>
+                  ))}
+                  <button className="btn-primary" onClick={submitStandup}
+                    disabled={standupSaving || !standup.q1.trim() || !standup.q2.trim()}
+                    style={{ fontSize:13, padding:'9px 24px' }}>
+                    {standupSaving ? 'Submitting…' : 'Submit Standup'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="today-grid">
 
             {/* Habits checklist */}

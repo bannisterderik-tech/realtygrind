@@ -49,16 +49,14 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [challengeForm, setChallengeForm] = useState(null) // null | { title, metric, bonusXp }
   const [challengeSaving, setChallengeSaving] = useState(false)
   const [teamsTab,       setTeamsTab]       = useState('roster') // 'roster' | 'admin'
-  const [podForm,        setPodForm]        = useState(null)     // null | { name, memberIds, editingId }
-  const [podSaving,      setPodSaving]      = useState(false)
-  const [podMemberStats, setPodMemberStats] = useState({})       // { [userId]: { todayPct, monthlyPct, xp, streak } }
-  const [podStatsLoaded, setPodStatsLoaded] = useState(false)
-  const [adminSubTab,    setAdminSubTab]    = useState('coaching') // 'coaching'|'pods'
+  const [groupForm,      setGroupForm]      = useState(null)     // null | { name, leaderId, memberIds, editingId }
+  const [groupSaving,    setGroupSaving]    = useState(false)
+  const [adminSubTab,    setAdminSubTab]    = useState('coaching') // 'coaching'|'groups'|'standup'
   const [filterAgent,    setFilterAgent]    = useState('all')         // 'all' | memberId
   const [noteForm,       setNoteForm]       = useState(null)          // null | { agentId, text, type, editingId }
   const [noteSaving,     setNoteSaving]     = useState(false)
-  const [replyForms,     setReplyForms]     = useState({})            // { [noteId]: string }
-  const [replySaving,    setReplySaving]    = useState(null)          // noteId being saved, or null
+  const [replyForms,     setReplyForms]     = useState({})            // { [noteId | userId_date]: string }
+  const [replySaving,    setReplySaving]    = useState(null)          // id being saved, or null
   const [viewingMember,        setViewingMember]        = useState(null)  // member object | null
   const [memberDetail,         setMemberDetail]         = useState(null)  // { txs, habitCounts } | null
   const [memberDetailLoading,  setMemberDetailLoading]  = useState(false)
@@ -72,7 +70,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
 
   async function fetchMembers(tid) {
     setLoading(true)
-    const {data:mems} = await supabase.from('profiles').select('id,full_name,xp,streak,goals').eq('team_id',tid).order('xp',{ascending:false})
+    const {data:mems} = await supabase.from('profiles').select('id,full_name,xp,streak,goals,habit_prefs').eq('team_id',tid).order('xp',{ascending:false})
     setMembers(mems||[])
     const {data:team} = await supabase.from('teams').select('*').eq('id',tid).single()
     setTeamData(team)
@@ -112,10 +110,6 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
         }
       })
       setMemberStats(stats)
-      // Fetch pod stats if user is in a pod
-      const pods = team?.team_prefs?.pods || []
-      const myPod_ = pods.find(p => p.memberIds?.includes(user?.id))
-      if (myPod_) fetchPodStats(myPod_, mems, TOTAL_DAILY)
     }
     setLoading(false)
   }
@@ -246,65 +240,51 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     setTeamData(td => ({ ...td, team_prefs: updated }))
   }
 
-  // ── Accountability Pods ────────────────────────────────────────────────────
-  async function fetchPodStats(pod, mems, totalDaily = 11) {
-    const ids = pod.memberIds.filter(id => id !== user?.id)
-    if (!ids.length) { setPodStatsLoaded(true); return }
-    const todayIdx = getTodayIndices()
-    const totalMonthSlots = totalDaily * 28
-    const { data:habs } = await supabase.from('habit_completions')
-      .select('user_id,habit_id,week_index,day_index')
-      .in('user_id', ids).eq('month_year', MONTH_YEAR)
-    const stats = {}
-    ids.forEach(id => {
-      const member = mems.find(m => m.id === id)
-      if (!member) return
-      const mh = (habs||[]).filter(h => h.user_id === id)
-      // Exclude custom task completions (UUIDs) — built-ins only
-      const mhBuiltIn = mh.filter(h => BUILT_IN_HABIT_IDS.includes(h.habit_id))
-      const todayRows  = mhBuiltIn.filter(h => h.week_index===todayIdx.week && h.day_index===todayIdx.day)
-      const todayDone  = new Set(todayRows.map(h=>h.habit_id)).size
-      const monthDays  = new Set(mhBuiltIn.map(h=>`${h.habit_id}-${h.week_index}-${h.day_index}`)).size
-      stats[id] = {
-        full_name:  member.full_name,
-        xp:         member.xp || 0,
-        streak:     member.streak || 0,
-        todayPct:   Math.min(Math.round(todayDone / totalDaily * 100), 100),
-        monthlyPct: Math.min(Math.round(monthDays / totalMonthSlots * 100), 100),
-      }
-    })
-    setPodMemberStats(stats)
-    setPodStatsLoaded(true)
-  }
-
-  async function savePod() {
-    if (!podForm?.name?.trim() || podForm.memberIds.length < 2 || podForm.memberIds.length > 5) return
-    setPodSaving(true)
-    const allPods_ = teamData?.team_prefs?.pods || []
-    let updatedPods
-    if (podForm.editingId) {
-      updatedPods = allPods_.map(p => p.id===podForm.editingId
-        ? { ...p, name:podForm.name.trim(), memberIds:podForm.memberIds } : p)
+  // ── Accountability Groups ─────────────────────────────────────────────────
+  async function saveGroup() {
+    if (!groupForm?.name?.trim()) return
+    setGroupSaving(true)
+    const existing = teamData?.team_prefs?.groups || []
+    let updated
+    if (groupForm.editingId) {
+      updated = existing.map(g => g.id===groupForm.editingId
+        ? { ...g, name:groupForm.name.trim(), leaderId:groupForm.leaderId, memberIds:groupForm.memberIds } : g)
     } else {
-      const occupied = allPods_.flatMap(p => p.memberIds)
-      if (podForm.memberIds.some(id => occupied.includes(id))) {
-        alert('One or more members are already in a pod.')
-        setPodSaving(false); return
-      }
-      updatedPods = [...allPods_, { id:Date.now().toString(36), name:podForm.name.trim(), memberIds:podForm.memberIds }]
+      updated = [...existing, {
+        id: Date.now().toString(36),
+        name: groupForm.name.trim(),
+        leaderId: groupForm.leaderId || '',
+        memberIds: groupForm.memberIds || [],
+      }]
     }
-    const updatedPrefs = { ...(teamData?.team_prefs||{}), pods: updatedPods }
-    await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile.team_id)
-    setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
-    setPodForm(null); setPodSaving(false)
+    const newPrefs = { ...(teamData?.team_prefs||{}), groups: updated }
+    await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+    setGroupForm(null); setGroupSaving(false)
   }
 
-  async function deletePod(podId) {
-    if (!confirm('Delete this pod?')) return
-    const updatedPods = (teamData?.team_prefs?.pods || []).filter(p => p.id !== podId)
-    const updatedPrefs = { ...(teamData?.team_prefs||{}), pods: updatedPods }
-    await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile.team_id)
-    setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
+  async function deleteGroup(gid) {
+    if (!confirm('Delete this group?')) return
+    const updated = (teamData?.team_prefs?.groups||[]).filter(g => g.id !== gid)
+    const newPrefs = { ...(teamData?.team_prefs||{}), groups: updated }
+    await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+  }
+
+  async function saveStandupReply(memberId, date) {
+    const key = `${memberId}_${date}`
+    const text = replyForms[key]?.trim()
+    if (!text) return
+    setReplySaving(key)
+    const existing = teamData?.team_prefs?.standup_replies?.[key] || []
+    const newReplies = [...existing, { id: Date.now().toString(36), authorId: user.id, text, createdAt: new Date().toISOString() }]
+    const newPrefs = { ...(teamData.team_prefs||{}),
+      standup_replies: { ...(teamData.team_prefs?.standup_replies||{}), [key]: newReplies }
+    }
+    await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+    setReplyForms(f => ({ ...f, [key]: '' }))
+    setReplySaving(null)
   }
 
   // ── Coaching Notes ────────────────────────────────────────────────────────
@@ -379,9 +359,13 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
 
   // ── Derived values ─────────────────────────────────────────────────────────
   const isTeamOwner      = !!(teamData?.created_by === user?.id)
-  const allPods          = teamData?.team_prefs?.pods || []
-  const myPod            = allPods.find(p => p.memberIds?.includes(user?.id)) || null
-  const myPodMates       = myPod ? members.filter(m => myPod.memberIds.includes(m.id) && m.id !== user?.id) : []
+  const allGroups        = teamData?.team_prefs?.groups || []
+  const myLedGroup       = allGroups.find(g => g.leaderId === user?.id) || null
+  const isGroupLeader    = !!myLedGroup && !isTeamOwner
+  const myGroupMembers   = myLedGroup ? members.filter(m => myLedGroup.memberIds.includes(m.id)) : []
+  const canViewDetail    = (m) => isTeamOwner || (isGroupLeader && myLedGroup.memberIds.includes(m.id))
+  const isAdminOrOwner   = isTeamOwner || isGroupLeader
+  const coachableMembers = isGroupLeader ? myGroupMembers : members.filter(m=>m.id!==user?.id)
   const allCoachingNotes = teamData?.team_prefs?.coaching_notes || []
   const myCoachingNotes  = allCoachingNotes.filter(n => n.agentId === user?.id)
 
@@ -498,99 +482,107 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                     </div>
                   )}
 
-                  {/* My Pod section */}
-                  {myPod ? (
-                    <div className="card" style={{ padding:20, marginBottom:16, border:'1px solid rgba(139,92,246,.3)', background:'linear-gradient(135deg, rgba(139,92,246,.05) 0%, var(--surface) 70%)' }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
-                        <span style={{ fontSize:18 }}>🫂</span>
-                        <span className="serif" style={{ fontSize:18, color:'var(--text)', letterSpacing:'-.01em' }}>{myPod.name}</span>
-                        <span style={{ fontSize:11, padding:'2px 8px', borderRadius:10, background:'rgba(139,92,246,.1)', color:'#8b5cf6', fontWeight:600, marginLeft:2 }}>{myPod.memberIds.length} members</span>
+                  {/* My Group section */}
+                  {(()=>{
+                    // Find which group this user belongs to (as member OR leader)
+                    const myGroup = allGroups.find(g => g.memberIds.includes(user?.id) || g.leaderId===user?.id) || null
+                    if (!myGroup && !isTeamOwner) return (
+                      <div style={{ border:'1.5px dashed var(--b2)', borderRadius:10, padding:'18px 20px',
+                        fontSize:13, color:'var(--muted)', textAlign:'center', marginBottom:16 }}>
+                        🫂 Not in a group yet. Ask your team owner to add you.
                       </div>
-                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:12 }}>
-                        {(() => {
-                          const me = members.find(m => m.id===user?.id)
-                          if (!me) return null
-                          const myRank  = getRank(me.xp||0)
-                          const myStats = memberStats[me.id]||{}
-                          return (
-                            <div className="card" style={{ padding:14, border:'1px solid rgba(217,119,6,.3)', background:'var(--gold3)' }}>
-                              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                                <div style={{ width:34, height:34, borderRadius:'50%',
-                                  background:`linear-gradient(135deg, ${myRank.color}, ${myRank.color}99)`,
-                                  display:'flex', alignItems:'center', justifyContent:'center',
-                                  fontSize:13, fontWeight:700, color:'#fff', flexShrink:0,
-                                  boxShadow:`0 2px 6px ${myRank.color}44` }}>
-                                  {(me.full_name||'A').charAt(0).toUpperCase()}
+                    )
+                    if (!myGroup) return null // owner sees no group header
+                    const isLeader = myGroup.leaderId === user?.id
+                    const groupMates = members.filter(m => myGroup.memberIds.includes(m.id) || myGroup.leaderId===m.id).filter(m=>m.id!==user?.id)
+                    return (
+                      <div className="card" style={{ padding:20, marginBottom:16, border:'1px solid rgba(139,92,246,.3)',
+                        background:'linear-gradient(135deg, rgba(139,92,246,.05) 0%, var(--surface) 70%)' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
+                          <span style={{ fontSize:18 }}>🫂</span>
+                          <span className="serif" style={{ fontSize:18, color:'var(--text)' }}>{myGroup.name}</span>
+                          {isLeader && <span style={{ fontSize:10, padding:'2px 8px', borderRadius:10, background:'rgba(139,92,246,.12)', color:'#8b5cf6', fontWeight:700 }}>LEADER</span>}
+                          <span style={{ fontSize:11, padding:'2px 8px', borderRadius:10, background:'rgba(139,92,246,.08)', color:'#8b5cf6', fontWeight:600, marginLeft:2 }}>{myGroup.memberIds.length} members</span>
+                        </div>
+                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:12 }}>
+                          {(() => {
+                            const me = members.find(m => m.id===user?.id)
+                            if (!me) return null
+                            const myRank  = getRank(me.xp||0)
+                            const myStats = memberStats[me.id]||{}
+                            return (
+                              <div className="card" style={{ padding:14, border:'1px solid rgba(217,119,6,.3)', background:'var(--gold3)' }}>
+                                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                                  <div style={{ width:34, height:34, borderRadius:'50%',
+                                    background:`linear-gradient(135deg,${myRank.color},${myRank.color}99)`,
+                                    display:'flex', alignItems:'center', justifyContent:'center',
+                                    fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
+                                    {(me.full_name||'A').charAt(0).toUpperCase()}
+                                  </div>
+                                  <div style={{ flex:1 }}>
+                                    <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{me.full_name||'Agent'}</div>
+                                    <div style={{ fontSize:10, color:'var(--muted)' }}>{myRank.name} · 🔥 {me.streak||0}</div>
+                                  </div>
+                                  <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>YOU</span>
                                 </div>
-                                <div style={{ flex:1 }}>
-                                  <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{me.full_name||'Agent'}</div>
-                                  <div style={{ fontSize:10, color:'var(--muted)' }}>{myRank.name} · 🔥 {me.streak||0}</div>
-                                </div>
-                                <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>YOU</span>
-                              </div>
-                              <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
-                                <div style={{ textAlign:'center' }}>
-                                  <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>TODAY</div>
-                                  <Ring pct={myStats.todayPct||0} size={52} color={myRank.color}/>
-                                </div>
-                                <div style={{ textAlign:'center' }}>
-                                  <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>MONTH</div>
-                                  <Ring pct={myStats.monthlyPct||0} size={52} color='#0ea5e9'/>
-                                </div>
-                              </div>
-                            </div>
-                          )
-                        })()}
-                        {myPodMates.map(mate=>{
-                          const mateRank  = getRank(mate.xp||0)
-                          const mateStats = podMemberStats[mate.id]
-                          return (
-                            <div key={mate.id} className="card" style={{ padding:14 }}>
-                              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                                <div style={{ width:34, height:34, borderRadius:'50%',
-                                  background:`linear-gradient(135deg, ${mateRank.color}, ${mateRank.color}99)`,
-                                  display:'flex', alignItems:'center', justifyContent:'center',
-                                  fontSize:13, fontWeight:700, color:'#fff', flexShrink:0,
-                                  boxShadow:`0 2px 6px ${mateRank.color}44` }}>
-                                  {(mate.full_name||'A').charAt(0).toUpperCase()}
-                                </div>
-                                <div style={{ flex:1 }}>
-                                  <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{mate.full_name||'Agent'}</div>
-                                  <div style={{ fontSize:10, color:'var(--muted)' }}>{mateRank.name} · 🔥 {mate.streak||0}</div>
-                                </div>
-                              </div>
-                              {podStatsLoaded && mateStats ? (
-                                <div style={{ display:'flex', gap:10, justifyContent:'center', marginBottom:8 }}>
+                                <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
                                   <div style={{ textAlign:'center' }}>
                                     <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>TODAY</div>
-                                    <Ring pct={mateStats.todayPct} size={52} color={mateRank.color}/>
+                                    <Ring pct={myStats.todayPct||0} size={52} color={myRank.color}/>
                                   </div>
                                   <div style={{ textAlign:'center' }}>
                                     <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>MONTH</div>
-                                    <Ring pct={mateStats.monthlyPct} size={52} color='#0ea5e9'/>
+                                    <Ring pct={myStats.monthlyPct||0} size={52} color='#0ea5e9'/>
                                   </div>
                                 </div>
-                              ) : (
-                                <div style={{ textAlign:'center', padding:'12px 0', marginBottom:8 }}><Loader/></div>
-                              )}
-                            </div>
-                          )
-                        })}
+                              </div>
+                            )
+                          })()}
+                          {groupMates.map(mate=>{
+                            const mateRank  = getRank(mate.xp||0)
+                            const mateStats = memberStats[mate.id]||{}
+                            const isLeaderMate = myGroup.leaderId === mate.id
+                            return (
+                              <div key={mate.id} className="card" style={{ padding:14,
+                                cursor: isLeader ? 'pointer' : 'default',
+                                border: isLeaderMate ? '1px solid rgba(139,92,246,.3)' : '1px solid var(--b2)' }}
+                                onClick={isLeader && !memberDetailLoading && !viewingMember ? ()=>fetchMemberDetail(mate) : undefined}>
+                                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                                  <div style={{ width:34, height:34, borderRadius:'50%',
+                                    background:`linear-gradient(135deg,${mateRank.color},${mateRank.color}99)`,
+                                    display:'flex', alignItems:'center', justifyContent:'center',
+                                    fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
+                                    {(mate.full_name||'A').charAt(0).toUpperCase()}
+                                  </div>
+                                  <div style={{ flex:1 }}>
+                                    <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{mate.full_name||'Agent'}</div>
+                                    <div style={{ fontSize:10, color:'var(--muted)' }}>{mateRank.name} · 🔥 {mate.streak||0}</div>
+                                  </div>
+                                  {isLeaderMate && <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background:'rgba(139,92,246,.1)', color:'#8b5cf6', fontWeight:700 }}>LEAD</span>}
+                                </div>
+                                <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
+                                  <div style={{ textAlign:'center' }}>
+                                    <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>TODAY</div>
+                                    <Ring pct={mateStats.todayPct||0} size={52} color={mateRank.color}/>
+                                  </div>
+                                  <div style={{ textAlign:'center' }}>
+                                    <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>MONTH</div>
+                                    <Ring pct={mateStats.monthlyPct||0} size={52} color='#0ea5e9'/>
+                                  </div>
+                                </div>
+                                {isLeader && <div style={{ marginTop:8, fontSize:10, color:'var(--dim)', textAlign:'center' }}>Click to view details</div>}
+                              </div>
+                            )
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div style={{ border:'1.5px dashed var(--b2)', borderRadius:10, padding:'18px 20px',
-                      fontSize:13, color:'var(--muted)', textAlign:'center', marginBottom:16 }}>
-                      {isTeamOwner
-                        ? '🫂 No pods yet — create pods from the Admin tab to boost accountability.'
-                        : '🫂 Not in a pod yet. Ask your team owner to add you.'}
-                    </div>
-                  )}
+                    )
+                  })()}
 
                   {/* Tab bar */}
                   <div className="tabs" style={{ marginBottom:16 }}>
                     <button className={`tab-item${teamsTab==='roster'?' on':''}`} onClick={()=>setTeamsTab('roster')}>👥 Roster</button>
-                    {isTeamOwner && (
+                    {isAdminOrOwner && (
                       <button className={`tab-item${teamsTab==='admin'?' on':''}`} onClick={()=>setTeamsTab('admin')}>📊 Admin</button>
                     )}
                   </div>
@@ -607,13 +599,13 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       const isOwner = teamData?.created_by===m.id
                       return (
                         <div key={m.id} className={`card${isMe?' ':' '}`}
-                          onClick={(isTeamOwner && !memberDetailLoading && !viewingMember) ? ()=>fetchMemberDetail(m) : undefined}
+                          onClick={(canViewDetail(m) && !memberDetailLoading && !viewingMember) ? ()=>fetchMemberDetail(m) : undefined}
                           style={{
                             padding:18, border:`1px solid ${isMe?'rgba(217,119,6,.35)':'var(--b2)'}`,
                             background:isMe?'var(--gold3)':'var(--surface)',
-                            cursor: (isTeamOwner && !memberDetailLoading && !viewingMember) ? 'pointer' : 'default',
+                            cursor: (canViewDetail(m) && !memberDetailLoading && !viewingMember) ? 'pointer' : 'default',
                             transition:'opacity .15s',
-                            opacity: (isTeamOwner && memberDetailLoading) ? 0.6 : 1,
+                            opacity: (isAdminOrOwner && memberDetailLoading) ? 0.6 : 1,
                           }}>
                           <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:stats?10:0 }}>
                             <div className="mono" style={{ width:26, fontSize:12, color:'var(--dim)', textAlign:'center', fontWeight:700 }}>
@@ -874,12 +866,13 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                   )} {/* end roster tab */}
 
                   {/* Admin tab */}
-                  {teamsTab==='admin' && isTeamOwner && (
+                  {teamsTab==='admin' && isAdminOrOwner && (
                     <div>
                       {/* Admin sub-tab bar */}
                       <div className="tabs" style={{ marginBottom:20 }}>
                         <button className={`tab-item${adminSubTab==='coaching'?' on':''}`} onClick={()=>setAdminSubTab('coaching')}>📝 Coaching</button>
-                        <button className={`tab-item${adminSubTab==='pods'?' on':''}`} onClick={()=>setAdminSubTab('pods')}>🫂 Pods</button>
+                        {isTeamOwner && <button className={`tab-item${adminSubTab==='groups'?' on':''}`} onClick={()=>setAdminSubTab('groups')}>🫂 Groups</button>}
+                        <button className={`tab-item${adminSubTab==='standup'?' on':''}`} onClick={()=>setAdminSubTab('standup')}>⚡ Standup</button>
                       </div>
 
                       {/* Coaching sub-tab */}
@@ -887,7 +880,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                         <div>
                           {/* Agent filter pills */}
                           <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:20 }}>
-                            {[{id:'all',label:'All Agents'}, ...members.filter(m=>m.id!==user?.id).map(m=>({id:m.id,label:m.full_name||'Agent'}))].map(opt=>(
+                            {[{id:'all',label: isGroupLeader ? `${myLedGroup?.name||'My Group'}` : 'All Agents'}, ...coachableMembers.map(m=>({id:m.id,label:m.full_name||'Agent'}))].map(opt=>(
                               <button key={opt.id} onClick={()=>setFilterAgent(opt.id)} style={{
                                 padding:'5px 14px', borderRadius:20, fontSize:12, fontWeight:600, cursor:'pointer',
                                 border: filterAgent===opt.id ? 'none' : '1px solid var(--b2)',
@@ -902,7 +895,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                           {(() => {
                             const NC = { praise:'#10b981', goal:'#d97706', concern:'#f43f5e', general:'#0ea5e9' }
                             const visible = [...allCoachingNotes]
-                              .filter(n => n.agentId !== user?.id)
+                              .filter(n => isGroupLeader ? myLedGroup.memberIds.includes(n.agentId) : n.agentId !== user?.id)
                               .filter(n => filterAgent==='all' || n.agentId===filterAgent)
                               .sort((a,b) => (b.pinned?1:0)-(a.pinned?1:0) || new Date(b.createdAt)-new Date(a.createdAt))
                             return (
@@ -1011,7 +1004,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                   <select className="field-input" value={noteForm.agentId}
                                     onChange={e=>setNoteForm(f=>({...f,agentId:e.target.value}))} style={{ width:'100%' }}>
                                     <option value="">Select agent…</option>
-                                    {members.filter(m=>m.id!==user?.id).map(m=><option key={m.id} value={m.id}>{m.full_name||'Agent'}</option>)}
+                                    {coachableMembers.map(m=><option key={m.id} value={m.id}>{m.full_name||'Agent'}</option>)}
                                   </select>
                                 </div>
                                 <div>
@@ -1052,93 +1045,196 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                         </div>
                       )}
 
-                      {/* Pods sub-tab */}
-                      {adminSubTab==='pods' && (
+                      {/* Groups sub-tab — owner only */}
+                      {adminSubTab==='groups' && isTeamOwner && (
                         <div>
                           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-                            <div className="serif" style={{ fontSize:20, color:'var(--text)' }}>🫂 Accountability Circles</div>
-                            {!podForm && (
-                              <button className="btn-outline" onClick={()=>setPodForm({ name:'', memberIds:[], editingId:null })}
-                                style={{ fontSize:12 }}>+ New Circle</button>
+                            <div>
+                              <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:2 }}>🫂 Accountability Groups</div>
+                              <div style={{ fontSize:12, color:'var(--muted)' }}>Assign a leader to each group — leaders can coach and view their members' activity.</div>
+                            </div>
+                            {!groupForm && (
+                              <button className="btn-outline" onClick={()=>setGroupForm({ name:'', leaderId:'', memberIds:[], editingId:null })}
+                                style={{ fontSize:12 }}>+ New Group</button>
                             )}
                           </div>
 
-                          {podForm && (
+                          {groupForm && (
                             <div className="card" style={{ padding:20, marginBottom:16, border:'1px solid rgba(139,92,246,.3)', background:'rgba(139,92,246,.04)' }}>
                               <div className="serif" style={{ fontSize:15, color:'var(--text)', marginBottom:14 }}>
-                                {podForm.editingId ? 'Edit Circle' : 'New Circle'}
+                                {groupForm.editingId ? 'Edit Group' : 'New Group'}
                               </div>
                               <div style={{ marginBottom:12 }}>
-                                <div className="label" style={{ marginBottom:5 }}>Circle Name</div>
-                                <input className="field-input" value={podForm.name}
-                                  onChange={e=>setPodForm(f=>({...f,name:e.target.value}))}
-                                  placeholder="e.g. Alpha Circle" style={{ width:'100%' }}/>
+                                <div className="label" style={{ marginBottom:5 }}>Group Name</div>
+                                <input className="field-input" value={groupForm.name}
+                                  onChange={e=>setGroupForm(f=>({...f,name:e.target.value}))}
+                                  placeholder="e.g. Alpha Team" style={{ width:'100%' }}/>
                               </div>
                               <div style={{ marginBottom:12 }}>
-                                <div className="label" style={{ marginBottom:8 }}>Members (2–5)</div>
+                                <div className="label" style={{ marginBottom:5 }}>Group Leader</div>
+                                <select className="field-input" value={groupForm.leaderId}
+                                  onChange={e=>setGroupForm(f=>({...f,leaderId:e.target.value}))} style={{ width:'100%' }}>
+                                  <option value="">Select a leader…</option>
+                                  {members.map(m=><option key={m.id} value={m.id}>{m.full_name||'Agent'}</option>)}
+                                </select>
+                              </div>
+                              <div style={{ marginBottom:12 }}>
+                                <div className="label" style={{ marginBottom:8 }}>Members (any number)</div>
                                 <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                                   {members.map(m=>{
-                                    const checked = podForm.memberIds.includes(m.id)
-                                    const atMax   = !checked && podForm.memberIds.length >= 5
+                                    const checked = groupForm.memberIds.includes(m.id)
                                     const mRank   = getRank(m.xp||0)
                                     return (
-                                      <label key={m.id} style={{ display:'flex', alignItems:'center', gap:8, cursor:atMax?'not-allowed':'pointer',
-                                        opacity:atMax?0.45:1, padding:'6px 10px', borderRadius:6,
+                                      <label key={m.id} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
+                                        padding:'6px 10px', borderRadius:6,
                                         background:checked?'rgba(139,92,246,.08)':'var(--bg2)', border:`1px solid ${checked?'rgba(139,92,246,.3)':'var(--b1)'}` }}>
-                                        <input type="checkbox" checked={checked} disabled={atMax}
-                                          onChange={e=>setPodForm(f=>({...f, memberIds: e.target.checked
+                                        <input type="checkbox" checked={checked}
+                                          onChange={e=>setGroupForm(f=>({...f, memberIds: e.target.checked
                                             ? [...f.memberIds, m.id]
                                             : f.memberIds.filter(id=>id!==m.id)
                                           }))}/>
                                         <span style={{ fontSize:14 }}>{mRank.icon}</span>
                                         <span style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{m.full_name||'Agent'}</span>
-                                        <span style={{ fontSize:11, color:'var(--muted)' }}>{mRank.name}</span>
+                                        {groupForm.leaderId===m.id && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:4, background:'rgba(139,92,246,.18)', color:'#8b5cf6', fontWeight:700 }}>LEADER</span>}
                                       </label>
                                     )
                                   })}
                                 </div>
-                                {podForm.memberIds.length > 0 && podForm.memberIds.length < 2 && (
-                                  <div style={{ fontSize:11, color:'var(--gold2)', marginTop:6 }}>⚠ Select at least 2 members</div>
-                                )}
                               </div>
                               <div style={{ display:'flex', gap:8 }}>
-                                <button className="btn-primary" onClick={savePod} disabled={podSaving||podForm.memberIds.length<2||!podForm.name.trim()}
+                                <button className="btn-primary" onClick={saveGroup} disabled={groupSaving||!groupForm.name.trim()}
                                   style={{ fontSize:13, padding:'9px 22px' }}>
-                                  {podSaving?'Saving…':'Save Circle'}
+                                  {groupSaving?'Saving…':'Save Group'}
                                 </button>
-                                <button className="btn-outline" onClick={()=>setPodForm(null)} style={{ fontSize:13 }}>Cancel</button>
+                                <button className="btn-outline" onClick={()=>setGroupForm(null)} style={{ fontSize:13 }}>Cancel</button>
                               </div>
                             </div>
                           )}
 
-                          {allPods.length===0 && !podForm && (
+                          {allGroups.length===0 && !groupForm && (
                             <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic', padding:'12px 0' }}>
-                              No circles yet. Create one to group agents into accountability circles.
+                              No groups yet. Create one to assign leaders and build accountability.
                             </div>
                           )}
-                          {allPods.map(pod=>(
-                            <div key={pod.id} className="card" style={{ padding:16, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10 }}>
-                              <div>
-                                <div style={{ fontWeight:600, fontSize:14, color:'var(--text)', marginBottom:4 }}>🫂 {pod.name}</div>
-                                <div style={{ fontSize:12, color:'var(--muted)' }}>
-                                  {pod.memberIds.length} members · {pod.memberIds.map(id=>members.find(m=>m.id===id)?.full_name||'?').join(', ')}
+                          {allGroups.map(grp=>{
+                            const leader = members.find(m=>m.id===grp.leaderId)
+                            return (
+                              <div key={grp.id} className="card" style={{ padding:16, marginBottom:10 }}>
+                                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10 }}>
+                                  <div>
+                                    <div style={{ fontWeight:600, fontSize:14, color:'var(--text)', marginBottom:4 }}>🫂 {grp.name}</div>
+                                    <div style={{ fontSize:12, color:'var(--muted)', marginBottom:4 }}>
+                                      {grp.memberIds.length} {grp.memberIds.length===1?'member':'members'} · {grp.memberIds.map(id=>members.find(m=>m.id===id)?.full_name||'?').join(', ')}
+                                    </div>
+                                    {leader && <div style={{ fontSize:11, color:'#8b5cf6', fontWeight:600 }}>👑 Leader: {leader.full_name||'Agent'}</div>}
+                                  </div>
+                                  <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                                    <button className="btn-outline" style={{ fontSize:11, padding:'5px 10px' }}
+                                      onClick={()=>setGroupForm({ name:grp.name, leaderId:grp.leaderId, memberIds:[...grp.memberIds], editingId:grp.id })}>
+                                      Edit
+                                    </button>
+                                    <button onClick={()=>deleteGroup(grp.id)}
+                                      style={{ background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.2)',
+                                        color:'var(--red)', borderRadius:7, padding:'5px 10px', cursor:'pointer', fontSize:11, fontWeight:600 }}>
+                                      ✕
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
-                              <div style={{ display:'flex', gap:6, flexShrink:0 }}>
-                                <button className="btn-outline" style={{ fontSize:11, padding:'5px 10px' }}
-                                  onClick={()=>setPodForm({ name:pod.name, memberIds:[...pod.memberIds], editingId:pod.id })}>
-                                  Edit
-                                </button>
-                                <button onClick={()=>deletePod(pod.id)}
-                                  style={{ background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.2)',
-                                    color:'var(--red)', borderRadius:7, padding:'5px 10px', cursor:'pointer', fontSize:11, fontWeight:600 }}>
-                                  ✕
-                                </button>
-                              </div>
-                            </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       )}
+
+                      {/* Standup sub-tab — owner sees all, group leader sees their group */}
+                      {adminSubTab==='standup' && (()=>{
+                        const todayStr = new Date().toISOString().slice(0,10)
+                        const visibleMembers = isGroupLeader ? myGroupMembers : members.filter(m=>m.id!==user?.id)
+                        return (
+                          <div>
+                            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+                              <div>
+                                <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:2 }}>⚡ Daily Standups</div>
+                                <div style={{ fontSize:12, color:'var(--muted)' }}>{new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</div>
+                              </div>
+                              <div style={{ fontSize:12, color:'var(--muted)' }}>
+                                {visibleMembers.filter(m=>m.habit_prefs?.standup_today?.date===todayStr).length}/{visibleMembers.length} submitted
+                              </div>
+                            </div>
+                            {visibleMembers.length===0 && (
+                              <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic', padding:'12px 0' }}>No members in your group yet.</div>
+                            )}
+                            {visibleMembers.map(m=>{
+                              const sd = m.habit_prefs?.standup_today
+                              const submitted = sd?.date === todayStr
+                              const rank = getRank(m.xp||0)
+                              const key = `${m.id}_${todayStr}`
+                              const replies = teamData?.team_prefs?.standup_replies?.[key] || []
+                              return (
+                                <div key={m.id} className="card" style={{ padding:18, marginBottom:12,
+                                  borderLeft: submitted ? '3px solid var(--green)' : '3px solid var(--b2)',
+                                  opacity: submitted ? 1 : 0.65 }}>
+                                  <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom: submitted?14:0 }}>
+                                    <div style={{ width:34, height:34, borderRadius:'50%',
+                                      background:`linear-gradient(135deg,${rank.color},${rank.color}88)`,
+                                      display:'flex', alignItems:'center', justifyContent:'center',
+                                      fontSize:14, fontWeight:700, color:'#fff', flexShrink:0 }}>
+                                      {(m.full_name||'?').charAt(0).toUpperCase()}
+                                    </div>
+                                    <div style={{ flex:1 }}>
+                                      <div style={{ fontSize:14, fontWeight:600, color:'var(--text)' }}>{m.full_name||'Agent'}</div>
+                                      <div style={{ fontSize:11, color:'var(--muted)' }}>{submitted ? `Submitted ${new Date(sd.date).toLocaleDateString()}` : 'Not submitted yet'}</div>
+                                    </div>
+                                    {submitted && <span style={{ fontSize:11, color:'var(--green)', fontWeight:600 }}>✓ Done</span>}
+                                  </div>
+                                  {submitted && (
+                                    <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                                      {[
+                                        { label:'Accomplished yesterday', value:sd.q1 },
+                                        { label:'#1 priority today',      value:sd.q2 },
+                                        ...(sd.q3?.trim() ? [{ label:'Blocker', value:sd.q3 }] : []),
+                                      ].map(({label,value})=>(
+                                        <div key={label}>
+                                          <div style={{ fontSize:10, color:'var(--dim)', fontWeight:700, textTransform:'uppercase', letterSpacing:.6, marginBottom:3 }}>{label}</div>
+                                          <div style={{ fontSize:13, color:'var(--text)', lineHeight:1.55 }}>{value}</div>
+                                        </div>
+                                      ))}
+                                      {/* Replies */}
+                                      {replies.length>0 && (
+                                        <div style={{ borderLeft:'2px solid var(--b2)', paddingLeft:10, marginTop:4, display:'flex', flexDirection:'column', gap:8 }}>
+                                          {replies.map(r=>{
+                                            const author = members.find(x=>x.id===r.authorId)
+                                            return (
+                                              <div key={r.id}>
+                                                <div style={{ fontSize:11, fontWeight:600, color:'var(--gold)', marginBottom:2 }}>{author?.full_name||'Leader'} <span style={{ fontSize:9, color:'var(--dim)', fontWeight:400 }}>{relativeTime(r.createdAt)}</span></div>
+                                                <div style={{ fontSize:12, color:'var(--text2)', lineHeight:1.5 }}>{r.text}</div>
+                                              </div>
+                                            )
+                                          })}
+                                        </div>
+                                      )}
+                                      {/* Reply input */}
+                                      <div style={{ display:'flex', gap:6, marginTop:4 }}>
+                                        <input className="field-input" value={replyForms[key]||''}
+                                          onChange={e=>setReplyForms(f=>({...f,[key]:e.target.value.slice(0,300)}))}
+                                          onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&saveStandupReply(m.id,todayStr)}
+                                          placeholder="Reply to standup…"
+                                          style={{ flex:1, padding:'6px 10px', fontSize:12 }}/>
+                                        <button onClick={()=>saveStandupReply(m.id,todayStr)}
+                                          disabled={replySaving===key||!(replyForms[key]||'').trim()}
+                                          style={{ fontSize:11, padding:'6px 12px', borderRadius:6, cursor:'pointer',
+                                            background:'var(--text)', border:'none', color:'var(--bg)', fontWeight:600, flexShrink:0 }}>
+                                          {replySaving===key ? '…' : 'Send'}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )
+                      })()}
                     </div>
                   )}
                 </>
@@ -1147,8 +1243,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
           )}
         </div>
       </div>
-      {/* ── Member detail overlay (team owner only) ───────────────────────── */}
-      {viewingMember && isTeamOwner && (() => {
+      {/* ── Member detail overlay (team owner or group leader for their members) ── */}
+      {viewingMember && (isTeamOwner || isGroupLeader) && (() => {
         const rank  = getRank(viewingMember.xp || 0)
         const stats = memberStats[viewingMember.id] || {}
         const txs   = memberDetail?.txs || []

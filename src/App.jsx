@@ -1348,7 +1348,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
   // ── Derived ────────────────────────────────────────────────────────────────
   const rank     = getRank(xp)
-  const nextRank = RANKS[RANKS.indexOf(rank)+1]
+  const nextRank = RANKS.find(r => r.min > xp)
   const rankPct  = nextRank ? Math.round((xp-rank.min)/(nextRank.min-rank.min)*100) : 100
 
   // ── Team vs personal prefs ────────────────────────────────────────────────

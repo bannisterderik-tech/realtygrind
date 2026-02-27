@@ -11,6 +11,14 @@ const HABITS_FOR_DISPLAY = [
   { id:'market', label:'Market', cat:'market' },
 ]
 
+// All 11 built-in habit IDs — used to exclude custom task rows from ring calculations
+const BUILT_IN_HABIT_IDS = [
+  'prospecting','followup','appointments','showing','newlisting',
+  'social','crm','market','networking','training','review',
+]
+// Total month slots = 11 habits × 4 weeks × 7 days (matches App.jsx totalPossible)
+const TOTAL_MONTH_SLOTS = BUILT_IN_HABIT_IDS.length * 28
+
 function getTodayIndices() {
   const d = new Date()
   return { week: Math.min(Math.floor((d.getDate()-1)/7),3), day: d.getDay() }
@@ -71,31 +79,38 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       const {data:txs} = await supabase.from('transactions').select('user_id,type,price,commission')
         .in('user_id',ids).eq('month_year',MONTH_YEAR)
       const todayIdx = getTodayIndices()
-      const TOTAL_DAILY = 11
+      // Respect hidden habits so denominator matches what agents actually see
+      const hiddenHabits = team?.team_prefs?.hidden || []
+      const TOTAL_DAILY = Math.max(BUILT_IN_HABIT_IDS.length - hiddenHabits.length, 1)
+      // Total possible for the full month = active habits × 4 weeks × 7 days
+      const totalMonthSlots = TOTAL_DAILY * 28
       const stats = {}
       ids.forEach(id=>{
         const mh = (habs||[]).filter(h=>h.user_id===id)
+        // Only count built-in habits — exclude custom task completions (stored as UUIDs)
+        const mhBuiltIn = mh.filter(h => BUILT_IN_HABIT_IDS.includes(h.habit_id))
         const mt = (txs||[]).filter(t=>t.user_id===id)
         const habits = {}
         HABITS_FOR_DISPLAY.forEach(h=>{ habits[h.id] = mh.filter(x=>x.habit_id===h.id).reduce((a,x)=>a+(x.counter_value||1),0) })
         const closedVol  = mt.filter(t=>t.type==='closed').reduce((a,t)=>{ const n=parseFloat(String(t.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
         const closedComm = mt.filter(t=>t.type==='closed').reduce((a,t)=>{ const n=parseFloat(String(t.commission||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
-        const todayRows  = mh.filter(h => h.week_index===todayIdx.week && h.day_index===todayIdx.day)
+        const todayRows  = mhBuiltIn.filter(h => h.week_index===todayIdx.week && h.day_index===todayIdx.day)
         const todayDone  = new Set(todayRows.map(h=>h.habit_id)).size
-        const monthDays  = new Set(mh.map(h=>`${h.habit_id}-${h.week_index}-${h.day_index}`)).size
-        const activeDays = new Set(mh.map(h=>`${h.week_index}-${h.day_index}`)).size
-        const monthlyPct = activeDays > 0 ? Math.round(monthDays / (activeDays * TOTAL_DAILY) * 100) : 0
+        // monthDays = unique (habit × day) combos for built-ins only, capped at total slots
+        const monthDays  = new Set(mhBuiltIn.map(h=>`${h.habit_id}-${h.week_index}-${h.day_index}`)).size
+        const monthlyPct = Math.min(Math.round(monthDays / totalMonthSlots * 100), 100)
         stats[id] = {
-          habits, closed:mt.filter(t=>t.type==='closed').length, closedVol, closedComm, totalHabits:mh.length,
-          todayDone, todayPct: Math.round(todayDone / TOTAL_DAILY * 100), monthlyPct, activeDays,
-          appts: habits.appointments||0, showings: habits.showing||0,
+          habits, closed:mt.filter(t=>t.type==='closed').length, closedVol, closedComm,
+          totalHabits: mhBuiltIn.length,
+          todayDone, todayPct: Math.min(Math.round(todayDone / TOTAL_DAILY * 100), 100),
+          monthlyPct, appts: habits.appointments||0, showings: habits.showing||0,
         }
       })
       setMemberStats(stats)
       // Fetch pod stats if user is in a pod
       const pods = team?.team_prefs?.pods || []
       const myPod_ = pods.find(p => p.memberIds?.includes(user?.id))
-      if (myPod_) fetchPodStats(myPod_, mems)
+      if (myPod_) fetchPodStats(myPod_, mems, TOTAL_DAILY)
     }
     setLoading(false)
   }
@@ -201,10 +216,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   }
 
   // ── Accountability Pods ────────────────────────────────────────────────────
-  async function fetchPodStats(pod, mems) {
+  async function fetchPodStats(pod, mems, totalDaily = 11) {
     const ids = pod.memberIds.filter(id => id !== user?.id)
     if (!ids.length) { setPodStatsLoaded(true); return }
     const todayIdx = getTodayIndices()
+    const totalMonthSlots = totalDaily * 28
     const { data:habs } = await supabase.from('habit_completions')
       .select('user_id,habit_id,week_index,day_index')
       .in('user_id', ids).eq('month_year', MONTH_YEAR)
@@ -213,16 +229,17 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       const member = mems.find(m => m.id === id)
       if (!member) return
       const mh = (habs||[]).filter(h => h.user_id === id)
-      const todayRows  = mh.filter(h => h.week_index===todayIdx.week && h.day_index===todayIdx.day)
+      // Exclude custom task completions (UUIDs) — built-ins only
+      const mhBuiltIn = mh.filter(h => BUILT_IN_HABIT_IDS.includes(h.habit_id))
+      const todayRows  = mhBuiltIn.filter(h => h.week_index===todayIdx.week && h.day_index===todayIdx.day)
       const todayDone  = new Set(todayRows.map(h=>h.habit_id)).size
-      const monthDays  = new Set(mh.map(h=>`${h.habit_id}-${h.week_index}-${h.day_index}`)).size
-      const activeDays = new Set(mh.map(h=>`${h.week_index}-${h.day_index}`)).size
+      const monthDays  = new Set(mhBuiltIn.map(h=>`${h.habit_id}-${h.week_index}-${h.day_index}`)).size
       stats[id] = {
         full_name:  member.full_name,
         xp:         member.xp || 0,
         streak:     member.streak || 0,
-        todayPct:   Math.round(todayDone / 11 * 100),
-        monthlyPct: activeDays > 0 ? Math.round(monthDays / (activeDays * 11) * 100) : 0,
+        todayPct:   Math.min(Math.round(todayDone / totalDaily * 100), 100),
+        monthlyPct: Math.min(Math.round(monthDays / totalMonthSlots * 100), 100),
       }
     })
     setPodMemberStats(stats)
@@ -936,6 +953,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                           {(() => {
                             const NC = { praise:'#10b981', goal:'#d97706', concern:'#f43f5e', general:'#0ea5e9' }
                             const visible = [...allCoachingNotes]
+                              .filter(n => n.agentId !== user?.id)
                               .filter(n => filterAgent==='all' || n.agentId===filterAgent)
                               .sort((a,b) => (b.pinned?1:0)-(a.pinned?1:0) || new Date(b.createdAt)-new Date(a.createdAt))
                             return (

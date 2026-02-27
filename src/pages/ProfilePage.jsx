@@ -294,9 +294,9 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
 
   // ── Income Goal Calculator helpers ──────────────────────────────────────────
   function getMonthsRemaining() {
-    const now = new Date()
-    const diff = (new Date(now.getFullYear(), 11, 31).getMonth() - now.getMonth())
-    return Math.max(diff, 1)
+    // 12 - current month index (0-based) = months remaining including current month
+    // Jan=0 → 12, Feb=1 → 11, ... Dec=11 → 1
+    return Math.max(12 - new Date().getMonth(), 1)
   }
   const monthsRemaining = getMonthsRemaining()
 

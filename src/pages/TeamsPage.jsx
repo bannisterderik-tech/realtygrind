@@ -52,7 +52,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [podSaving,      setPodSaving]      = useState(false)
   const [podMemberStats, setPodMemberStats] = useState({})       // { [userId]: { todayPct, monthlyPct, xp, streak } }
   const [podStatsLoaded, setPodStatsLoaded] = useState(false)
-  const [adminSubTab,    setAdminSubTab]    = useState('performance') // 'performance'|'coaching'|'pods'
+  const [adminSubTab,    setAdminSubTab]    = useState('coaching') // 'coaching'|'pods'
   const [filterAgent,    setFilterAgent]    = useState('all')         // 'all' | memberId
   const [noteForm,       setNoteForm]       = useState(null)          // null | { agentId, text, type, editingId }
   const [noteSaving,     setNoteSaving]     = useState(false)
@@ -842,96 +842,9 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                     <div>
                       {/* Admin sub-tab bar */}
                       <div className="tabs" style={{ marginBottom:20 }}>
-                        <button className={`tab-item${adminSubTab==='performance'?' on':''}`} onClick={()=>setAdminSubTab('performance')}>📊 Performance</button>
                         <button className={`tab-item${adminSubTab==='coaching'?' on':''}`} onClick={()=>setAdminSubTab('coaching')}>📝 Coaching</button>
                         <button className={`tab-item${adminSubTab==='pods'?' on':''}`} onClick={()=>setAdminSubTab('pods')}>🫂 Pods</button>
                       </div>
-
-                      {/* Performance sub-tab */}
-                      {adminSubTab==='performance' && (() => {
-                        const now = new Date()
-                        const monthLabel = now.toLocaleString('en-US',{month:'long', year:'numeric'})
-                        const allStats = Object.values(memberStats)
-                        const avgToday    = allStats.length ? Math.round(allStats.reduce((a,s)=>a+(s.todayPct||0),0)/allStats.length) : 0
-                        const avgMonth    = allStats.length ? Math.round(allStats.reduce((a,s)=>a+(s.monthlyPct||0),0)/allStats.length) : 0
-                        const totalAppts  = allStats.reduce((a,s)=>a+(s.appts||0),0)
-                        const totalShows  = allStats.reduce((a,s)=>a+(s.showings||0),0)
-                        const totalClosed = allStats.reduce((a,s)=>a+(s.closed||0),0)
-                        const totalVol    = allStats.reduce((a,s)=>a+(s.closedVol||0),0)
-                        const totalComm   = allStats.reduce((a,s)=>a+(s.closedComm||0),0)
-                        return (
-                          <div>
-                            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-                              <div className="serif" style={{ fontSize:20, color:'var(--text)' }}>📊 Team Performance — {monthLabel}</div>
-                              <div style={{ fontSize:12, color:'var(--muted)' }}>{members.length} agent{members.length!==1?'s':''}</div>
-                            </div>
-                            <div className="card" style={{ padding:18, marginBottom:20, border:'1px solid rgba(217,119,6,.3)', background:'var(--gold3)' }}>
-                              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))', gap:12 }}>
-                                {[
-                                  { l:'Avg Today %',  v:`${avgToday}%`,         c:'var(--green)' },
-                                  { l:'Avg Month %',  v:`${avgMonth}%`,         c:'#0ea5e9' },
-                                  { l:'Total Appts',  v:totalAppts,              c:'var(--green)' },
-                                  { l:'Total Shows',  v:totalShows,              c:'#0ea5e9' },
-                                  { l:'Total Closed', v:totalClosed,             c:'var(--green)' },
-                                  ...(totalVol >0?[{l:'Volume',    v:fmtMoney(totalVol),  c:'var(--green)'}]:[]),
-                                  ...(totalComm>0?[{l:'Commission',v:fmtMoney(totalComm), c:'var(--green)'}]:[]),
-                                ].map((s,i)=>(
-                                  <div key={i} style={{ textAlign:'center' }}>
-                                    <div className="label" style={{ marginBottom:4 }}>{s.l}</div>
-                                    <div className="serif" style={{ fontSize:20, color:s.c, fontWeight:700 }}>{s.v}</div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                              {members.map((m,i)=>{
-                                const rank  = getRank(m.xp||0)
-                                const isMe  = m.id===user?.id
-                                const stats = memberStats[m.id]||{}
-                                return (
-                                  <div key={m.id} className="card" style={{
-                                    padding:18, border:`1px solid ${isMe?'rgba(217,119,6,.35)':'var(--b2)'}`,
-                                    background:isMe?'var(--gold3)':'var(--surface)',
-                                  }}>
-                                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14, flexWrap:'wrap' }}>
-                                      <div className="mono" style={{ width:22, fontSize:11, color:'var(--dim)', fontWeight:700 }}>{i+1}</div>
-                                      <div style={{ width:34, height:34, borderRadius:'50%',
-                                        background:`linear-gradient(135deg, ${rank.color}, ${rank.color}99)`,
-                                        display:'flex', alignItems:'center', justifyContent:'center',
-                                        fontSize:13, fontWeight:700, color:'#fff', flexShrink:0,
-                                        boxShadow:`0 2px 6px ${rank.color}44` }}>
-                                        {(m.full_name||'A').charAt(0).toUpperCase()}
-                                      </div>
-                                      <div style={{ flex:1 }}>
-                                        <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-                                          <span style={{ fontSize:14, fontWeight:600, color:'var(--text)' }}>{m.full_name||'Agent'}</span>
-                                          {isMe && <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>YOU</span>}
-                                        </div>
-                                        <div style={{ fontSize:11, color:'var(--muted)' }}>{rank.name} · 🔥 {m.streak||0} streak</div>
-                                      </div>
-                                      <div className="serif" style={{ fontSize:20, color:rank.color, fontWeight:700 }}>{(m.xp||0).toLocaleString()} XP</div>
-                                    </div>
-                                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(100px,1fr))', gap:10, alignItems:'center' }}>
-                                      <div style={{ textAlign:'center' }}>
-                                        <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>TODAY</div>
-                                        <Ring pct={stats.todayPct||0} size={52} color={rank.color}/>
-                                      </div>
-                                      <div style={{ textAlign:'center' }}>
-                                        <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>MONTH</div>
-                                        <Ring pct={stats.monthlyPct||0} size={52} color='#0ea5e9'/>
-                                      </div>
-                                      <StatCard icon='📅' label='Appts' value={stats.appts||0} color='var(--green)'/>
-                                      <StatCard icon='🔑' label='Showings' value={stats.showings||0} color='#0ea5e9'/>
-                                      <StatCard icon='🎉' label='Closed' value={stats.closed||0} color='var(--green)'
-                                        sub={stats.closedVol>0 ? fmtMoney(stats.closedVol) : undefined}/>
-                                    </div>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        )
-                      })()}
 
                       {/* Coaching sub-tab */}
                       {adminSubTab==='coaching' && (

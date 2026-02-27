@@ -173,9 +173,21 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   }
 
   async function leaveTeam() {
-    if (!confirm('Leave this team?')) return
-    await supabase.from('team_members').delete().eq('user_id',user.id)
-    await supabase.from('profiles').update({team_id:null}).eq('id',user.id)
+    if (!confirm('Leave this team? Your group membership will also be removed.')) return
+    // Clean up any group membership/leadership before leaving
+    const groups = teamData?.team_prefs?.groups || []
+    const needsCleanup = groups.some(g => g.memberIds.includes(user.id) || g.leaderId === user.id)
+    if (needsCleanup) {
+      const updatedGroups = groups.map(g => ({
+        ...g,
+        leaderId: g.leaderId === user.id ? '' : g.leaderId,
+        memberIds: g.memberIds.filter(id => id !== user.id),
+      }))
+      const newPrefs = { ...(teamData.team_prefs||{}), groups: updatedGroups }
+      await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+    }
+    await supabase.from('team_members').delete().eq('user_id', user.id)
+    await supabase.from('profiles').update({ team_id: null }).eq('id', user.id)
     await refreshProfile()
     setMode('menu'); setMembers([]); setTeamData(null)
   }
@@ -244,17 +256,22 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   async function saveGroup() {
     if (!groupForm?.name?.trim()) return
     setGroupSaving(true)
+    // Safety: always ensure the leader is included in memberIds
+    const leaderId   = groupForm.leaderId || ''
+    const memberIds  = leaderId && !groupForm.memberIds.includes(leaderId)
+      ? [...groupForm.memberIds, leaderId]
+      : groupForm.memberIds
     const existing = teamData?.team_prefs?.groups || []
     let updated
     if (groupForm.editingId) {
       updated = existing.map(g => g.id===groupForm.editingId
-        ? { ...g, name:groupForm.name.trim(), leaderId:groupForm.leaderId, memberIds:groupForm.memberIds } : g)
+        ? { ...g, name:groupForm.name.trim(), leaderId, memberIds } : g)
     } else {
       updated = [...existing, {
         id: Date.now().toString(36),
         name: groupForm.name.trim(),
-        leaderId: groupForm.leaderId || '',
-        memberIds: groupForm.memberIds || [],
+        leaderId,
+        memberIds,
       }]
     }
     const newPrefs = { ...(teamData?.team_prefs||{}), groups: updated }
@@ -335,9 +352,9 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     if (!text) return
     setReplySaving(noteId)
     const newReply = { id: Date.now().toString(36), authorId: user.id, text, createdAt: new Date().toISOString() }
-    const isOwner = teamData?.created_by === user?.id
-    if (isOwner) {
-      // Owner has UPDATE on teams table
+    // Owner and group leaders reply via teams table; regular agents reply via their own profile
+    const isCoachOrLeader = isAdminOrOwner
+    if (isCoachOrLeader) {
       const updated = (teamData?.team_prefs?.coaching_notes||[]).map(n=>
         n.id===noteId ? { ...n, replies: [...(n.replies||[]), newReply] } : n)
       const updatedPrefs = { ...(teamData?.team_prefs||{}), coaching_notes: updated }
@@ -474,10 +491,13 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                             {teamData.invite_code}
                           </div>
                         </div>
-                        <button onClick={leaveTeam} style={{
-                          background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.2)',
-                          color:'var(--red)', borderRadius:8, padding:'9px 16px', cursor:'pointer', fontSize:12, fontWeight:600
-                        }}>Leave Team</button>
+                        {/* Owner and group leaders cannot leave — owner created the team, leaders must resign first */}
+                        {!isTeamOwner && !isGroupLeader && (
+                          <button onClick={leaveTeam} style={{
+                            background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.2)',
+                            color:'var(--red)', borderRadius:8, padding:'9px 16px', cursor:'pointer', fontSize:12, fontWeight:600
+                          }}>Leave Team</button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -972,19 +992,22 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                             </button>
                                           </div>
 
-                                          <div style={{ display:'flex', gap:6 }}>
-                                            <button onClick={()=>pinNote(note.id)} style={{ fontSize:11, padding:'4px 10px', borderRadius:6,
-                                              cursor:'pointer', background: note.pinned ? 'rgba(217,119,6,.12)' : 'var(--bg2)',
-                                              border: note.pinned ? '1px solid rgba(217,119,6,.3)' : '1px solid var(--b2)',
-                                              color: note.pinned ? 'var(--gold)' : 'var(--muted)', fontWeight:600 }}>
-                                              {note.pinned ? '📌 Unpin' : '📌 Pin'}
-                                            </button>
-                                            <button onClick={()=>deleteNote(note.id)} style={{ fontSize:11, padding:'4px 10px',
-                                              borderRadius:6, cursor:'pointer', background:'rgba(220,38,38,.06)',
-                                              border:'1px solid rgba(220,38,38,.2)', color:'var(--red)', fontWeight:600 }}>
-                                              Delete
-                                            </button>
-                                          </div>
+                                          {/* Pin/Delete only for team owner — group leaders lack DB write access */}
+                                          {isTeamOwner && (
+                                            <div style={{ display:'flex', gap:6 }}>
+                                              <button onClick={()=>pinNote(note.id)} style={{ fontSize:11, padding:'4px 10px', borderRadius:6,
+                                                cursor:'pointer', background: note.pinned ? 'rgba(217,119,6,.12)' : 'var(--bg2)',
+                                                border: note.pinned ? '1px solid rgba(217,119,6,.3)' : '1px solid var(--b2)',
+                                                color: note.pinned ? 'var(--gold)' : 'var(--muted)', fontWeight:600 }}>
+                                                {note.pinned ? '📌 Unpin' : '📌 Pin'}
+                                              </button>
+                                              <button onClick={()=>deleteNote(note.id)} style={{ fontSize:11, padding:'4px 10px',
+                                                borderRadius:6, cursor:'pointer', background:'rgba(220,38,38,.06)',
+                                                border:'1px solid rgba(220,38,38,.2)', color:'var(--red)', fontWeight:600 }}>
+                                                Delete
+                                              </button>
+                                            </div>
+                                          )}
                                         </div>
                                       </div>
                                     </div>
@@ -1073,7 +1096,17 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               <div style={{ marginBottom:12 }}>
                                 <div className="label" style={{ marginBottom:5 }}>Group Leader</div>
                                 <select className="field-input" value={groupForm.leaderId}
-                                  onChange={e=>setGroupForm(f=>({...f,leaderId:e.target.value}))} style={{ width:'100%' }}>
+                                  onChange={e=>{
+                                    const newLeaderId = e.target.value
+                                    setGroupForm(f=>({
+                                      ...f,
+                                      leaderId: newLeaderId,
+                                      // auto-add the new leader to members if not already included
+                                      memberIds: newLeaderId && !f.memberIds.includes(newLeaderId)
+                                        ? [...f.memberIds, newLeaderId]
+                                        : f.memberIds,
+                                    }))
+                                  }} style={{ width:'100%' }}>
                                   <option value="">Select a leader…</option>
                                   {members.map(m=><option key={m.id} value={m.id}>{m.full_name||'Agent'}</option>)}
                                 </select>
@@ -1082,20 +1115,26 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 <div className="label" style={{ marginBottom:8 }}>Members (any number)</div>
                                 <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                                   {members.map(m=>{
-                                    const checked = groupForm.memberIds.includes(m.id)
-                                    const mRank   = getRank(m.xp||0)
+                                    const isLeader = groupForm.leaderId === m.id
+                                    const checked  = isLeader || groupForm.memberIds.includes(m.id)
+                                    const mRank    = getRank(m.xp||0)
                                     return (
-                                      <label key={m.id} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
+                                      <label key={m.id} style={{ display:'flex', alignItems:'center', gap:8,
+                                        cursor: isLeader ? 'not-allowed' : 'pointer',
                                         padding:'6px 10px', borderRadius:6,
-                                        background:checked?'rgba(139,92,246,.08)':'var(--bg2)', border:`1px solid ${checked?'rgba(139,92,246,.3)':'var(--b1)'}` }}>
-                                        <input type="checkbox" checked={checked}
-                                          onChange={e=>setGroupForm(f=>({...f, memberIds: e.target.checked
+                                        background:checked?'rgba(139,92,246,.08)':'var(--bg2)',
+                                        border:`1px solid ${checked?'rgba(139,92,246,.3)':'var(--b1)'}`,
+                                        opacity: isLeader ? 0.85 : 1 }}>
+                                        <input type="checkbox" checked={checked} disabled={isLeader}
+                                          title={isLeader ? 'Leader is always a member of their group' : undefined}
+                                          onChange={e=>!isLeader && setGroupForm(f=>({...f, memberIds: e.target.checked
                                             ? [...f.memberIds, m.id]
                                             : f.memberIds.filter(id=>id!==m.id)
                                           }))}/>
                                         <span style={{ fontSize:14 }}>{mRank.icon}</span>
                                         <span style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{m.full_name||'Agent'}</span>
-                                        {groupForm.leaderId===m.id && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:4, background:'rgba(139,92,246,.18)', color:'#8b5cf6', fontWeight:700 }}>LEADER</span>}
+                                        {isLeader && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:4, background:'rgba(139,92,246,.18)', color:'#8b5cf6', fontWeight:700 }}>LEADER</span>}
+                                        {isLeader && <span style={{ fontSize:10, color:'var(--dim)', marginLeft:'auto' }}>always a member</span>}
                                       </label>
                                     )
                                   })}
@@ -1130,7 +1169,13 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                   </div>
                                   <div style={{ display:'flex', gap:6, flexShrink:0 }}>
                                     <button className="btn-outline" style={{ fontSize:11, padding:'5px 10px' }}
-                                      onClick={()=>setGroupForm({ name:grp.name, leaderId:grp.leaderId, memberIds:[...grp.memberIds], editingId:grp.id })}>
+                                      onClick={()=>{
+                                        // Always ensure the current leader is in memberIds when opening edit form
+                                        const safeMemberIds = grp.leaderId && !grp.memberIds.includes(grp.leaderId)
+                                          ? [...grp.memberIds, grp.leaderId]
+                                          : [...grp.memberIds]
+                                        setGroupForm({ name:grp.name, leaderId:grp.leaderId, memberIds:safeMemberIds, editingId:grp.id })
+                                      }}>
                                       Edit
                                     </button>
                                     <button onClick={()=>deleteGroup(grp.id)}

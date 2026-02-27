@@ -173,9 +173,21 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   }
 
   async function leaveTeam() {
-    if (!confirm('Leave this team?')) return
-    await supabase.from('team_members').delete().eq('user_id',user.id)
-    await supabase.from('profiles').update({team_id:null}).eq('id',user.id)
+    if (!confirm('Leave this team? Your group membership will also be removed.')) return
+    // Clean up any group membership/leadership before leaving
+    const groups = teamData?.team_prefs?.groups || []
+    const needsCleanup = groups.some(g => g.memberIds.includes(user.id) || g.leaderId === user.id)
+    if (needsCleanup) {
+      const updatedGroups = groups.map(g => ({
+        ...g,
+        leaderId: g.leaderId === user.id ? '' : g.leaderId,
+        memberIds: g.memberIds.filter(id => id !== user.id),
+      }))
+      const newPrefs = { ...(teamData.team_prefs||{}), groups: updatedGroups }
+      await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+    }
+    await supabase.from('team_members').delete().eq('user_id', user.id)
+    await supabase.from('profiles').update({ team_id: null }).eq('id', user.id)
     await refreshProfile()
     setMode('menu'); setMembers([]); setTeamData(null)
   }
@@ -335,9 +347,9 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     if (!text) return
     setReplySaving(noteId)
     const newReply = { id: Date.now().toString(36), authorId: user.id, text, createdAt: new Date().toISOString() }
-    const isOwner = teamData?.created_by === user?.id
-    if (isOwner) {
-      // Owner has UPDATE on teams table
+    // Owner and group leaders reply via teams table; regular agents reply via their own profile
+    const isCoachOrLeader = isAdminOrOwner
+    if (isCoachOrLeader) {
       const updated = (teamData?.team_prefs?.coaching_notes||[]).map(n=>
         n.id===noteId ? { ...n, replies: [...(n.replies||[]), newReply] } : n)
       const updatedPrefs = { ...(teamData?.team_prefs||{}), coaching_notes: updated }
@@ -474,10 +486,13 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                             {teamData.invite_code}
                           </div>
                         </div>
-                        <button onClick={leaveTeam} style={{
-                          background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.2)',
-                          color:'var(--red)', borderRadius:8, padding:'9px 16px', cursor:'pointer', fontSize:12, fontWeight:600
-                        }}>Leave Team</button>
+                        {/* Owner and group leaders cannot leave — owner created the team, leaders must resign first */}
+                        {!isTeamOwner && !isGroupLeader && (
+                          <button onClick={leaveTeam} style={{
+                            background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.2)',
+                            color:'var(--red)', borderRadius:8, padding:'9px 16px', cursor:'pointer', fontSize:12, fontWeight:600
+                          }}>Leave Team</button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -972,19 +987,22 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                             </button>
                                           </div>
 
-                                          <div style={{ display:'flex', gap:6 }}>
-                                            <button onClick={()=>pinNote(note.id)} style={{ fontSize:11, padding:'4px 10px', borderRadius:6,
-                                              cursor:'pointer', background: note.pinned ? 'rgba(217,119,6,.12)' : 'var(--bg2)',
-                                              border: note.pinned ? '1px solid rgba(217,119,6,.3)' : '1px solid var(--b2)',
-                                              color: note.pinned ? 'var(--gold)' : 'var(--muted)', fontWeight:600 }}>
-                                              {note.pinned ? '📌 Unpin' : '📌 Pin'}
-                                            </button>
-                                            <button onClick={()=>deleteNote(note.id)} style={{ fontSize:11, padding:'4px 10px',
-                                              borderRadius:6, cursor:'pointer', background:'rgba(220,38,38,.06)',
-                                              border:'1px solid rgba(220,38,38,.2)', color:'var(--red)', fontWeight:600 }}>
-                                              Delete
-                                            </button>
-                                          </div>
+                                          {/* Pin/Delete only for team owner — group leaders lack DB write access */}
+                                          {isTeamOwner && (
+                                            <div style={{ display:'flex', gap:6 }}>
+                                              <button onClick={()=>pinNote(note.id)} style={{ fontSize:11, padding:'4px 10px', borderRadius:6,
+                                                cursor:'pointer', background: note.pinned ? 'rgba(217,119,6,.12)' : 'var(--bg2)',
+                                                border: note.pinned ? '1px solid rgba(217,119,6,.3)' : '1px solid var(--b2)',
+                                                color: note.pinned ? 'var(--gold)' : 'var(--muted)', fontWeight:600 }}>
+                                                {note.pinned ? '📌 Unpin' : '📌 Pin'}
+                                              </button>
+                                              <button onClick={()=>deleteNote(note.id)} style={{ fontSize:11, padding:'4px 10px',
+                                                borderRadius:6, cursor:'pointer', background:'rgba(220,38,38,.06)',
+                                                border:'1px solid rgba(220,38,38,.2)', color:'var(--red)', fontWeight:600 }}>
+                                                Delete
+                                              </button>
+                                            </div>
+                                          )}
                                         </div>
                                       </div>
                                     </div>

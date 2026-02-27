@@ -16,6 +16,16 @@ function getTodayIndices() {
   return { week: Math.min(Math.floor((d.getDate()-1)/7),3), day: d.getDay() }
 }
 
+function relativeTime(isoStr) {
+  if (!isoStr) return ''
+  const diff = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000)
+  if (diff < 60)    return 'just now'
+  if (diff < 3600)  return `${Math.floor(diff/60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`
+  const d = Math.floor(diff/86400)
+  return d === 1 ? '1 day ago' : `${d} days ago`
+}
+
 export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const { user, profile, refreshProfile } = useAuth()
   const [mode,       setMode]       = useState('menu')
@@ -34,7 +44,10 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [podSaving,      setPodSaving]      = useState(false)
   const [podMemberStats, setPodMemberStats] = useState({})       // { [userId]: { todayPct, monthlyPct, xp, streak } }
   const [podStatsLoaded, setPodStatsLoaded] = useState(false)
-  const [nudgeToast,     setNudgeToast]     = useState('')
+  const [adminSubTab,    setAdminSubTab]    = useState('performance') // 'performance'|'coaching'|'pods'
+  const [filterAgent,    setFilterAgent]    = useState('all')         // 'all' | memberId
+  const [noteForm,       setNoteForm]       = useState(null)          // null | { agentId, text, type, editingId }
+  const [noteSaving,     setNoteSaving]     = useState(false)
 
   const MONTH_YEAR = new Date().toISOString().slice(0,7)
 
@@ -215,7 +228,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   }
 
   async function savePod() {
-    if (!podForm?.name?.trim() || podForm.memberIds.length < 3 || podForm.memberIds.length > 5) return
+    if (!podForm?.name?.trim() || podForm.memberIds.length < 2 || podForm.memberIds.length > 5) return
     setPodSaving(true)
     const allPods_ = teamData?.team_prefs?.pods || []
     let updatedPods
@@ -244,16 +257,56 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
   }
 
-  function sendNudge(name) {
-    setNudgeToast(`Nudge sent to ${name}! 👊`)
-    setTimeout(()=>setNudgeToast(''), 3000)
+  // ── Coaching Notes ────────────────────────────────────────────────────────
+  async function saveNote() {
+    if (!noteForm?.text?.trim() || !noteForm?.agentId) return
+    setNoteSaving(true)
+    const existing = teamData?.team_prefs?.coaching_notes || []
+    let updated
+    if (noteForm.editingId) {
+      updated = existing.map(n => n.id === noteForm.editingId
+        ? { ...n, text: noteForm.text.trim(), type: noteForm.type } : n)
+    } else {
+      updated = [...existing, {
+        id: Date.now().toString(36),
+        agentId: noteForm.agentId,
+        coachId: user.id,
+        text: noteForm.text.trim(),
+        type: noteForm.type || 'general',
+        pinned: false,
+        createdAt: new Date().toISOString(),
+      }]
+    }
+    const updatedPrefs = { ...(teamData?.team_prefs||{}), coaching_notes: updated }
+    await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile.team_id)
+    setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
+    setNoteForm(null)
+    setNoteSaving(false)
+  }
+
+  async function deleteNote(noteId) {
+    if (!confirm('Delete this note?')) return
+    const updated = (teamData?.team_prefs?.coaching_notes||[]).filter(n=>n.id!==noteId)
+    const updatedPrefs = { ...(teamData?.team_prefs||{}), coaching_notes: updated }
+    await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile.team_id)
+    setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
+  }
+
+  async function pinNote(noteId) {
+    const updated = (teamData?.team_prefs?.coaching_notes||[]).map(n=>
+      n.id===noteId ? { ...n, pinned: !n.pinned } : n)
+    const updatedPrefs = { ...(teamData?.team_prefs||{}), coaching_notes: updated }
+    await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile.team_id)
+    setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
   }
 
   // ── Derived values ─────────────────────────────────────────────────────────
-  const isTeamOwner = !!(teamData?.created_by === user?.id)
-  const allPods     = teamData?.team_prefs?.pods || []
-  const myPod       = allPods.find(p => p.memberIds?.includes(user?.id)) || null
-  const myPodMates  = myPod ? members.filter(m => myPod.memberIds.includes(m.id) && m.id !== user?.id) : []
+  const isTeamOwner      = !!(teamData?.created_by === user?.id)
+  const allPods          = teamData?.team_prefs?.pods || []
+  const myPod            = allPods.find(p => p.memberIds?.includes(user?.id)) || null
+  const myPodMates       = myPod ? members.filter(m => myPod.memberIds.includes(m.id) && m.id !== user?.id) : []
+  const allCoachingNotes = teamData?.team_prefs?.coaching_notes || []
+  const myCoachingNotes  = allCoachingNotes.filter(n => n.agentId === user?.id)
 
   return (
     <>
@@ -367,16 +420,6 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                     </div>
                   )}
 
-                  {/* Nudge toast */}
-                  {nudgeToast && (
-                    <div className="card" style={{ borderColor:'rgba(139,92,246,.3)', color:'#8b5cf6',
-                      padding:'12px 18px', marginBottom:12, display:'flex', justifyContent:'space-between', alignItems:'center',
-                      background:'rgba(139,92,246,.06)', fontSize:13 }}>
-                      {nudgeToast}
-                      <button onClick={()=>setNudgeToast('')} style={{ background:'none', border:'none', cursor:'pointer', fontSize:16, color:'#8b5cf6' }}>✕</button>
-                    </div>
-                  )}
-
                   {/* My Pod section */}
                   {myPod ? (
                     <div className="card" style={{ padding:20, marginBottom:16, border:'1px solid rgba(139,92,246,.25)', background:'rgba(139,92,246,.04)' }}>
@@ -440,8 +483,6 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               ) : (
                                 <div style={{ textAlign:'center', padding:'12px 0', marginBottom:8 }}><Loader/></div>
                               )}
-                              <button className="btn-outline" onClick={()=>sendNudge(mate.full_name||'Agent')}
-                                style={{ width:'100%', fontSize:12, padding:'6px' }}>👊 Nudge</button>
                             </div>
                           )
                         })}
@@ -663,41 +704,78 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       </div>
                     )
                   })()}
+                  {/* ── My Coaching Notes (visible to all members) ── */}
+                  {myCoachingNotes.length > 0 && (
+                    <div style={{ marginTop:28 }}>
+                      <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:12 }}>📋 My Coaching Notes</div>
+                      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                        {[...myCoachingNotes]
+                          .sort((a,b) => (b.pinned?1:0)-(a.pinned?1:0) || new Date(b.createdAt)-new Date(a.createdAt))
+                          .map(note => {
+                            const NC = { praise:'#10b981', goal:'#d97706', concern:'#f43f5e', general:'#0ea5e9' }
+                            const c = NC[note.type]||NC.general
+                            return (
+                              <div key={note.id} className="card" style={{
+                                padding:'14px 16px',
+                                border: note.pinned ? '1px solid rgba(217,119,6,.45)' : '1px solid var(--b2)',
+                                background: note.pinned ? 'var(--gold3)' : 'var(--surface)',
+                              }}>
+                                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                                  <span style={{ fontSize:10, padding:'2px 7px', borderRadius:4, fontWeight:700,
+                                    background:`${c}18`, color:c, border:`1px solid ${c}33`,
+                                    textTransform:'uppercase', letterSpacing:'.5px' }}>{note.type}</span>
+                                  {note.pinned && <span style={{ fontSize:10, color:'var(--gold2)' }}>📌 Pinned</span>}
+                                  <span style={{ marginLeft:'auto', fontSize:11, color:'var(--dim)' }}>{relativeTime(note.createdAt)}</span>
+                                </div>
+                                <div style={{ fontSize:13, color:'var(--text)', lineHeight:1.6 }}>{note.text}</div>
+                              </div>
+                            )
+                          })}
+                      </div>
+                    </div>
+                  )}
+
                   </>
                   )} {/* end roster tab */}
 
                   {/* Admin tab */}
                   {teamsTab==='admin' && isTeamOwner && (
                     <div>
-                      {/* Team Performance Overview */}
-                      {(() => {
+                      {/* Admin sub-tab bar */}
+                      <div className="tabs" style={{ marginBottom:20 }}>
+                        <button className={`tab-item${adminSubTab==='performance'?' on':''}`} onClick={()=>setAdminSubTab('performance')}>📊 Performance</button>
+                        <button className={`tab-item${adminSubTab==='coaching'?' on':''}`} onClick={()=>setAdminSubTab('coaching')}>📝 Coaching</button>
+                        <button className={`tab-item${adminSubTab==='pods'?' on':''}`} onClick={()=>setAdminSubTab('pods')}>🫂 Pods</button>
+                      </div>
+
+                      {/* Performance sub-tab */}
+                      {adminSubTab==='performance' && (() => {
                         const now = new Date()
                         const monthLabel = now.toLocaleString('en-US',{month:'long', year:'numeric'})
                         const allStats = Object.values(memberStats)
-                        const avgToday   = allStats.length ? Math.round(allStats.reduce((a,s)=>a+(s.todayPct||0),0)/allStats.length) : 0
-                        const avgMonth   = allStats.length ? Math.round(allStats.reduce((a,s)=>a+(s.monthlyPct||0),0)/allStats.length) : 0
-                        const totalAppts = allStats.reduce((a,s)=>a+(s.appts||0),0)
-                        const totalShows = allStats.reduce((a,s)=>a+(s.showings||0),0)
+                        const avgToday    = allStats.length ? Math.round(allStats.reduce((a,s)=>a+(s.todayPct||0),0)/allStats.length) : 0
+                        const avgMonth    = allStats.length ? Math.round(allStats.reduce((a,s)=>a+(s.monthlyPct||0),0)/allStats.length) : 0
+                        const totalAppts  = allStats.reduce((a,s)=>a+(s.appts||0),0)
+                        const totalShows  = allStats.reduce((a,s)=>a+(s.showings||0),0)
                         const totalClosed = allStats.reduce((a,s)=>a+(s.closed||0),0)
-                        const totalVol   = allStats.reduce((a,s)=>a+(s.closedVol||0),0)
-                        const totalComm  = allStats.reduce((a,s)=>a+(s.closedComm||0),0)
+                        const totalVol    = allStats.reduce((a,s)=>a+(s.closedVol||0),0)
+                        const totalComm   = allStats.reduce((a,s)=>a+(s.closedComm||0),0)
                         return (
-                          <>
+                          <div>
                             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
                               <div className="serif" style={{ fontSize:20, color:'var(--text)' }}>📊 Team Performance — {monthLabel}</div>
                               <div style={{ fontSize:12, color:'var(--muted)' }}>{members.length} agent{members.length!==1?'s':''}</div>
                             </div>
-                            {/* Summary card */}
                             <div className="card" style={{ padding:18, marginBottom:20, border:'1px solid rgba(217,119,6,.3)', background:'var(--gold3)' }}>
                               <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))', gap:12 }}>
                                 {[
-                                  { l:'Avg Today %',  v:`${avgToday}%`,        c:'var(--green)' },
-                                  { l:'Avg Month %',  v:`${avgMonth}%`,        c:'#0ea5e9' },
-                                  { l:'Total Appts',  v:totalAppts,             c:'var(--green)' },
-                                  { l:'Total Shows',  v:totalShows,             c:'#0ea5e9' },
-                                  { l:'Total Closed', v:totalClosed,            c:'var(--green)' },
-                                  ...(totalVol  >0?[{l:'Volume',    v:fmtMoney(totalVol),  c:'var(--green)'}]:[]),
-                                  ...(totalComm >0?[{l:'Commission',v:fmtMoney(totalComm), c:'var(--green)'}]:[]),
+                                  { l:'Avg Today %',  v:`${avgToday}%`,         c:'var(--green)' },
+                                  { l:'Avg Month %',  v:`${avgMonth}%`,         c:'#0ea5e9' },
+                                  { l:'Total Appts',  v:totalAppts,              c:'var(--green)' },
+                                  { l:'Total Shows',  v:totalShows,              c:'#0ea5e9' },
+                                  { l:'Total Closed', v:totalClosed,             c:'var(--green)' },
+                                  ...(totalVol >0?[{l:'Volume',    v:fmtMoney(totalVol),  c:'var(--green)'}]:[]),
+                                  ...(totalComm>0?[{l:'Commission',v:fmtMoney(totalComm), c:'var(--green)'}]:[]),
                                 ].map((s,i)=>(
                                   <div key={i} style={{ textAlign:'center' }}>
                                     <div className="label" style={{ marginBottom:4 }}>{s.l}</div>
@@ -706,12 +784,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 ))}
                               </div>
                             </div>
-                            {/* Per-agent admin cards */}
-                            <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:28 }}>
+                            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                               {members.map((m,i)=>{
-                                const rank   = getRank(m.xp||0)
-                                const isMe   = m.id===user?.id
-                                const stats  = memberStats[m.id]||{}
+                                const rank  = getRank(m.xp||0)
+                                const isMe  = m.id===user?.id
+                                const stats = memberStats[m.id]||{}
                                 return (
                                   <div key={m.id} className="card" style={{
                                     padding:18, border:`1px solid ${isMe?'rgba(217,119,6,.35)':'var(--b2)'}`,
@@ -750,96 +827,225 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 )
                               })}
                             </div>
-                          </>
+                          </div>
                         )
                       })()}
 
-                      {/* Pod Management */}
-                      <div style={{ marginTop:4 }}>
-                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-                          <div className="serif" style={{ fontSize:20, color:'var(--text)' }}>🫂 Accountability Pods</div>
-                          {!podForm && (
-                            <button className="btn-outline" onClick={()=>setPodForm({ name:'', memberIds:[], editingId:null })}
-                              style={{ fontSize:12 }}>+ New Pod</button>
-                          )}
-                        </div>
+                      {/* Coaching sub-tab */}
+                      {adminSubTab==='coaching' && (
+                        <div>
+                          {/* Agent filter pills */}
+                          <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:20 }}>
+                            {[{id:'all',label:'All Agents'}, ...members.map(m=>({id:m.id,label:m.full_name||'Agent'}))].map(opt=>(
+                              <button key={opt.id} onClick={()=>setFilterAgent(opt.id)} style={{
+                                padding:'5px 14px', borderRadius:20, fontSize:12, fontWeight:600, cursor:'pointer',
+                                border: filterAgent===opt.id ? 'none' : '1px solid var(--b2)',
+                                background: filterAgent===opt.id ? 'var(--text)' : 'transparent',
+                                color: filterAgent===opt.id ? 'var(--bg)' : 'var(--text2)',
+                                transition:'all .15s',
+                              }}>{opt.label}</button>
+                            ))}
+                          </div>
 
-                        {/* Create/edit form */}
-                        {podForm && (
-                          <div className="card" style={{ padding:20, marginBottom:16, border:'1px solid rgba(139,92,246,.3)', background:'rgba(139,92,246,.04)' }}>
-                            <div className="serif" style={{ fontSize:15, color:'var(--text)', marginBottom:14 }}>
-                              {podForm.editingId ? 'Edit Pod' : 'New Pod'}
-                            </div>
-                            <div style={{ marginBottom:12 }}>
-                              <div className="label" style={{ marginBottom:5 }}>Pod Name</div>
-                              <input className="field-input" value={podForm.name}
-                                onChange={e=>setPodForm(f=>({...f,name:e.target.value}))}
-                                placeholder="e.g. Alpha Pod" style={{ width:'100%' }}/>
-                            </div>
-                            <div style={{ marginBottom:12 }}>
-                              <div className="label" style={{ marginBottom:8 }}>Members (3–5)</div>
-                              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                                {members.map(m=>{
-                                  const checked = podForm.memberIds.includes(m.id)
-                                  const atMax   = !checked && podForm.memberIds.length >= 5
-                                  const mRank   = getRank(m.xp||0)
+                          {/* Notes feed */}
+                          {(() => {
+                            const NC = { praise:'#10b981', goal:'#d97706', concern:'#f43f5e', general:'#0ea5e9' }
+                            const visible = [...allCoachingNotes]
+                              .filter(n => filterAgent==='all' || n.agentId===filterAgent)
+                              .sort((a,b) => (b.pinned?1:0)-(a.pinned?1:0) || new Date(b.createdAt)-new Date(a.createdAt))
+                            return (
+                              <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:20 }}>
+                                {visible.length===0 && (
+                                  <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic', padding:'16px 0' }}>
+                                    No coaching notes yet. Add one below.
+                                  </div>
+                                )}
+                                {visible.map(note=>{
+                                  const agent = members.find(m=>m.id===note.agentId)
+                                  const name = agent?.full_name||'Agent'
+                                  const c = NC[note.type]||NC.general
                                   return (
-                                    <label key={m.id} style={{ display:'flex', alignItems:'center', gap:8, cursor:atMax?'not-allowed':'pointer',
-                                      opacity:atMax?0.45:1, padding:'6px 10px', borderRadius:6,
-                                      background:checked?'rgba(139,92,246,.08)':'var(--bg2)', border:`1px solid ${checked?'rgba(139,92,246,.3)':'var(--b1)'}` }}>
-                                      <input type="checkbox" checked={checked} disabled={atMax}
-                                        onChange={e=>setPodForm(f=>({...f, memberIds: e.target.checked
-                                          ? [...f.memberIds, m.id]
-                                          : f.memberIds.filter(id=>id!==m.id)
-                                        }))}/>
-                                      <span style={{ fontSize:14 }}>{mRank.icon}</span>
-                                      <span style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{m.full_name||'Agent'}</span>
-                                      <span style={{ fontSize:11, color:'var(--muted)' }}>{mRank.name}</span>
-                                    </label>
+                                    <div key={note.id} className="card" style={{
+                                      padding:'14px 16px',
+                                      border: note.pinned ? '1px solid rgba(217,119,6,.5)' : '1px solid var(--b2)',
+                                      background: note.pinned ? 'var(--gold3)' : 'var(--surface)',
+                                    }}>
+                                      <div style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
+                                        <div style={{ width:32, height:32, borderRadius:'50%', background:`${c}18`,
+                                          border:`1.5px solid ${c}33`, display:'flex', alignItems:'center',
+                                          justifyContent:'center', fontSize:14, fontWeight:700, color:c, flexShrink:0 }}>
+                                          {name.charAt(0).toUpperCase()}
+                                        </div>
+                                        <div style={{ flex:1, minWidth:0 }}>
+                                          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6, flexWrap:'wrap' }}>
+                                            <span style={{ fontSize:10, padding:'2px 7px', borderRadius:4, fontWeight:700,
+                                              background:`${c}18`, color:c, border:`1px solid ${c}33`,
+                                              textTransform:'uppercase', letterSpacing:'.5px' }}>{note.type}</span>
+                                            <span style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{name}</span>
+                                            {note.pinned && <span style={{ fontSize:10, color:'var(--gold2)' }}>📌</span>}
+                                            <span style={{ marginLeft:'auto', fontSize:11, color:'var(--dim)' }}>{relativeTime(note.createdAt)}</span>
+                                          </div>
+                                          <div style={{ fontSize:13, color:'var(--text)', lineHeight:1.6, marginBottom:8 }}>{note.text}</div>
+                                          <div style={{ display:'flex', gap:6 }}>
+                                            <button onClick={()=>pinNote(note.id)} style={{ fontSize:11, padding:'4px 10px', borderRadius:6,
+                                              cursor:'pointer', background: note.pinned ? 'rgba(217,119,6,.12)' : 'var(--bg2)',
+                                              border: note.pinned ? '1px solid rgba(217,119,6,.3)' : '1px solid var(--b2)',
+                                              color: note.pinned ? 'var(--gold)' : 'var(--muted)', fontWeight:600 }}>
+                                              {note.pinned ? '📌 Unpin' : '📌 Pin'}
+                                            </button>
+                                            <button onClick={()=>deleteNote(note.id)} style={{ fontSize:11, padding:'4px 10px',
+                                              borderRadius:6, cursor:'pointer', background:'rgba(220,38,38,.06)',
+                                              border:'1px solid rgba(220,38,38,.2)', color:'var(--red)', fontWeight:600 }}>
+                                              Delete
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
                                   )
                                 })}
                               </div>
-                              {podForm.memberIds.length > 0 && podForm.memberIds.length < 3 && (
-                                <div style={{ fontSize:11, color:'var(--gold2)', marginTop:6 }}>⚠ Select at least 3 members</div>
-                              )}
-                            </div>
-                            <div style={{ display:'flex', gap:8 }}>
-                              <button className="btn-primary" onClick={savePod} disabled={podSaving||podForm.memberIds.length<3||!podForm.name.trim()}
-                                style={{ fontSize:13, padding:'9px 22px' }}>
-                                {podSaving?'Saving…':'Save Pod'}
-                              </button>
-                              <button className="btn-outline" onClick={()=>setPodForm(null)} style={{ fontSize:13 }}>Cancel</button>
-                            </div>
-                          </div>
-                        )}
+                            )
+                          })()}
 
-                        {allPods.length===0 && !podForm && (
-                          <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic', padding:'12px 0' }}>
-                            No pods yet. Create a pod to group agents into accountability circles.
-                          </div>
-                        )}
-                        {allPods.map(pod=>(
-                          <div key={pod.id} className="card" style={{ padding:16, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10 }}>
-                            <div>
-                              <div style={{ fontWeight:600, fontSize:14, color:'var(--text)', marginBottom:4 }}>🫂 {pod.name}</div>
-                              <div style={{ fontSize:12, color:'var(--muted)' }}>
-                                {pod.memberIds.length} members · {pod.memberIds.map(id=>members.find(m=>m.id===id)?.full_name||'?').join(', ')}
+                          {/* Add Note form / button */}
+                          {noteForm ? (
+                            <div className="card" style={{ padding:20, border:'1px solid rgba(14,165,233,.25)', background:'rgba(14,165,233,.04)' }}>
+                              <div className="serif" style={{ fontSize:15, color:'var(--text)', marginBottom:14 }}>Add Coaching Note</div>
+                              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                                <div>
+                                  <div className="label" style={{ marginBottom:5 }}>Agent</div>
+                                  <select className="field-input" value={noteForm.agentId}
+                                    onChange={e=>setNoteForm(f=>({...f,agentId:e.target.value}))} style={{ width:'100%' }}>
+                                    <option value="">Select agent…</option>
+                                    {members.map(m=><option key={m.id} value={m.id}>{m.full_name||'Agent'}</option>)}
+                                  </select>
+                                </div>
+                                <div>
+                                  <div className="label" style={{ marginBottom:5 }}>Type</div>
+                                  <select className="field-input" value={noteForm.type}
+                                    onChange={e=>setNoteForm(f=>({...f,type:e.target.value}))} style={{ width:'100%' }}>
+                                    <option value="praise">Praise</option>
+                                    <option value="goal">Goal</option>
+                                    <option value="concern">Concern</option>
+                                    <option value="general">General</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <div className="label" style={{ marginBottom:5 }}>Note</div>
+                                  <textarea className="field-input" value={noteForm.text}
+                                    onChange={e=>setNoteForm(f=>({...f,text:e.target.value.slice(0,500)}))}
+                                    placeholder="Write your coaching note here…" rows={4}
+                                    style={{ width:'100%', resize:'vertical', minHeight:90 }}/>
+                                  <div style={{ fontSize:10, color:'var(--dim)', textAlign:'right', marginTop:3 }}>
+                                    {(noteForm.text||'').length}/500
+                                  </div>
+                                </div>
+                                <div style={{ display:'flex', gap:8 }}>
+                                  <button className="btn-primary" onClick={saveNote}
+                                    disabled={noteSaving||!noteForm.text?.trim()||!noteForm.agentId}
+                                    style={{ fontSize:13, padding:'9px 22px' }}>
+                                    {noteSaving ? 'Saving…' : 'Save Note'}
+                                  </button>
+                                  <button className="btn-outline" onClick={()=>setNoteForm(null)} style={{ fontSize:13 }}>Cancel</button>
+                                </div>
                               </div>
                             </div>
-                            <div style={{ display:'flex', gap:6, flexShrink:0 }}>
-                              <button className="btn-outline" style={{ fontSize:11, padding:'5px 10px' }}
-                                onClick={()=>setPodForm({ name:pod.name, memberIds:[...pod.memberIds], editingId:pod.id })}>
-                                Edit
-                              </button>
-                              <button onClick={()=>deletePod(pod.id)}
-                                style={{ background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.2)',
-                                  color:'var(--red)', borderRadius:7, padding:'5px 10px', cursor:'pointer', fontSize:11, fontWeight:600 }}>
-                                ✕
-                              </button>
-                            </div>
+                          ) : (
+                            <button className="btn-outline"
+                              onClick={()=>setNoteForm({ agentId: filterAgent==='all' ? '' : filterAgent, text:'', type:'general', editingId:null })}
+                              style={{ fontSize:13 }}>+ Add Coaching Note</button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Pods sub-tab */}
+                      {adminSubTab==='pods' && (
+                        <div>
+                          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+                            <div className="serif" style={{ fontSize:20, color:'var(--text)' }}>🫂 Accountability Circles</div>
+                            {!podForm && (
+                              <button className="btn-outline" onClick={()=>setPodForm({ name:'', memberIds:[], editingId:null })}
+                                style={{ fontSize:12 }}>+ New Circle</button>
+                            )}
                           </div>
-                        ))}
-                      </div>
+
+                          {podForm && (
+                            <div className="card" style={{ padding:20, marginBottom:16, border:'1px solid rgba(139,92,246,.3)', background:'rgba(139,92,246,.04)' }}>
+                              <div className="serif" style={{ fontSize:15, color:'var(--text)', marginBottom:14 }}>
+                                {podForm.editingId ? 'Edit Circle' : 'New Circle'}
+                              </div>
+                              <div style={{ marginBottom:12 }}>
+                                <div className="label" style={{ marginBottom:5 }}>Circle Name</div>
+                                <input className="field-input" value={podForm.name}
+                                  onChange={e=>setPodForm(f=>({...f,name:e.target.value}))}
+                                  placeholder="e.g. Alpha Circle" style={{ width:'100%' }}/>
+                              </div>
+                              <div style={{ marginBottom:12 }}>
+                                <div className="label" style={{ marginBottom:8 }}>Members (2–5)</div>
+                                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                                  {members.map(m=>{
+                                    const checked = podForm.memberIds.includes(m.id)
+                                    const atMax   = !checked && podForm.memberIds.length >= 5
+                                    const mRank   = getRank(m.xp||0)
+                                    return (
+                                      <label key={m.id} style={{ display:'flex', alignItems:'center', gap:8, cursor:atMax?'not-allowed':'pointer',
+                                        opacity:atMax?0.45:1, padding:'6px 10px', borderRadius:6,
+                                        background:checked?'rgba(139,92,246,.08)':'var(--bg2)', border:`1px solid ${checked?'rgba(139,92,246,.3)':'var(--b1)'}` }}>
+                                        <input type="checkbox" checked={checked} disabled={atMax}
+                                          onChange={e=>setPodForm(f=>({...f, memberIds: e.target.checked
+                                            ? [...f.memberIds, m.id]
+                                            : f.memberIds.filter(id=>id!==m.id)
+                                          }))}/>
+                                        <span style={{ fontSize:14 }}>{mRank.icon}</span>
+                                        <span style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{m.full_name||'Agent'}</span>
+                                        <span style={{ fontSize:11, color:'var(--muted)' }}>{mRank.name}</span>
+                                      </label>
+                                    )
+                                  })}
+                                </div>
+                                {podForm.memberIds.length > 0 && podForm.memberIds.length < 2 && (
+                                  <div style={{ fontSize:11, color:'var(--gold2)', marginTop:6 }}>⚠ Select at least 2 members</div>
+                                )}
+                              </div>
+                              <div style={{ display:'flex', gap:8 }}>
+                                <button className="btn-primary" onClick={savePod} disabled={podSaving||podForm.memberIds.length<2||!podForm.name.trim()}
+                                  style={{ fontSize:13, padding:'9px 22px' }}>
+                                  {podSaving?'Saving…':'Save Circle'}
+                                </button>
+                                <button className="btn-outline" onClick={()=>setPodForm(null)} style={{ fontSize:13 }}>Cancel</button>
+                              </div>
+                            </div>
+                          )}
+
+                          {allPods.length===0 && !podForm && (
+                            <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic', padding:'12px 0' }}>
+                              No circles yet. Create one to group agents into accountability circles.
+                            </div>
+                          )}
+                          {allPods.map(pod=>(
+                            <div key={pod.id} className="card" style={{ padding:16, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10 }}>
+                              <div>
+                                <div style={{ fontWeight:600, fontSize:14, color:'var(--text)', marginBottom:4 }}>🫂 {pod.name}</div>
+                                <div style={{ fontSize:12, color:'var(--muted)' }}>
+                                  {pod.memberIds.length} members · {pod.memberIds.map(id=>members.find(m=>m.id===id)?.full_name||'?').join(', ')}
+                                </div>
+                              </div>
+                              <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                                <button className="btn-outline" style={{ fontSize:11, padding:'5px 10px' }}
+                                  onClick={()=>setPodForm({ name:pod.name, memberIds:[...pod.memberIds], editingId:pod.id })}>
+                                  Edit
+                                </button>
+                                <button onClick={()=>deletePod(pod.id)}
+                                  style={{ background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.2)',
+                                    color:'var(--red)', borderRadius:7, padding:'5px 10px', cursor:'pointer', fontSize:11, fontWeight:600 }}>
+                                  ✕
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </>

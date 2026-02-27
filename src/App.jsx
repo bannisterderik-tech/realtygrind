@@ -1386,6 +1386,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const monthPct         = Math.round(totalHabitChecks/totalPossible*100)
   const todayChecks      = todayBuiltInActive.filter(h=>habits[h.id][today.week][today.day]).length
   const todayPct         = Math.round(todayChecks/Math.max(todayBuiltInActive.length,1)*100)
+  const totalProspecting = Object.entries(counters).filter(([k])=>k.startsWith('prospecting')).reduce((a,[,v])=>a+v,0)
   const totalAppts       = Object.entries(counters).filter(([k])=>k.startsWith('appointments')).reduce((a,[,v])=>a+v,0)
   const totalShowings    = Object.entries(counters).filter(([k])=>k.startsWith('showing')).reduce((a,[,v])=>a+v,0)
   const totalListings    = listings.filter(l => l.status !== 'closed').length
@@ -1623,6 +1624,9 @@ function Dashboard({ theme, onToggleTheme }) {
             sub={`${todayChecks}/${todayBuiltInActive.length} habits`}
             accent={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'}/>
           <StatCard icon="📅" label="Month"        value={`${monthPct}%`}   color="var(--gold)"  sub={`${totalHabitChecks} checks`}/>
+          <StatCard icon="📞" label="Calls"         value={totalProspecting} color="var(--gold)"
+            sub={goals?.prospecting ? `${totalProspecting}/${goals.prospecting} goal` : 'this month'}
+            accent={goals?.prospecting && totalProspecting>=goals.prospecting ? '#10b981' : undefined}/>
           <StatCard icon="📅" label="Appointments" value={totalAppts}        color="var(--green)"
             sub={goals?.appointments ? `${totalAppts}/${goals.appointments} goal` : 'this month'}
             accent={goals?.appointments && totalAppts>=goals.appointments ? '#10b981' : undefined}/>

@@ -1761,12 +1761,22 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
         }
         const closePanel = () => { setViewingMember(null); setMemberDetail(null) }
         return (
-          <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex' }}>
-            {/* Backdrop */}
-            <div style={{ flex:1, background:'rgba(0,0,0,.5)', cursor:'pointer' }} onClick={closePanel}/>
-            {/* Slide-in panel */}
-            <div style={{ width:'min(480px,100vw)', background:'var(--bg)', overflowY:'auto',
-              borderLeft:'2px solid var(--b2)',
+          <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex' }}
+            onKeyDown={e => e.key === 'Escape' && closePanel()} tabIndex={-1}
+            ref={el => el && el.focus()}>
+            {/* Backdrop — click anywhere left of panel to close */}
+            <div style={{ flex:1, background:'rgba(0,0,0,.55)', cursor:'pointer',
+              display:'flex', alignItems:'flex-end', justifyContent:'flex-start',
+              padding:'0 0 24px 24px' }}
+              onClick={closePanel}>
+              <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', letterSpacing:'.5px', userSelect:'none' }}>
+                ESC or click to close
+              </div>
+            </div>
+            {/* Slide-in panel — distinct surface color, visible border */}
+            <div style={{ width:'min(480px,100vw)', background:'var(--surface)', overflowY:'auto',
+              borderLeft:'3px solid var(--b3)',
+              boxShadow:'-8px 0 32px rgba(0,0,0,.45)',
               display:'flex', flexDirection:'column', contain:'strict' }}>
 
               {/* Header */}
@@ -1789,8 +1799,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                     <div className="serif" style={{ fontSize:22, color:rank.color, fontWeight:700, lineHeight:1 }}>{(viewingMember.xp||0).toLocaleString()}</div>
                     <div style={{ fontSize:10, color:'var(--dim)', marginTop:2 }}>XP</div>
                   </div>
-                  <button onClick={closePanel} style={{ background:'none', border:'none', fontSize:24,
-                    color:'var(--muted)', cursor:'pointer', padding:'4px 8px', borderRadius:6,
+                  <button onClick={closePanel} style={{ background:'rgba(0,0,0,.15)', border:'1px solid var(--b3)', fontSize:20,
+                    color:'var(--text)', cursor:'pointer', padding:'4px 10px', borderRadius:6,
                     lineHeight:1, flexShrink:0 }}>×</button>
                 </div>
               </div>

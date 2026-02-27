@@ -59,7 +59,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
 
   async function fetchMembers(tid) {
     setLoading(true)
-    const {data:mems} = await supabase.from('profiles').select('id,full_name,xp,streak').eq('team_id',tid).order('xp',{ascending:false})
+    const {data:mems} = await supabase.from('profiles').select('id,full_name,xp,streak,goals').eq('team_id',tid).order('xp',{ascending:false})
     setMembers(mems||[])
     const {data:team} = await supabase.from('teams').select('*').eq('id',tid).single()
     setTeamData(team)
@@ -307,11 +307,24 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     if (!text) return
     setReplySaving(noteId)
     const newReply = { id: Date.now().toString(36), authorId: user.id, text, createdAt: new Date().toISOString() }
-    const updated = (teamData?.team_prefs?.coaching_notes||[]).map(n=>
-      n.id===noteId ? { ...n, replies: [...(n.replies||[]), newReply] } : n)
-    const updatedPrefs = { ...(teamData?.team_prefs||{}), coaching_notes: updated }
-    await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile.team_id)
-    setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
+    const isOwner = teamData?.created_by === user?.id
+    if (isOwner) {
+      // Owner has UPDATE on teams table
+      const updated = (teamData?.team_prefs?.coaching_notes||[]).map(n=>
+        n.id===noteId ? { ...n, replies: [...(n.replies||[]), newReply] } : n)
+      const updatedPrefs = { ...(teamData?.team_prefs||{}), coaching_notes: updated }
+      await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile.team_id)
+      setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
+    } else {
+      // Agent writes reply to their own profile row (always allowed)
+      const existingReplies = profile?.goals?.coaching_replies || {}
+      const noteReplies = existingReplies[noteId] || []
+      const updatedCoachingReplies = { ...existingReplies, [noteId]: [...noteReplies, newReply] }
+      const updatedGoals = { ...(profile?.goals||{}), coaching_replies: updatedCoachingReplies }
+      await supabase.from('profiles').update({ goals: updatedGoals }).eq('id', user.id)
+      // Optimistically update members list so coach can see it after next fetch
+      setMembers(ms => ms.map(m => m.id===user.id ? { ...m, goals: updatedGoals } : m))
+    }
     setReplyForms(f => ({ ...f, [noteId]: '' }))
     setReplySaving(null)
   }
@@ -746,9 +759,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 <div style={{ fontSize:13, color:'var(--text)', lineHeight:1.6, marginBottom:10 }}>{note.text}</div>
 
                                 {/* Replies */}
-                                {(note.replies||[]).length > 0 && (
+                                {(()=>{
+                                  const myAgentReplies = profile?.goals?.coaching_replies?.[note.id] || []
+                                  const allReplies = [...(note.replies||[]), ...myAgentReplies].sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt))
+                                  return allReplies.length > 0 && (
                                   <div style={{ borderLeft:'2px solid var(--b2)', paddingLeft:10, marginBottom:10, display:'flex', flexDirection:'column', gap:8 }}>
-                                    {note.replies.map(r=>{
+                                    {allReplies.map(r=>{
                                       const isCoach = r.authorId===teamData?.created_by
                                       const rName = isCoach ? (members.find(m=>m.id===r.authorId)?.full_name||'Coach') : 'You'
                                       return (
@@ -763,7 +779,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                       )
                                     })}
                                   </div>
-                                )}
+                                )})()}
 
                                 {/* Agent reply form */}
                                 <div style={{ display:'flex', gap:6 }}>
@@ -939,9 +955,13 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                           <div style={{ fontSize:13, color:'var(--text)', lineHeight:1.6, marginBottom:8 }}>{note.text}</div>
 
                                           {/* Replies thread */}
-                                          {(note.replies||[]).length > 0 && (
+                                          {(()=>{
+                                            const agentMember = members.find(m=>m.id===note.agentId)
+                                            const agentProfileReplies = agentMember?.goals?.coaching_replies?.[note.id] || []
+                                            const allReplies = [...(note.replies||[]), ...agentProfileReplies].sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt))
+                                            return allReplies.length > 0 && (
                                             <div style={{ borderLeft:'2px solid var(--b2)', paddingLeft:10, marginBottom:10, display:'flex', flexDirection:'column', gap:8 }}>
-                                              {note.replies.map(r=>{
+                                              {allReplies.map(r=>{
                                                 const author = members.find(m=>m.id===r.authorId)
                                                 const authorName = author?.full_name || (r.authorId===user.id ? 'You' : 'Agent')
                                                 const isCoach = r.authorId===teamData?.created_by
@@ -957,7 +977,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                                 )
                                               })}
                                             </div>
-                                          )}
+                                          )})()}
 
                                           {/* Reply form (coach) */}
                                           <div style={{ display:'flex', gap:6, marginBottom:8 }}>

@@ -878,11 +878,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                     fontSize:14, fontWeight:700, color:'#fff', flexShrink:0 }}>
                                     {(m.full_name||'?').charAt(0).toUpperCase()}
                                   </div>
-                                  <div style={{ flex:1 }}>
-                                    <div style={{ fontSize:14, fontWeight:600, color:'var(--text)' }}>{m.full_name||'Agent'}</div>
+                                  <div style={{ flex:1, minWidth:0 }}>
+                                    <div style={{ fontSize:14, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.full_name||'Agent'}</div>
                                     <div style={{ fontSize:11, color:'var(--muted)' }}>{submitted ? 'Submitted today' : 'Not submitted yet'}</div>
                                   </div>
-                                  {submitted && <span style={{ fontSize:11, color:'var(--green)', fontWeight:600 }}>✓ Done</span>}
+                                  {submitted && <span style={{ fontSize:11, color:'var(--green)', fontWeight:600, flexShrink:0 }}>✓ Done</span>}
                                 </div>
                                 {submitted && (
                                   <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
@@ -1060,8 +1060,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                           fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
                                           {(me.full_name||'A').charAt(0).toUpperCase()}
                                         </div>
-                                        <div style={{ flex:1 }}>
-                                          <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{me.full_name||'Agent'}</div>
+                                        <div style={{ flex:1, minWidth:0 }}>
+                                          <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{me.full_name||'Agent'}</div>
                                           <div style={{ fontSize:10, color:'var(--muted)' }}>{myRank.name} · 🔥 {me.streak||0}</div>
                                         </div>
                                         <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>YOU</span>
@@ -1095,8 +1095,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                           fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
                                           {(mate.full_name||'A').charAt(0).toUpperCase()}
                                         </div>
-                                        <div style={{ flex:1 }}>
-                                          <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{mate.full_name||'Agent'}</div>
+                                        <div style={{ flex:1, minWidth:0 }}>
+                                          <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{mate.full_name||'Agent'}</div>
                                           <div style={{ fontSize:10, color:'var(--muted)' }}>{mateRank.name} · 🔥 {mate.streak||0}</div>
                                         </div>
                                         {isLeaderMate && <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background:'rgba(139,92,246,.1)', color:'#8b5cf6', fontWeight:700 }}>LEAD</span>}
@@ -1164,9 +1164,9 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               boxShadow:`0 2px 8px ${rank.color}44` }}>
                               {(m.full_name||'A').charAt(0).toUpperCase()}
                             </div>
-                            <div style={{ flex:1 }}>
+                            <div style={{ flex:1, minWidth:0 }}>
                               <div style={{ display:'flex', alignItems:'center', gap:7, flexWrap:'wrap' }}>
-                                <span style={{ fontSize:14, fontWeight:600, color:'var(--text)' }}>{m.full_name||'Agent'}</span>
+                                <span style={{ fontSize:14, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'100%' }}>{m.full_name||'Agent'}</span>
                                 {isMe && <span style={{ fontSize:9, padding:'2px 6px', borderRadius:4, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>YOU</span>}
                                 {isOwner && <span style={{ fontSize:9, padding:'2px 6px', borderRadius:4, background:'rgba(139,92,246,.12)', color:'#8b5cf6', fontWeight:700 }}>OWNER</span>}
                                 {isAdminMember && !isOwner && <span style={{ fontSize:9, padding:'2px 6px', borderRadius:4, background:'rgba(14,165,233,.12)', color:'#0ea5e9', fontWeight:700 }}>ADMIN</span>}
@@ -1608,8 +1608,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                         </div>
                       )}
 
-                      {/* Groups sub-tab — owner only */}
-                      {adminSubTab==='groups' && isTeamOwner && (
+                      {/* Groups sub-tab — owner full access; admins read-only */}
+                      {adminSubTab==='groups' && (isTeamOwner || isAdmin) && (
                         <div>
                           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
                             <div>
@@ -1771,11 +1771,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                       fontSize:14, fontWeight:700, color:'#fff', flexShrink:0 }}>
                                       {(m.full_name||'?').charAt(0).toUpperCase()}
                                     </div>
-                                    <div style={{ flex:1 }}>
-                                      <div style={{ fontSize:14, fontWeight:600, color:'var(--text)' }}>{m.full_name||'Agent'}</div>
+                                    <div style={{ flex:1, minWidth:0 }}>
+                                      <div style={{ fontSize:14, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.full_name||'Agent'}</div>
                                       <div style={{ fontSize:11, color:'var(--muted)' }}>{submitted ? `Submitted ${new Date(sd.date).toLocaleDateString()}` : 'Not submitted yet'}</div>
                                     </div>
-                                    {submitted && <span style={{ fontSize:11, color:'var(--green)', fontWeight:600 }}>✓ Done</span>}
+                                    {submitted && <span style={{ fontSize:11, color:'var(--green)', fontWeight:600, flexShrink:0 }}>✓ Done</span>}
                                   </div>
                                   {submitted && (
                                     <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
@@ -1829,7 +1829,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                   )}
 
                       {/* ── Settings sub-tab (owner only) ─────────────────── */}
-                      {adminSubTab==='settings' && isTeamOwner && (
+                      {teamsTab==='admin' && adminSubTab==='settings' && isTeamOwner && (
                         <div>
                           {/* Team Admins */}
                           <div style={{ marginBottom:32 }}>
@@ -1849,11 +1849,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                       fontSize:13, fontWeight:700, color:'#fff' }}>
                                       {(m.full_name||'A').charAt(0).toUpperCase()}
                                     </div>
-                                    <div style={{ flex:1 }}>
-                                      <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{m.full_name||'Agent'}</div>
+                                    <div style={{ flex:1, minWidth:0 }}>
+                                      <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.full_name||'Agent'}</div>
                                       <div style={{ fontSize:11, color:'var(--muted)' }}>{rank.name}</div>
                                     </div>
-                                    {isAdminMember && <span style={{ fontSize:9, padding:'2px 6px', borderRadius:4, background:'rgba(14,165,233,.12)', color:'#0ea5e9', fontWeight:700 }}>ADMIN</span>}
+                                    {isAdminMember && <span style={{ fontSize:9, padding:'2px 6px', borderRadius:4, background:'rgba(14,165,233,.12)', color:'#0ea5e9', fontWeight:700, flexShrink:0 }}>ADMIN</span>}
                                     <button onClick={()=>toggleAdmin(m.id)}
                                       style={{ fontSize:11, padding:'6px 14px', borderRadius:6, cursor:'pointer', flexShrink:0,
                                         border: isAdminMember ? '1px solid rgba(220,38,38,.3)' : '1px solid rgba(14,165,233,.3)',
@@ -1973,8 +1973,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                     boxShadow:`0 4px 16px ${rank.color}44` }}>
                     {(viewingMember.full_name||'A').charAt(0).toUpperCase()}
                   </div>
-                  <div style={{ flex:1 }}>
-                    <div className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:700 }}>{viewingMember.full_name||'Agent'}</div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{viewingMember.full_name||'Agent'}</div>
                     <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>{rank.icon} {rank.name} · 🔥 {viewingMember.streak||0} day streak</div>
                   </div>
                   <div style={{ textAlign:'right', flexShrink:0 }}>

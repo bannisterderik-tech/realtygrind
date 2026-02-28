@@ -117,7 +117,6 @@ input:focus, select:focus, textarea:focus, button:focus { outline: none; }
   --r: 13px;
   --r2: 10px;
   --r3: 8px;
-  --gold5: rgba(217,119,6,.05);
 }
 
 /* ── Animations ── */

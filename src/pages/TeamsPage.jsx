@@ -75,6 +75,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [confirmModal,    setConfirmModal]    = useState(null)   // { message, label, onConfirm } | null
   const [panelNoteForm,   setPanelNoteForm]   = useState(null)   // { text, type } | null
   const [panelNoteSaving, setPanelNoteSaving] = useState(false)
+  const [teamListings,    setTeamListings]    = useState([])     // active listings for all team members
 
   const MONTH_YEAR = new Date().toISOString().slice(0,7)
 
@@ -153,6 +154,17 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
         }
       })
       setMemberStats(stats)
+
+      // Load active listings for all members
+      const { data: listRows } = await supabase
+        .from('listings')
+        .select('id,address,status,price,commission,user_id')
+        .in('user_id', ids)
+        .neq('status', 'closed')
+        .gt('unit_count', 0)
+        .order('created_at', { ascending: false })
+      const nameMap = Object.fromEntries((mems||[]).map(m=>[m.id, m.full_name||'Agent']))
+      setTeamListings((listRows||[]).map(l=>({ ...l, agentName: nameMap[l.user_id]||'Agent' })))
     }
     } catch (err) {
       console.error('fetchMembers error:', err)
@@ -883,6 +895,64 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                           )}
                         </div>
 
+                        {/* Group Listings */}
+                        {(()=>{
+                          const groupListings = teamListings.filter(l => groupMems.some(m=>m.id===l.user_id))
+                          if (!groupListings.length) return null
+                          return (
+                            <div style={{ marginBottom:32 }}>
+                              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+                                <div className="serif" style={{ fontSize:20, color:'var(--text)' }}>🏠 Active Listings</div>
+                                <span style={{ fontSize:11, padding:'3px 10px', borderRadius:20, fontWeight:600,
+                                  background:'rgba(16,185,129,.1)', color:'var(--green)', border:'1px solid rgba(16,185,129,.2)' }}>
+                                  {groupListings.length} active
+                                </span>
+                              </div>
+                              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                                {groupListings.map(l => {
+                                  const pA = v => { const n=parseFloat(String(v||'').replace(/[^0-9.]/g,'')); return isNaN(n)?0:n }
+                                  const price = pA(l.price); const comm = pA(l.commission)
+                                  const isMe  = l.user_id === user?.id
+                                  const sc    = l.status === 'pending' ? '#6366f1' : '#10b981'
+                                  return (
+                                    <div key={l.id} style={{ padding:'12px 16px', borderRadius:10,
+                                      border:`1px solid ${isMe ? 'rgba(217,119,6,.3)' : 'var(--b2)'}`,
+                                      background: isMe ? 'var(--gold3)' : 'var(--surface)' }}>
+                                      <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:(price>0||comm>0)?6:0 }}>
+                                        <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700,
+                                          background:`${sc}15`, color:sc, border:`1px solid ${sc}30`,
+                                          textTransform:'uppercase', letterSpacing:'.5px', flexShrink:0 }}>
+                                          {l.status || 'Active'}
+                                        </span>
+                                        {l.address && (
+                                          <span style={{ fontSize:13, color:'var(--text)', fontWeight:500, flex:1, minWidth:0,
+                                            overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{l.address}</span>
+                                        )}
+                                        <span style={{ fontSize:11, flexShrink:0, whiteSpace:'nowrap',
+                                          color: isMe ? 'var(--gold)' : 'var(--dim)', fontWeight: isMe ? 700 : 400 }}>
+                                          {isMe ? '⭐ You' : l.agentName}
+                                        </span>
+                                      </div>
+                                      {(price>0 || comm>0) && (
+                                        <div style={{ display:'flex', gap:20 }}>
+                                          {price>0 && <div>
+                                            <div style={{ fontSize:9, color:'var(--dim)', fontWeight:700, letterSpacing:'.5px' }}>LIST PRICE</div>
+                                            <div style={{ fontSize:13, color:'var(--text)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}>{fmtMoney(price)}</div>
+                                          </div>}
+                                          {comm>0 && <div>
+                                            <div style={{ fontSize:9, color:'var(--dim)', fontWeight:700, letterSpacing:'.5px' }}>COMMISSION</div>
+                                            <div style={{ fontSize:13, color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}>{fmtMoney(comm)}</div>
+                                          </div>}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        })()}
+
                         {/* Standup Feed */}
                         <div>
                           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
@@ -1251,6 +1321,60 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       )
                     })}
                   </div>
+
+                  {/* ── Team Listings ── */}
+                  {teamListings.length > 0 && (
+                    <div style={{ marginTop:28 }}>
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+                        <div className="serif" style={{ fontSize:20, color:'var(--text)' }}>🏠 Active Listings</div>
+                        <span style={{ fontSize:11, padding:'3px 10px', borderRadius:20, fontWeight:600,
+                          background:'rgba(16,185,129,.1)', color:'var(--green)', border:'1px solid rgba(16,185,129,.2)' }}>
+                          {teamListings.length} active
+                        </span>
+                      </div>
+                      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                        {teamListings.map(l => {
+                          const pA = v => { const n=parseFloat(String(v||'').replace(/[^0-9.]/g,'')); return isNaN(n)?0:n }
+                          const price = pA(l.price); const comm = pA(l.commission)
+                          const isMe  = l.user_id === user?.id
+                          const sc    = l.status === 'pending' ? '#6366f1' : '#10b981'
+                          return (
+                            <div key={l.id} style={{ padding:'12px 16px', borderRadius:10,
+                              border:`1px solid ${isMe ? 'rgba(217,119,6,.3)' : 'var(--b2)'}`,
+                              background: isMe ? 'var(--gold3)' : 'var(--surface)' }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:(price>0||comm>0)?6:0 }}>
+                                <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700,
+                                  background:`${sc}15`, color:sc, border:`1px solid ${sc}30`,
+                                  textTransform:'uppercase', letterSpacing:'.5px', flexShrink:0 }}>
+                                  {l.status || 'Active'}
+                                </span>
+                                {l.address && (
+                                  <span style={{ fontSize:13, color:'var(--text)', fontWeight:500, flex:1, minWidth:0,
+                                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{l.address}</span>
+                                )}
+                                <span style={{ fontSize:11, flexShrink:0, whiteSpace:'nowrap',
+                                  color: isMe ? 'var(--gold)' : 'var(--dim)', fontWeight: isMe ? 700 : 400 }}>
+                                  {isMe ? '⭐ You' : l.agentName}
+                                </span>
+                              </div>
+                              {(price>0 || comm>0) && (
+                                <div style={{ display:'flex', gap:20 }}>
+                                  {price>0 && <div>
+                                    <div style={{ fontSize:9, color:'var(--dim)', fontWeight:700, letterSpacing:'.5px' }}>LIST PRICE</div>
+                                    <div style={{ fontSize:13, color:'var(--text)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}>{fmtMoney(price)}</div>
+                                  </div>}
+                                  {comm>0 && <div>
+                                    <div style={{ fontSize:9, color:'var(--dim)', fontWeight:700, letterSpacing:'.5px' }}>COMMISSION</div>
+                                    <div style={{ fontSize:13, color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}>{fmtMoney(comm)}</div>
+                                  </div>}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* ── Team Challenges ── */}
                   {(() => {

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { CSS, ThemeToggle } from '../design'
 
-export default function AuthPage({ theme, onToggleTheme }) {
+export default function AuthPage({ theme, onToggleTheme, onBack }) {
   const [mode,    setMode]    = useState('login')
   const [name,    setName]    = useState('')
   const [email,   setEmail]   = useState('')
@@ -42,6 +42,19 @@ export default function AuthPage({ theme, onToggleTheme }) {
           position:'absolute', inset:0, opacity: theme==='dark'?.04:.03, pointerEvents:'none',
           backgroundImage:'repeating-linear-gradient(0deg,transparent,transparent 39px,var(--b2) 39px,var(--b2) 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,var(--b2) 39px,var(--b2) 40px)',
         }}/>
+
+        {/* Back to landing */}
+        {onBack && (
+          <button onClick={onBack} style={{ position:'absolute', top:20, left:20,
+            background:'transparent', border:'none', cursor:'pointer',
+            fontSize:13, color:'var(--muted)', fontFamily:'Poppins,sans-serif',
+            display:'flex', alignItems:'center', gap:5, padding:'4px 0',
+            transition:'color .15s' }}
+            onMouseEnter={e=>e.currentTarget.style.color='var(--text)'}
+            onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}>
+            ← Back
+          </button>
+        )}
 
         {/* Theme toggle */}
         <div style={{ position:'absolute', top:20, right:20, display:'flex', alignItems:'center', gap:8 }}>

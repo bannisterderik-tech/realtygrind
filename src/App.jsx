@@ -2,6 +2,7 @@ import { useState, useEffect, createContext, useContext } from 'react'
 import { AuthProvider, useAuth } from './lib/AuthContext'
 import { supabase } from './lib/supabase'
 import AuthPage from './pages/AuthPage'
+import LandingPage from './pages/LandingPage'
 import TeamsPage from './pages/TeamsPage'
 import ProfilePage from './pages/ProfilePage'
 import DirectoryPage from './pages/DirectoryPage'
@@ -2957,7 +2958,8 @@ function Dashboard({ theme, onToggleTheme }) {
 
 function AppInner() {
   const { user, loading } = useAuth()
-  const [theme, setTheme] = useState(()=>localStorage.getItem('rg_theme')||'light')
+  const [theme,    setTheme]    = useState(()=>localStorage.getItem('rg_theme')||'light')
+  const [showAuth, setShowAuth] = useState(false)   // landing → auth transition
 
   function toggleTheme() {
     const next = theme==='light' ? 'dark' : 'light'
@@ -2983,7 +2985,10 @@ function AppInner() {
   if (!user) return (
     <div data-theme={theme}>
       <style>{CSS}</style>
-      <AuthPage theme={theme} onToggleTheme={toggleTheme}/>
+      {showAuth
+        ? <AuthPage theme={theme} onToggleTheme={toggleTheme} onBack={()=>setShowAuth(false)}/>
+        : <LandingPage theme={theme} onToggleTheme={toggleTheme} onGetStarted={()=>setShowAuth(true)}/>
+      }
     </div>
   )
 

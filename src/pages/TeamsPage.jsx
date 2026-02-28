@@ -72,13 +72,21 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [transferSaving, setTransferSaving] = useState(false)
   const [transferConfirm, setTransferConfirm] = useState(false) // two-step confirm
   const fetchSeqRef = useRef(0)  // increments per fetch; stale results are discarded
+  const [confirmModal,    setConfirmModal]    = useState(null)   // { message, label, onConfirm } | null
+  const [panelNoteForm,   setPanelNoteForm]   = useState(null)   // { text, type } | null
+  const [panelNoteSaving, setPanelNoteSaving] = useState(false)
 
   const MONTH_YEAR = new Date().toISOString().slice(0,7)
 
   // Depend only on team_id — prevents re-fetching every time the profile object
   // is recreated (e.g. on token refresh) while nothing meaningful has changed.
   useEffect(()=>{
-    if (profile?.team_id) { setMode('myteam'); fetchMembers(profile.team_id) }
+    if (profile?.team_id) {
+      setMode('myteam'); fetchMembers(profile.team_id)
+    } else if (profile !== null && !profile?.team_id) {
+      // User left the team or has no team — reset to landing menu
+      setMode('menu'); setMembers([]); setTeamData(null); setMemberStats({})
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[profile?.team_id])
 
@@ -159,6 +167,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     const seq = ++fetchSeqRef.current
     setViewingMember(member)
     setMemberDetail(null)
+    setRemoveConfirm(null)
+    setPanelNoteForm(null)
     setMemberDetailLoading(true)
     try {
       const [{ data: txs }, { data: habs }] = await Promise.all([
@@ -213,7 +223,6 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   }
 
   async function leaveTeam() {
-    if (!confirm('Leave this team? Your group membership will also be removed.')) return
     // Clean up any group membership/leadership before leaving
     const groups = teamData?.team_prefs?.groups || []
     const needsCleanup = groups.some(g => g.memberIds.includes(user.id) || g.leaderId === user.id)
@@ -425,7 +434,6 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   }
 
   async function deleteGroup(gid) {
-    if (!confirm('Delete this group?')) return
     const updated = (teamData?.team_prefs?.groups||[]).filter(g => g.id !== gid)
     const newPrefs = { ...(teamData?.team_prefs||{}), groups: updated }
     await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
@@ -522,7 +530,6 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   }
 
   async function deleteNote(noteId) {
-    if (!confirm('Delete this note?')) return
     const updated = (teamData?.team_prefs?.coaching_notes||[]).filter(n=>n.id!==noteId)
     const updatedPrefs = { ...(teamData?.team_prefs||{}), coaching_notes: updated }
     await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile.team_id)
@@ -562,6 +569,28 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     }
     setReplyForms(f => ({ ...f, [noteId]: '' }))
     setReplySaving(null)
+  }
+
+  // ── Coaching note from the detail panel (pre-sets agentId = viewingMember) ──
+  async function savePanelNote() {
+    if (!panelNoteForm?.text?.trim() || !viewingMember?.id) return
+    setPanelNoteSaving(true)
+    const existing = teamData?.team_prefs?.coaching_notes || []
+    const newNote = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2,5),
+      agentId:   viewingMember.id,
+      coachId:   user?.id,
+      text:      panelNoteForm.text.trim(),
+      type:      panelNoteForm.type || 'general',
+      pinned:    false,
+      replies:   [],
+      createdAt: new Date().toISOString(),
+    }
+    const updatedPrefs = { ...(teamData?.team_prefs||{}), coaching_notes: [...existing, newNote] }
+    await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile?.team_id)
+    setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
+    setPanelNoteForm(null)
+    setPanelNoteSaving(false)
   }
 
   // ── Derived values ─────────────────────────────────────────────────────────
@@ -807,7 +836,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                     </div>
                                   </div>
                                   {canManageGroup && (
-                                    <button onClick={()=>{ if(confirm('End challenge and award XP to leader?')) endGroupChallenge(group.id,c.id) }}
+                                    <button onClick={()=>setConfirmModal({ message:'Award XP to the current leader and end this challenge?', label:'End & Award', onConfirm:()=>endGroupChallenge(group.id,c.id) })}
                                       style={{ background:'rgba(220,38,38,.08)', border:'1px solid rgba(220,38,38,.2)',
                                         color:'var(--red)', borderRadius:7, padding:'6px 12px', fontSize:11, cursor:'pointer', fontWeight:600, whiteSpace:'nowrap' }}>
                                       End & Award
@@ -956,7 +985,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                         </div>
                         {/* Owner and group leaders cannot leave — owner created the team, leaders must resign first */}
                         {!isTeamOwner && !isGroupLeader && (
-                          <button onClick={leaveTeam} style={{
+                          <button onClick={()=>setConfirmModal({ message:'Leave this team? Your group membership will also be removed.', label:'Leave Team', onConfirm:leaveTeam })} style={{
                             background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.2)',
                             color:'var(--red)', borderRadius:8, padding:'9px 16px', cursor:'pointer', fontSize:12, fontWeight:600
                           }}>Leave Team</button>
@@ -1301,7 +1330,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                   </div>
                                 </div>
                                 {isOwner && (
-                                  <button onClick={()=>{ if(confirm('End challenge and award XP to leader?')) endChallenge(c.id) }}
+                                  <button onClick={()=>setConfirmModal({ message:'Award XP to the current leader and end this challenge?', label:'End & Award', onConfirm:()=>endChallenge(c.id) })}
                                     style={{ background:'rgba(220,38,38,.08)', border:'1px solid rgba(220,38,38,.2)',
                                       color:'var(--red)', borderRadius:7, padding:'6px 12px', fontSize:11, cursor:'pointer', fontWeight:600, whiteSpace:'nowrap' }}>
                                     End & Award
@@ -1541,7 +1570,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                                 color: note.pinned ? 'var(--gold)' : 'var(--muted)', fontWeight:600 }}>
                                                 {note.pinned ? '📌 Unpin' : '📌 Pin'}
                                               </button>
-                                              <button onClick={()=>deleteNote(note.id)} style={{ fontSize:11, padding:'4px 10px',
+                                              <button onClick={()=>setConfirmModal({ message:'Delete this coaching note?', label:'Delete Note', onConfirm:()=>deleteNote(note.id) })} style={{ fontSize:11, padding:'4px 10px',
                                                 borderRadius:6, cursor:'pointer', background:'rgba(220,38,38,.06)',
                                                 border:'1px solid rgba(220,38,38,.2)', color:'var(--red)', fontWeight:600 }}>
                                                 Delete
@@ -1722,7 +1751,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                         }}>
                                         Edit
                                       </button>
-                                      <button onClick={()=>deleteGroup(grp.id)}
+                                      <button onClick={()=>setConfirmModal({ message:`Delete the group "${grp.name}"? Members won't be removed from the team.`, label:'Delete Group', onConfirm:()=>deleteGroup(grp.id) })}
                                         style={{ background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.2)',
                                           color:'var(--red)', borderRadius:7, padding:'5px 10px', cursor:'pointer', fontSize:11, fontWeight:600 }}>
                                         ✕
@@ -1942,7 +1971,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
           pending:        { label:'Pending',      color:'#6366f1' },
           closed:         { label:'Closed',       color:'var(--green)' },
         }
-        const closePanel = () => { setViewingMember(null); setMemberDetail(null); setRemoveConfirm(null) }
+        const closePanel = () => { setViewingMember(null); setMemberDetail(null); setRemoveConfirm(null); setPanelNoteForm(null) }
         return (
           <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex',
             animation:'panelFadeIn .18s ease' }}>
@@ -2123,6 +2152,153 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                 </div>
               )}
 
+              {/* ── Coaching Notes (visible to admins, owner, group leaders) ── */}
+              {(()=>{
+                const NC = { praise:'#10b981', goal:'#d97706', concern:'#f43f5e', general:'#0ea5e9' }
+                const viewerNotes = allCoachingNotes
+                  .filter(n => n.agentId === viewingMember.id)
+                  .sort((a,b) => (b.pinned?1:0)-(a.pinned?1:0) || new Date(b.createdAt)-new Date(a.createdAt))
+                return (
+                  <div style={{ padding:'20px 24px', borderTop:'1px solid var(--b2)' }}>
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+                      <div className="serif" style={{ fontSize:15, color:'var(--text)' }}>📋 Coaching Notes</div>
+                      {!panelNoteForm && (
+                        <button onClick={()=>setPanelNoteForm({ text:'', type:'general' })}
+                          style={{ fontSize:11, padding:'5px 12px', borderRadius:6, cursor:'pointer',
+                            border:'1px solid var(--b3)', background:'transparent',
+                            color:'var(--text2)', fontWeight:600 }}>+ Add Note</button>
+                      )}
+                    </div>
+
+                    {/* Add-note form */}
+                    {panelNoteForm && (
+                      <div style={{ marginBottom:14, padding:14, borderRadius:10,
+                        background:'rgba(14,165,233,.04)', border:'1px solid rgba(14,165,233,.2)' }}>
+                        <div style={{ display:'flex', gap:6, marginBottom:10, flexWrap:'wrap' }}>
+                          {['general','praise','goal','concern'].map(t=>{
+                            const tc = NC[t]
+                            const active = panelNoteForm.type===t
+                            return (
+                              <button key={t} onClick={()=>setPanelNoteForm(f=>({...f,type:t}))}
+                                style={{ fontSize:10, padding:'3px 9px', borderRadius:5, cursor:'pointer',
+                                  fontWeight:600, textTransform:'capitalize',
+                                  border: active ? 'none' : `1px solid ${tc}44`,
+                                  background: active ? tc : `${tc}12`,
+                                  color: active ? '#fff' : tc }}>
+                                {t}
+                              </button>
+                            )
+                          })}
+                        </div>
+                        <textarea className="field-input" value={panelNoteForm.text}
+                          onChange={e=>setPanelNoteForm(f=>({...f,text:e.target.value.slice(0,500)}))}
+                          placeholder="Write coaching note…" rows={3}
+                          style={{ width:'100%', resize:'vertical', fontSize:13, marginBottom:4, minHeight:72 }}/>
+                        <div style={{ fontSize:10, color:'var(--dim)', textAlign:'right', marginBottom:8 }}>
+                          {(panelNoteForm.text||'').length}/500
+                        </div>
+                        <div style={{ display:'flex', gap:8 }}>
+                          <button className="btn-primary" onClick={savePanelNote}
+                            disabled={panelNoteSaving||!panelNoteForm.text.trim()}
+                            style={{ fontSize:12, padding:'7px 16px' }}>
+                            {panelNoteSaving ? 'Saving…' : 'Save Note'}
+                          </button>
+                          <button className="btn-outline" onClick={()=>setPanelNoteForm(null)}
+                            style={{ fontSize:12 }}>Cancel</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Notes list */}
+                    {viewerNotes.length === 0 && !panelNoteForm ? (
+                      <div style={{ fontSize:12, color:'var(--muted)', fontStyle:'italic', textAlign:'center', padding:'8px 0' }}>
+                        No coaching notes yet for this agent.
+                      </div>
+                    ) : (
+                      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                        {viewerNotes.map(note=>{
+                          const c = NC[note.type] || NC.general
+                          const agentMember = members.find(m=>m.id===note.agentId)
+                          const agentReplies = agentMember?.goals?.coaching_replies?.[note.id] || []
+                          const allReplies = [...(note.replies||[]), ...agentReplies]
+                            .sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt))
+                          return (
+                            <div key={note.id} style={{ padding:'12px 14px', borderRadius:10,
+                              border: note.pinned ? '1px solid rgba(217,119,6,.45)' : '1px solid var(--b2)',
+                              background: note.pinned ? 'var(--gold3)' : 'var(--bg2)' }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:7, flexWrap:'wrap' }}>
+                                <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700,
+                                  background:`${c}18`, color:c, border:`1px solid ${c}33`,
+                                  textTransform:'uppercase', letterSpacing:'.5px', flexShrink:0 }}>{note.type}</span>
+                                {note.pinned && <span style={{ fontSize:10, color:'var(--gold2)', flexShrink:0 }}>📌</span>}
+                                <span style={{ marginLeft:'auto', fontSize:10, color:'var(--dim)', flexShrink:0 }}>{relativeTime(note.createdAt)}</span>
+                              </div>
+                              <div style={{ fontSize:13, color:'var(--text)', lineHeight:1.6, marginBottom:8 }}>{note.text}</div>
+
+                              {/* Replies thread */}
+                              {allReplies.length>0 && (
+                                <div style={{ borderLeft:'2px solid var(--b2)', paddingLeft:10, marginBottom:8,
+                                  display:'flex', flexDirection:'column', gap:6 }}>
+                                  {allReplies.map(r=>{
+                                    const isCoach = r.authorId !== note.agentId
+                                    return (
+                                      <div key={r.id}>
+                                        <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:2 }}>
+                                          <span style={{ fontSize:10, fontWeight:600, color: isCoach ? 'var(--gold)' : 'var(--text)' }}>
+                                            {isCoach ? (members.find(m=>m.id===r.authorId)?.full_name||'Coach') : (viewingMember.full_name||'Agent')}
+                                          </span>
+                                          {isCoach && <span style={{ fontSize:8, padding:'1px 4px', borderRadius:3, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>COACH</span>}
+                                          <span style={{ fontSize:9, color:'var(--dim)', marginLeft:2 }}>{relativeTime(r.createdAt)}</span>
+                                        </div>
+                                        <div style={{ fontSize:12, color:'var(--text2)', lineHeight:1.5 }}>{r.text}</div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              )}
+
+                              {/* Reply input */}
+                              <div style={{ display:'flex', gap:6, marginBottom: isTeamOwner ? 8 : 0 }}>
+                                <input className="field-input" value={replyForms[note.id]||''}
+                                  onChange={e=>setReplyForms(f=>({...f,[note.id]:e.target.value.slice(0,300)}))}
+                                  onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&saveReply(note.id)}
+                                  placeholder="Reply…"
+                                  style={{ flex:1, padding:'5px 10px', fontSize:11 }}/>
+                                <button onClick={()=>saveReply(note.id)}
+                                  disabled={replySaving===note.id||!(replyForms[note.id]||'').trim()}
+                                  style={{ fontSize:11, padding:'5px 11px', borderRadius:6, cursor:'pointer',
+                                    background:'var(--text)', border:'none', color:'var(--bg)', fontWeight:600, flexShrink:0 }}>
+                                  {replySaving===note.id ? '…' : 'Send'}
+                                </button>
+                              </div>
+
+                              {/* Pin / Delete (owner only) */}
+                              {isTeamOwner && (
+                                <div style={{ display:'flex', gap:6 }}>
+                                  <button onClick={()=>pinNote(note.id)}
+                                    style={{ fontSize:10, padding:'3px 8px', borderRadius:5, cursor:'pointer',
+                                      background: note.pinned?'rgba(217,119,6,.12)':'var(--bg2)',
+                                      border: note.pinned?'1px solid rgba(217,119,6,.3)':'1px solid var(--b2)',
+                                      color: note.pinned?'var(--gold)':'var(--muted)', fontWeight:600 }}>
+                                    {note.pinned ? '📌 Unpin' : '📌 Pin'}
+                                  </button>
+                                  <button onClick={()=>setConfirmModal({ message:'Delete this coaching note?', label:'Delete Note', onConfirm:()=>deleteNote(note.id) })}
+                                    style={{ fontSize:10, padding:'3px 8px', borderRadius:5, cursor:'pointer',
+                                      background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.2)',
+                                      color:'var(--red)', fontWeight:600 }}>
+                                    Delete
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+
               {/* Remove Member footer — owner only, not for self */}
               {isTeamOwner && viewingMember.id !== user?.id && (
                 <div style={{ padding:'20px 24px', borderTop:'1px solid var(--b2)', flexShrink:0 }}>
@@ -2151,6 +2327,33 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
           </div>
         )
       })()}
+
+      {/* ── Custom Confirm Modal (replaces all browser confirm() calls) ── */}
+      {confirmModal && (
+        <div style={{ position:'fixed', inset:0, zIndex:2000,
+          background:'rgba(0,0,0,.65)', backdropFilter:'blur(4px)',
+          display:'flex', alignItems:'center', justifyContent:'center',
+          padding:20, animation:'fadeIn .15s ease' }}
+          onClick={()=>setConfirmModal(null)}>
+          <div className="card" style={{ padding:'24px 28px', maxWidth:400, width:'100%',
+            borderTop:'3px solid var(--red)', animation:'scaleIn .18s ease' }}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{ fontSize:14, color:'var(--text)', marginBottom:22, lineHeight:1.65 }}>
+              {confirmModal.message}
+            </div>
+            <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+              <button className="btn-outline" style={{ fontSize:13 }}
+                onClick={()=>setConfirmModal(null)}>Cancel</button>
+              <button onClick={()=>{ confirmModal.onConfirm(); setConfirmModal(null) }}
+                style={{ fontSize:13, padding:'9px 20px', borderRadius:9,
+                  border:'1px solid var(--red)', background:'rgba(220,38,38,.1)',
+                  color:'var(--red)', fontWeight:700, cursor:'pointer' }}>
+                {confirmModal.label || 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

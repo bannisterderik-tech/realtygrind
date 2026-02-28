@@ -48,6 +48,9 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   const [bio,      setBio]      = useState({ phone:'', license:'', specialty:'', about:'' })
   const [bioSaving, setBioSaving] = useState(false)
   const [bioMsg,    setBioMsg]   = useState('')
+  // Coaching notes (read from team_prefs, replies saved to own profile.goals)
+  const [profileReplyForms,   setProfileReplyForms]   = useState({})
+  const [profileReplySaving,  setProfileReplySaving]  = useState(null)
 
   useEffect(()=>{ fetchAnnual(year) },[year])
   useEffect(()=>{ if(activeTab==='history' && !histFetched) fetchHistory() },[activeTab])
@@ -111,6 +114,27 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
       setBioMsg('Failed to save')
     }
     setBioSaving(false)
+  }
+
+  async function saveProfileReply(noteId) {
+    const text = (profileReplyForms[noteId] || '').trim()
+    if (!text) return
+    setProfileReplySaving(noteId)
+    try {
+      const { data } = await supabase.from('profiles').select('goals').eq('id', user.id).single()
+      const existingGoals = data?.goals || {}
+      const existingReplies = existingGoals.coaching_replies || {}
+      const noteReplies = existingReplies[noteId] || []
+      const newReply = { id: Date.now().toString(36), authorId: user.id, text, createdAt: new Date().toISOString() }
+      const updatedReplies = { ...existingReplies, [noteId]: [...noteReplies, newReply] }
+      const updatedGoals = { ...existingGoals, coaching_replies: updatedReplies }
+      await supabase.from('profiles').update({ goals: updatedGoals }).eq('id', user.id)
+      await refreshProfile()
+      setProfileReplyForms(f => ({ ...f, [noteId]: '' }))
+    } catch(err) {
+      console.error('saveProfileReply error:', err)
+    }
+    setProfileReplySaving(null)
   }
 
   async function saveGoals() {
@@ -504,6 +528,94 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                 </div>
               </div>
 
+              {/* Coaching Notes from team (only shown when on a team with notes) */}
+              {(()=>{
+                if (!profile?.team_id) return null
+                const NC = { praise:'#10b981', goal:'#d97706', concern:'#f43f5e', general:'#0ea5e9' }
+                const teamNotes = profile?.teams?.team_prefs?.coaching_notes || []
+                const myNotes = teamNotes
+                  .filter(n => n.agentId === user?.id)
+                  .sort((a,b) => (b.pinned?1:0)-(a.pinned?1:0) || new Date(b.createdAt)-new Date(a.createdAt))
+                if (myNotes.length === 0) return null
+                return (
+                  <div className="card" style={{ padding:24 }}>
+                    <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:4 }}>📋 Coaching Notes</div>
+                    <div style={{ fontSize:12, color:'var(--muted)', marginBottom:18 }}>
+                      Notes from your team coach. Reply to keep the conversation going.
+                    </div>
+                    <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                      {myNotes.map(note=>{
+                        const c = NC[note.type] || NC.general
+                        const myReplies = profile?.goals?.coaching_replies?.[note.id] || []
+                        const allReplies = [...(note.replies||[]), ...myReplies]
+                          .sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt))
+                        return (
+                          <div key={note.id} style={{ padding:'14px 16px', borderRadius:10,
+                            border: note.pinned ? '1px solid rgba(217,119,6,.45)' : '1px solid var(--b2)',
+                            background: note.pinned ? 'var(--gold3)' : 'var(--bg2)' }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8, flexWrap:'wrap' }}>
+                              <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700,
+                                background:`${c}18`, color:c, border:`1px solid ${c}33`,
+                                textTransform:'uppercase', letterSpacing:'.5px', flexShrink:0 }}>{note.type}</span>
+                              {note.pinned && <span style={{ fontSize:10, color:'var(--gold2)', flexShrink:0 }}>📌 Pinned</span>}
+                              <span style={{ marginLeft:'auto', fontSize:11, color:'var(--dim)', flexShrink:0 }}>
+                                {(()=>{
+                                  if (!note.createdAt) return ''
+                                  const diff = Math.floor((Date.now() - new Date(note.createdAt).getTime()) / 1000)
+                                  if (diff < 60) return 'just now'
+                                  if (diff < 3600) return `${Math.floor(diff/60)}m ago`
+                                  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`
+                                  const d = Math.floor(diff/86400)
+                                  return d === 1 ? '1 day ago' : `${d} days ago`
+                                })()}
+                              </span>
+                            </div>
+                            <div style={{ fontSize:13, color:'var(--text)', lineHeight:1.6, marginBottom:10 }}>{note.text}</div>
+
+                            {/* Replies thread */}
+                            {allReplies.length > 0 && (
+                              <div style={{ borderLeft:'2px solid var(--b2)', paddingLeft:10, marginBottom:10,
+                                display:'flex', flexDirection:'column', gap:6 }}>
+                                {allReplies.map(r=>{
+                                  const isCoach = r.authorId !== user?.id
+                                  return (
+                                    <div key={r.id}>
+                                      <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2 }}>
+                                        <span style={{ fontSize:11, fontWeight:600, color: isCoach ? 'var(--gold)' : 'var(--text)' }}>
+                                          {isCoach ? 'Coach' : 'You'}
+                                        </span>
+                                        {isCoach && <span style={{ fontSize:9, padding:'1px 5px', borderRadius:3, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>COACH</span>}
+                                      </div>
+                                      <div style={{ fontSize:12, color:'var(--text2)', lineHeight:1.5 }}>{r.text}</div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+
+                            {/* Reply form */}
+                            <div style={{ display:'flex', gap:6 }}>
+                              <input className="field-input"
+                                value={profileReplyForms[note.id]||''}
+                                onChange={e=>setProfileReplyForms(f=>({...f,[note.id]:e.target.value.slice(0,300)}))}
+                                onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&saveProfileReply(note.id)}
+                                placeholder="Reply to your coach…"
+                                style={{ flex:1, padding:'7px 11px', fontSize:12 }}/>
+                              <button onClick={()=>saveProfileReply(note.id)}
+                                disabled={profileReplySaving===note.id||!(profileReplyForms[note.id]||'').trim()}
+                                style={{ fontSize:12, padding:'7px 14px', borderRadius:7, cursor:'pointer',
+                                  background:'var(--text)', border:'none', color:'var(--bg)', fontWeight:600, flexShrink:0 }}>
+                                {profileReplySaving===note.id ? '…' : 'Send'}
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()}
+
               {/* Daily Habits & Tasks */}
               <div className="card" style={{ padding:22 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:isMemberOnly?8:16 }}>
@@ -712,7 +824,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                     </div>
                     <div className="label" style={{ marginBottom:6 }}>Type DELETE to confirm</div>
                     <input className="field-input" value={delText} onChange={e=>setDelText(e.target.value)}
-                      placeholder="DELETE" autoFocus
+                      placeholder="DELETE"
                       style={{ marginBottom:18, width:'100%', fontWeight:700, letterSpacing:3, color:'var(--red)' }}/>
                     <div style={{ display:'flex', gap:8 }}>
                       <button className="btn-outline" onClick={()=>{setShowDel(false);setDelText('');setDelError(null)}}>Cancel</button>

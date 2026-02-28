@@ -130,6 +130,7 @@ input:focus, select:focus, textarea:focus, button:focus { outline: none; }
 @keyframes slideDown    { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
 @keyframes glow         { 0%,100%{box-shadow:0 0 8px currentColor} 50%{box-shadow:0 0 18px currentColor} }
 @keyframes panelFadeIn  { from{opacity:0} to{opacity:1} }
+@keyframes slideInRight { from{opacity:0;transform:translateX(40px)} to{opacity:1;transform:translateX(0)} }
 
 body,.page { background: var(--bg); color: var(--text); }
 

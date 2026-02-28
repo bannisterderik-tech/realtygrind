@@ -171,11 +171,13 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     setPanelNoteForm(null)
     setMemberDetailLoading(true)
     try {
-      const [{ data: txs }, { data: habs }] = await Promise.all([
+      const [{ data: txs }, { data: habs }, { data: activeLists }] = await Promise.all([
         supabase.from('transactions').select('id,type,price,commission,address')
           .eq('user_id', member.id).eq('month_year', MONTH_YEAR),
         supabase.from('habit_completions').select('habit_id,counter_value')
           .eq('user_id', member.id).eq('month_year', MONTH_YEAR),
+        supabase.from('listings').select('id,address,status,price,commission,unit_count')
+          .eq('user_id', member.id).neq('status', 'closed').gt('unit_count', 0),
       ])
       if (seq !== fetchSeqRef.current) return  // a newer click fired — discard these results
       const habitCounts = {}
@@ -184,7 +186,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
           .filter(h => h.habit_id === id)
           .reduce((a, h) => a + (h.counter_value || 1), 0)
       })
-      setMemberDetail({ txs: txs||[], habitCounts })
+      setMemberDetail({ txs: txs||[], habitCounts, activeLists: activeLists||[] })
     } finally {
       if (seq === fetchSeqRef.current) setMemberDetailLoading(false)
     }
@@ -1951,8 +1953,9 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       {viewingMember && isAdminOrOwner && (() => {
         const rank  = getRank(viewingMember.xp || 0)
         const stats = memberStats[viewingMember.id] || {}
-        const txs   = memberDetail?.txs || []
+        const txs         = memberDetail?.txs || []
         const habitCounts = memberDetail?.habitCounts || {}
+        const activeLists = memberDetail?.activeLists || []
         const parseAmt = str => { const n = parseFloat(String(str||'').replace(/[^0-9.]/g,'')); return isNaN(n)?0:n }
         const byType = t => txs.filter(x => x.type === t)
         const closed     = byType('closed')
@@ -1973,9 +1976,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
         }
         const closePanel = () => { setViewingMember(null); setMemberDetail(null); setRemoveConfirm(null); setPanelNoteForm(null) }
         return (
-          <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex',
-            animation:'panelFadeIn .18s ease' }}>
-            {/* Backdrop — click anywhere left of panel to close */}
+          <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex' }}>
+            {/* Backdrop — no animation, appears instantly to avoid dark-flash on re-renders */}
             <div style={{ flex:1, background:'rgba(0,0,0,.42)', cursor:'pointer',
               display:'flex', alignItems:'flex-end', justifyContent:'flex-start',
               padding:'0 0 24px 24px' }}
@@ -1984,11 +1986,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                 ESC or click to close
               </div>
             </div>
-            {/* Slide-in panel — distinct surface color, visible border */}
+            {/* Slide-in panel — animates only this div, never the backdrop */}
             <div style={{ width:'min(480px,100vw)', background:'var(--surface)', overflowY:'auto',
               borderLeft:'3px solid var(--b3)',
               boxShadow:'-8px 0 32px rgba(0,0,0,.45)',
-              display:'flex', flexDirection:'column' }}>
+              display:'flex', flexDirection:'column',
+              animation:'slideInRight .22s cubic-bezier(.4,0,.2,1)' }}>
 
               {/* Header */}
               <div style={{ padding:'24px 24px 20px', borderBottom:'1px solid var(--b2)', flexShrink:0,
@@ -2146,6 +2149,51 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                   {txs.length === 0 && (
                     <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic', textAlign:'center', padding:'8px 0' }}>
                       No transactions logged this month.
+                    </div>
+                  )}
+
+                  {/* ── Active Listings ── */}
+                  {activeLists.length > 0 && (
+                    <div>
+                      <div className="serif" style={{ fontSize:15, color:'var(--text)', marginBottom:12 }}>🏠 Active Listings</div>
+                      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                        {activeLists.map(l => {
+                          const price = parseAmt(l.price)
+                          const comm  = parseAmt(l.commission)
+                          const statusColor = l.status === 'pending' ? '#6366f1' : '#10b981'
+                          return (
+                            <div key={l.id} className="card" style={{ padding:'12px 14px', border:'1px solid var(--b2)' }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:(price>0||comm>0)?6:0 }}>
+                                <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700,
+                                  background:`${statusColor}15`, color:statusColor, border:`1px solid ${statusColor}30`,
+                                  textTransform:'uppercase', letterSpacing:'.5px', flexShrink:0 }}>
+                                  {l.status || 'Active'}
+                                </span>
+                                {l.address && (
+                                  <span style={{ fontSize:12, color:'var(--text)', fontWeight:500, flex:1, minWidth:0,
+                                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{l.address}</span>
+                                )}
+                              </div>
+                              {(price>0 || comm>0) && (
+                                <div style={{ display:'flex', gap:16 }}>
+                                  {price>0 && (
+                                    <div>
+                                      <div style={{ fontSize:9, color:'var(--dim)', fontWeight:700, letterSpacing:'.5px' }}>LIST PRICE</div>
+                                      <div style={{ fontSize:13, color:'var(--text)', fontWeight:600 }}>{fmtMoney(price)}</div>
+                                    </div>
+                                  )}
+                                  {comm>0 && (
+                                    <div>
+                                      <div style={{ fontSize:9, color:'var(--dim)', fontWeight:700, letterSpacing:'.5px' }}>COMMISSION</div>
+                                      <div style={{ fontSize:13, color:'var(--green)', fontWeight:600 }}>{fmtMoney(comm)}</div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
                     </div>
                   )}
 

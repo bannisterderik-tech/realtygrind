@@ -51,6 +51,9 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   // Coaching notes (read from team_prefs, replies saved to own profile.goals)
   const [profileReplyForms,   setProfileReplyForms]   = useState({})
   const [profileReplySaving,  setProfileReplySaving]  = useState(null)
+  // Team listings board
+  const [teamListings,    setTeamListings]    = useState(null)  // null = loading, [] = empty
+  const [teamListingsErr, setTeamListingsErr] = useState(false)
 
   useEffect(()=>{ fetchAnnual(year) },[year])
   useEffect(()=>{ if(activeTab==='history' && !histFetched) fetchHistory() },[activeTab])
@@ -101,6 +104,39 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
           setBio(b => ({ ...b, ...data.habit_prefs.bio }))
       })
   },[user])
+
+  // Fetch all team members' active listings whenever the user's team changes
+  useEffect(() => {
+    if (!user || !profile?.team_id) { setTeamListings(null); return }
+    let cancelled = false
+    async function loadTeamListings() {
+      try {
+        const { data: memberRows } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .eq('team_id', profile.team_id)
+        if (cancelled) return
+        const memberIds  = (memberRows || []).map(m => m.id)
+        const memberMap  = Object.fromEntries((memberRows || []).map(m => [m.id, m.full_name || 'Agent']))
+        if (!memberIds.length) { setTeamListings([]); return }
+        const { data: listData } = await supabase
+          .from('listings')
+          .select('id, address, status, price, commission, unit_count, user_id')
+          .in('user_id', memberIds)
+          .neq('status', 'closed')
+          .gt('unit_count', 0)
+          .order('created_at', { ascending: false })
+          .limit(100)
+        if (cancelled) return
+        setTeamListings((listData || []).map(l => ({ ...l, agentName: memberMap[l.user_id] || 'Agent' })))
+        setTeamListingsErr(false)
+      } catch {
+        if (!cancelled) setTeamListingsErr(true)
+      }
+    }
+    loadTeamListings()
+    return () => { cancelled = true }
+  }, [user, profile?.team_id])
 
   async function saveBio() {
     setBioSaving(true)
@@ -615,6 +651,83 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                   </div>
                 )
               })()}
+
+              {/* ── Team Listings Board (visible when on a team) ── */}
+              {profile?.team_id && teamListings !== null && (
+                <div className="card" style={{ padding:24 }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+                    <div>
+                      <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:2 }}>🏠 Team Listings</div>
+                      <div style={{ fontSize:12, color:'var(--muted)' }}>Active listings across your team</div>
+                    </div>
+                    {teamListings.length > 0 && (
+                      <span style={{ fontSize:11, padding:'3px 10px', borderRadius:20, fontWeight:600,
+                        background:'rgba(16,185,129,.1)', color:'var(--green)', border:'1px solid rgba(16,185,129,.2)' }}>
+                        {teamListings.length} active
+                      </span>
+                    )}
+                  </div>
+
+                  {teamListingsErr && (
+                    <div style={{ fontSize:13, color:'var(--red)', fontStyle:'italic' }}>Could not load listings.</div>
+                  )}
+
+                  {!teamListingsErr && teamListings.length === 0 && (
+                    <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic', textAlign:'center', padding:'12px 0' }}>
+                      No active listings on the team yet.
+                    </div>
+                  )}
+
+                  {teamListings.length > 0 && (
+                    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                      {teamListings.map(l => {
+                        const parseAmt = v => { const n = parseFloat(String(v||'').replace(/[^0-9.]/g,'')); return isNaN(n)?0:n }
+                        const price = parseAmt(l.price)
+                        const comm  = parseAmt(l.commission)
+                        const isMe  = l.user_id === user?.id
+                        const statusColor = l.status === 'pending' ? '#6366f1' : '#10b981'
+                        return (
+                          <div key={l.id} style={{ padding:'12px 14px', borderRadius:10,
+                            border:`1px solid ${isMe ? 'rgba(217,119,6,.3)' : 'var(--b2)'}`,
+                            background: isMe ? 'var(--gold3)' : 'var(--surface2)' }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:price>0||comm>0?6:0 }}>
+                              <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700,
+                                background:`${statusColor}15`, color:statusColor, border:`1px solid ${statusColor}30`,
+                                textTransform:'uppercase', letterSpacing:'.5px', flexShrink:0 }}>
+                                {l.status || 'Active'}
+                              </span>
+                              {l.address && (
+                                <span style={{ fontSize:13, color:'var(--text)', fontWeight:500, flex:1, minWidth:0,
+                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{l.address}</span>
+                              )}
+                              <span style={{ fontSize:11, color: isMe ? 'var(--gold)' : 'var(--dim)', fontWeight: isMe ? 700 : 400,
+                                flexShrink:0, whiteSpace:'nowrap' }}>
+                                {isMe ? '⭐ You' : l.agentName}
+                              </span>
+                            </div>
+                            {(price>0 || comm>0) && (
+                              <div style={{ display:'flex', gap:20, marginTop:4 }}>
+                                {price>0 && (
+                                  <div>
+                                    <div style={{ fontSize:9, color:'var(--dim)', fontWeight:700, letterSpacing:'.5px' }}>LIST PRICE</div>
+                                    <div style={{ fontSize:14, color:'var(--text)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}>{fmtMoney(price)}</div>
+                                  </div>
+                                )}
+                                {comm>0 && (
+                                  <div>
+                                    <div style={{ fontSize:9, color:'var(--dim)', fontWeight:700, letterSpacing:'.5px' }}>COMMISSION</div>
+                                    <div style={{ fontSize:14, color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}>{fmtMoney(comm)}</div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Daily Habits & Tasks */}
               <div className="card" style={{ padding:22 }}>

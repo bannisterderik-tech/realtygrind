@@ -14,15 +14,21 @@ export default function AuthPage({ theme, onToggleTheme, onBack }) {
   async function submit(e) {
     e.preventDefault()
     setErr(''); setOk(''); setLoading(true)
-    if (mode==='signup') {
-      const {error} = await supabase.auth.signUp({email, password:pw, options:{data:{full_name:name}}})
-      if (error) setErr(error.message)
-      else setOk('Account created! Check your email to confirm.')
-    } else {
-      const {error} = await supabase.auth.signInWithPassword({email, password:pw})
-      if (error) setErr(error.message)
+    try {
+      if (mode==='signup') {
+        const {error} = await supabase.auth.signUp({email, password:pw, options:{data:{full_name:name}}})
+        if (error) setErr(error.message)
+        else setOk('Account created! Check your email to confirm.')
+      } else {
+        const {error} = await supabase.auth.signInWithPassword({email, password:pw})
+        if (error) setErr(error.message)
+      }
+    } catch (err) {
+      setErr('Something went wrong. Please try again.')
+      console.error('Auth error:', err)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   function switchMode(m) { setMode(m); setErr(''); setOk('') }

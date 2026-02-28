@@ -114,18 +114,18 @@ const STEPS = [
 ]
 
 const PLANS = [
-  { name:'Solo',      price:0,   priceAnn:0,   badge:null,           color:'#94a3b8',
+  { name:'Solo',      price:9,   priceAnn:7,   badge:null,           color:'#94a3b8',
     desc:'For individual agents getting dialed in.',
     features:['Habit tracker & XP system','Pipeline & closing tracker','Personal rank & streak','Annual production report'],
-    cta:'Start Free' },
-  { name:'Team',      price:39,  priceAnn:33,  badge:'Most Popular',  color:'#d97706',
+    cta:'Get Started' },
+  { name:'Team',      price:99,  priceAnn:82,  badge:'Most Popular',  color:'#d97706',
     desc:'For team leaders who demand accountability.',
     features:['Everything in Solo','Up to 15 agents','Roster & leaderboard','Accountability groups','Daily standup feed','Coaching notes per agent','Team challenges & XP bonuses','Active listings board'],
     cta:'Start Free Trial' },
-  { name:'Brokerage', price:149, priceAnn:124, badge:'Best Value',    color:'#8b5cf6',
+  { name:'Brokerage', price:299, priceAnn:249, badge:'Best Value',    color:'#8b5cf6',
     desc:'For brokers running a full operation.',
     features:['Everything in Team','Unlimited agents','Multiple groups','Priority support','Early access to new features'],
-    cta:'Contact Us' },
+    cta:'Start Free Trial' },
 ]
 
 const TICKER_ITEMS = [
@@ -561,7 +561,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted }) {
                   Annual
                   <span style={{ fontSize:10, padding:'2px 7px', borderRadius:20, fontWeight:700,
                     background:'rgba(16,185,129,.12)', color:'var(--green)', border:'1px solid rgba(16,185,129,.22)' }}>
-                    Save 15%
+                    Save up to 20%
                   </span>
                 </span>
               </div>
@@ -588,11 +588,11 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted }) {
                       fontFamily:'Poppins,sans-serif', lineHeight:1.5 }}>{plan.desc}</p>
                     <div style={{ marginBottom:22 }}>
                       <span className="serif" style={{ fontSize:42, fontWeight:800, color:plan.color, lineHeight:1 }}>
-                        {price===0 ? 'Free' : `$${price}`}
+                        ${price}
                       </span>
-                      {price>0 && <span style={{ fontSize:13, color:'var(--muted)', fontFamily:'Poppins,sans-serif' }}>
+                      <span style={{ fontSize:13, color:'var(--muted)', fontFamily:'Poppins,sans-serif' }}>
                         /mo{annual?' · billed annually':''}
-                      </span>}
+                      </span>
                     </div>
                     <button onClick={onGetStarted} style={{
                       width:'100%', padding:'12px 0', borderRadius:10, fontSize:14, fontWeight:700,
@@ -642,10 +642,10 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted }) {
               style={{ ...btnGold, fontSize:16, padding:'15px 38px' }}
               onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow=`0 14px 42px ${gold}66`}}
               onMouseLeave={e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow=`0 4px 18px ${gold}44`}}>
-              Start Free — No Credit Card →
+              Start Free Trial →
             </button>
             <div style={{ marginTop:16, fontSize:12, color:'var(--dim)', fontFamily:'Poppins,sans-serif' }}>
-              Free solo plan forever · Team plans from $39/mo
+              Solo from $9/mo · Team plans from $99/mo · Cancel anytime
             </div>
           </div>
         </section>

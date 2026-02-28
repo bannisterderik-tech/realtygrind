@@ -122,9 +122,9 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     if (mems?.length) {
       const ids = mems.map(m=>m.id)
       const {data:habs} = await supabase.from('habit_completions').select('user_id,habit_id,counter_value,week_index,day_index')
-        .in('user_id',ids).eq('month_year',MONTH_YEAR)
+        .in('user_id',ids).eq('month_year',MONTH_YEAR).limit(5000)
       const {data:txs} = await supabase.from('transactions').select('user_id,type,price,commission')
-        .in('user_id',ids).eq('month_year',MONTH_YEAR)
+        .in('user_id',ids).eq('month_year',MONTH_YEAR).limit(2000)
       const todayIdx = getTodayIndices()
       // Respect hidden habits so denominator matches what agents actually see
       const hiddenHabits = team?.team_prefs?.hidden || []
@@ -163,6 +163,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
         .neq('status', 'closed')
         .gt('unit_count', 0)
         .order('created_at', { ascending: false })
+        .limit(500)
       const nameMap = Object.fromEntries((mems||[]).map(m=>[m.id, m.full_name||'Agent']))
       setTeamListings((listRows||[]).map(l=>({ ...l, agentName: nameMap[l.user_id]||'Agent' })))
     }
@@ -237,28 +238,39 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   }
 
   async function leaveTeam() {
-    // Clean up any group membership/leadership before leaving
-    const groups = teamData?.team_prefs?.groups || []
-    const needsCleanup = groups.some(g => g.memberIds.includes(user.id) || g.leaderId === user.id)
-    if (needsCleanup) {
-      const updatedGroups = groups.map(g => ({
-        ...g,
-        leaderId: g.leaderId === user.id ? '' : g.leaderId,
-        memberIds: g.memberIds.filter(id => id !== user.id),
-      }))
-      const newPrefs = { ...(teamData.team_prefs||{}), groups: updatedGroups }
-      await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+    setLoading(true); setError('')
+    try {
+      // Clean up any group membership/leadership before leaving
+      const groups = teamData?.team_prefs?.groups || []
+      const needsCleanup = groups.some(g => g.memberIds.includes(user.id) || g.leaderId === user.id)
+      if (needsCleanup) {
+        const updatedGroups = groups.map(g => ({
+          ...g,
+          leaderId: g.leaderId === user.id ? '' : g.leaderId,
+          memberIds: g.memberIds.filter(id => id !== user.id),
+        }))
+        const newPrefs = { ...(teamData.team_prefs||{}), groups: updatedGroups }
+        const { error: e0 } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+        if (e0) throw e0
+      }
+      const { error: e1 } = await supabase.from('team_members').delete().eq('user_id', user.id)
+      if (e1) throw e1
+      const { error: e2 } = await supabase.from('profiles').update({ team_id: null }).eq('id', user.id)
+      if (e2) throw e2
+      await refreshProfile()
+      setMode('menu'); setMembers([]); setTeamData(null)
+    } catch (err) {
+      setError('Failed to leave team. Please try again.')
+      console.error('leaveTeam error:', err)
+    } finally {
+      setLoading(false)
     }
-    await supabase.from('team_members').delete().eq('user_id', user.id)
-    await supabase.from('profiles').update({ team_id: null }).eq('id', user.id)
-    await refreshProfile()
-    setMode('menu'); setMembers([]); setTeamData(null)
   }
 
   // ── Remove Member (owner-only) ────────────────────────────────────────────
   async function removeMember(memberId) {
-    setRemoveSaving(true)
-    // Clean up the removed member from groups and admins in team_prefs
+    setRemoveSaving(true); setError('')
+    // Build updated prefs optimistically
     const groups = (teamData?.team_prefs?.groups || []).map(g => ({
       ...g,
       leaderId:  g.leaderId  === memberId ? '' : g.leaderId,
@@ -266,26 +278,42 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     }))
     const admins = (teamData?.team_prefs?.admins || []).filter(id => id !== memberId)
     const newPrefs = { ...(teamData.team_prefs || {}), groups, admins }
-    await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
-    await supabase.from('team_members').delete().eq('user_id', memberId).eq('team_id', profile.team_id)
-    await supabase.from('profiles').update({ team_id: null }).eq('id', memberId)
-    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
-    setMembers(ms => ms.filter(m => m.id !== memberId))
-    setRemoveConfirm(null)
-    setViewingMember(null); setMemberDetail(null)
-    setRemoveSaving(false)
+    try {
+      const { error: e1 } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+      if (e1) throw e1
+      const { error: e2 } = await supabase.from('team_members').delete().eq('user_id', memberId).eq('team_id', profile.team_id)
+      if (e2) throw e2
+      const { error: e3 } = await supabase.from('profiles').update({ team_id: null }).eq('id', memberId)
+      if (e3) throw e3
+      setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+      setMembers(ms => ms.filter(m => m.id !== memberId))
+      setRemoveConfirm(null)
+      setViewingMember(null); setMemberDetail(null)
+    } catch (err) {
+      setError('Failed to remove member. Please try again.')
+      console.error('removeMember error:', err)
+    } finally {
+      setRemoveSaving(false)
+    }
   }
 
   // ── Transfer Ownership (owner-only) ──────────────────────────────────────
   async function transferOwnership(newOwnerId) {
     if (!newOwnerId) return
-    setTransferSaving(true)
-    await supabase.from('teams').update({ created_by: newOwnerId }).eq('id', profile.team_id)
-    setTeamData(td => ({ ...td, created_by: newOwnerId }))
-    setTransferTarget('')
-    setTransferConfirm(false)
-    setTransferSaving(false)
-    await refreshProfile()  // current user is now a regular member
+    setTransferSaving(true); setError('')
+    try {
+      const { error } = await supabase.from('teams').update({ created_by: newOwnerId }).eq('id', profile.team_id)
+      if (error) throw error
+      setTeamData(td => ({ ...td, created_by: newOwnerId }))
+      setTransferTarget('')
+      setTransferConfirm(false)
+      await refreshProfile()  // current user is now a regular member
+    } catch (err) {
+      setError('Failed to transfer ownership. Please try again.')
+      console.error('transferOwnership error:', err)
+    } finally {
+      setTransferSaving(false)
+    }
   }
 
   // ── Toggle Co-admin (owner-only) ──────────────────────────────────────────
@@ -295,8 +323,14 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       ? current.filter(id => id !== memberId)
       : [...current, memberId]
     const newPrefs = { ...(teamData.team_prefs || {}), admins: updated }
-    await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
-    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+    try {
+      const { error } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+      if (error) throw error
+      setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+    } catch (err) {
+      setError('Failed to update admin role. Please try again.')
+      console.error('toggleAdmin error:', err)
+    }
   }
 
   // ── Email Invite ──────────────────────────────────────────────────────────
@@ -348,8 +382,9 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       setInviteMsg({ type:'ok', text:`Invite sent to ${email}` })
     } catch(e) {
       setInviteMsg({ type:'err', text: e.message || 'Failed to send invite.' })
+    } finally {
+      setInviteSending(false)
     }
-    setInviteSending(false)
   }
 
   async function removeInvite(email) {
@@ -442,16 +477,30 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       }]
     }
     const newPrefs = { ...(teamData?.team_prefs||{}), groups: updated }
-    await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
-    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
-    setGroupForm(null); setGroupSaving(false)
+    try {
+      const { error } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+      if (error) throw error
+      setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+      setGroupForm(null)
+    } catch (err) {
+      setError('Failed to save group. Please try again.')
+      console.error('saveGroup error:', err)
+    } finally {
+      setGroupSaving(false)
+    }
   }
 
   async function deleteGroup(gid) {
     const updated = (teamData?.team_prefs?.groups||[]).filter(g => g.id !== gid)
     const newPrefs = { ...(teamData?.team_prefs||{}), groups: updated }
-    await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
-    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+    try {
+      const { error } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+      if (error) throw error
+      setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+    } catch (err) {
+      setError('Failed to delete group. Please try again.')
+      console.error('deleteGroup error:', err)
+    }
   }
 
   async function saveStandupReply(memberId, date) {
@@ -459,15 +508,21 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     const text = replyForms[key]?.trim()
     if (!text) return
     setReplySaving(key)
-    const existing = teamData?.team_prefs?.standup_replies?.[key] || []
-    const newReplies = [...existing, { id: Date.now().toString(36), authorId: user.id, text, createdAt: new Date().toISOString() }]
-    const newPrefs = { ...(teamData.team_prefs||{}),
-      standup_replies: { ...(teamData.team_prefs?.standup_replies||{}), [key]: newReplies }
+    try {
+      const existing = teamData?.team_prefs?.standup_replies?.[key] || []
+      const newReplies = [...existing, { id: Date.now().toString(36), authorId: user.id, text, createdAt: new Date().toISOString() }]
+      const newPrefs = { ...(teamData.team_prefs||{}),
+        standup_replies: { ...(teamData.team_prefs?.standup_replies||{}), [key]: newReplies }
+      }
+      const { error } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+      if (error) throw error
+      setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+      setReplyForms(f => ({ ...f, [key]: '' }))
+    } catch (err) {
+      console.error('saveStandupReply error:', err)
+    } finally {
+      setReplySaving(null)
     }
-    await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
-    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
-    setReplyForms(f => ({ ...f, [key]: '' }))
-    setReplySaving(null)
   }
 
   // ── Group Challenges ──────────────────────────────────────────────────────
@@ -517,30 +572,40 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   }
 
   // ── Coaching Notes ────────────────────────────────────────────────────────
+  const MAX_NOTE_LEN = 4000
   async function saveNote() {
-    if (!noteForm?.text?.trim() || !noteForm?.agentId) return
+    if (!noteForm?.text?.trim() || !noteForm?.agentId || !user?.id) return
+    const trimmed = noteForm.text.trim().slice(0, MAX_NOTE_LEN)
     setNoteSaving(true)
-    const existing = teamData?.team_prefs?.coaching_notes || []
-    let updated
-    if (noteForm.editingId) {
-      updated = existing.map(n => n.id === noteForm.editingId
-        ? { ...n, text: noteForm.text.trim(), type: noteForm.type } : n)
-    } else {
-      updated = [...existing, {
-        id: Date.now().toString(36),
-        agentId: noteForm.agentId,
-        coachId: user.id,
-        text: noteForm.text.trim(),
-        type: noteForm.type || 'general',
-        pinned: false,
-        createdAt: new Date().toISOString(),
-      }]
+    try {
+      const existing = teamData?.team_prefs?.coaching_notes || []
+      let updated
+      if (noteForm.editingId) {
+        updated = existing.map(n => n.id === noteForm.editingId
+          ? { ...n, text: trimmed, type: noteForm.type } : n)
+      } else {
+        updated = [...existing, {
+          id: Date.now().toString(36),
+          agentId: noteForm.agentId,
+          coachId: user.id,
+          text: trimmed,
+          type: noteForm.type || 'general',
+          pinned: false,
+          replies: [],
+          createdAt: new Date().toISOString(),
+        }]
+      }
+      const updatedPrefs = { ...(teamData?.team_prefs||{}), coaching_notes: updated }
+      const { error } = await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile.team_id)
+      if (error) throw error
+      setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
+      setNoteForm(null)
+    } catch (err) {
+      setError('Failed to save note. Please try again.')
+      console.error('saveNote error:', err)
+    } finally {
+      setNoteSaving(false)
     }
-    const updatedPrefs = { ...(teamData?.team_prefs||{}), coaching_notes: updated }
-    await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile.team_id)
-    setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
-    setNoteForm(null)
-    setNoteSaving(false)
   }
 
   async function deleteNote(noteId) {
@@ -587,24 +652,32 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
 
   // ── Coaching note from the detail panel (pre-sets agentId = viewingMember) ──
   async function savePanelNote() {
-    if (!panelNoteForm?.text?.trim() || !viewingMember?.id) return
+    if (!panelNoteForm?.text?.trim() || !viewingMember?.id || !user?.id) return
+    const trimmed = panelNoteForm.text.trim().slice(0, MAX_NOTE_LEN)
     setPanelNoteSaving(true)
-    const existing = teamData?.team_prefs?.coaching_notes || []
-    const newNote = {
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2,5),
-      agentId:   viewingMember.id,
-      coachId:   user?.id,
-      text:      panelNoteForm.text.trim(),
-      type:      panelNoteForm.type || 'general',
-      pinned:    false,
-      replies:   [],
-      createdAt: new Date().toISOString(),
+    try {
+      const existing = teamData?.team_prefs?.coaching_notes || []
+      const newNote = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2,5),
+        agentId:   viewingMember.id,
+        coachId:   user.id,
+        text:      trimmed,
+        type:      panelNoteForm.type || 'general',
+        pinned:    false,
+        replies:   [],
+        createdAt: new Date().toISOString(),
+      }
+      const updatedPrefs = { ...(teamData?.team_prefs||{}), coaching_notes: [...existing, newNote] }
+      const { error } = await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile?.team_id)
+      if (error) throw error
+      setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
+      setPanelNoteForm(null)
+    } catch (err) {
+      setError('Failed to save note. Please try again.')
+      console.error('savePanelNote error:', err)
+    } finally {
+      setPanelNoteSaving(false)
     }
-    const updatedPrefs = { ...(teamData?.team_prefs||{}), coaching_notes: [...existing, newNote] }
-    await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile?.team_id)
-    setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
-    setPanelNoteForm(null)
-    setPanelNoteSaving(false)
   }
 
   // ── Derived values ─────────────────────────────────────────────────────────

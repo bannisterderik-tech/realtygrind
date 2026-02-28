@@ -107,13 +107,15 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
     try {
       const { data } = await supabase.from('profiles').select('habit_prefs').eq('id', user.id).single()
       const current = data?.habit_prefs || {}
-      await supabase.from('profiles').update({ habit_prefs: { ...current, bio } }).eq('id', user.id)
+      const { error } = await supabase.from('profiles').update({ habit_prefs: { ...current, bio } }).eq('id', user.id)
+      if (error) throw error
       setBioMsg('Saved ✓'); setTimeout(() => setBioMsg(''), 3000)
     } catch (err) {
       console.error('saveBio error:', err)
       setBioMsg('Failed to save')
+    } finally {
+      setBioSaving(false)
     }
-    setBioSaving(false)
   }
 
   async function saveProfileReply(noteId) {
@@ -128,25 +130,35 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
       const newReply = { id: Date.now().toString(36), authorId: user.id, text, createdAt: new Date().toISOString() }
       const updatedReplies = { ...existingReplies, [noteId]: [...noteReplies, newReply] }
       const updatedGoals = { ...existingGoals, coaching_replies: updatedReplies }
-      await supabase.from('profiles').update({ goals: updatedGoals }).eq('id', user.id)
+      const { error } = await supabase.from('profiles').update({ goals: updatedGoals }).eq('id', user.id)
+      if (error) throw error
       await refreshProfile()
       setProfileReplyForms(f => ({ ...f, [noteId]: '' }))
     } catch(err) {
       console.error('saveProfileReply error:', err)
+    } finally {
+      setProfileReplySaving(null)
     }
-    setProfileReplySaving(null)
   }
 
   async function saveGoals() {
     setGoalsSaving(true)
-    const parsed = {}
-    Object.entries(goals).forEach(([k,v])=>{ const n=parseInt(v); if(n>0) parsed[k]=n })
-    if (parseInt(gciTarget) > 0)     parsed.gci_target     = parseInt(gciTarget)
-    if (parseInt(avgCommission) > 0) parsed.avg_commission = parseInt(avgCommission)
-    await supabase.from('profiles').update({ goals: parsed }).eq('id', user.id)
-    setGoalsSaving(false)
-    setGoalsMsg('Goals saved!')
-    setTimeout(()=>setGoalsMsg(''), 2500)
+    try {
+      const parsed = {}
+      Object.entries(goals).forEach(([k,v])=>{ const n=parseInt(v); if(n>0) parsed[k]=n })
+      if (parseInt(gciTarget) > 0)     parsed.gci_target     = parseInt(gciTarget)
+      if (parseInt(avgCommission) > 0) parsed.avg_commission = parseInt(avgCommission)
+      const { error } = await supabase.from('profiles').update({ goals: parsed }).eq('id', user.id)
+      if (error) throw error
+      setGoalsMsg('Goals saved!')
+      setTimeout(()=>setGoalsMsg(''), 2500)
+    } catch (err) {
+      console.error('saveGoals error:', err)
+      setGoalsMsg('Failed to save')
+      setTimeout(()=>setGoalsMsg(''), 2500)
+    } finally {
+      setGoalsSaving(false)
+    }
   }
 
   async function fetchHistory() {
@@ -216,17 +228,34 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   async function saveName() {
     if(!name.trim()) return
     setSaving(true)
-    await supabase.from('profiles').update({full_name:name.trim()}).eq('id',user.id)
-    await refreshProfile()
-    setSaveMsg('Saved ✓'); setTimeout(()=>setSaveMsg(''),3000); setSaving(false)
+    try {
+      const { error } = await supabase.from('profiles').update({full_name:name.trim()}).eq('id',user.id)
+      if (error) throw error
+      await refreshProfile()
+      setSaveMsg('Saved ✓'); setTimeout(()=>setSaveMsg(''),3000)
+    } catch (err) {
+      setSaveMsg('Failed to save'); setTimeout(()=>setSaveMsg(''),3000)
+      console.error('saveName error:', err)
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function savePassword() {
     if(pw.length<6){setPwMsg('Min 6 characters'); return}
     setPwSaving(true)
-    const {error} = await supabase.auth.updateUser({password:pw})
-    setPwMsg(error?`Error: ${error.message}`:'Password updated ✓')
-    setTimeout(()=>setPwMsg(''),4000); setPw(''); setPwSaving(false)
+    try {
+      const {error} = await supabase.auth.updateUser({password:pw})
+      if (error) throw error
+      setPwMsg('Password updated ✓')
+      setPw('')
+    } catch (err) {
+      setPwMsg(`Error: ${err.message||'Failed to update'}`)
+      console.error('savePassword error:', err)
+    } finally {
+      setTimeout(()=>setPwMsg(''),4000)
+      setPwSaving(false)
+    }
   }
 
   async function deleteAccount() {

@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext } from 'react'
+import { useState, useEffect, useRef, createContext, useContext } from 'react'
 import { AuthProvider, useAuth } from './lib/AuthContext'
 import { supabase } from './lib/supabase'
 import AuthPage from './pages/AuthPage'
@@ -923,6 +923,7 @@ function Dashboard({ theme, onToggleTheme }) {
   })
   const [counters, setCounters] = useState({})
   const [xp,             setXp]             = useState(0)
+  const xpRef = useRef(0)  // always-current mirror of xp; prevents stale-closure in addXp/deductPipelineXp/toggleHabit
   const [streak,         setStreak]         = useState(0)
   const [xpPop,          setXpPop]          = useState(null)
   const [animCell,       setAnimCell]       = useState(null)
@@ -981,10 +982,10 @@ function Dashboard({ theme, onToggleTheme }) {
     try {
       ;[habRes, listRes, txRes, profRes, ctRes] = await Promise.all([
         supabase.from('habit_completions').select('*').eq('user_id',user.id).eq('month_year',MONTH_YEAR),
-        supabase.from('listings').select('*').eq('user_id',user.id),
-        supabase.from('transactions').select('*').eq('user_id',user.id).eq('month_year',MONTH_YEAR),
+        supabase.from('listings').select('*').eq('user_id',user.id).limit(500),
+        supabase.from('transactions').select('*').eq('user_id',user.id).eq('month_year',MONTH_YEAR).limit(500),
         supabase.from('profiles').select('*').eq('id',user.id).single(),
-        supabase.from('custom_tasks').select('*').eq('user_id',user.id),
+        supabase.from('custom_tasks').select('*').eq('user_id',user.id).limit(200),
       ])
 
     if (habRes.data?.length) {
@@ -1035,7 +1036,9 @@ function Dashboard({ theme, onToggleTheme }) {
     }
 
     if (profRes.data) {
-      setXp(profRes.data.xp||0)
+      const loadedXp = profRes.data.xp||0
+      xpRef.current = loadedXp  // sync ref immediately so addXp never races against the first DB load
+      setXp(loadedXp)
       setStreak(profRes.data.streak||0)
       setShowCommSummary(profRes.data.show_commission||false)
       if (profRes.data.habit_prefs) setHabitPrefs(profRes.data.habit_prefs)
@@ -1063,9 +1066,14 @@ function Dashboard({ theme, onToggleTheme }) {
     setStandupSaving(false)
   }
 
+  // Keep xpRef in sync so addXp / deductPipelineXp / toggleHabit always read the latest value
+  // even when called multiple times before a re-render (prevents stale-closure XP corruption)
+  useEffect(() => { xpRef.current = xp }, [xp])
+
   // ── XP ─────────────────────────────────────────────────────────────────────
   async function addXp(amount, color='var(--gold)') {
-    const nxp = xp + amount
+    const nxp = xpRef.current + amount
+    xpRef.current = nxp  // eagerly update so back-to-back calls get the right base value
     setXp(nxp)
     setXpPop({ val:`+${amount} XP`, color })
     setTimeout(()=>setXpPop(null), 1400)
@@ -1080,7 +1088,8 @@ function Dashboard({ theme, onToggleTheme }) {
 
   async function deductPipelineXp(type) {
     const amount = PIPELINE_XP[type]
-    const nxp    = Math.max(0, xp - amount)
+    const nxp    = Math.max(0, xpRef.current - amount)
+    xpRef.current = nxp  // eagerly update ref
     setXp(nxp)
     setXpPop({ val:`-${amount} XP`, color:'#dc2626' })
     setTimeout(()=>setXpPop(null), 1400)
@@ -1183,7 +1192,8 @@ function Dashboard({ theme, onToggleTheme }) {
     } else {
       const ckey = `${hid}-${week}-${day}`
       const lost = h.xp + Math.max(0,(counters[ckey]||1)-1)*(h.xpEach||0)
-      const nxp  = Math.max(0, xp - lost)
+      const nxp  = Math.max(0, xpRef.current - lost)
+      xpRef.current = nxp  // eagerly update ref before DB write
       setXp(nxp)
       await supabase.from('profiles').update({xp:nxp}).eq('id',user.id)
       await supabase.from('habit_completions').delete()

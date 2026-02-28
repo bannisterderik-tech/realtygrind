@@ -2968,8 +2968,10 @@ function Dashboard({ theme, onToggleTheme }) {
 
 function AppInner() {
   const { user, loading } = useAuth()
-  const [theme,    setTheme]    = useState(()=>localStorage.getItem('rg_theme')||'light')
-  const [showAuth, setShowAuth] = useState(false)   // landing → auth transition
+  const [theme,       setTheme]       = useState(()=>localStorage.getItem('rg_theme')||'light')
+  const [showAuth,    setShowAuth]    = useState(false)
+  const [checkoutMsg, setCheckoutMsg] = useState(null) // 'success' | 'cancelled'
+  const [checkoutLoading, setCheckoutLoading] = useState(false)
 
   function toggleTheme() {
     const next = theme==='light' ? 'dark' : 'light'
@@ -2981,6 +2983,58 @@ function AppInner() {
   useEffect(()=>{
     document.documentElement.setAttribute('data-theme', theme)
   },[theme])
+
+  // Handle Stripe return URLs (?checkout=success|cancelled)
+  useEffect(()=>{
+    const params = new URLSearchParams(window.location.search)
+    const status = params.get('checkout')
+    if (status) {
+      setCheckoutMsg(status)
+      // Clean URL without reloading
+      window.history.replaceState({}, '', window.location.pathname)
+      setTimeout(()=>setCheckoutMsg(null), 6000)
+    }
+  },[])
+
+  // After sign-in, run any pending checkout
+  useEffect(()=>{
+    if (!user) return
+    const pending = localStorage.getItem('rg_pending_plan')
+    if (pending) {
+      localStorage.removeItem('rg_pending_plan')
+      const { planId, isAnnual } = JSON.parse(pending)
+      startCheckout(planId, isAnnual)
+    }
+  },[user])
+
+  async function startCheckout(planId, isAnnual) {
+    setCheckoutLoading(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('create-checkout', {
+        body: { planId, isAnnual, returnUrl: window.location.origin },
+      })
+      if (error) throw error
+      if (data?.url) {
+        window.location.href = data.url
+      } else {
+        alert('Could not start checkout. Please try again.')
+      }
+    } catch (err) {
+      console.error('Checkout error:', err)
+      alert('Checkout unavailable right now. Please try again shortly.')
+    } finally {
+      setCheckoutLoading(false)
+    }
+  }
+
+  function handleSubscribe(planId, isAnnual) {
+    if (!user) {
+      localStorage.setItem('rg_pending_plan', JSON.stringify({ planId, isAnnual }))
+      setShowAuth(true)
+      return
+    }
+    startCheckout(planId, isAnnual)
+  }
 
   if (loading) return (
     <div data-theme={theme} style={{ display:'flex', alignItems:'center', justifyContent:'center',
@@ -2995,9 +3049,19 @@ function AppInner() {
   if (!user) return (
     <div data-theme={theme}>
       <style>{CSS}</style>
+      {checkoutLoading && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:9999,
+          display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:16 }}>
+          <div style={{ width:32, height:32, border:'3px solid #d97706', borderTopColor:'transparent',
+            borderRadius:'50%', animation:'spin 1s linear infinite' }}/>
+          <span style={{ color:'#fff', fontFamily:'Poppins,sans-serif', fontWeight:600 }}>Redirecting to checkout…</span>
+        </div>
+      )}
       {showAuth
         ? <AuthPage theme={theme} onToggleTheme={toggleTheme} onBack={()=>setShowAuth(false)}/>
-        : <LandingPage theme={theme} onToggleTheme={toggleTheme} onGetStarted={()=>setShowAuth(true)}/>
+        : <LandingPage theme={theme} onToggleTheme={toggleTheme}
+            onGetStarted={()=>setShowAuth(true)}
+            onSubscribe={handleSubscribe}/>
       }
     </div>
   )
@@ -3005,6 +3069,23 @@ function AppInner() {
   return (
     <div data-theme={theme}>
       <style>{CSS}</style>
+      {/* Stripe checkout return banner */}
+      {checkoutMsg === 'success' && (
+        <div style={{ position:'fixed', top:16, left:'50%', transform:'translateX(-50%)', zIndex:9999,
+          background:'#10b981', color:'#fff', padding:'12px 24px', borderRadius:12,
+          fontFamily:'Poppins,sans-serif', fontWeight:700, fontSize:14,
+          boxShadow:'0 8px 32px rgba(16,185,129,.4)', display:'flex', alignItems:'center', gap:10 }}>
+          🎉 Subscription activated! Welcome to RealtyGrind.
+        </div>
+      )}
+      {checkoutMsg === 'cancelled' && (
+        <div style={{ position:'fixed', top:16, left:'50%', transform:'translateX(-50%)', zIndex:9999,
+          background:'var(--surface)', border:'1px solid var(--b2)', color:'var(--text)',
+          padding:'12px 24px', borderRadius:12, fontFamily:'Poppins,sans-serif', fontWeight:600,
+          fontSize:14, boxShadow:'var(--shadow2)', display:'flex', alignItems:'center', gap:10 }}>
+          Checkout cancelled — no charge was made.
+        </div>
+      )}
       <ThemeCtx.Provider value={{ theme, toggle:toggleTheme }}>
         <Dashboard theme={theme} onToggleTheme={toggleTheme}/>
       </ThemeCtx.Provider>

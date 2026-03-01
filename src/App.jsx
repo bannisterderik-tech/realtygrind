@@ -2987,6 +2987,17 @@ function AppInner() {
     document.documentElement.setAttribute('data-theme', theme)
   },[theme])
 
+  // Inject global CSS once into <head> instead of re-rendering <style>{CSS}</style> as JSX
+  useEffect(() => {
+    const id = 'rg-global-css'
+    if (!document.getElementById(id)) {
+      const s = document.createElement('style')
+      s.id = id
+      s.textContent = CSS
+      document.head.appendChild(s)
+    }
+  }, [])
+
   // Handle Stripe return URLs (?checkout=success|cancelled)
   useEffect(()=>{
     const params = new URLSearchParams(window.location.search)
@@ -3042,7 +3053,6 @@ function AppInner() {
   if (loading) return (
     <div data-theme={theme} style={{ display:'flex', alignItems:'center', justifyContent:'center',
       height:'100vh', background:'var(--bg)', gap:12 }}>
-      <style>{CSS}</style>
       <div style={{ width:18, height:18, border:'2px solid var(--gold)', borderTopColor:'transparent',
         borderRadius:'50%', animation:'spin 1s linear infinite' }}/>
       <span className="serif" style={{ fontSize:18, color:'var(--text)' }}>RealtyGrind</span>
@@ -3051,7 +3061,6 @@ function AppInner() {
 
   if (!user) return (
     <div data-theme={theme}>
-      <style>{CSS}</style>
       {checkoutLoading && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:9999,
           display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:16 }}>
@@ -3071,7 +3080,6 @@ function AppInner() {
 
   return (
     <div data-theme={theme}>
-      <style>{CSS}</style>
       {/* Stripe checkout return banner */}
       {checkoutMsg === 'success' && (
         <div style={{ position:'fixed', top:16, left:'50%', transform:'translateX(-50%)', zIndex:9999,

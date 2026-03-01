@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { CSS, ThemeToggle } from '../design'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { ThemeToggle } from '../design'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const RANKS_DEF = [
@@ -165,12 +165,19 @@ const COACHING_THREAD = [
 
 // ── CSS ───────────────────────────────────────────────────────────────────────
 const LCSS = `
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Playfair+Display:wght@700;800;900&display=swap');
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 .serif{font-family:'Playfair Display',serif;}
 
 /* Nav */
-.lp-nav{position:fixed;top:0;left:0;right:0;z-index:100;backdrop-filter:blur(14px) saturate(180%);-webkit-backdrop-filter:blur(14px) saturate(180%);border-bottom:1px solid var(--b1);padding:0 32px;height:64px;display:flex;align-items:center;justify-content:space-between;}
+.lp-nav{position:fixed;top:0;left:0;right:0;z-index:100;backdrop-filter:blur(14px) saturate(180%);-webkit-backdrop-filter:blur(14px) saturate(180%);border-bottom:1px solid var(--b1);padding:0 32px;height:64px;display:flex;align-items:center;justify-content:space-between;will-change:backdrop-filter;}
+.lp-nav-link{font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;font-family:Poppins,sans-serif;transition:color .15s;}
+.lp-nav-link:hover{color:var(--text);}
+
+/* Hero buttons — pure CSS hover instead of JS handlers */
+.lp-hero-gold-btn{background:var(--gold);color:#fff;border:none;border-radius:10px;font-family:Poppins,sans-serif;font-weight:700;cursor:pointer;transition:all .2s;box-shadow:0 4px 18px rgba(180,83,9,.27);font-size:16px;padding:14px 32px;}
+.lp-hero-gold-btn:hover{transform:translateY(-2px);box-shadow:0 10px 36px rgba(180,83,9,.4);}
+.lp-cta-btn{font-size:17px;padding:17px 44px;}
+.lp-hero-outline-btn{background:transparent;border:1.5px solid var(--b3);color:var(--text);border-radius:10px;padding:14px 28px;font-size:15px;font-weight:600;cursor:pointer;font-family:Poppins,sans-serif;transition:border-color .2s;}
+.lp-hero-outline-btn:hover{border-color:var(--text);}
 
 /* Hamburger */
 .lp-hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;padding:6px;border:none;background:transparent;z-index:101;}
@@ -202,8 +209,8 @@ const LCSS = `
 .lp-mockup{animation:slideInRight .6s .22s ease forwards;}
 
 /* Ticker */
-.lp-ticker-wrap{overflow:hidden;padding:14px 0;border-top:1px solid var(--b1);border-bottom:1px solid var(--b1);}
-.lp-ticker-track{display:flex;gap:44px;animation:ticker 42s linear infinite;white-space:nowrap;}
+.lp-ticker-wrap{overflow:hidden;padding:14px 0;border-top:1px solid var(--b1);border-bottom:1px solid var(--b1);contain:content;}
+.lp-ticker-track{display:flex;gap:44px;animation:ticker 42s linear infinite;white-space:nowrap;will-change:transform;}
 
 /* Stats */
 .lp-stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:24px;}
@@ -590,10 +597,20 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
   const activeHabits  = DEMO_HABITS.filter((_,i) => !skippedHabits.has(i))
   const checkedActive = activeHabits.filter((_,i) => checkedHabits.has(DEMO_HABITS.indexOf(_))).length
 
+  // Inject LCSS once into <head> instead of re-rendering it as JSX every frame
+  useEffect(() => {
+    const id = 'lcss-landing'
+    if (!document.getElementById(id)) {
+      const s = document.createElement('style')
+      s.id = id
+      s.textContent = LCSS
+      document.head.appendChild(s)
+    }
+    return () => { document.getElementById(id)?.remove() }
+  }, [])
+
   return (
     <>
-      <style>{CSS}</style>
-      <style>{LCSS}</style>
       <div data-theme={theme} style={{ background: 'var(--bg)', color: 'var(--text)', minHeight: '100vh' }}>
 
         {/* ── Mobile Menu Overlay ────────────────────────────────────── */}
@@ -633,10 +650,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
           </div>
           <div className="lp-nav-links" style={{ display: 'flex', gap: 28 }}>
             {['Features', 'Pricing', 'FAQ'].map(l => (
-              <span key={l} onClick={() => scrollTo(l.toLowerCase())}
-                style={{ fontSize: 13, fontWeight: 500, color: 'var(--muted)', cursor: 'pointer', fontFamily: 'Poppins,sans-serif', transition: 'color .15s' }}
-                onMouseEnter={e => e.currentTarget.style.color = 'var(--text)'}
-                onMouseLeave={e => e.currentTarget.style.color = 'var(--muted)'}>{l}</span>
+              <span key={l} className="lp-nav-link" onClick={() => scrollTo(l.toLowerCase())}>{l}</span>
             ))}
           </div>
           <div className="lp-nav-ctas" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -670,14 +684,10 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
                   The habit tracker, pipeline manager, team accountability platform, and coaching tool built specifically for agents who refuse to wing it.
                 </p>
                 <div className="lp-hero-ctas" style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 28 }}>
-                  <button onClick={onGetStarted} style={{ ...btnGold, fontSize: 16, padding: '14px 32px' }}
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 10px 36px ${gold}66` }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = `0 4px 18px ${gold}44` }}>
+                  <button className="lp-hero-gold-btn" onClick={onGetStarted}>
                     Start for Free →
                   </button>
-                  <button onClick={onGetStarted} style={{ background: 'transparent', border: '1.5px solid var(--b3)', color: 'var(--text)', borderRadius: 10, padding: '14px 28px', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'Poppins,sans-serif', transition: 'border-color .2s' }}
-                    onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--text)'}
-                    onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--b3)'}>
+                  <button className="lp-hero-outline-btn" onClick={onGetStarted}>
                     Sign In
                   </button>
                 </div>
@@ -1372,9 +1382,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
             <p style={{ fontSize: 16, color: 'var(--muted)', lineHeight: 1.75, marginBottom: 38, fontFamily: 'Poppins,sans-serif' }}>
               Join agents who track every habit, skip nothing that matters, print their checklist, coach their team, and actually hit their production goals.
             </p>
-            <button onClick={onGetStarted} style={{ ...btnGold, fontSize: 17, padding: '17px 44px' }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 14px 44px ${gold}66` }}
-              onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = `0 4px 18px ${gold}44` }}>
+            <button className="lp-hero-gold-btn lp-cta-btn" onClick={onGetStarted}>
               Start Free Trial →
             </button>
             <div style={{ marginTop: 18, fontSize: 12, color: 'var(--dim)', fontFamily: 'Poppins,sans-serif' }}>

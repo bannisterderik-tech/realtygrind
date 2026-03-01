@@ -186,20 +186,20 @@ const LCSS = `
 .lp-split{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center;}
 
 /* Animations */
-@keyframes heroFade{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes heroFade{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
 @keyframes ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 @keyframes ringFill{from{stroke-dasharray:0 999}}
-@keyframes fadeSlideIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-@keyframes slideInRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+@keyframes fadeSlideIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes slideInRight{from{opacity:0;transform:translateX(32px)}to{opacity:1;transform:none}}
 @keyframes xpFloat{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-36px)}}
-@keyframes rankLevelUp{0%{transform:scale(1)}40%{transform:scale(1.35) rotate(8deg)}100%{transform:scale(1)}}
+@keyframes rankLevelUp{0%{transform:scale(1)}40%{transform:scale(1.3)}100%{transform:scale(1)}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
-@keyframes challengePop{0%{transform:scale(1)}50%{transform:scale(1.04)}100%{transform:scale(1)}}
+@keyframes challengePop{0%{transform:scale(1)}50%{transform:scale(1.03)}100%{transform:scale(1)}}
 
-.lp-hero-text{animation:heroFade .7s ease both;}
-.lp-hero-sub{animation:heroFade .7s .12s ease both;}
-.lp-hero-ctas{animation:heroFade .7s .22s ease both;}
-.lp-mockup{animation:slideInRight .7s .28s ease both;}
+.lp-hero-text{animation:heroFade .6s ease forwards;}
+.lp-hero-sub{animation:heroFade .6s .1s ease forwards;}
+.lp-hero-ctas{animation:heroFade .6s .18s ease forwards;}
+.lp-mockup{animation:slideInRight .6s .22s ease forwards;}
 
 /* Ticker */
 .lp-ticker-wrap{overflow:hidden;padding:14px 0;border-top:1px solid var(--b1);border-bottom:1px solid var(--b1);}
@@ -297,7 +297,7 @@ const LCSS = `
 }
 @media(max-width:900px){
   .lp-hero-grid{grid-template-columns:1fr;}
-  .lp-split{grid-template-columns:1fr;gap:40px;}
+  .lp-split{grid-template-columns:1fr;gap:32px;}
   .lp-stats-grid{grid-template-columns:repeat(2,1fr);}
   .lp-pipe-grid{grid-template-columns:repeat(2,1fr);}
   .lp-test-grid{grid-template-columns:1fr;}
@@ -309,13 +309,25 @@ const LCSS = `
   .lp-nav-ctas{display:none !important;}
   .lp-hamburger{display:flex !important;}
   .lp-print-paper{transform:none;max-width:100%;}
+  .lp-section-pad{padding:72px 24px;}
+  /* Coaching: show label/copy first on mobile */
+  .lp-coaching-demo{order:2;}
+  .lp-coaching-text{order:1;}
+  /* Leaderboard: keep card above text on mobile (already first child, fine) */
+  .lp-lb-row{flex-wrap:nowrap;}
+  .lp-lb-row>div:nth-child(3){min-width:0;flex:1;}
 }
 @media(max-width:640px){
-  .lp-section-pad{padding:64px 16px;}
-  .lp-feat-grid{grid-template-columns:1fr;}
+  .lp-section-pad{padding:56px 16px;}
+  .lp-feat-grid{grid-template-columns:repeat(2,1fr);}
   .lp-stats-grid{grid-template-columns:1fr 1fr;}
   .lp-pipe-grid{grid-template-columns:1fr 1fr;}
   .lp-nav{padding:0 16px;}
+  .lp-challenge-tabs{flex-wrap:wrap;}
+}
+@media(max-width:480px){
+  .lp-pipe-grid{grid-template-columns:1fr;}
+  .lp-feat-grid{grid-template-columns:1fr;}
 }
 @media(max-width:400px){
   .lp-mockup{display:none;}
@@ -455,7 +467,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
     1: [{ id:2, addr:'309 Pine Ave', comm:'$12,000' }],
     2: [], 3: [],
   })
-  const [nextDealId, setNextDealId] = useState(3)
+  // nextDealId removed — deal IDs now derived from total count inside functional updater
   const [commTotal,  setCommTotal]  = useState(0)
 
   // Rank demo
@@ -526,14 +538,16 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
 
   // ── Pipeline demo logic ────────────────────────────────────────────────
   function addDeal(colIdx) {
-    const id = nextDealId
-    setNextDealId(id + 1)
-    const addr = SAMPLE_ADDRS[id % SAMPLE_ADDRS.length]
-    const comm = SAMPLE_COMMS[id % SAMPLE_COMMS.length]
-    setPipeDeals(prev => ({ ...prev, [colIdx]: [...prev[colIdx], { id, addr, comm }] }))
-    if (colIdx === 3) {
-      setCommTotal(p => p + parseFloat(comm.replace(/[^0-9.]/g, '')))
-    }
+    // Cap check is INSIDE the functional updater so it works correctly even
+    // when clicks fire faster than React re-renders (stale-closure safe)
+    setPipeDeals(prev => {
+      const total = Object.values(prev).reduce((s, a) => s + a.length, 0)
+      if (total >= 16) return prev  // hard cap at 16 deals
+      const addr = SAMPLE_ADDRS[total % SAMPLE_ADDRS.length]
+      const comm = SAMPLE_COMMS[total % SAMPLE_COMMS.length]
+      if (colIdx === 3) setCommTotal(p => p + parseFloat(comm.replace(/[^0-9.]/g, '')))
+      return { ...prev, [colIdx]: [...prev[colIdx], { id: total + 1, addr, comm }] }
+    })
   }
 
   // ── Rank demo logic ────────────────────────────────────────────────────
@@ -890,7 +904,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
         {/* ── XP & Rank System ──────────────────────────────────────── */}
         <section className="lp-section-pad" style={{ background: theme === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.02)', borderTop: '1px solid var(--b1)', borderBottom: '1px solid var(--b1)' }}>
           <div className="lp-max">
-            <div className="lp-split">
+            <div className="lp-split" style={{ alignItems: 'flex-start' }}>
               <div>
                 <div className="lp-label" style={{ color: '#d97706', marginBottom: 12 }}>XP & Rank System</div>
                 <h2 className="serif" style={{ fontSize: 'clamp(28px,4vw,50px)', fontWeight: 800, lineHeight: 1.1, letterSpacing: '-.025em', marginBottom: 18 }}>
@@ -901,7 +915,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {RANKS_DEF.map(r => (
-                    <div key={r.name} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', borderRadius: 12, background: 'var(--surface)', border: `1.5px solid ${rankXp >= r.min ? r.color + '55' : 'var(--b2)'}`, transition: 'border-color .3s' }}>
+                    <div key={r.name} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', borderRadius: 12, background: 'var(--surface)', border: `1.5px solid ${rankXp >= r.min ? r.color + '55' : 'var(--b2)'}` }}>
                       <span style={{ fontSize: 22 }}>{r.icon}</span>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: r.color, fontFamily: 'Poppins,sans-serif' }}>{r.name}</div>
@@ -912,10 +926,10 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
                   ))}
                 </div>
               </div>
-              <div style={{ background: 'var(--surface)', border: '1px solid var(--b2)', borderRadius: 20, padding: 28 }}>
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--b2)', borderRadius: 20, padding: 28, alignSelf: 'center' }}>
                 <div style={{ textAlign: 'center', marginBottom: 24 }}>
                   <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'Poppins,sans-serif', marginBottom: 10, letterSpacing: 1, textTransform: 'uppercase' }}>Your Rank</div>
-                  <div style={{ fontSize: 64, marginBottom: 10, display: 'inline-block', animation: rankAnim ? 'rankLevelUp .7s ease' : undefined }} key={curRank.name + rankAnim}>
+                  <div style={{ fontSize: 64, marginBottom: 10, display: 'inline-block', animation: rankAnim ? 'rankLevelUp .7s ease' : 'none' }}>
                     {curRank.icon}
                   </div>
                   <div className="serif" style={{ fontSize: 30, fontWeight: 800, color: curRank.color, marginBottom: 4 }}>{curRank.name}</div>
@@ -1074,7 +1088,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
                       <div style={{ fontSize: 11, color: 'var(--muted)' }}>+ "{chal.badge}" badge · {chal.agents} agents competing</div>
                     </div>
                   </div>
-                  <button onClick={logChallengeDay} disabled={chalProg >= chal.goal}
+                  <button onClick={logChallengeDay} disabled={chalAnimating || chalProg >= chal.goal}
                     style={{ ...btnGold, width: '100%', padding: '13px', fontSize: 14, background: chal.color, boxShadow: `0 4px 18px ${chal.color}44`, opacity: chalProg >= chal.goal ? .7 : 1 }}>
                     {chalProg >= chal.goal ? '✓ Challenge Complete!' : `Log Today's Progress →`}
                   </button>
@@ -1089,7 +1103,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
           <div className="lp-max">
             <div className="lp-split" style={{ alignItems: 'start' }}>
               {/* Thread mockup */}
-              <div>
+              <div className="lp-coaching-demo">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, padding: '0 0 14px', borderBottom: '1px solid var(--b2)' }}>
                   <div style={{ fontFamily: 'Poppins,sans-serif' }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>📋 Coaching Thread</div>
@@ -1121,7 +1135,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
                 </div>
               </div>
               {/* Copy */}
-              <div>
+              <div className="lp-coaching-text">
                 <div className="lp-label" style={{ color: '#8b5cf6', marginBottom: 12 }}>Coaching Notes</div>
                 <h2 className="serif" style={{ fontSize: 'clamp(28px,4vw,50px)', fontWeight: 800, lineHeight: 1.1, letterSpacing: '-.025em', marginBottom: 18 }}>
                   Real coaching.<br />Not just messages.

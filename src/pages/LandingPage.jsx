@@ -168,12 +168,12 @@ const LCSS = `
 .serif{font-family:'Playfair Display',serif;}
 
 /* Nav */
-.lp-nav{position:fixed;top:0;left:0;right:0;z-index:100;backdrop-filter:blur(14px) saturate(180%);-webkit-backdrop-filter:blur(14px) saturate(180%);border-bottom:1px solid var(--b1);padding:0 32px;height:64px;display:flex;align-items:center;justify-content:space-between;will-change:backdrop-filter;}
+.lp-nav{position:fixed;top:0;left:0;right:0;z-index:100;border-bottom:1px solid var(--b1);padding:0 32px;height:64px;display:flex;align-items:center;justify-content:space-between;}
 .lp-nav-link{font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;font-family:Poppins,sans-serif;transition:color .15s;}
 .lp-nav-link:hover{color:var(--text);}
 
 /* Hero buttons — pure CSS hover instead of JS handlers */
-.lp-hero-gold-btn{background:var(--gold);color:#fff;border:none;border-radius:10px;font-family:Poppins,sans-serif;font-weight:700;cursor:pointer;transition:all .2s;box-shadow:0 4px 18px rgba(180,83,9,.27);font-size:16px;padding:14px 32px;}
+.lp-hero-gold-btn{background:var(--gold);color:#fff;border:none;border-radius:10px;font-family:Poppins,sans-serif;font-weight:700;cursor:pointer;transition:transform .2s,box-shadow .2s;box-shadow:0 4px 18px rgba(180,83,9,.27);font-size:16px;padding:14px 32px;}
 .lp-hero-gold-btn:hover{transform:translateY(-2px);box-shadow:0 10px 36px rgba(180,83,9,.4);}
 .lp-cta-btn{font-size:17px;padding:17px 44px;}
 .lp-hero-outline-btn{background:transparent;border:1.5px solid var(--b3);color:var(--text);border-radius:10px;padding:14px 28px;font-size:15px;font-weight:600;cursor:pointer;font-family:Poppins,sans-serif;transition:border-color .2s;}
@@ -181,7 +181,7 @@ const LCSS = `
 
 /* Hamburger */
 .lp-hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;padding:6px;border:none;background:transparent;z-index:101;}
-.lp-hamburger span{display:block;width:22px;height:2px;background:var(--text);border-radius:2px;transition:all .25s;}
+.lp-hamburger span{display:block;width:22px;height:2px;background:var(--text);border-radius:2px;transition:transform .25s;}
 .lp-mobile-menu{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;padding:28px 24px;overflow-y:auto;}
 .lp-mobile-link{font-size:24px;font-weight:800;color:var(--text);font-family:'Playfair Display',serif;padding:20px 0;border-bottom:1px solid var(--b2);cursor:pointer;transition:color .15s;}
 .lp-mobile-link:hover{color:var(--gold);}
@@ -217,14 +217,14 @@ const LCSS = `
 .lp-stat-num{font-size:clamp(36px,5vw,60px);font-weight:800;line-height:1;}
 
 /* Habit demo */
-.lp-habit-row{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:12px;cursor:pointer;transition:all .15s;border:1.5px solid transparent;margin-bottom:6px;user-select:none;}
+.lp-habit-row{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:12px;cursor:pointer;transition:background .15s,border-color .15s;border:1.5px solid transparent;margin-bottom:6px;user-select:none;}
 .lp-habit-row:hover{background:var(--surface);border-color:var(--b2);}
 .lp-habit-row.done{background:var(--surface);border-color:var(--b2);}
 .lp-habit-row.skipped{opacity:.45;cursor:default;border-color:transparent;}
 .lp-xp-pop{position:absolute;font-size:13px;font-weight:700;font-family:Poppins,sans-serif;pointer-events:none;animation:xpFloat .95s ease-out forwards;right:28px;}
-.lp-skip-btn{padding:3px 9px;border-radius:20px;border:1px solid var(--b2);background:transparent;cursor:pointer;font-size:10px;font-weight:700;color:var(--muted);font-family:Poppins,sans-serif;transition:all .15s;white-space:nowrap;flex-shrink:0;}
+.lp-skip-btn{padding:3px 9px;border-radius:20px;border:1px solid var(--b2);background:transparent;cursor:pointer;font-size:10px;font-weight:700;color:var(--muted);font-family:Poppins,sans-serif;transition:border-color .15s,color .15s;white-space:nowrap;flex-shrink:0;}
 .lp-skip-btn:hover{border-color:#ef4444;color:#ef4444;}
-.lp-restore-btn{padding:3px 9px;border-radius:20px;border:1px solid #ef444466;background:transparent;cursor:pointer;font-size:10px;font-weight:700;color:#ef4444;font-family:Poppins,sans-serif;transition:all .15s;white-space:nowrap;flex-shrink:0;}
+.lp-restore-btn{padding:3px 9px;border-radius:20px;border:1px solid #ef444466;background:transparent;cursor:pointer;font-size:10px;font-weight:700;color:#ef4444;font-family:Poppins,sans-serif;transition:background .15s;white-space:nowrap;flex-shrink:0;}
 .lp-restore-btn:hover{background:#ef44440f;}
 
 /* Print mockup */
@@ -237,7 +237,7 @@ const LCSS = `
 .lp-pipe-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
 .lp-pipe-col{background:var(--surface);border:1px solid var(--b2);border-radius:14px;padding:14px;min-height:150px;}
 .lp-pipe-deal{background:var(--bg);border:1px solid var(--b2);border-radius:8px;padding:8px 10px;margin-top:8px;font-size:12px;font-family:Poppins,sans-serif;animation:fadeSlideIn .25s ease;}
-.lp-pipe-add{width:100%;margin-top:10px;padding:8px;border-radius:8px;border:1.5px dashed var(--b3);background:transparent;cursor:pointer;font-size:12px;color:var(--muted);font-family:Poppins,sans-serif;transition:all .15s;}
+.lp-pipe-add{width:100%;margin-top:10px;padding:8px;border-radius:8px;border:1.5px dashed var(--b3);background:transparent;cursor:pointer;font-size:12px;color:var(--muted);font-family:Poppins,sans-serif;transition:border-color .15s,color .15s;}
 .lp-pipe-add:hover{border-color:var(--gold);color:var(--gold);}
 
 /* Rank demo */
@@ -245,13 +245,12 @@ const LCSS = `
 .lp-rank-bar-fill{height:100%;border-radius:8px;transition:width .55s cubic-bezier(.4,0,.2,1);}
 
 /* Leaderboard */
-.lp-lb-row{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;background:var(--surface);border:1px solid var(--b2);margin-bottom:8px;transition:transform .2s;}
-.lp-lb-row:hover{transform:translateX(4px);}
+.lp-lb-row{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;background:var(--surface);border:1px solid var(--b2);margin-bottom:8px;}
 
 /* Challenge card */
 .lp-challenge-card{background:var(--surface);border:2px solid var(--b2);border-radius:20px;padding:28px;position:relative;overflow:hidden;}
 .lp-challenge-tabs{display:flex;gap:8px;margin-bottom:24px;}
-.lp-challenge-tab{padding:7px 16px;border-radius:20px;border:1.5px solid var(--b2);background:transparent;cursor:pointer;font-size:12px;font-weight:600;font-family:Poppins,sans-serif;color:var(--muted);transition:all .15s;}
+.lp-challenge-tab{padding:7px 16px;border-radius:20px;border:1.5px solid var(--b2);background:transparent;cursor:pointer;font-size:12px;font-weight:600;font-family:Poppins,sans-serif;color:var(--muted);transition:background .15s,color .15s,border-color .15s;}
 .lp-challenge-tab.active{color:#fff;border-color:transparent;}
 
 /* Coaching thread */
@@ -263,8 +262,7 @@ const LCSS = `
 
 /* Feature grid */
 .lp-feat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;}
-.lp-feat-card{background:var(--surface);border:1px solid var(--b2);border-radius:16px;padding:22px;transition:all .2s;}
-.lp-feat-card:hover{transform:translateY(-4px);box-shadow:var(--shadow2);border-color:var(--b3);}
+.lp-feat-card{background:var(--surface);border:1px solid var(--b2);border-radius:16px;padding:22px;transition:border-color .2s;}
 
 /* Timeline */
 .lp-tl-item{display:flex;gap:20px;}
@@ -275,8 +273,7 @@ const LCSS = `
 
 /* Testimonials */
 .lp-test-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}
-.lp-testimonial{background:var(--surface);border:1px solid var(--b2);border-radius:20px;padding:28px 24px;transition:transform .2s;}
-.lp-testimonial:hover{transform:translateY(-4px);}
+.lp-testimonial{background:var(--surface);border:1px solid var(--b2);border-radius:20px;padding:28px 24px;}
 
 /* Compare */
 .lp-compare-table{border:1px solid var(--b2);border-radius:16px;overflow:hidden;}
@@ -292,8 +289,7 @@ const LCSS = `
 
 /* Pricing */
 .lp-pricing-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}
-.lp-price-card{transition:transform .22s;}
-.lp-price-card:hover{transform:translateY(-4px);}
+.lp-price-card{}
 
 /* Hero grid */
 .lp-hero-grid{display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center;}
@@ -643,7 +639,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
         )}
 
         {/* ── Nav ──────────────────────────────────────────────────── */}
-        <nav className="lp-nav" style={{ background: theme === 'dark' ? 'rgba(10,10,10,.88)' : 'rgba(255,255,255,.88)' }}>
+        <nav className="lp-nav" style={{ background: theme === 'dark' ? '#0c0b09' : '#f5f3ee' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 22 }}>🏡</span>
             <span className="serif" style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)' }}>RealtyGrind</span>

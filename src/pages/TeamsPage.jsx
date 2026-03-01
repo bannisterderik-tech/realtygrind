@@ -211,7 +211,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     try {
       const code = Math.random().toString(36).slice(2,7).toUpperCase()
       const {data:team,error:e} = await supabase.from('teams')
-        .insert({name:teamName.trim(), created_by:user.id, invite_code:code, max_members:999}).select().single()
+        .insert({name:teamName.trim(), created_by:user.id, invite_code:code, max_members:15}).select().single()
       if (e) throw new Error(e.message)
       await supabase.from('team_members').insert({team_id:team.id, user_id:user.id, role:'owner'})
       await supabase.from('profiles').update({team_id:team.id}).eq('id',user.id)
@@ -228,6 +228,9 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       const {data:team,error:e} = await supabase.from('teams').select('*')
         .eq('invite_code',inviteCode.trim().toUpperCase()).single()
       if (e||!team) throw new Error('Team not found. Check your invite code.')
+      // Check member limit
+      const {count} = await supabase.from('team_members').select('id',{count:'exact',head:true}).eq('team_id',team.id)
+      if (team.max_members && count >= team.max_members) throw new Error(`This team has reached its member limit (${team.max_members}). Ask the team owner to upgrade their plan.`)
       await supabase.from('team_members').insert({team_id:team.id, user_id:user.id, role:'member'})
       await supabase.from('profiles').update({team_id:team.id}).eq('id',user.id)
       await refreshProfile()
@@ -344,6 +347,14 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     }
     setInviteSending(true); setInviteMsg(null)
     try {
+      // Check member limit before sending invite
+      if (teamData?.max_members) {
+        const currentCount = members.length
+        const pendingCount = (teamData?.team_prefs?.pending_invites || []).length
+        if (currentCount + pendingCount >= teamData.max_members) {
+          throw new Error(`Team is at capacity (${teamData.max_members} members). Upgrade your plan to add more.`)
+        }
+      }
       // Use raw fetch — supabase.functions.invoke doesn't support the new publishable key format
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Not authenticated')

@@ -35,7 +35,17 @@ export function canUseTeams(profile) {
   return isActiveBilling(profile.billing_status) && plan.maxMembers > 0
 }
 
-export function getPlanBadge(profile) {
+// Is this user a team member (not owner)? They're covered by their team's plan.
+export function isTeamMember(profile, userId) {
+  if (!profile?.team_id || !profile?.teams) return false
+  return profile.teams.created_by !== userId
+}
+
+export function getPlanBadge(profile, userId) {
+  // Team member (non-owner) — show they're covered
+  if (userId && isTeamMember(profile, userId)) {
+    return { label:'Team Member', color:'#d97706' }
+  }
   if (!profile?.plan) return { label:'Free', color:'#706b62' }
   const plan = getPlan(profile.plan)
   if (!plan) return { label:'Free', color:'#706b62' }

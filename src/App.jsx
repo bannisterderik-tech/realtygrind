@@ -767,6 +767,7 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
   }
 
   async function remove(row) {
+    if (!window.confirm(`Remove "${row.address || 'this entry'}"?`)) return
     setRows(prev => prev.filter(r => r.id !== row.id))
     if (row.id && !String(row.id).startsWith('tmp-')) {
       await supabase.from('transactions').delete().eq('id', row.id)
@@ -1070,6 +1071,22 @@ function Dashboard({ theme, onToggleTheme }) {
   // even when called multiple times before a re-render (prevents stale-closure XP corruption)
   useEffect(() => { xpRef.current = xp }, [xp])
 
+  // ESC key closes any open modal
+  useEffect(() => {
+    const onKey = e => {
+      if (e.key !== 'Escape') return
+      if (offerModal)        setOfferModal(null)
+      else if (addTaskModal) setAddTaskModal(false)
+      else if (showPrint)    setShowPrint(false)
+      else if (plannerPrint) setPlannerPrint(null)
+      else if (showWeeklyUpdate) setShowWeeklyUpdate(false)
+      else if (showBuyersUpdate) setShowBuyersUpdate(false)
+      else if (showCommSummary)  setShowCommSummary(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [offerModal, addTaskModal, showPrint, plannerPrint, showWeeklyUpdate, showBuyersUpdate, showCommSummary])
+
   // ── XP ─────────────────────────────────────────────────────────────────────
   async function addXp(amount, color='var(--gold)') {
     const nxp = xpRef.current + amount
@@ -1228,6 +1245,12 @@ function Dashboard({ theme, onToggleTheme }) {
     },{onConflict:'user_id,habit_id,week_index,day_index,month_year'})
   }
 
+  function incrementCounter(hid, week, day) {
+    const ckey = `${hid}-${week}-${day}`
+    const cur  = counters[ckey] || 1
+    setCounterValue(hid, week, day, cur + 1)
+  }
+
   // ── Custom tasks ────────────────────────────────────────────────────────────
   async function toggleCustomTask(taskId, week, day) {
     const key    = `${taskId}-${week}-${day}`
@@ -1257,59 +1280,86 @@ function Dashboard({ theme, onToggleTheme }) {
   }
 
   async function addTaskToday(label, icon, xp) {
-    const {data} = await supabase.from('custom_tasks').insert({
-      user_id:user.id, label, icon, xp:Number(xp)||15,
-      is_default:false, specific_date:todayDate
-    }).select().single()
-    if (data) setCustomTasks(prev => [...prev, {
-      id:data.id, label:data.label, icon:data.icon, xp:data.xp,
-      isDefault:false, specificDate:data.specific_date
-    }])
+    try {
+      const {data, error} = await supabase.from('custom_tasks').insert({
+        user_id:user.id, label, icon, xp:Number(xp)||15,
+        is_default:false, specific_date:todayDate
+      }).select().single()
+      if (error) throw error
+      if (data) setCustomTasks(prev => [...prev, {
+        id:data.id, label:data.label, icon:data.icon, xp:data.xp,
+        isDefault:false, specificDate:data.specific_date
+      }])
+    } catch(e) { console.error('addTaskToday error:', e) }
     setAddTaskModal(false)
   }
 
   async function addTaskForDay(weekIdx, dayIdx, label, icon, xp) {
     const specificDate = dateStrForDay(weekIdx, dayIdx)
     if (!specificDate || !label.trim()) return
-    const { data } = await supabase.from('custom_tasks').insert({
-      user_id:user.id, label, icon, xp:Number(xp)||15,
-      is_default:false, specific_date:specificDate,
-    }).select().single()
-    if (data) setCustomTasks(prev => [...prev, {
-      id:data.id, label:data.label, icon:data.icon, xp:data.xp,
-      isDefault:false, specificDate:data.specific_date,
-    }])
+    try {
+      const { data, error } = await supabase.from('custom_tasks').insert({
+        user_id:user.id, label, icon, xp:Number(xp)||15,
+        is_default:false, specific_date:specificDate,
+      }).select().single()
+      if (error) throw error
+      if (data) setCustomTasks(prev => [...prev, {
+        id:data.id, label:data.label, icon:data.icon, xp:data.xp,
+        isDefault:false, specificDate:data.specific_date,
+      }])
+    } catch(e) { console.error('addTaskForDay error:', e) }
     setPlannerTaskForm(null)
     setPlannerForm({ label:'', icon:'🏠', xp:15 })
   }
 
   // Planner-only: move a day-specific task to a recoverable deleted list, hard-delete from DB
   async function deleteDayTask(task) {
-    setPlannerDeletedTasks(prev => [...prev, task])
-    setCustomTasks(prev => prev.filter(t => t.id !== task.id))
-    await supabase.from('custom_tasks').delete().eq('id', task.id).eq('user_id', user.id)
+    try {
+      setPlannerDeletedTasks(prev => [...prev, task])
+      setCustomTasks(prev => prev.filter(t => t.id !== task.id))
+      const { error } = await supabase.from('custom_tasks').delete().eq('id', task.id).eq('user_id', user.id)
+      if (error) throw error
+    } catch(e) {
+      console.error('deleteDayTask error:', e)
+      // Restore on failure
+      setPlannerDeletedTasks(prev => prev.filter(t => t.id !== task.id))
+      setCustomTasks(prev => [...prev, task])
+    }
   }
   // Re-insert and bring back into view
   async function restoreDayTask(task) {
-    const { data } = await supabase.from('custom_tasks').insert({
-      user_id: user.id, label: task.label, icon: task.icon, xp: task.xp,
-      is_default: false, specific_date: task.specificDate,
-    }).select().single()
-    if (data) {
-      setCustomTasks(prev => [...prev, { id:data.id, label:data.label, icon:data.icon, xp:data.xp, isDefault:false, specificDate:data.specific_date }])
-      setPlannerDeletedTasks(prev => prev.filter(t => t.id !== task.id))
-    }
+    try {
+      const { data, error } = await supabase.from('custom_tasks').insert({
+        user_id: user.id, label: task.label, icon: task.icon, xp: task.xp,
+        is_default: false, specific_date: task.specificDate,
+      }).select().single()
+      if (error) throw error
+      if (data) {
+        setCustomTasks(prev => [...prev, { id:data.id, label:data.label, icon:data.icon, xp:data.xp, isDefault:false, specificDate:data.specific_date }])
+        setPlannerDeletedTasks(prev => prev.filter(t => t.id !== task.id))
+      }
+    } catch(e) { console.error('restoreDayTask error:', e) }
   }
 
   async function deleteCustomTask(id) {
-    await supabase.from('custom_tasks').delete().eq('id',id).eq('user_id',user.id)
-    setCustomTasks(prev => prev.filter(t => t.id !== id))
+    const prev = customTasks.find(t => t.id === id)
+    setCustomTasks(p => p.filter(t => t.id !== id))
+    try {
+      const { error } = await supabase.from('custom_tasks').delete().eq('id',id).eq('user_id',user.id)
+      if (error) throw error
+    } catch(e) {
+      console.error('deleteCustomTask error:', e)
+      if (prev) setCustomTasks(p => [...p, prev])
+    }
   }
 
   async function restoreCustomTask(task) {
-    await supabase.from('custom_tasks').update({ is_deleted: false }).eq('id',task.id).eq('user_id',user.id)
-    setDeletedDefaultTasks(prev => prev.filter(t => t.id !== task.id))
-    setCustomTasks(prev => [...prev, { ...task }])
+    try {
+      const { error } = await supabase.from('custom_tasks').update({ is_deleted: false }).eq('id',task.id).eq('user_id',user.id)
+      if (error) throw error
+      setDeletedDefaultTasks(prev => prev.filter(t => t.id !== task.id))
+      setCustomTasks(prev => [...prev, { ...task }])
+    } catch(e) { console.error('restoreCustomTask error:', e) }
   }
 
   // Called by ProfilePage when a default task is soft-deleted or restored
@@ -1381,6 +1431,7 @@ function Dashboard({ theme, onToggleTheme }) {
   }
 
   async function removeListing(listing) {
+    if (!window.confirm(`Remove listing "${listing.address}"?`)) return
     setListings(prev=>prev.filter(l=>l.id!==listing.id))
     await supabase.from('listings').delete().eq('id',listing.id)
   }
@@ -1435,6 +1486,7 @@ function Dashboard({ theme, onToggleTheme }) {
   }
 
   async function removeBuyerRep(rep) {
+    if (!window.confirm(`Remove buyer rep "${rep.clientName}"?`)) return
     setBuyerReps(prev => prev.filter(r => r.id !== rep.id))
     await supabase.from('listings').delete().eq('id', rep.id)
   }
@@ -2453,7 +2505,7 @@ function Dashboard({ theme, onToggleTheme }) {
                               border:'1px solid var(--b2)', background:'var(--surface)', color:'var(--text)',
                               textAlign:'center', outline:'none' }}/>
                           <input type="number" value={plannerForm.xp}
-                            onChange={e=>setPlannerForm(p=>({...p,xp:e.target.value}))}
+                            onChange={e=>setPlannerForm(p=>({...p,xp:Number(e.target.value)||0}))}
                             style={{ width:54, padding:'5px 8px', fontSize:12, borderRadius:6,
                               border:'1px solid var(--b2)', background:'var(--surface)', color:'var(--text)', outline:'none' }}
                             placeholder="XP"/>

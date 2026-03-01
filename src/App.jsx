@@ -1706,7 +1706,7 @@ function Dashboard({ theme, onToggleTheme }) {
             <div className="serif" style={{ fontSize:15, color:'#fb923c', lineHeight:1.2 }}>🔥 {streak}</div>
           </div>
 
-          {(() => { const pb = getPlanBadge(profile); return (
+          {(() => { const pb = getPlanBadge(profile, user?.id); return (
             <button className={`nav-btn mob-hide${page==='billing'?' active':''}`} onClick={()=>setPage('billing')}
               style={{ fontSize:11, fontWeight:700, color:pb.color, letterSpacing:.4 }}>
               {pb.label}

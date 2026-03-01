@@ -1178,9 +1178,11 @@ function Dashboard({ theme, onToggleTheme }) {
     setHabits(prev=>{ const n={...prev}; n[hid]=n[hid].map((w,wi)=>wi===week?w.map((d,di)=>di===day?newVal:d):w); return n })
     // Use effectiveHabits so edited XP/label/icon values take effect
     const hBase = HABITS.find(x=>x.id===hid)
+    if (!hBase) return  // defensive: unknown habit id
     const hEd   = (activePrefs.edits||{})[hid] || {}
     const h     = { ...hBase, xp: hEd.xp || hBase.xp }
     const cat   = CAT[h.cat]
+    if (!cat) return  // defensive: unknown category
     if (newVal) {
       await addXp(h.xp, cat.color)
       const ckey = `${hid}-${week}-${day}`
@@ -1207,6 +1209,7 @@ function Dashboard({ theme, onToggleTheme }) {
   async function setCounterValue(hid, week, day, rawVal) {
     const v     = Math.max(1, parseInt(rawVal) || 1)
     const hBase = HABITS.find(x=>x.id===hid)
+    if (!hBase) return  // defensive: unknown habit id
     const hEd   = (activePrefs.edits||{})[hid] || {}
     const h     = { ...hBase, xp: hEd.xp || hBase.xp }
     const ckey  = `${hid}-${week}-${day}`
@@ -1215,7 +1218,7 @@ function Dashboard({ theme, onToggleTheme }) {
     // XP delta: difference in extra-unit XP between old and new count
     const xpDiff = (v - oldCnt) * (h.xpEach || 0)
     if (xpDiff !== 0) {
-      const nxp = Math.max(0, xp + xpDiff)
+      const nxp = Math.max(0, xpRef.current + xpDiff)
       setXp(nxp)
       await supabase.from('profiles').update({xp:nxp}).eq('id',user.id)
     }
@@ -2984,6 +2987,17 @@ function AppInner() {
     document.documentElement.setAttribute('data-theme', theme)
   },[theme])
 
+  // Inject global CSS once into <head> instead of re-rendering <style>{CSS}</style> as JSX
+  useEffect(() => {
+    const id = 'rg-global-css'
+    if (!document.getElementById(id)) {
+      const s = document.createElement('style')
+      s.id = id
+      s.textContent = CSS
+      document.head.appendChild(s)
+    }
+  }, [])
+
   // Handle Stripe return URLs (?checkout=success|cancelled)
   useEffect(()=>{
     const params = new URLSearchParams(window.location.search)
@@ -3039,7 +3053,6 @@ function AppInner() {
   if (loading) return (
     <div data-theme={theme} style={{ display:'flex', alignItems:'center', justifyContent:'center',
       height:'100vh', background:'var(--bg)', gap:12 }}>
-      <style>{CSS}</style>
       <div style={{ width:18, height:18, border:'2px solid var(--gold)', borderTopColor:'transparent',
         borderRadius:'50%', animation:'spin 1s linear infinite' }}/>
       <span className="serif" style={{ fontSize:18, color:'var(--text)' }}>RealtyGrind</span>
@@ -3048,7 +3061,6 @@ function AppInner() {
 
   if (!user) return (
     <div data-theme={theme}>
-      <style>{CSS}</style>
       {checkoutLoading && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:9999,
           display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:16 }}>
@@ -3068,7 +3080,6 @@ function AppInner() {
 
   return (
     <div data-theme={theme}>
-      <style>{CSS}</style>
       {/* Stripe checkout return banner */}
       {checkoutMsg === 'success' && (
         <div style={{ position:'fixed', top:16, left:'50%', transform:'translateX(-50%)', zIndex:9999,

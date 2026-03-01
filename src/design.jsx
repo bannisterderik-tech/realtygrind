@@ -27,8 +27,6 @@ export const CAT = {
 // ─── CSS ───────────────────────────────────────────────────────────────────────
 
 export const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Montserrat:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
-
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 16px; background: var(--bg); }
 body {

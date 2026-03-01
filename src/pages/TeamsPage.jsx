@@ -390,8 +390,13 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   async function removeInvite(email) {
     const updated = (teamData?.team_prefs?.pending_invites || []).filter(i => i.email !== email)
     const newPrefs = { ...(teamData?.team_prefs||{}), pending_invites: updated }
-    await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
-    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+    try {
+      const { error } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+      if (error) throw error
+      setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+    } catch (err) {
+      console.error('removeInvite error:', err)
+    }
   }
 
   const CHALLENGE_METRICS = [
@@ -424,10 +429,17 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     }
     const existing = teamData?.team_prefs?.challenges || []
     const updated = { ...(teamData?.team_prefs||{}), challenges: [...existing, newC] }
-    await supabase.from('teams').update({ team_prefs: updated }).eq('id', profile.team_id)
-    setTeamData(td => ({ ...td, team_prefs: updated }))
-    setChallengeForm(null)
-    setChallengeSaving(false)
+    try {
+      const { error } = await supabase.from('teams').update({ team_prefs: updated }).eq('id', profile.team_id)
+      if (error) throw error
+      setTeamData(td => ({ ...td, team_prefs: updated }))
+      setChallengeForm(null)
+    } catch (err) {
+      setError('Failed to save challenge. Please try again.')
+      console.error('saveChallenge error:', err)
+    } finally {
+      setChallengeSaving(false)
+    }
   }
 
   async function endChallenge(challengeId) {
@@ -437,21 +449,28 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     const ranked = [...members].sort((a,b) => getMemberMetricVal(b.id, challenge.metric) - getMemberMetricVal(a.id, challenge.metric))
     const winner = ranked[0]
     if (!winner) return
-    // Award bonus XP
-    if (challenge.bonusXp > 0) {
-      const newXp = (winner.xp||0) + challenge.bonusXp
-      await supabase.from('profiles').update({ xp: newXp }).eq('id', winner.id)
-      setMembers(ms => ms.map(m => m.id===winner.id ? {...m, xp:newXp} : m))
+    try {
+      // Award bonus XP
+      if (challenge.bonusXp > 0) {
+        const newXp = (winner.xp||0) + challenge.bonusXp
+        const { error: xpErr } = await supabase.from('profiles').update({ xp: newXp }).eq('id', winner.id)
+        if (xpErr) throw xpErr
+        setMembers(ms => ms.map(m => m.id===winner.id ? {...m, xp:newXp} : m))
+      }
+      // Mark ended
+      const updated = {
+        ...(teamData?.team_prefs||{}),
+        challenges: (teamData.team_prefs?.challenges||[]).map(c =>
+          c.id===challengeId ? { ...c, status:'ended', winnerId:winner.id } : c
+        )
+      }
+      const { error } = await supabase.from('teams').update({ team_prefs: updated }).eq('id', profile.team_id)
+      if (error) throw error
+      setTeamData(td => ({ ...td, team_prefs: updated }))
+    } catch (err) {
+      setError('Failed to end challenge. Please try again.')
+      console.error('endChallenge error:', err)
     }
-    // Mark ended
-    const updated = {
-      ...(teamData?.team_prefs||{}),
-      challenges: (teamData.team_prefs?.challenges||[]).map(c =>
-        c.id===challengeId ? { ...c, status:'ended', winnerId:winner.id } : c
-      )
-    }
-    await supabase.from('teams').update({ team_prefs: updated }).eq('id', profile.team_id)
-    setTeamData(td => ({ ...td, team_prefs: updated }))
   }
 
   // ── Accountability Groups ─────────────────────────────────────────────────
@@ -541,10 +560,17 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     const updatedGroups = groups.map(g => g.id === groupId
       ? { ...g, challenges: [...(g.challenges||[]), newChallenge] } : g)
     const newPrefs = { ...(teamData.team_prefs||{}), groups: updatedGroups }
-    await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
-    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
-    setGroupChallengeForm(null)
-    setGroupChallengeSaving(false)
+    try {
+      const { error } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+      if (error) throw error
+      setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+      setGroupChallengeForm(null)
+    } catch (err) {
+      setError('Failed to save group challenge. Please try again.')
+      console.error('saveGroupChallenge error:', err)
+    } finally {
+      setGroupChallengeSaving(false)
+    }
   }
 
   async function endGroupChallenge(groupId, challengeId) {
@@ -557,18 +583,25 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     const ranked = [...groupMems].sort((a,b) => getMemberMetricVal(b.id, challenge.metric) - getMemberMetricVal(a.id, challenge.metric))
     const winner = ranked[0]
     if (!winner) return
-    if (challenge.bonusXp > 0) {
-      const newXp = (winner.xp||0) + challenge.bonusXp
-      await supabase.from('profiles').update({ xp: newXp }).eq('id', winner.id)
-      setMembers(ms => ms.map(m => m.id===winner.id ? { ...m, xp:newXp } : m))
+    try {
+      if (challenge.bonusXp > 0) {
+        const newXp = (winner.xp||0) + challenge.bonusXp
+        const { error: xpErr } = await supabase.from('profiles').update({ xp: newXp }).eq('id', winner.id)
+        if (xpErr) throw xpErr
+        setMembers(ms => ms.map(m => m.id===winner.id ? { ...m, xp:newXp } : m))
+      }
+      const updatedGroups = groups.map(g => g.id === groupId
+        ? { ...g, challenges: (g.challenges||[]).map(c =>
+            c.id===challengeId ? { ...c, status:'ended', winnerId: winner.id } : c) }
+        : g)
+      const newPrefs = { ...(teamData.team_prefs||{}), groups: updatedGroups }
+      const { error } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+      if (error) throw error
+      setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+    } catch (err) {
+      setError('Failed to end group challenge. Please try again.')
+      console.error('endGroupChallenge error:', err)
     }
-    const updatedGroups = groups.map(g => g.id === groupId
-      ? { ...g, challenges: (g.challenges||[]).map(c =>
-          c.id===challengeId ? { ...c, status:'ended', winnerId: winner.id } : c) }
-      : g)
-    const newPrefs = { ...(teamData.team_prefs||{}), groups: updatedGroups }
-    await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
-    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
   }
 
   // ── Coaching Notes ────────────────────────────────────────────────────────
@@ -611,16 +644,26 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   async function deleteNote(noteId) {
     const updated = (teamData?.team_prefs?.coaching_notes||[]).filter(n=>n.id!==noteId)
     const updatedPrefs = { ...(teamData?.team_prefs||{}), coaching_notes: updated }
-    await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile.team_id)
-    setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
+    try {
+      const { error } = await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile.team_id)
+      if (error) throw error
+      setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
+    } catch (err) {
+      console.error('deleteNote error:', err)
+    }
   }
 
   async function pinNote(noteId) {
     const updated = (teamData?.team_prefs?.coaching_notes||[]).map(n=>
       n.id===noteId ? { ...n, pinned: !n.pinned } : n)
     const updatedPrefs = { ...(teamData?.team_prefs||{}), coaching_notes: updated }
-    await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile.team_id)
-    setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
+    try {
+      const { error } = await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile.team_id)
+      if (error) throw error
+      setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
+    } catch (err) {
+      console.error('pinNote error:', err)
+    }
   }
 
   async function saveReply(noteId) {
@@ -630,24 +673,31 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     const newReply = { id: Date.now().toString(36), authorId: user.id, text, createdAt: new Date().toISOString() }
     // Owner and group leaders reply via teams table; regular agents reply via their own profile
     const isCoachOrLeader = isAdminOrOwner
-    if (isCoachOrLeader) {
-      const updated = (teamData?.team_prefs?.coaching_notes||[]).map(n=>
-        n.id===noteId ? { ...n, replies: [...(n.replies||[]), newReply] } : n)
-      const updatedPrefs = { ...(teamData?.team_prefs||{}), coaching_notes: updated }
-      await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile.team_id)
-      setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
-    } else {
-      // Agent writes reply to their own profile row (always allowed)
-      const existingReplies = profile?.goals?.coaching_replies || {}
-      const noteReplies = existingReplies[noteId] || []
-      const updatedCoachingReplies = { ...existingReplies, [noteId]: [...noteReplies, newReply] }
-      const updatedGoals = { ...(profile?.goals||{}), coaching_replies: updatedCoachingReplies }
-      await supabase.from('profiles').update({ goals: updatedGoals }).eq('id', user.id)
-      // Optimistically update members list so coach can see it after next fetch
-      setMembers(ms => ms.map(m => m.id===user.id ? { ...m, goals: updatedGoals } : m))
+    try {
+      if (isCoachOrLeader) {
+        const updated = (teamData?.team_prefs?.coaching_notes||[]).map(n=>
+          n.id===noteId ? { ...n, replies: [...(n.replies||[]), newReply] } : n)
+        const updatedPrefs = { ...(teamData?.team_prefs||{}), coaching_notes: updated }
+        const { error } = await supabase.from('teams').update({ team_prefs: updatedPrefs }).eq('id', profile.team_id)
+        if (error) throw error
+        setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
+      } else {
+        // Agent writes reply to their own profile row (always allowed)
+        const existingReplies = profile?.goals?.coaching_replies || {}
+        const noteReplies = existingReplies[noteId] || []
+        const updatedCoachingReplies = { ...existingReplies, [noteId]: [...noteReplies, newReply] }
+        const updatedGoals = { ...(profile?.goals||{}), coaching_replies: updatedCoachingReplies }
+        const { error } = await supabase.from('profiles').update({ goals: updatedGoals }).eq('id', user.id)
+        if (error) throw error
+        // Optimistically update members list so coach can see it after next fetch
+        setMembers(ms => ms.map(m => m.id===user.id ? { ...m, goals: updatedGoals } : m))
+      }
+      setReplyForms(f => ({ ...f, [noteId]: '' }))
+    } catch (err) {
+      console.error('saveReply error:', err)
+    } finally {
+      setReplySaving(null)
     }
-    setReplyForms(f => ({ ...f, [noteId]: '' }))
-    setReplySaving(null)
   }
 
   // ── Coaching note from the detail panel (pre-sets agentId = viewingMember) ──

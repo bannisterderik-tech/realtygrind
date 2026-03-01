@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { CSS, Loader, Wordmark, ThemeToggle, Ring, getRank, CAT, StatCard, fmtMoney } from '../design'
 import { HABITS } from '../habits'
-import { canUseTeams, getMaxMembers } from '../lib/plans'
+import { canUseTeams, getMaxMembers, getPlan, isActiveBilling } from '../lib/plans'
 
 const HABITS_FOR_DISPLAY = [
   { id:'prospecting', label:'Prospecting', cat:'leads' },
@@ -789,19 +789,52 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
           {/* No team menu */}
           {mode==='menu' && (
             <div style={{ maxWidth:560, animation:'fadeUp .25s ease' }}>
-              {!canUseTeams(profile) && (
-                <div className="card" style={{ padding:'16px 22px', marginBottom:16, borderLeft:'3px solid #d97706',
-                  background:'rgba(217,119,6,.06)', display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
-                  <div style={{ flex:1, minWidth:200 }}>
-                    <div style={{ fontWeight:700, color:'var(--text)', fontSize:14 }}>Team features require a paid plan</div>
-                    <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>
-                      Upgrade to Team or Brokerage to create or manage teams.
+              {!canUseTeams(profile) && (() => {
+                const hasSub = profile?.stripe_customer_id && isActiveBilling(profile?.billing_status)
+                const currentPlan = getPlan(profile?.plan)
+                return (
+                  <div className="card" style={{ padding:24, marginBottom:16, borderLeft:'3px solid #d97706',
+                    background:'rgba(217,119,6,.06)' }}>
+                    <div style={{ fontWeight:700, color:'var(--text)', fontSize:15, marginBottom:6 }}>
+                      Teams require a Team plan ($99/mo)
                     </div>
+                    <div style={{ fontSize:13, color:'var(--muted)', lineHeight:1.6, marginBottom:14 }}>
+                      {hasSub && currentPlan
+                        ? `You're on the ${currentPlan.name} plan. Upgrade to Team to create and manage teams with up to 15 agents.`
+                        : 'Start a 14-day free trial of the Team plan to create and manage teams with up to 15 agents.'}
+                    </div>
+                    {hasSub ? (
+                      <button className="btn-gold" onClick={async () => {
+                        setLoading(true)
+                        try {
+                          const { data, error: e } = await supabase.functions.invoke('create-portal-session', {
+                            body: { returnUrl: window.location.origin }
+                          })
+                          if (e) throw e
+                          if (data?.url) window.location.href = data.url
+                        } catch (err) { setError('Could not open billing portal.') }
+                        setLoading(false)
+                      }} disabled={loading} style={{ fontSize:13, padding:'10px 20px' }}>
+                        {loading ? 'Opening...' : 'Upgrade via Billing Portal'}
+                      </button>
+                    ) : (
+                      <button className="btn-gold" onClick={async () => {
+                        setLoading(true)
+                        try {
+                          const { data, error: e } = await supabase.functions.invoke('create-checkout', {
+                            body: { planId: 'team', isAnnual: false, returnUrl: window.location.origin }
+                          })
+                          if (e) throw e
+                          if (data?.url) window.location.href = data.url
+                        } catch (err) { setError('Could not start checkout.') }
+                        setLoading(false)
+                      }} disabled={loading} style={{ fontSize:13, padding:'10px 20px' }}>
+                        {loading ? 'Redirecting...' : 'Start Team Plan — Free 14-Day Trial'}
+                      </button>
+                    )}
                   </div>
-                  <button className="btn-gold" onClick={() => onNavigate('billing')}
-                    style={{ fontSize:12, padding:'8px 16px', whiteSpace:'nowrap' }}>View Plans</button>
-                </div>
-              )}
+                )
+              })()}
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
               <div className="card" style={{ padding:28, textAlign:'center', cursor: canUseTeams(profile) ? 'pointer' : 'default',
                 opacity: canUseTeams(profile) ? 1 : .5 }}

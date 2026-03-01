@@ -96,6 +96,21 @@ const LCSS = `
 .lp-habit-row:hover{background:var(--surface);border-color:var(--b2);}
 .lp-habit-row.done{background:var(--surface);border-color:var(--b2);}
 
+/* Print mockup */
+.lp-print-paper{background:#fff;border-radius:12px;box-shadow:0 12px 48px rgba(0,0,0,.18);padding:28px 22px;font-family:'Courier New',monospace;transform:rotate(-0.8deg);max-width:320px;color:#111;}
+.lp-print-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #e5e7eb;}
+.lp-print-box{width:15px;height:15px;border:1.5px solid #374151;border-radius:2px;flex-shrink:0;}
+.lp-print-dots{flex:1;height:1px;border-bottom:1.5px dotted #d1d5db;margin-left:6px;}
+
+/* Pipeline */
+.lp-pipe-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+.lp-pipe-col{background:var(--surface);border:1px solid var(--b2);border-radius:14px;padding:14px;min-height:120px;}
+.lp-pipe-deal{background:var(--bg);border:1px solid var(--b2);border-radius:8px;padding:8px 10px;margin-top:8px;font-size:12px;font-family:Poppins,sans-serif;}
+
+/* Rank bar */
+.lp-rank-bar-wrap{background:var(--b1);border-radius:8px;height:12px;overflow:hidden;}
+.lp-rank-bar-fill{height:100%;border-radius:8px;}
+
 /* Feature grid */
 .lp-feat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;}
 .lp-feat-card{background:var(--surface);border:1px solid var(--b2);border-radius:16px;padding:22px;}
@@ -110,7 +125,8 @@ const LCSS = `
 /* FAQ */
 .lp-faq-item{border-bottom:1px solid var(--b2);}
 .lp-faq-q{width:100%;text-align:left;padding:20px 0;background:transparent;border:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:15px;font-weight:600;color:var(--text);font-family:Poppins,sans-serif;gap:12px;}
-.lp-faq-a{font-size:13px;color:var(--muted);line-height:1.8;padding-bottom:20px;font-family:Poppins,sans-serif;}
+.lp-faq-a{font-size:13px;color:var(--muted);line-height:1.8;font-family:Poppins,sans-serif;overflow:hidden;max-height:0;padding-bottom:0;transition:max-height .25s ease,padding-bottom .25s ease;}
+.lp-faq-a.open{max-height:200px;padding-bottom:20px;}
 
 /* Hero grid */
 .lp-hero-grid{display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center;}
@@ -124,6 +140,8 @@ const LCSS = `
   .lp-split{grid-template-columns:1fr;gap:32px;}
   .lp-test-grid{grid-template-columns:1fr;}
   .lp-pricing-grid{grid-template-columns:1fr;}
+  .lp-pipe-grid{grid-template-columns:repeat(2,1fr);}
+  .lp-print-paper{transform:none;max-width:100%;}
   .lp-nav-links{display:none !important;}
   .lp-nav-ctas{display:none !important;}
   .lp-hamburger{display:flex !important;}
@@ -137,6 +155,7 @@ const LCSS = `
 @media(max-width:480px){
   .lp-feat-grid{grid-template-columns:1fr;}
   .lp-hero-grid .lp-mockup{display:none;}
+  .lp-pipe-grid{grid-template-columns:1fr;}
 }
 `
 
@@ -408,6 +427,150 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
         </div>
       </section>
 
+      {/* ── Print & Offline ────────────────────────────────────── */}
+      <section className="lp-section" style={{ background: theme === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.02)', borderTop:'1px solid var(--b1)', borderBottom:'1px solid var(--b1)' }}>
+        <div className="lp-max">
+          <div className="lp-split">
+            <div style={{ display:'flex', justifyContent:'center' }}>
+              <div className="lp-print-paper">
+                <div style={{ textAlign:'center', marginBottom:14 }}>
+                  <div style={{ fontSize:14, fontWeight:700, letterSpacing:1 }}>DAILY CHECKLIST</div>
+                  <div style={{ fontSize:10, color:'#6b7280', marginTop:2 }}>Tuesday, March 4 · Alex M.</div>
+                </div>
+                <div style={{ borderTop:'2px solid #111', marginBottom:10 }} />
+                {['Prospecting calls','Appointments set','Showings completed','New listing signed','Follow-up emails','Market study'].map((h, i) => (
+                  <div key={h} className="lp-print-row">
+                    <div className="lp-print-box" style={ i < 3 ? { background:'#111', display:'flex', alignItems:'center', justifyContent:'center' } : {}}>
+                      {i < 3 && <span style={{ color:'#fff', fontSize:8, fontWeight:700 }}>✓</span>}
+                    </div>
+                    <span style={{ fontSize:11 }}>{h}</span>
+                    <div className="lp-print-dots" />
+                    <span style={{ fontSize:9, color:'#9ca3af', width:40, textAlign:'right' }}>Notes</span>
+                  </div>
+                ))}
+                <div style={{ borderTop:'1px solid #d1d5db', marginTop:14, paddingTop:10, display:'flex', justifyContent:'space-between', fontSize:9, color:'#6b7280' }}>
+                  <span>Pipeline: 3 active · 1 pending</span>
+                  <span>Signature: ___________</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:'#06b6d4', marginBottom:12, fontFamily:'Poppins,sans-serif' }}>Print & Use Offline</div>
+              <h2 className="serif" style={{ fontSize:'clamp(28px,4vw,50px)', fontWeight:800, lineHeight:1.1, letterSpacing:'-.025em', marginBottom:18 }}>
+                Take it with you.<br />No signal needed.
+              </h2>
+              <p style={{ fontSize:15, color:'var(--muted)', lineHeight:1.75, marginBottom:28, fontFamily:'Poppins,sans-serif' }}>
+                Print your daily habit sheet as a clean PDF. Includes every habit with a notes column, your pipeline snapshot, and a signature line. Perfect for car time, open houses, or agents who like a paper trail.
+              </p>
+              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                {[
+                  ['🖨️','One-click PDF export','#06b6d4'],
+                  ['📝','Notes column for each habit','#8b5cf6'],
+                  ['📊','Pipeline snapshot included','#10b981'],
+                  ['✍️','Signature line for accountability','#f97316'],
+                ].map(([icon, text, col]) => (
+                  <div key={text} style={{ display:'flex', alignItems:'center', gap:10, fontSize:14, fontFamily:'Poppins,sans-serif' }}>
+                    <span style={{ fontSize:15, width:18, flexShrink:0 }}>{icon}</span>
+                    <span style={{ color:'var(--text)' }}>{text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Pipeline Tracker ─────────────────────────────────────── */}
+      <section className="lp-section">
+        <div className="lp-max">
+          <div style={{ textAlign:'center', marginBottom:56 }}>
+            <div style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:'#10b981', marginBottom:12, fontFamily:'Poppins,sans-serif' }}>Pipeline Tracker</div>
+            <h2 className="serif" style={{ fontSize:'clamp(28px,4vw,48px)', fontWeight:800, lineHeight:1.1, letterSpacing:'-.025em', marginBottom:12 }}>
+              Every deal, <span style={{ color:gold }}>at a glance.</span>
+            </h2>
+            <p style={{ fontSize:15, color:'var(--muted)', lineHeight:1.75, fontFamily:'Poppins,sans-serif', maxWidth:560, margin:'0 auto' }}>
+              Track offers, pending deals, and closings in a simple board. Commission totals update automatically.
+            </p>
+          </div>
+          <div className="lp-pipe-grid">
+            {[
+              { stage:'Offers Made', color:'#0ea5e9', deals:[{ addr:'142 Maple St', comm:'$8,400' }, { addr:'88 River Rd', comm:'$6,200' }] },
+              { stage:'Offers Received', color:'#8b5cf6', deals:[{ addr:'309 Pine Ave', comm:'$12,000' }] },
+              { stage:'Pending', color:'#f97316', deals:[{ addr:'7 Oak Lane', comm:'$9,800' }, { addr:'512 Birch Dr', comm:'$14,500' }] },
+              { stage:'Closed', color:'#10b981', deals:[{ addr:'214 Elm St', comm:'$11,100' }] },
+            ].map(col => (
+              <div key={col.stage} className="lp-pipe-col">
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                  <div style={{ width:8, height:8, borderRadius:'50%', background:col.color }} />
+                  <div style={{ fontSize:11, fontWeight:700, color:'var(--text)', fontFamily:'Poppins,sans-serif' }}>{col.stage}</div>
+                </div>
+                <div style={{ fontSize:10, color:'var(--muted)', fontFamily:'Poppins,sans-serif' }}>{col.deals.length} deal{col.deals.length !== 1 ? 's' : ''}</div>
+                {col.deals.map(d => (
+                  <div key={d.addr} className="lp-pipe-deal">
+                    <div style={{ fontWeight:600, color:'var(--text)', marginBottom:2 }}>{d.addr}</div>
+                    <div style={{ color:col.color, fontWeight:700, fontSize:11 }}>{d.comm}</div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          <div style={{ textAlign:'center', marginTop:32 }}>
+            <div style={{ display:'inline-flex', alignItems:'center', gap:12, background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:14, padding:'14px 28px' }}>
+              <span style={{ fontSize:11, color:'var(--muted)', fontFamily:'Poppins,sans-serif', fontWeight:600 }}>Total Commission Tracked</span>
+              <span className="serif" style={{ fontSize:28, fontWeight:800, color:gold }}>$62,000</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── XP & Rank System ─────────────────────────────────────── */}
+      <section className="lp-section" style={{ background: theme === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.02)', borderTop:'1px solid var(--b1)', borderBottom:'1px solid var(--b1)' }}>
+        <div className="lp-max">
+          <div className="lp-split">
+            <div>
+              <div style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:'#d97706', marginBottom:12, fontFamily:'Poppins,sans-serif' }}>XP & Rank System</div>
+              <h2 className="serif" style={{ fontSize:'clamp(28px,4vw,50px)', fontWeight:800, lineHeight:1.1, letterSpacing:'-.025em', marginBottom:18 }}>
+                Turn discipline<br />into <span style={{ color:gold }}>status.</span>
+              </h2>
+              <p style={{ fontSize:15, color:'var(--muted)', lineHeight:1.75, marginBottom:28, fontFamily:'Poppins,sans-serif' }}>
+                Every habit you check and every deal you close earns XP. Watch your rank climb from Bronze to Diamond. Hit the button to see it happen live.
+              </p>
+              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                {[
+                  { rank:'Bronze',   min:'0',    color:'#cd7f32', icon:'🥉' },
+                  { rank:'Silver',   min:'500',  color:'#9ca3af', icon:'🥈' },
+                  { rank:'Gold',     min:'1,500', color:'#d97706', icon:'🥇' },
+                  { rank:'Platinum', min:'3,500', color:'#0ea5e9', icon:'💠' },
+                  { rank:'Diamond',  min:'7,000', color:'#8b5cf6', icon:'💎' },
+                ].map(r => (
+                  <div key={r.rank} style={{ display:'flex', alignItems:'center', gap:10, fontSize:14, fontFamily:'Poppins,sans-serif' }}>
+                    <span style={{ fontSize:16, width:22, flexShrink:0, textAlign:'center' }}>{r.icon}</span>
+                    <span style={{ fontWeight:700, color:r.color, width:70 }}>{r.rank}</span>
+                    <span style={{ color:'var(--muted)', fontSize:12 }}>{r.min}+ XP</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ display:'flex', justifyContent:'center' }}>
+              <div style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:20, padding:32, textAlign:'center', minWidth:280 }}>
+                <div style={{ fontSize:10, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:'var(--muted)', marginBottom:16, fontFamily:'Poppins,sans-serif' }}>Your Rank</div>
+                <div style={{ fontSize:48, marginBottom:4 }}>🥈</div>
+                <div className="serif" style={{ fontSize:32, fontWeight:800, color:'#9ca3af', marginBottom:4 }}>Silver</div>
+                <div style={{ fontSize:13, color:'var(--muted)', fontFamily:'Poppins,sans-serif', marginBottom:24 }}>1,200 XP total</div>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, fontFamily:'Poppins,sans-serif', marginBottom:8 }}>
+                  <span style={{ color:'#9ca3af', fontWeight:600 }}>Silver</span>
+                  <span style={{ color:'#d97706', fontWeight:600 }}>Gold</span>
+                </div>
+                <div className="lp-rank-bar-wrap">
+                  <div className="lp-rank-bar-fill" style={{ width:'70%', background:'linear-gradient(90deg, #9ca3af, #d97706)' }} />
+                </div>
+                <div style={{ fontSize:12, color:'var(--muted)', fontFamily:'Poppins,sans-serif', marginTop:8 }}>300 XP to Gold</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── Testimonials ────────────────────────────────────────── */}
       <section className="lp-section">
         <div className="lp-max">
@@ -499,7 +662,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
                 {f.q}
                 <span style={{ fontSize:18, color:'var(--muted)', flexShrink:0 }}>{openFaq === i ? '−' : '+'}</span>
               </button>
-              {openFaq === i && <div className="lp-faq-a">{f.a}</div>}
+              <div className={`lp-faq-a${openFaq === i ? ' open' : ''}`}>{f.a}</div>
             </div>
           ))}
         </div>

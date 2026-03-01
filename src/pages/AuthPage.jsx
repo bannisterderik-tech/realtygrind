@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { CSS, ThemeToggle } from '../design'
+import { CSS } from '../design'
 
 export default function AuthPage({ theme, onToggleTheme, onBack }) {
   const [mode,    setMode]    = useState('login')
@@ -84,7 +84,7 @@ export default function AuthPage({ theme, onToggleTheme, onBack }) {
           </button>
         </div>
 
-        <div style={{ width:'100%', maxWidth:400, position:'relative', zIndex:1, animation:'fadeUp .35s ease' }}>
+        <div style={{ width:'100%', maxWidth:400, position:'relative', zIndex:1 }}>
           {/* Logo */}
           <div style={{ textAlign:'center', marginBottom:40 }}>
             <div style={{ fontFamily:"'Fraunces',serif", fontSize:30, fontWeight:700, color:'var(--text)',

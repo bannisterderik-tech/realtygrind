@@ -425,7 +425,7 @@ export default function APODPage({ onNavigate, theme, onToggleTheme }) {
     s.onload = () => setXlsxReady(true)
     s.onerror = () => console.warn('xlsx-js-style CDN failed to load')
     document.head.appendChild(s)
-    return () => {}
+    return () => { if (s.parentNode) s.parentNode.removeChild(s) }
   }, [])
 
   function showToast(msg) {
@@ -1009,7 +1009,7 @@ export default function APODPage({ onNavigate, theme, onToggleTheme }) {
                 <span style={{
                   fontSize: 11, padding: '4px 12px', borderRadius: 20, fontWeight: 700,
                   fontFamily: "'JetBrains Mono',monospace", letterSpacing: .3,
-                  color: dscrInfo.color, border: `1px solid ${dscrInfo.color}55`, background: `${dscrInfo.color}12`,
+                  color: dscrInfo.color, border: `1.5px solid color-mix(in srgb, ${dscrInfo.color} 33%, transparent)`, background: `color-mix(in srgb, ${dscrInfo.color} 7%, transparent)`,
                 }}>
                   {dscrInfo.text}
                 </span>
@@ -1064,7 +1064,7 @@ export default function APODPage({ onNavigate, theme, onToggleTheme }) {
         <div style={{
           position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)',
           background: 'var(--text)', color: 'var(--bg)', padding: '10px 22px', borderRadius: 9,
-          fontSize: 13, fontWeight: 500, zIndex: 9999, animation: 'fadeIn .18s ease',
+          fontSize: 13, fontWeight: 500, zIndex: 9999,
           boxShadow: 'var(--shadow2)', whiteSpace: 'nowrap',
         }}>
           {toastMsg}

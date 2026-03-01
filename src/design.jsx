@@ -10,9 +10,13 @@ export const RANKS = [
 export function getRank(xp) { return [...RANKS].reverse().find(r=>xp>=r.min)||RANKS[0] }
 
 export function fmtMoney(v) {
-  const n = parseFloat(String(v||'').replace(/[^0-9.]/g,''))
-  if (!n) return null
-  return n>=1e6 ? '$'+(n/1e6).toFixed(2)+'M' : n>=1e3 ? '$'+(n/1e3).toFixed(0)+'K' : '$'+Math.round(n).toLocaleString()
+  const s = String(v||'')
+  const neg = s.trim().startsWith('-')
+  const n = parseFloat(s.replace(/[^0-9.]/g,''))
+  if (!n && n !== 0) return null
+  if (n === 0) return '$0'
+  const prefix = neg ? '-' : ''
+  return n>=1e6 ? prefix+'$'+(n/1e6).toFixed(2)+'M' : n>=1e3 ? prefix+'$'+(n/1e3).toFixed(0)+'K' : prefix+'$'+Math.round(n).toLocaleString()
 }
 
 export const CAT = {
@@ -139,7 +143,7 @@ body,.page { background: var(--bg); color: var(--text); }
   box-shadow: var(--shadow);
   transition: border-color .18s, box-shadow .22s, background .25s;
 }
-.card:hover { border-color: var(--b3); box-shadow: var(--shadow2); }
+.card:hover { border-color: var(--b3); }
 .card-flat { background: var(--surface2); border: 1px solid var(--b1); border-radius: var(--r2); }
 .card-inset { background: var(--bg2); border: 1px solid var(--b1); border-radius: 9px; }
 .card-interactive {
@@ -252,7 +256,7 @@ body,.page { background: var(--bg); color: var(--text); }
 }
 
 /* ── Page ── */
-.page { min-height: 100vh; animation: fadeIn .2s ease; }
+.page { min-height: 100vh; }
 .page-inner { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
 
 /* ── Tabs ── */
@@ -280,7 +284,7 @@ body,.page { background: var(--bg); color: var(--text); }
   border-radius: var(--r2); border: 1px solid var(--b1); background: var(--surface2);
   transition: border-color .18s, background .25s, box-shadow .2s;
 }
-.pipe-row:hover { border-color: var(--b2); box-shadow: var(--shadow2); }
+.pipe-row:hover { border-color: var(--b2); }
 .pipe-input {
   background: transparent; border: none; color: var(--text); font-size: 13px;
   width: 100%; min-width: 0;
@@ -438,7 +442,6 @@ body,.page { background: var(--bg); color: var(--text); }
   grid-template-columns: 1fr 228px;
   gap: 20px;
   align-items: start;
-  animation: fadeUp .3s ease;
 }
 
 /* Horizontal-scroll wrapper for wide grids on mobile */

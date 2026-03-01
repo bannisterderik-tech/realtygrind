@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
-import { CSS } from '../design'
 import { PLANS, getPlan, isActiveBilling, getPlanBadge, isTeamMember } from '../lib/plans'
 
 export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
@@ -12,7 +11,7 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
   const [error, setError] = useState('')
 
   const currentPlan = getPlan(profile?.plan)
-  const badge = getPlanBadge(profile)
+  const badge = getPlanBadge(profile, user?.id)
   const isActive = isActiveBilling(profile?.billing_status)
   const hasSubscription = currentPlan && isActive
   const isMember = isTeamMember(profile, user?.id)
@@ -24,11 +23,17 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
       const { data, error: e } = await supabase.functions.invoke('create-portal-session', {
         body: { returnUrl: window.location.origin }
       })
-      if (e) throw e
+      // Extract the real error message from the edge function response body
+      if (e) {
+        const body = typeof e.context === 'object' ? e.context : null
+        const msg = body?.error || e.message || 'Could not open billing portal.'
+        throw new Error(msg)
+      }
       if (data?.error) throw new Error(data.error)
       if (data?.url) window.location.href = data.url
-      else throw new Error('No portal URL returned')
+      else throw new Error('No portal URL returned. You may need to subscribe to a plan first.')
     } catch (err) {
+      console.error('Portal error:', err)
       setError(err.message || 'Could not open billing portal.')
     } finally {
       setPortalLoading(false)
@@ -45,10 +50,16 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
       const { data, error: e } = await supabase.functions.invoke('create-checkout', {
         body: { planId, isAnnual: annual, returnUrl: window.location.origin }
       })
-      if (e) throw e
+      if (e) {
+        const body = typeof e.context === 'object' ? e.context : null
+        const msg = body?.error || e.message || 'Could not start checkout.'
+        throw new Error(msg)
+      }
       if (data?.error) throw new Error(data.error)
       if (data?.url) window.location.href = data.url
+      else throw new Error('Checkout URL not available. Please try again.')
     } catch (err) {
+      console.error('Checkout error:', err)
       setError(err.message || 'Could not start checkout.')
     } finally {
       setCheckoutLoading(null)
@@ -56,9 +67,7 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
   }
 
   return (
-    <>
-      <style>{CSS}</style>
-      <div className="page">
+    <div className="page">
         <div className="page-inner" style={{ maxWidth:880 }}>
 
           {/* Header */}
@@ -265,7 +274,6 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
             </>
           )}
         </div>
-      </div>
-    </>
+    </div>
   )
 }

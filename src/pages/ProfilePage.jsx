@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { CSS, Loader, Wordmark, ThemeToggle, Ring, getRank, fmtMoney, RANKS } from '../design'
 import { HABITS } from '../habits'
+import { ALL_APPS } from './DirectoryPage'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 const CUR_YEAR = new Date().getFullYear()
@@ -14,6 +15,8 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   const rankPct  = nextRank ? Math.round(((profile?.xp||0)-rank.min)/(nextRank.min-rank.min)*100) : 100
 
   const [name,       setName]       = useState(profile?.full_name||'')
+  // Sync name when profile loads (initializer only runs once with null profile)
+  useEffect(()=>{ if (profile?.full_name && !name) setName(profile.full_name) },[profile?.full_name])
   const [saving,     setSaving]     = useState(false)
   const [saveMsg,    setSaveMsg]    = useState('')
   const [pw,         setPw]         = useState('')
@@ -52,10 +55,10 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   const [profileReplyForms,   setProfileReplyForms]   = useState({})
   const [profileReplySaving,  setProfileReplySaving]  = useState(null)
 
-  useEffect(()=>{ fetchAnnual(year) },[year])
-  useEffect(()=>{ if(activeTab==='history' && !histFetched) fetchHistory() },[activeTab])
+  useEffect(()=>{ if (user?.id) fetchAnnual(year) },[year, user?.id])
+  useEffect(()=>{ if(activeTab==='history' && !histFetched) fetchHistory() },[activeTab, histFetched])
   useEffect(()=>{
-    if (!user || ctLoaded) return
+    if (!user?.id || ctLoaded) return
     supabase.from('custom_tasks').select('*')
       .eq('user_id', user.id).eq('is_default', true)
       .order('created_at')
@@ -66,10 +69,10 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
         }
         setCtLoaded(true)
       })
-  },[user])
+  },[user?.id, ctLoaded])
 
   useEffect(()=>{
-    if (!user) return
+    if (!user?.id) return
     if (profile?.team_id && profile?.teams) {
       // On a team — use team_prefs (owner and member both see team defaults)
       setHabitPrefs(profile.teams.team_prefs || { hidden:[], order:[], edits:{} })
@@ -78,10 +81,10 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
       supabase.from('profiles').select('habit_prefs').eq('id', user.id).single()
         .then(({data}) => { if (data?.habit_prefs) setHabitPrefs(data.habit_prefs) })
     }
-  },[user, profile])
+  },[user?.id, profile?.team_id])
 
   useEffect(()=>{
-    if (!user) return
+    if (!user?.id) return
     supabase.from('profiles').select('goals').eq('id', user.id).single()
       .then(({data}) => {
         if (data?.goals) {
@@ -90,17 +93,17 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
           if (data.goals.avg_commission) setAvgCommission(String(data.goals.avg_commission))
         }
       })
-  },[user])
+  },[user?.id])
 
   // Load professional bio from habit_prefs.bio (always per-user, never from team_prefs)
   useEffect(()=>{
-    if (!user) return
+    if (!user?.id) return
     supabase.from('profiles').select('habit_prefs').eq('id', user.id).single()
       .then(({ data }) => {
         if (data?.habit_prefs?.bio)
           setBio(b => ({ ...b, ...data.habit_prefs.bio }))
       })
-  },[user])
+  },[user?.id])
 
   async function saveBio() {
     setBioSaving(true)
@@ -144,11 +147,19 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   async function saveGoals() {
     setGoalsSaving(true)
     try {
+      // Fetch existing goals to preserve coaching_replies and other non-goal data
+      const { data: current } = await supabase.from('profiles').select('goals').eq('id', user.id).single()
+      const existing = current?.goals || {}
       const parsed = {}
       Object.entries(goals).forEach(([k,v])=>{ const n=parseInt(v); if(n>0) parsed[k]=n })
       if (parseInt(gciTarget) > 0)     parsed.gci_target     = parseInt(gciTarget)
       if (parseInt(avgCommission) > 0) parsed.avg_commission = parseInt(avgCommission)
-      const { error } = await supabase.from('profiles').update({ goals: parsed }).eq('id', user.id)
+      // Merge: keep coaching_replies and any other keys, overwrite goal fields
+      const merged = { ...existing, ...parsed }
+      // Remove goal keys that were cleared (value 0 or empty) but keep non-goal keys
+      const goalKeys = ['xp','prospecting','appointments','showing','closed','gci_target','avg_commission']
+      goalKeys.forEach(k => { if (!parsed[k]) delete merged[k] })
+      const { error } = await supabase.from('profiles').update({ goals: merged }).eq('id', user.id)
       if (error) throw error
       setGoalsMsg('Goals saved!')
       setTimeout(()=>setGoalsMsg(''), 2500)
@@ -262,50 +273,68 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
     if (delText !== 'DELETE') return
     setDelLoading(true)
     setDelError(null)
-    // RPC runs with SECURITY DEFINER so it can delete from auth.users
-    const { error } = await supabase.rpc('delete_user')
-    if (error) {
-      setDelError(error.message || 'Delete failed — check Supabase logs.')
+    try {
+      // RPC runs with SECURITY DEFINER so it can delete from auth.users
+      const { error } = await supabase.rpc('delete_user')
+      if (error) {
+        setDelError(error.message || 'Delete failed — check Supabase logs.')
+        setDelLoading(false)
+        return
+      }
+      await supabase.auth.signOut()
+    } catch (err) {
+      setDelError(err.message || 'Delete failed unexpectedly.')
+      console.error('deleteAccount error:', err)
       setDelLoading(false)
-      return
     }
-    await supabase.auth.signOut()
   }
 
   // ── Custom tasks CRUD ──────────────────────────────────────────────────────
   async function saveNewTask() {
     if (!newTaskForm?.label?.trim()) return
-    const {data} = await supabase.from('custom_tasks').insert({
-      user_id:user.id, label:newTaskForm.label.trim(),
-      icon:newTaskForm.icon.trim()||'✅', xp:Number(newTaskForm.xp)||15,
-      is_default:true
-    }).select().single()
-    if (data) setCustomTasks(prev => [...prev, data])
-    setNewTaskForm(null)
+    try {
+      const {data, error} = await supabase.from('custom_tasks').insert({
+        user_id:user.id, label:newTaskForm.label.trim(),
+        icon:newTaskForm.icon.trim()||'✅', xp:Number(newTaskForm.xp)||15,
+        is_default:true
+      }).select().single()
+      if (error) throw error
+      if (data) setCustomTasks(prev => [...prev, data])
+      setNewTaskForm(null)
+    } catch (err) { console.error('saveNewTask error:', err) }
   }
 
   async function updateTask(id, changes) {
-    await supabase.from('custom_tasks').update(changes).eq('id',id).eq('user_id',user.id)
-    setCustomTasks(prev => prev.map(t => t.id===id ? {...t,...changes} : t))
-    setEditingTask(null)
+    try {
+      const { error } = await supabase.from('custom_tasks').update(changes).eq('id',id).eq('user_id',user.id)
+      if (error) throw error
+      setCustomTasks(prev => prev.map(t => t.id===id ? {...t,...changes} : t))
+      setEditingTask(null)
+    } catch (err) { console.error('updateTask error:', err) }
   }
 
   async function deleteDefaultTask(id) {
-    await supabase.from('custom_tasks').update({ is_deleted: true }).eq('id',id).eq('user_id',user.id)
-    const task = customTasks.find(t => t.id === id)
-    setCustomTasks(prev => prev.filter(t => t.id !== id))
-    if (task) {
-      const deleted = { ...task, is_deleted: true }
-      setDeletedTasks(prev => [...prev, deleted])
-      onTaskDeleted?.({ id:task.id, label:task.label, icon:task.icon, xp:task.xp, isDefault:true })
-    }
+    try {
+      const { error } = await supabase.from('custom_tasks').update({ is_deleted: true }).eq('id',id).eq('user_id',user.id)
+      if (error) throw error
+      const task = customTasks.find(t => t.id === id)
+      setCustomTasks(prev => prev.filter(t => t.id !== id))
+      if (task) {
+        const deleted = { ...task, is_deleted: true }
+        setDeletedTasks(prev => [...prev, deleted])
+        onTaskDeleted?.({ id:task.id, label:task.label, icon:task.icon, xp:task.xp, isDefault:true })
+      }
+    } catch (err) { console.error('deleteDefaultTask error:', err) }
   }
 
   async function restoreTask(task) {
-    await supabase.from('custom_tasks').update({ is_deleted: false }).eq('id',task.id).eq('user_id',user.id)
-    setDeletedTasks(prev => prev.filter(t => t.id !== task.id))
-    setCustomTasks(prev => [...prev, { ...task, is_deleted: false }])
-    onTaskRestored?.({ id:task.id, label:task.label, icon:task.icon, xp:task.xp, isDefault:true })
+    try {
+      const { error } = await supabase.from('custom_tasks').update({ is_deleted: false }).eq('id',task.id).eq('user_id',user.id)
+      if (error) throw error
+      setDeletedTasks(prev => prev.filter(t => t.id !== task.id))
+      setCustomTasks(prev => [...prev, { ...task, is_deleted: false }])
+      onTaskRestored?.({ id:task.id, label:task.label, icon:task.icon, xp:task.xp, isDefault:true })
+    } catch (err) { console.error('restoreTask error:', err) }
   }
 
   // ── Habit prefs helpers ────────────────────────────────────────────────────
@@ -481,7 +510,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
 
           {/* ── Profile tab ── */}
           {activeTab==='profile' && (
-            <div style={{ display:'flex', flexDirection:'column', gap:16, animation:'fadeUp .25s ease' }}>
+            <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
               {/* Account Settings — name + password stacked */}
               <div className="card" style={{ padding:24 }}>
                 <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:20 }}>Account Settings</div>
@@ -841,11 +870,11 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                   position:'fixed', inset:0, zIndex:900,
                   background:'rgba(0,0,0,.65)', backdropFilter:'blur(4px)',
                   display:'flex', alignItems:'center', justifyContent:'center',
-                  padding:24, animation:'fadeIn .15s ease',
+                  padding:24,
                 }} onClick={e=>{ if(e.target===e.currentTarget){setShowDel(false);setDelText('');setDelError(null)} }}>
                   <div className="card" style={{
                     padding:28, maxWidth:420, width:'100%',
-                    borderTop:'3px solid var(--red)', animation:'fadeUp .2s ease',
+                    borderTop:'3px solid var(--red)',
                   }}>
                     <div className="serif" style={{ fontSize:18, color:'var(--red)', marginBottom:8 }}>Delete Account</div>
                     <div style={{ fontSize:13, color:'var(--text2)', marginBottom:18, lineHeight:1.7 }}>
@@ -877,7 +906,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
 
           {/* ── Goals tab ── */}
           {activeTab==='goals' && (
-            <div style={{ display:'flex', flexDirection:'column', gap:14, animation:'fadeUp .25s ease' }}>
+            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
 
               {/* Monthly Goals card */}
               <div className="card" style={{ padding:24 }}>
@@ -910,7 +939,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                     style={{ padding:'9px 22px', fontSize:13 }}>
                     {goalsSaving ? 'Saving…' : 'Save Goals'}
                   </button>
-                  {goalsMsg && <span style={{ fontSize:12, color:'var(--green)' }}>{goalsMsg}</span>}
+                  {goalsMsg && <span style={{ fontSize:12, color:goalsMsg.includes('Failed')?'var(--red)':'var(--green)' }}>{goalsMsg}</span>}
                 </div>
               </div>
 
@@ -1000,7 +1029,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
 
           {/* ── Annual tab ── */}
           {activeTab==='annual' && (
-            <div style={{ animation:'fadeUp .25s ease' }}>
+            <div>
               <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20, flexWrap:'wrap' }}>
                 <div className="serif" style={{ fontSize:18, color:'var(--text)' }}>Annual Summary — {CUR_YEAR}</div>
               </div>
@@ -1084,7 +1113,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
 
           {/* ── History tab ── */}
           {activeTab==='history' && (
-            <div style={{ animation:'fadeUp .25s ease' }}>
+            <div>
               <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20, flexWrap:'wrap' }}>
                 <div className="serif" style={{ fontSize:18, color:'var(--text)' }}>Offer History</div>
                 <div style={{ fontSize:13, color:'var(--muted)' }}>All-time offers made &amp; received across every month</div>
@@ -1201,7 +1230,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
 
           {/* ── Settings tab ── */}
           {activeTab==='settings' && (
-            <div style={{ display:'flex', flexDirection:'column', gap:14, animation:'fadeUp .25s ease' }}>
+            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
 
               {/* Account info */}
               <div className="card" style={{ padding:24 }}>
@@ -1221,6 +1250,60 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                   ))}
                 </div>
               </div>
+
+              {/* Tools Directory — solo agents only (team members get this from team settings) */}
+              {!profile?.team_id && (
+                <div className="card" style={{ padding: 24 }}>
+                  <div className="serif" style={{ fontSize: 18, color: 'var(--text)', marginBottom: 8 }}>🔗 Tools Directory</div>
+                  <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16, lineHeight: 1.6 }}>
+                    Choose which real estate tools appear in your Tools page.
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {ALL_APPS.map(app => {
+                      const enabledTools = habitPrefs?.enabled_tools
+                      const defaultIds = ['fub','redx','skyslope','rmls','gdrive','gmail','zillow','rpr','ylopo']
+                      const isEnabled = enabledTools ? enabledTools.includes(app.id) : defaultIds.includes(app.id)
+                      return (
+                        <div key={app.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', borderRadius: 8, background: 'var(--bg2)', border: '1px solid var(--b1)' }}>
+                          <span style={{ fontSize: 18, flexShrink: 0 }}>{app.icon}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{app.name}</div>
+                            <div style={{ fontSize: 10, color: 'var(--muted)' }}>{app.category}</div>
+                          </div>
+                          <button
+                            onClick={async () => {
+                              const current = habitPrefs?.enabled_tools || defaultIds
+                              const updated = isEnabled
+                                ? current.filter(id => id !== app.id)
+                                : [...current, app.id]
+                              const newPrefs = { ...habitPrefs, enabled_tools: updated }
+                              try {
+                                const { error: err } = await supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id)
+                                if (err) throw err
+                                setHabitPrefs(newPrefs)
+                              } catch (err) {
+                                console.error('toggleTool error:', err)
+                              }
+                            }}
+                            style={{
+                              width: 42, height: 24, borderRadius: 12, cursor: 'pointer', border: 'none',
+                              position: 'relative', flexShrink: 0, transition: 'background .2s',
+                              background: isEnabled ? '#10b981' : 'var(--b2)',
+                            }}
+                          >
+                            <div style={{
+                              width: 18, height: 18, borderRadius: 9,
+                              background: '#fff', position: 'absolute', top: 3,
+                              transition: 'left .2s',
+                              left: isEnabled ? 21 : 3,
+                            }} />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
 
             </div>
           )}

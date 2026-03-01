@@ -18,6 +18,24 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Validate returnUrl to prevent open redirects — only allow same-origin or known app URLs
+function getSafeReturnUrl(returnUrl: string | undefined): string {
+  const fallback = Deno.env.get('APP_URL') || 'https://realtygrind.com'
+  if (!returnUrl) return fallback
+  try {
+    const parsed = new URL(returnUrl)
+    // Only allow https and known origins
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return fallback
+    const allowed = (Deno.env.get('ALLOWED_ORIGINS') || 'realtygrind.com,localhost').split(',').map(s => s.trim())
+    if (allowed.some(domain => parsed.hostname === domain || parsed.hostname.endsWith('.' + domain))) {
+      return parsed.origin
+    }
+    return fallback
+  } catch {
+    return fallback
+  }
+}
+
 const PRICE_MAP: Record<string, string | undefined> = {
   solo_monthly:       Deno.env.get('STRIPE_PRICE_SOLO_MONTHLY'),
   solo_annual:        Deno.env.get('STRIPE_PRICE_SOLO_ANNUAL'),
@@ -65,8 +83,8 @@ Deno.serve(async (req) => {
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
       ...(customerEmail ? { customer_email: customerEmail } : {}),
-      success_url: `${returnUrl}?checkout=success&plan=${planId}`,
-      cancel_url:  `${returnUrl}?checkout=cancelled`,
+      success_url: `${getSafeReturnUrl(returnUrl)}?checkout=success&plan=${planId}`,
+      cancel_url:  `${getSafeReturnUrl(returnUrl)}?checkout=cancelled`,
       allow_promotion_codes: true,
       subscription_data: {
         trial_period_days: 14,

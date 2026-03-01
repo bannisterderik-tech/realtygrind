@@ -1,16 +1,8 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-function decodeJwt(token: string) {
-  try {
-    const payload = token.split('.')[1]
-    const padded = payload + '='.repeat((4 - payload.length % 4) % 4)
-    return JSON.parse(atob(padded.replace(/-/g, '+').replace(/_/g, '/')))
-  } catch { return null }
 }
 
 Deno.serve(async (req: Request) => {
@@ -18,23 +10,28 @@ Deno.serve(async (req: Request) => {
 
   try {
     const supabaseUrl    = Deno.env.get('SUPABASE_URL')!
-    const serviceRoleKey = Deno.env.get('MY_SERVICE_KEY')!
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
-    // ── 1. Get user ID from Authorization header ─────────────────────────────
+    // ── 1. Verify user via Supabase auth (not manual JWT decode) ─────────────
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Missing Authorization header' }), {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
-    const token  = authHeader.replace(/^Bearer\s+/i, '').trim()
-    const payload = decodeJwt(token)
-    const userId  = payload?.sub
-    if (!userId) {
+
+    // Use Supabase client to verify the JWT properly (with signature check)
+    const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+    const { data: { user }, error: authErr } = await userClient.auth.getUser()
+    if (authErr || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
+    const userId = user.id
 
     const { email, teamId } = await req.json()
     if (!email || !teamId) {

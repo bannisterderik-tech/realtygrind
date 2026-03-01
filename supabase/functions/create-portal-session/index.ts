@@ -14,6 +14,23 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Validate returnUrl to prevent open redirects — only allow same-origin or known app URLs
+function getSafeReturnUrl(returnUrl: string | undefined): string {
+  const fallback = Deno.env.get('APP_URL') || 'https://realtygrind.com'
+  if (!returnUrl) return fallback
+  try {
+    const parsed = new URL(returnUrl)
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return fallback
+    const allowed = (Deno.env.get('ALLOWED_ORIGINS') || 'realtygrind.com,localhost').split(',').map(s => s.trim())
+    if (allowed.some(domain => parsed.hostname === domain || parsed.hostname.endsWith('.' + domain))) {
+      return parsed.origin
+    }
+    return fallback
+  } catch {
+    return fallback
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS })
@@ -58,7 +75,7 @@ Deno.serve(async (req) => {
 
     const session = await stripe.billingPortal.sessions.create({
       customer: profile.stripe_customer_id,
-      return_url: returnUrl || Deno.env.get('SUPABASE_URL'),
+      return_url: getSafeReturnUrl(returnUrl),
     })
 
     return new Response(

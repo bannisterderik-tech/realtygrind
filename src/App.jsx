@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, createContext, useContext } from 'react'
+import { useState, useEffect, useRef, createContext, useContext, Component } from 'react'
 import { AuthProvider, useAuth } from './lib/AuthContext'
 import { supabase } from './lib/supabase'
 import AuthPage from './pages/AuthPage'
@@ -8,9 +8,63 @@ import ProfilePage from './pages/ProfilePage'
 import DirectoryPage from './pages/DirectoryPage'
 import APODPage from './pages/APODPage'
 import BillingPage from './pages/BillingPage'
-import { CSS, Ring, StatCard, Wordmark, Loader, ThemeToggle, PageNav, getRank, fmtMoney, RANKS, CAT } from './design'
+import AIAssistantPage from './pages/AIAssistantPage'
+import { CSS, Ring, StatCard, Wordmark, Loader, ThemeToggle, getRank, fmtMoney, RANKS, CAT } from './design'
 import { HABITS } from './habits'
 import { getPlanBadge } from './lib/plans'
+
+// ─── Error Boundary ─────────────────────────────────────────────────────────────
+// Catches any JS error in a child tree so the entire app doesn't white-screen.
+// Shows a recovery card with a button to navigate back to the dashboard.
+
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+  componentDidCatch(error, info) {
+    console.error('ErrorBoundary caught:', error, info?.componentStack)
+  }
+  render() {
+    if (this.state.hasError) {
+      const reset = () => {
+        this.setState({ hasError: false, error: null })
+        if (this.props.onReset) this.props.onReset()
+      }
+      return (
+        <div style={{ minHeight:'60vh', display:'flex', alignItems:'center', justifyContent:'center', padding:32 }}>
+          <div style={{ textAlign:'center', maxWidth:420 }}>
+            <div style={{ fontSize:48, marginBottom:16 }}>⚠️</div>
+            <div style={{ fontSize:20, fontWeight:700, color:'var(--text)', marginBottom:8, fontFamily:'Poppins,sans-serif' }}>
+              Something went wrong
+            </div>
+            <div style={{ fontSize:13, color:'var(--muted)', lineHeight:1.7, marginBottom:24, fontFamily:'Poppins,sans-serif' }}>
+              This page ran into an unexpected error. Your data is safe — nothing was lost.
+            </div>
+            <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
+              <button onClick={reset} style={{
+                padding:'10px 24px', borderRadius:8, fontSize:13, fontWeight:700, cursor:'pointer',
+                background:'var(--gold)', color:'#fff', border:'none', fontFamily:'Poppins,sans-serif',
+              }}>
+                Go to Dashboard
+              </button>
+              <button onClick={() => window.location.reload()} style={{
+                padding:'10px 24px', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer',
+                background:'transparent', color:'var(--muted)', border:'1px solid var(--b3)', fontFamily:'Poppins,sans-serif',
+              }}>
+                Reload Page
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 // ─── Theme context ─────────────────────────────────────────────────────────────
 
@@ -56,7 +110,7 @@ function AddTaskModal({ onSubmit, onClose }) {
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:1000,
       display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="card" style={{ padding:24, width:'100%', maxWidth:400, animation:'fadeUp .2s ease' }}>
+      <div className="card" style={{ padding:24, width:'100%', maxWidth:400 }}>
         <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:18 }}>
           <span style={{ fontSize:20 }}>📋</span>
           <div className="serif" style={{ fontSize:18, color:'var(--text)' }}>Add Task for Today</div>
@@ -106,7 +160,7 @@ function OfferModal({ repName, onSubmit, onClose }) {
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:1000,
       display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="card" style={{ padding:28, width:'100%', maxWidth:440, animation:'fadeUp .2s ease' }}>
+      <div className="card" style={{ padding:28, width:'100%', maxWidth:440 }}>
         <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
           <span style={{ fontSize:20 }}>📤</span>
           <div className="serif" style={{ fontSize:20, color:'var(--text)' }}>Log Offer Made</div>
@@ -1073,21 +1127,37 @@ function Dashboard({ theme, onToggleTheme }) {
   // even when called multiple times before a re-render (prevents stale-closure XP corruption)
   useEffect(() => { xpRef.current = xp }, [xp])
 
-  // ESC key closes any open modal
+  // Auto-clear XP pop notification with proper cleanup
+  useEffect(() => {
+    if (!xpPop) return
+    const timer = setTimeout(() => setXpPop(null), 1400)
+    return () => clearTimeout(timer)
+  }, [xpPop])
+
+  // Auto-clear habit animation cell with proper cleanup
+  useEffect(() => {
+    if (!animCell) return
+    const timer = setTimeout(() => setAnimCell(null), 300)
+    return () => clearTimeout(timer)
+  }, [animCell])
+
+  // ESC key closes any open modal — use refs to avoid re-attaching listener on every modal change
+  const modalsRef = useRef({})
+  modalsRef.current = { offerModal, addTaskModal, showPrint, plannerPrint, showWeeklyUpdate, showBuyersUpdate }
   useEffect(() => {
     const onKey = e => {
       if (e.key !== 'Escape') return
-      if (offerModal)        setOfferModal(null)
-      else if (addTaskModal) setAddTaskModal(false)
-      else if (showPrint)    setShowPrint(false)
-      else if (plannerPrint) setPlannerPrint(null)
-      else if (showWeeklyUpdate) setShowWeeklyUpdate(false)
-      else if (showBuyersUpdate) setShowBuyersUpdate(false)
-      else if (showCommSummary)  setShowCommSummary(false)
+      const m = modalsRef.current
+      if (m.offerModal)        setOfferModal(null)
+      else if (m.addTaskModal) setAddTaskModal(false)
+      else if (m.showPrint)    setShowPrint(false)
+      else if (m.plannerPrint) setPlannerPrint(null)
+      else if (m.showWeeklyUpdate) setShowWeeklyUpdate(false)
+      else if (m.showBuyersUpdate) setShowBuyersUpdate(false)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [offerModal, addTaskModal, showPrint, plannerPrint, showWeeklyUpdate, showBuyersUpdate, showCommSummary])
+  }, [])
 
   // ── XP ─────────────────────────────────────────────────────────────────────
   async function addXp(amount, color='var(--gold)') {
@@ -1095,7 +1165,6 @@ function Dashboard({ theme, onToggleTheme }) {
     xpRef.current = nxp  // eagerly update so back-to-back calls get the right base value
     setXp(nxp)
     setXpPop({ val:`+${amount} XP`, color })
-    setTimeout(()=>setXpPop(null), 1400)
     await supabase.from('profiles').update({xp:nxp}).eq('id',user.id)
     return nxp
   }
@@ -1111,7 +1180,6 @@ function Dashboard({ theme, onToggleTheme }) {
     xpRef.current = nxp  // eagerly update ref
     setXp(nxp)
     setXpPop({ val:`-${amount} XP`, color:'#dc2626' })
-    setTimeout(()=>setXpPop(null), 1400)
     await supabase.from('profiles').update({xp:nxp}).eq('id',user.id)
     setSessionPipeline(prev => ({...prev, [type]: Math.max(0, prev[type]-1)}))
     if (type === 'went_pending') setWentPendingCount(prev => Math.max(0, prev - 1))
@@ -1120,16 +1188,16 @@ function Dashboard({ theme, onToggleTheme }) {
   // Persist a new Offer Made to DB, award XP, return saved row with real ID
   async function handleOfferMadeAdd(tmpRow) {
     const data = await dbInsert('offer_made', tmpRow)
-    await awardPipelineXp('offer_made', '#0ea5e9')
     if (!data) return null
+    await awardPipelineXp('offer_made', '#0ea5e9')
     return { id:data.id, address:data.address||tmpRow.address, price:data.price||'', commission:data.commission||'', status:'active', closedFrom:'' }
   }
 
   // Persist a new Offer Received to DB, award XP, return saved row with real ID
   async function handleOfferReceivedAdd(tmpRow) {
     const data = await dbInsert('offer_received', tmpRow)
-    await awardPipelineXp('offer_received', '#8b5cf6')
     if (!data) return null
+    await awardPipelineXp('offer_received', '#8b5cf6')
     return { id:data.id, address:data.address||tmpRow.address, price:data.price||'', commission:data.commission||'', status:'active', closedFrom:'' }
   }
 
@@ -1222,7 +1290,6 @@ function Dashboard({ theme, onToggleTheme }) {
       if (h.counter) setCounters(prev=>{ const n={...prev}; delete n[ckey]; return n })
     }
     setAnimCell(`${hid}-${week}-${day}`)
-    setTimeout(()=>setAnimCell(null),300)
   }
 
   async function setCounterValue(hid, week, day, rawVal) {
@@ -1238,6 +1305,7 @@ function Dashboard({ theme, onToggleTheme }) {
     const xpDiff = (v - oldCnt) * (h.xpEach || 0)
     if (xpDiff !== 0) {
       const nxp = Math.max(0, xpRef.current + xpDiff)
+      xpRef.current = nxp
       setXp(nxp)
       await supabase.from('profiles').update({xp:nxp}).eq('id',user.id)
     }
@@ -1270,10 +1338,10 @@ function Dashboard({ theme, onToggleTheme }) {
         month_year:MONTH_YEAR, xp_earned:task.xp, counter_value:0
       },{onConflict:'user_id,habit_id,week_index,day_index,month_year'})
     } else {
-      const nxp = Math.max(0, xp - task.xp)
+      const nxp = Math.max(0, xpRef.current - task.xp)
+      xpRef.current = nxp
       setXp(nxp)
       setXpPop({ val:`-${task.xp} XP`, color:'#dc2626' })
-      setTimeout(()=>setXpPop(null), 1400)
       await supabase.from('profiles').update({xp:nxp}).eq('id',user.id)
       await supabase.from('habit_completions').delete()
         .eq('user_id',user.id).eq('habit_id',taskId)
@@ -1438,6 +1506,9 @@ function Dashboard({ theme, onToggleTheme }) {
     await supabase.from('listings').delete().eq('id',listing.id)
   }
 
+  function updateListingLocal(id, field, val) {
+    setListings(prev=>prev.map(l=>l.id===id?{...l,[field]:val}:l))
+  }
   async function updateListing(id, field, val) {
     setListings(prev=>prev.map(l=>l.id===id?{...l,[field]:val}:l))
     if (field==='address')    await supabase.from('listings').update({address:val}).eq('id',id)
@@ -1564,7 +1635,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const totalBuyerReps   = buyerReps.filter(r => r.status !== 'closed').length
   const closedVol        = closedDeals.reduce((a,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
   const closedComm       = closedDeals.reduce((a,r)=>{ const n=parseFloat(String(r.commission||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
-  const todayHabitXp     = HABITS.reduce((acc,h)=>{
+  const todayHabitXp     = builtInEffective.reduce((acc,h)=>{
     if(!habits[h.id][today.week][today.day]) return acc
     const ckey=`${h.id}-${today.week}-${today.day}`
     const cnt=counters[ckey]||0
@@ -1684,7 +1755,7 @@ function Dashboard({ theme, onToggleTheme }) {
           <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
           <button className={`nav-btn mob-hide${page==='teams'?' active':''}`} onClick={()=>setPage('teams')}>👥 Teams</button>
 
-          <button className={`nav-btn mob-hide${(page==='directory'||page==='apod')?' active':''}`} onClick={()=>setPage('directory')}>🔗 Tools</button>
+          <button className={`nav-btn mob-hide${(page==='directory'||page==='apod'||page==='ai-assistant')?' active':''}`} onClick={()=>setPage('directory')}>🔗 Tools</button>
 
           {/* Rank + Streak chips — hidden on mobile */}
           <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
@@ -1737,7 +1808,7 @@ function Dashboard({ theme, onToggleTheme }) {
           position:'fixed', top:52, left:0, right:0, zIndex:199,
           background:'var(--nav-bg)', borderBottom:'1px solid rgba(255,255,255,.08)',
           display:'flex', flexDirection:'column', padding:'8px 10px 14px',
-          animation:'fadeUp .18s ease', boxShadow:'0 8px 24px rgba(0,0,0,.4)'
+          boxShadow:'0 8px 24px rgba(0,0,0,.4)'
         }}>
           {[
             { p:'dashboard', icon:'🏠', label:'Home' },
@@ -1770,14 +1841,17 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
       )}
 
-      {page==='teams'     && <TeamsPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
-      {page==='billing'   && <BillingPage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
-      {page==='profile'   && <ProfilePage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}
-                                             onTaskDeleted={syncTaskDeleted} onTaskRestored={syncTaskRestored}/>}
-      {page==='directory' && <DirectoryPage onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
-      {page==='apod'      && <APODPage      onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
+      {page==='teams'     && <ErrorBoundary key="teams" onReset={()=>setPage('dashboard')}><TeamsPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      {page==='billing'   && <ErrorBoundary key="billing" onReset={()=>setPage('dashboard')}><BillingPage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      {page==='profile'   && <ErrorBoundary key="profile" onReset={()=>setPage('dashboard')}><ProfilePage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}
+                                             onTaskDeleted={syncTaskDeleted} onTaskRestored={syncTaskRestored}/></ErrorBoundary>}
+      {page==='directory' && <ErrorBoundary key="directory" onReset={()=>setPage('dashboard')}><DirectoryPage onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      {page==='apod'      && <ErrorBoundary key="apod" onReset={()=>setPage('dashboard')}><APODPage      onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      {page==='ai-assistant' && <ErrorBoundary key="ai-assistant" onReset={()=>setPage('dashboard')}><AIAssistantPage onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
 
-      {page==='dashboard' && (dbLoading ? <Loader/> : (
+      {page==='dashboard' && (
+      <ErrorBoundary key="dashboard" onReset={()=>window.location.reload()}>
+      {dbLoading ? <Loader/> : (
       <div className="page-inner">
 
         {/* ── Hero Header ─────────────────────────────────────── */}
@@ -2225,7 +2299,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
         {/* ══ MONTHLY GRID ════════════════════════════════════ */}
         {tab==='monthly' && (
-          <div style={{ animation:'fadeUp .3s ease' }}>
+          <div>
             <div className="card" style={{ padding:20, marginBottom:16 }}>
               <div className="label" style={{ marginBottom:16 }}>Weekly Completion</div>
               <div style={{ display:'flex', gap:28, flexWrap:'wrap', justifyContent:'space-around', alignItems:'center' }}>
@@ -2262,7 +2336,7 @@ function Dashboard({ theme, onToggleTheme }) {
                     const pct  = Math.round(done/(WEEKS*7)*100)
                     const cs   = CAT[h.cat]
                     const habitTotal = h.counter ? Object.entries(counters).filter(([k])=>k.startsWith(h.id)).reduce((a,[,v])=>a+v,0) : 0
-                    const xpEarned   = done*h.xp + (habitTotal>0?habitTotal*(h.xpEach||0):0)
+                    const xpEarned   = done*h.xp + (habitTotal>0?Math.max(0,habitTotal-done)*(h.xpEach||0):0)
                     return (
                       <tr key={h.id} style={{ borderBottom:'1px solid var(--b1)', background:hi%2===0?'transparent':'var(--bg)' }}>
                         <td style={{ padding:'7px 16px' }}>
@@ -2324,7 +2398,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
         {/* ══ WEEKLY ══════════════════════════════════════════ */}
         {tab==='weekly' && (
-          <div style={{ animation:'fadeUp .3s ease' }}>
+          <div>
             <div style={{ marginBottom:16, fontSize:13, color:'var(--muted)' }}>
               Week {today.week+1} — ✓ toggle · × remove from day · ↩ restore · + add · 🖨️ print
             </div>
@@ -2573,7 +2647,7 @@ function Dashboard({ theme, onToggleTheme }) {
             closedDeals.length    * PIPELINE_XP.closed
           const totalXpShown = Math.max(totalMonthHabitXp + estimatedPipeXp, 1)
           return (
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:18, animation:'fadeUp .3s ease', paddingBottom:8 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:18, paddingBottom:8 }}>
 
               {/* Week-by-week */}
               <div className="card" style={{ padding:22 }}>
@@ -2718,7 +2792,8 @@ function Dashboard({ theme, onToggleTheme }) {
                   {/* Address + optional cross-month badge */}
                   <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
                     <input className="pipe-input" value={l.address||''}
-                      onChange={e=>updateListing(l.id,'address',e.target.value)} placeholder="Address…"
+                      onChange={e=>updateListingLocal(l.id,'address',e.target.value)}
+                      onBlur={e=>updateListing(l.id,'address',e.target.value)} placeholder="Address…"
                       style={{ flex:1, minWidth:0 }}/>
                     {l.monthYear && l.monthYear !== MONTH_YEAR && (
                       <span title={`Listed in ${fmtMonth(l.monthYear)}`} style={{
@@ -2734,14 +2809,14 @@ function Dashboard({ theme, onToggleTheme }) {
 
                   {/* List Price */}
                   <input className="pipe-input" value={l.price||''}
-                    onChange={e=>updateListing(l.id,'price',e.target.value)}
+                    onChange={e=>updateListingLocal(l.id,'price',e.target.value)}
                     onBlur={e=>updateListing(l.id,'price',e.target.value)}
                     placeholder="$0"
                     style={{ color:'var(--gold2)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
 
                   {/* Commission */}
                   <input className="pipe-input" value={l.commission||''}
-                    onChange={e=>updateListing(l.id,'commission',e.target.value)}
+                    onChange={e=>updateListingLocal(l.id,'commission',e.target.value)}
                     onBlur={e=>updateListing(l.id,'commission',e.target.value)}
                     placeholder="comm."
                     style={{ color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
@@ -2944,7 +3019,9 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
 
       </div>
-      ))}
+      )}
+      </ErrorBoundary>
+      )}
 
       {/* ── Offer Modal ─────────────────────────────────── */}
       {offerModal && (
@@ -3066,22 +3143,28 @@ function AppInner() {
     const status = params.get('checkout')
     if (status) {
       setCheckoutMsg(status)
-      // Clean URL without reloading
       window.history.replaceState({}, '', window.location.pathname)
-      setTimeout(()=>setCheckoutMsg(null), 6000)
     }
   },[])
+  // Auto-clear checkout message with proper cleanup
+  useEffect(()=>{
+    if (!checkoutMsg) return
+    const timer = setTimeout(()=>setCheckoutMsg(null), 6000)
+    return ()=>clearTimeout(timer)
+  },[checkoutMsg])
 
   // After sign-in, run any pending checkout
   useEffect(()=>{
-    if (!user) return
+    if (!user?.id) return
     const pending = localStorage.getItem('rg_pending_plan')
     if (pending) {
       localStorage.removeItem('rg_pending_plan')
-      const { planId, isAnnual } = JSON.parse(pending)
-      startCheckout(planId, isAnnual)
+      try {
+        const { planId, isAnnual } = JSON.parse(pending)
+        if (planId) startCheckout(planId, isAnnual)
+      } catch { /* corrupted localStorage — ignore */ }
     }
-  },[user])
+  },[user?.id])
 
   async function startCheckout(planId, isAnnual) {
     setCheckoutLoading(true)
@@ -3131,12 +3214,14 @@ function AppInner() {
           <span style={{ color:'#fff', fontFamily:'Poppins,sans-serif', fontWeight:600 }}>Redirecting to checkout…</span>
         </div>
       )}
-      {showAuth
-        ? <AuthPage theme={theme} onToggleTheme={toggleTheme} onBack={()=>setShowAuth(false)}/>
-        : <LandingPage theme={theme} onToggleTheme={toggleTheme}
-            onGetStarted={()=>setShowAuth(true)}
-            onSubscribe={handleSubscribe}/>
-      }
+      <ErrorBoundary key={showAuth ? 'auth' : 'landing'} onReset={()=>setShowAuth(false)}>
+        {showAuth
+          ? <AuthPage theme={theme} onToggleTheme={toggleTheme} onBack={()=>setShowAuth(false)}/>
+          : <LandingPage theme={theme} onToggleTheme={toggleTheme}
+              onGetStarted={()=>setShowAuth(true)}
+              onSubscribe={handleSubscribe}/>
+        }
+      </ErrorBoundary>
     </div>
   )
 

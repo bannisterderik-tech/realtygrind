@@ -1,21 +1,8 @@
 import { useState, useEffect } from 'react'
 import { ThemeToggle } from '../design'
+import { PLANS } from '../lib/plans'
 
 // ── Data ─────────────────────────────────────────────────────────────────────
-const PLANS = [
-  { name:'Solo', price:9, priceAnn:7, badge:null, color:'#94a3b8',
-    desc:'For individual agents getting dialed in.',
-    features:['Habit tracker & XP system','Skip & restore habits','Print daily checklist PDF','Pipeline & closing tracker','Personal rank & streak','Annual production report'],
-    cta:'Get Started' },
-  { name:'Team', price:99, priceAnn:82, badge:'Most Popular', color:'#d97706',
-    desc:'For team leaders who demand accountability.',
-    features:['Everything in Solo','Up to 15 agents','Roster & leaderboard','Accountability groups','Daily standup feed','Coaching notes per agent','Team challenges & XP bonuses','Active listings board'],
-    cta:'Start Free Trial' },
-  { name:'Brokerage', price:299, priceAnn:249, badge:'Best Value', color:'#8b5cf6',
-    desc:'For brokers running a full operation.',
-    features:['Everything in Team','Unlimited agents','Multiple groups','Priority support','Early access to new features'],
-    cta:'Start Free Trial' },
-]
 
 const FAQS = [
   { q:'Is there a free trial?',
@@ -629,7 +616,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
                     <span className="serif" style={{ fontSize:48, fontWeight:800, color:'var(--text)' }}>${price}</span>
                     <span style={{ fontSize:13, color:'var(--muted)', fontFamily:'Poppins,sans-serif' }}>/mo{annual ? ' · billed annually' : ''}</span>
                   </div>
-                  <button onClick={() => onSubscribe ? onSubscribe(plan.name.toLowerCase(), annual) : onGetStarted()} style={{ width:'100%', padding:'12px 0', borderRadius:10, fontSize:14, fontWeight:700, cursor:'pointer', marginBottom:20, fontFamily:'Poppins,sans-serif', background: isPop ? plan.color : 'transparent', color: isPop ? '#fff' : plan.color, border: isPop ? 'none' : `2px solid ${plan.color}`, boxShadow: isPop ? `0 6px 22px ${plan.color}44` : 'none' }}>
+                  <button onClick={() => onSubscribe ? onSubscribe(plan.id, annual) : onGetStarted()} style={{ width:'100%', padding:'12px 0', borderRadius:10, fontSize:14, fontWeight:700, cursor:'pointer', marginBottom:20, fontFamily:'Poppins,sans-serif', background: isPop ? plan.color : 'transparent', color: isPop ? '#fff' : plan.color, border: isPop ? 'none' : `2px solid ${plan.color}`, boxShadow: isPop ? `0 6px 22px ${plan.color}44` : 'none' }}>
                     {plan.cta}
                   </button>
                   <div style={{ display:'flex', flexDirection:'column', gap:7 }}>

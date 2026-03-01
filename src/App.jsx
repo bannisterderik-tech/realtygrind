@@ -7,8 +7,10 @@ import TeamsPage from './pages/TeamsPage'
 import ProfilePage from './pages/ProfilePage'
 import DirectoryPage from './pages/DirectoryPage'
 import APODPage from './pages/APODPage'
+import BillingPage from './pages/BillingPage'
 import { CSS, Ring, StatCard, Wordmark, Loader, ThemeToggle, PageNav, getRank, fmtMoney, RANKS, CAT } from './design'
 import { HABITS } from './habits'
+import { getPlanBadge } from './lib/plans'
 
 // ─── Theme context ─────────────────────────────────────────────────────────────
 
@@ -1704,6 +1706,12 @@ function Dashboard({ theme, onToggleTheme }) {
             <div className="serif" style={{ fontSize:15, color:'#fb923c', lineHeight:1.2 }}>🔥 {streak}</div>
           </div>
 
+          {(() => { const pb = getPlanBadge(profile); return (
+            <button className={`nav-btn mob-hide${page==='billing'?' active':''}`} onClick={()=>setPage('billing')}
+              style={{ fontSize:11, fontWeight:700, color:pb.color, letterSpacing:.4 }}>
+              {pb.label}
+            </button>
+          ) })()}
           <button className={`nav-btn${page==='profile'?' active':''}`} onClick={()=>setPage('profile')}>
             {profile?.full_name?.split(' ')[0]||'Profile'}
           </button>
@@ -1735,6 +1743,7 @@ function Dashboard({ theme, onToggleTheme }) {
             { p:'dashboard', icon:'🏠', label:'Home' },
             { p:'teams',     icon:'👥', label:'Teams' },
             { p:'directory', icon:'🔗', label:'Tools' },
+            { p:'billing',   icon:'💳', label:'Billing' },
             { p:'profile',   icon:'👤', label:'Profile' },
           ].map(({p, icon, label})=>(
             <button key={p} onClick={()=>{ setPage(p); setMenuOpen(false) }} style={{
@@ -1762,6 +1771,7 @@ function Dashboard({ theme, onToggleTheme }) {
       )}
 
       {page==='teams'     && <TeamsPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
+      {page==='billing'   && <BillingPage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
       {page==='profile'   && <ProfilePage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}
                                              onTaskDeleted={syncTaskDeleted} onTaskRestored={syncTaskRestored}/>}
       {page==='directory' && <DirectoryPage onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}

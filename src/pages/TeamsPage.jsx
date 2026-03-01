@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { CSS, Loader, Wordmark, ThemeToggle, Ring, getRank, CAT, StatCard, fmtMoney } from '../design'
 import { HABITS } from '../habits'
+import { canUseTeams, getMaxMembers } from '../lib/plans'
 
 const HABITS_FOR_DISPLAY = [
   { id:'prospecting', label:'Prospecting', cat:'leads' },
@@ -207,11 +208,16 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
 
   async function createTeam() {
     if (!teamName.trim()) return
+    if (!canUseTeams(profile)) {
+      setError('Creating a team requires a Team or Brokerage plan.')
+      return
+    }
     setLoading(true); setError('')
     try {
       const code = Math.random().toString(36).slice(2,7).toUpperCase()
+      const maxMem = getMaxMembers(profile.plan)
       const {data:team,error:e} = await supabase.from('teams')
-        .insert({name:teamName.trim(), created_by:user.id, invite_code:code, max_members:15}).select().single()
+        .insert({name:teamName.trim(), created_by:user.id, invite_code:code, max_members: maxMem === Infinity ? null : maxMem}).select().single()
       if (e) throw new Error(e.message)
       await supabase.from('team_members').insert({team_id:team.id, user_id:user.id, role:'owner'})
       await supabase.from('profiles').update({team_id:team.id}).eq('id',user.id)
@@ -782,13 +788,28 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
 
           {/* No team menu */}
           {mode==='menu' && (
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, maxWidth:560, animation:'fadeUp .25s ease' }}>
-              <div className="card" style={{ padding:28, textAlign:'center', cursor:'pointer', transition:'all .15s' }}
-                onClick={()=>setMode('create')}>
+            <div style={{ maxWidth:560, animation:'fadeUp .25s ease' }}>
+              {!canUseTeams(profile) && (
+                <div className="card" style={{ padding:'16px 22px', marginBottom:16, borderLeft:'3px solid #d97706',
+                  background:'rgba(217,119,6,.06)', display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
+                  <div style={{ flex:1, minWidth:200 }}>
+                    <div style={{ fontWeight:700, color:'var(--text)', fontSize:14 }}>Team features require a paid plan</div>
+                    <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>
+                      Upgrade to Team or Brokerage to create or manage teams.
+                    </div>
+                  </div>
+                  <button className="btn-gold" onClick={() => onNavigate('billing')}
+                    style={{ fontSize:12, padding:'8px 16px', whiteSpace:'nowrap' }}>View Plans</button>
+                </div>
+              )}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+              <div className="card" style={{ padding:28, textAlign:'center', cursor: canUseTeams(profile) ? 'pointer' : 'default',
+                opacity: canUseTeams(profile) ? 1 : .5 }}
+                onClick={() => canUseTeams(profile) && setMode('create')}>
                 <div style={{ fontSize:40, marginBottom:14 }}>🏗️</div>
                 <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:8 }}>Create a Team</div>
                 <div style={{ fontSize:13, color:'var(--muted)', lineHeight:1.6 }}>Start a team and invite colleagues with a code.</div>
-                <button className="btn-primary" style={{ marginTop:16, width:'100%' }}>Create Team</button>
+                <button className="btn-primary" disabled={!canUseTeams(profile)} style={{ marginTop:16, width:'100%' }}>Create Team</button>
               </div>
               <div className="card" style={{ padding:28, textAlign:'center', cursor:'pointer' }}
                 onClick={()=>setMode('join')}>
@@ -796,6 +817,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                 <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:8 }}>Join a Team</div>
                 <div style={{ fontSize:13, color:'var(--muted)', lineHeight:1.6 }}>Enter an invite code to join an existing team.</div>
                 <button className="btn-outline" style={{ marginTop:16, width:'100%' }}>Join Team</button>
+              </div>
               </div>
             </div>
           )}

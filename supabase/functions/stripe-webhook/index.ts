@@ -71,13 +71,16 @@ Deno.serve(async (req) => {
   if (event.type === 'customer.subscription.updated') {
     const sub        = event.data.object as Stripe.Subscription
     const customerId = sub.customer as string
-    const status     = sub.status === 'active' || sub.status === 'trialing'
-      ? 'active'
-      : sub.status
+    const status     = sub.status // preserve 'trialing' vs 'active' for UI display
+
+    const updateData: Record<string, unknown> = { billing_status: status }
+    // Update plan if metadata present (handles upgrades/downgrades via Stripe Portal)
+    const planId = sub.metadata?.planId
+    if (planId) updateData.plan = planId
 
     const { error } = await supabase
       .from('profiles')
-      .update({ billing_status: status })
+      .update(updateData)
       .eq('stripe_customer_id', customerId)
 
     if (error) console.error('profiles update error (sub updated):', error.message)

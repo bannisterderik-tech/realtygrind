@@ -340,29 +340,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
       </section>
 
       {/* ═══════════════════════════════════════════════════════════
-          2. STATS BAR
-      ═══════════════════════════════════════════════════════════ */}
-      <section style={{ padding:'48px 24px', background: theme === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.02)', borderTop:'1px solid var(--b1)', borderBottom:'1px solid var(--b1)' }}>
-        <div className="lp-max">
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:24, textAlign:'center' }}>
-            {[
-              { num:'2,800+', label:'Habits tracked daily', icon:'🎯' },
-              { num:'940+',   label:'Agents on the platform', icon:'👥' },
-              { num:'$52M+',  label:'In commission tracked', icon:'💰' },
-              { num:'18,400+',label:'Deals logged', icon:'📊' },
-            ].map(s => (
-              <div key={s.label}>
-                <div style={{ fontSize:28, marginBottom:8 }}>{s.icon}</div>
-                <div className="serif" style={{ fontSize:'clamp(28px,4vw,48px)', fontWeight:800, color:gold, lineHeight:1 }}>{s.num}</div>
-                <div style={{ fontSize:12, color:'var(--muted)', fontFamily:'Poppins,sans-serif', marginTop:8 }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ═══════════════════════════════════════════════════════════
-          3. HABIT TRACKER DEMO (interactive — the core product)
+          2. HABIT TRACKER DEMO (interactive — the core product)
       ═══════════════════════════════════════════════════════════ */}
       <section className="lp-section">
         <div className="lp-max">

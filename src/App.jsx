@@ -1023,7 +1023,7 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
                   </div>
                   <div style={{ display:'flex', alignItems:'center', gap:4, minHeight:16 }}>
                     {isP && r.price && resolveCommission(r.commission, r.price) > 0 && (
-                      <span style={{ fontSize:10, color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}>
+                      <span style={{ fontSize:13, color:'var(--green)', fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>
                         = {fmtMoney(resolveCommission(r.commission, r.price))}
                       </span>
                     )}
@@ -2196,7 +2196,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
         {/* ── Tabs ──────────────────────────────────────────── */}
         <div className="tabs">
-          {[{id:'today',l:'Today'},{id:'monthly',l:'Monthly Grid'},{id:'weekly',l:'Week View'},{id:'trends',l:'📈 Trends'}].map(t=>(
+          {[{id:'today',l:'Today'},{id:'weekly',l:'Week View'},{id:'trends',l:'📈 Trends'}].map(t=>(
             <button key={t.id} className={`tab-item${tab===t.id?' on':''}`} onClick={()=>setTab(t.id)}>{t.l}</button>
           ))}
         </div>
@@ -2564,82 +2564,6 @@ function Dashboard({ theme, onToggleTheme }) {
             </div>
           </div>
           </>
-        )}
-
-        {/* ══ MONTHLY GRID ════════════════════════════════════ */}
-        {tab==='monthly' && (
-          <div>
-            <div className="card" style={{ padding:20, marginBottom:16 }}>
-              <div className="label" style={{ marginBottom:16 }}>Weekly Completion</div>
-              <div style={{ display:'flex', gap:28, flexWrap:'wrap', justifyContent:'space-around', alignItems:'center' }}>
-                {Array(WEEKS).fill(null).map((_,wi)=>{
-                  const wTotal=HABITS.reduce((a,h)=>a+habits[h.id][wi].filter(Boolean).length,0)
-                  return <Ring key={wi} pct={Math.round(wTotal/(HABITS.length*7)*100)} size={88}
-                    color={WEEK_COLORS[wi]} label={`Week ${wi+1}`} sub={`${wTotal}/${HABITS.length*7}`}/>
-                })}
-                <div style={{ width:1, height:70, background:'var(--b1)' }}/>
-                <Ring pct={monthPct} size={108} color="var(--gold)" label="Monthly" sub={`${totalHabitChecks}/${totalPossible}`}/>
-              </div>
-            </div>
-
-            <div className="card" style={{ overflowX:'auto' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse', minWidth:780 }}>
-                <thead>
-                  <tr style={{ borderBottom:'1px solid var(--b1)' }}>
-                    <th style={{ padding:'12px 16px', textAlign:'left', minWidth:200 }}>
-                      <span className="label">Habit</span>
-                    </th>
-                    {Array(WEEKS).fill(null).map((_,wi)=>(
-                      <th key={wi} colSpan={7} style={{ padding:'10px 4px', textAlign:'center',
-                        borderLeft:'1px solid var(--b1)' }}>
-                        <span style={{ fontSize:10, fontWeight:700, color:WEEK_COLORS[wi], letterSpacing:.8 }}>WK {wi+1}</span>
-                      </th>
-                    ))}
-                    <th style={{ padding:'10px 14px', borderLeft:'1px solid var(--b1)' }}><span className="label">XP</span></th>
-                    <th style={{ padding:'10px 14px' }}><span className="label">%</span></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {HABITS.map((h,hi)=>{
-                    const done = habits[h.id].flat().filter(Boolean).length
-                    const pct  = Math.round(done/(WEEKS*7)*100)
-                    const cs   = CAT[h.cat]
-                    const habitTotal = h.counter ? Object.entries(counters).filter(([k])=>k.startsWith(h.id)).reduce((a,[,v])=>a+v,0) : 0
-                    const xpEarned   = done*h.xp + (habitTotal>0?Math.max(0,habitTotal-done)*(h.xpEach||0):0)
-                    return (
-                      <tr key={h.id} style={{ borderBottom:'1px solid var(--b1)', background:hi%2===0?'transparent':'var(--bg)' }}>
-                        <td style={{ padding:'7px 16px' }}>
-                          <div style={{ display:'flex', alignItems:'center', gap:7, flexWrap:'wrap' }}>
-                            <span style={{ fontSize:14 }}>{h.icon}</span>
-                            <span style={{ fontSize:12, fontWeight:500, color:'var(--text)' }}>{h.label}</span>
-                            <span style={{ fontSize:9, padding:'1px 5px', borderRadius:3, background:cs.light, color:cs.color, border:`1px solid ${cs.border}` }}>{h.cat}</span>
-                            {habitTotal>0 && <span style={{ fontSize:9, padding:'1px 5px', borderRadius:3, background:cs.light, color:cs.color, fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>×{habitTotal}</span>}
-                          </div>
-                        </td>
-                        {Array(WEEKS).fill(null).map((_,wi)=>Array(7).fill(null).map((__,di)=>(
-                          <HabitCell key={`${wi}-${di}`} habitId={h.id} weekIndex={wi} dayIndex={di}
-                            checked={habits[h.id][wi][di]} counter={counters[`${h.id}-${wi}-${di}`]}
-                            isCounter={h.counter} today={today} onToggle={toggleHabit}
-                            onIncrement={incrementCounter} catStyle={cs} animCell={animCell}/>
-                        )))}
-                        <td style={{ padding:'0 14px', textAlign:'right', borderLeft:'1px solid var(--b1)', whiteSpace:'nowrap' }}>
-                          <span className="mono" style={{ fontSize:11, color:cs.color, fontWeight:700 }}>+{xpEarned.toLocaleString()}</span>
-                        </td>
-                        <td style={{ padding:'0 14px', minWidth:80 }}>
-                          <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-                            <div style={{ flex:1, height:4, background:'var(--b1)', borderRadius:2, overflow:'hidden' }}>
-                              <div style={{ height:'100%', background:cs.color, borderRadius:2, width:`${pct}%`, transition:'width .4s' }}/>
-                            </div>
-                            <span style={{ fontSize:10, color:'var(--dim)', width:28, fontFamily:"'JetBrains Mono',monospace" }}>{pct}%</span>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
         )}
 
         {/* ══ WEEKLY ══════════════════════════════════════════ */}
@@ -3025,7 +2949,7 @@ function Dashboard({ theme, onToggleTheme }) {
                         </div>
                         <div style={{ display:'flex', alignItems:'center', gap:4, minHeight:16 }}>
                           {isP && l.price && resolveCommission(l.commission, l.price) > 0 && (
-                            <span style={{ fontSize:10, color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}>
+                            <span style={{ fontSize:13, color:'var(--green)', fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>
                               = {fmtMoney(resolveCommission(l.commission, l.price))}
                             </span>
                           )}

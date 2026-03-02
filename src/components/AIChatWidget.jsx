@@ -49,6 +49,7 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
   const [effectivePlan, setEffectivePlan] = useState('')
   const [gateError, setGateError]       = useState(null)
   const [loadingCredits, setLoadingCredits] = useState(true)
+  const [connError, setConnError]       = useState(false)
   const [hasNewReply, setHasNewReply]   = useState(false)
 
   const abortRef    = useRef(null)
@@ -99,6 +100,7 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
       }
     } catch (err) {
       console.error('AI widget fetchCredits error:', err)
+      setConnError(true)
     } finally {
       setLoadingCredits(false)
     }
@@ -461,10 +463,30 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
           )}
 
           {/* Loading state */}
-          {loadingCredits && (
+          {loadingCredits && !connError && (
             <div style={{ padding:'40px 0', textAlign:'center', flex:1 }}>
               <div style={{ width:20, height:20, border:'2px solid var(--b2)', borderTopColor:'#8b5cf6',
                 borderRadius:'50%', animation:'spin .6s linear infinite', margin:'0 auto' }} />
+            </div>
+          )}
+
+          {/* Connection error */}
+          {connError && (
+            <div style={{ padding:'36px 24px', textAlign:'center', flex:1 }}>
+              <div style={{ fontSize:36, marginBottom:10 }}>⚠️</div>
+              <div className="serif" style={{ fontSize:15, color:'var(--text)', marginBottom:6 }}>
+                Can't reach AI Assistant
+              </div>
+              <div style={{ fontSize:12, color:'var(--muted)', marginBottom:18, lineHeight:1.6 }}>
+                Check your connection or try again.
+              </div>
+              <button onClick={() => { setConnError(false); setLoadingCredits(true); fetchCredits() }} style={{
+                padding:'8px 20px', borderRadius:9, cursor:'pointer', fontSize:12, fontWeight:700,
+                background:'rgba(139,92,246,.12)', border:'1px solid rgba(139,92,246,.3)', color:'#8b5cf6',
+                transition:'all .15s',
+              }}>
+                Retry
+              </button>
             </div>
           )}
         </div>

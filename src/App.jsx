@@ -10,7 +10,6 @@ import APODPage from './pages/APODPage'
 import BillingPage from './pages/BillingPage'
 import AIAssistantPage from './pages/AIAssistantPage'
 import AIChatWidget from './components/AIChatWidget'
-import WalkthroughTour from './components/WalkthroughTour'
 import { CSS, Ring, StatCard, Wordmark, Loader, ThemeToggle, getRank, fmtMoney, resolveCommission, RANKS, CAT } from './design'
 import { HABITS } from './habits'
 import { getPlanBadge } from './lib/plans'
@@ -1161,7 +1160,6 @@ function Dashboard({ theme, onToggleTheme }) {
   const [pwConfirm, setPwConfirm] = useState('')
   const [pwError, setPwError] = useState('')
   const [pwSaving, setPwSaving] = useState(false)
-  const [showWalkthrough, setShowWalkthrough] = useState(false)
 
   // Habit state
   const [habits,   setHabits]   = useState(()=>{
@@ -1396,21 +1394,6 @@ function Dashboard({ theme, onToggleTheme }) {
       setPwError(e.message || 'Failed to set password.')
     }
     setPwSaving(false)
-  }
-
-  // Walkthrough tour for new users
-  useEffect(() => {
-    if (!dbLoading && page === 'dashboard' && !needsPassword && !habitPrefs.walkthrough_complete) {
-      const t = setTimeout(() => setShowWalkthrough(true), 800)
-      return () => clearTimeout(t)
-    }
-  }, [dbLoading, needsPassword])
-
-  async function handleWalkthroughComplete() {
-    setShowWalkthrough(false)
-    const newPrefs = { ...habitPrefs, walkthrough_complete: true }
-    setHabitPrefs(newPrefs)
-    await supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id)
   }
 
   // ── XP ─────────────────────────────────────────────────────────────────────
@@ -2064,7 +2047,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
           {/* Board + Teams — hidden on mobile */}
           <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
-          <button data-tour="teams-nav" className={`nav-btn mob-hide${page==='teams'?' active':''}`} onClick={()=>setPage('teams')}>👥 Teams</button>
+          <button className={`nav-btn mob-hide${page==='teams'?' active':''}`} onClick={()=>setPage('teams')}>👥 Teams</button>
 
           <button className={`nav-btn mob-hide${(page==='directory'||page==='apod'||page==='ai-assistant')?' active':''}`} onClick={()=>setPage('directory')}>🔗 Tools</button>
 
@@ -2094,7 +2077,7 @@ function Dashboard({ theme, onToggleTheme }) {
               {pb.label}
             </button>
           ) })()}
-          <button data-tour="profile-nav" className={`nav-btn${page==='profile'?' active':''}`} onClick={()=>setPage('profile')}>
+          <button className={`nav-btn${page==='profile'?' active':''}`} onClick={()=>setPage('profile')}>
             {profile?.full_name?.split(' ')[0]||'Profile'}
           </button>
           <button className="btn-ghost mob-hide" style={{ background:'transparent', border:'1px solid rgba(255,255,255,.09)', color:'var(--nav-sub)', fontSize:12 }}
@@ -2241,7 +2224,7 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
 
         {/* ── Stats row ──────────────────────────────────────── */}
-        <div data-tour="stats" className="stat-grid" style={{ marginBottom:18 }}>
+        <div className="stat-grid" style={{ marginBottom:18 }}>
           <StatCard icon="⚡" label="Today" value={`${todayPct}%`}
             color={todayPct>=80?'var(--green)':todayPct>=50?'var(--gold)':'var(--red)'}
             sub={`${todayChecks}/${viewBuiltInActive.length} habits`}
@@ -2361,7 +2344,7 @@ function Dashboard({ theme, onToggleTheme }) {
           <div className="today-grid">
 
             {/* Habits checklist */}
-            <div data-tour="habits" className="card" style={{ padding:24, borderTop:`2.5px solid ${isViewingToday ? (todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626') : '#3b82f6'}` }}>
+            <div className="card" style={{ padding:24, borderTop:`2.5px solid ${isViewingToday ? (todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626') : '#3b82f6'}` }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
                 <div>
                   <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:3, letterSpacing:'-.015em' }}>
@@ -2862,7 +2845,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
 
         {/* ══ LISTINGS ════════════════════════════════════════ */}
-        <div data-tour="listings" style={{ marginTop:36 }}>
+        <div style={{ marginTop:36 }}>
           <div className="section-divider"/>
           <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14, gap:12, flexWrap:'wrap' }}>
             <div>
@@ -3265,7 +3248,7 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
 
         {/* ══ PIPELINE ════════════════════════════════════════ */}
-        <div data-tour="pipeline" style={{ marginTop:36 }}>
+        <div style={{ marginTop:36 }}>
           <div className="section-divider"/>
           <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:16 }}>
             <span style={{ fontSize:20 }}>📊</span>
@@ -3407,8 +3390,6 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
       )}
 
-      {/* ── Walkthrough Tour ── */}
-      <WalkthroughTour active={showWalkthrough} onComplete={handleWalkthroughComplete}/>
 
       {/* ── Floating AI Chat Widget ── */}
       <AIChatWidget

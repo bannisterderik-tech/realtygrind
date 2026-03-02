@@ -258,6 +258,16 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       if (team.max_members && count >= team.max_members) throw new Error(`This team has reached its ${team.max_members}-member limit. Contact support to add more seats ($7/seat/mo).`)
       await supabase.from('team_members').insert({team_id:team.id, user_id:user.id, role:'member'})
       await supabase.from('profiles').update({team_id:team.id}).eq('id',user.id)
+      // Clean up pending invite for this user's email
+      const pending = team.team_prefs?.pending_invites || []
+      if (pending.length > 0 && user.email) {
+        const cleaned = pending.filter(i => i.email.toLowerCase() !== user.email.toLowerCase())
+        if (cleaned.length !== pending.length) {
+          await supabase.from('teams').update({
+            team_prefs: { ...(team.team_prefs || {}), pending_invites: cleaned }
+          }).eq('id', team.id)
+        }
+      }
       await refreshProfile()
       setSuccess(`You joined "${team.name}"!`)
       setMode('myteam'); fetchMembers(team.id)

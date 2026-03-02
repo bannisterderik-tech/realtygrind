@@ -120,11 +120,19 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   useEffect(()=>{
     if (!viewingMember) return
     const handleKey = (e) => {
-      if (e.key === 'Escape') { setViewingMember(null); setMemberDetail(null) }
+      if (e.key === 'Escape') { setViewingMember(null); setMemberDetail(null); setMemberDetailLoading(false) }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
   },[viewingMember])
+
+  // Safety: auto-close the member detail panel if the viewed member was removed
+  // from the members array (e.g. after removeMember or if a re-fetch excluded them).
+  useEffect(()=>{
+    if (viewingMember && members.length > 0 && !members.find(m => m.id === viewingMember.id)) {
+      setViewingMember(null); setMemberDetail(null); setMemberDetailLoading(false)
+    }
+  },[viewingMember, members])
 
   async function fetchMembers(tid) {
     const seq = ++fetchMembersSeqRef.current
@@ -196,6 +204,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   }
 
   async function fetchMemberDetail(member) {
+    if (!member?.id) return  // safety: bail if member object is invalid
     // Prevent concurrent fetches from stomping each other
     const seq = ++fetchSeqRef.current
     setViewingMember(member)
@@ -204,7 +213,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     setPanelNoteForm(null)
     setMemberDetailLoading(true)
     try {
-      const [{ data: txs }, { data: habs }, { data: activeLists }] = await Promise.all([
+      const [{ data: txs, error: e1 }, { data: habs, error: e2 }, { data: activeLists, error: e3 }] = await Promise.all([
         supabase.from('transactions').select('id,type,price,commission,address')
           .eq('user_id', member.id).eq('month_year', MONTH_YEAR),
         supabase.from('habit_completions').select('habit_id,counter_value')
@@ -213,6 +222,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
           .eq('user_id', member.id).neq('status', 'closed').gt('unit_count', 0),
       ])
       if (seq !== fetchSeqRef.current) return  // a newer click fired — discard these results
+      if (e1 || e2 || e3) console.warn('fetchMemberDetail partial error:', e1?.message, e2?.message, e3?.message)
       const habitCounts = {}
       BUILT_IN_HABIT_IDS.forEach(id => {
         habitCounts[id] = (habs||[])
@@ -220,6 +230,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
           .reduce((a, h) => a + (h.counter_value || 1), 0)
       })
       setMemberDetail({ txs: txs||[], habitCounts, activeLists: activeLists||[] })
+    } catch (err) {
+      console.error('fetchMemberDetail error:', err)
+      // Still show the panel with empty data rather than crashing
+      if (seq === fetchSeqRef.current) {
+        setMemberDetail({ txs: [], habitCounts: {}, activeLists: [] })
+      }
     } finally {
       if (seq === fetchSeqRef.current) setMemberDetailLoading(false)
     }
@@ -323,10 +339,17 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       if (e2) throw e2
       const { error: e3 } = await supabase.from('profiles').update({ team_id: null }).eq('id', memberId)
       if (e3) throw e3
-      setTeamData(td => ({ ...td, team_prefs: newPrefs }))
-      setMembers(ms => ms.filter(m => m.id !== memberId))
+
+      // ── Close the panel & clear stale state immediately ──
       setRemoveConfirm(null)
-      setViewingMember(null); setMemberDetail(null)
+      setViewingMember(null)
+      setMemberDetail(null)
+      setMemberDetailLoading(false)
+      setMemberStats(prev => { const next = { ...prev }; delete next[memberId]; return next })
+
+      // ── Full re-fetch from DB for 100 % consistent state ──
+      // (avoids stale optimistic data that can crash subsequent actions)
+      await fetchMembers(profile.team_id)
     } catch (err) {
       setError('Failed to remove member. Please try again.')
       console.error('removeMember error:', err)
@@ -992,7 +1015,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 <div key={m.id} className="card" style={{ padding:14,
                                   cursor: canViewDetail(m) ? 'pointer' : 'default',
                                   border: isLead ? '1px solid rgba(139,92,246,.3)' : '1px solid var(--b2)' }}
-                                  onClick={canViewDetail(m) && !memberDetailLoading ? ()=>fetchMemberDetail(m) : undefined}>
+                                  onClick={(canViewDetail(m) && !memberDetailLoading && !viewingMember) ? ()=>fetchMemberDetail(m) : undefined}>
                                   <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
                                     <div style={{ width:34, height:34, borderRadius:'50%',
                                       background:`linear-gradient(135deg,${rank.color},${rank.color}99)`,
@@ -2435,7 +2458,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
           pending:        { label:'Pending',      color:'#6366f1' },
           closed:         { label:'Closed',       color:'var(--green)' },
         }
-        const closePanel = () => { setViewingMember(null); setMemberDetail(null); setRemoveConfirm(null); setPanelNoteForm(null) }
+        const closePanel = () => { setViewingMember(null); setMemberDetail(null); setMemberDetailLoading(false); setRemoveConfirm(null); setPanelNoteForm(null) }
         return (
           <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex' }}>
             {/* Backdrop — no animation, appears instantly to avoid dark-flash on re-renders */}

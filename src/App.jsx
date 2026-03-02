@@ -1129,6 +1129,26 @@ function Dashboard({ theme, onToggleTheme }) {
   const todayDay  = now.getDay()
   const today = useMemo(() => ({ week: todayWeek, day: todayDay }), [todayWeek, todayDay])
 
+  // Day navigation for the Today tab — offset from real today
+  const [viewDayOffset, setViewDayOffset] = useState(0)
+  const viewDate = useMemo(() => {
+    const d = new Date()
+    d.setDate(d.getDate() + viewDayOffset)
+    // Clamp to current month
+    if (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) {
+      return now // fallback to today if offset goes outside month
+    }
+    return d
+  }, [viewDayOffset])
+  const viewWeek    = Math.min(Math.floor((viewDate.getDate() - 1) / 7), 3)
+  const viewDayIdx  = viewDate.getDay()
+  const viewDateStr = `${viewDate.getFullYear()}-${String(viewDate.getMonth() + 1).padStart(2, '0')}-${String(viewDate.getDate()).padStart(2, '0')}`
+  const isViewingToday = viewDayOffset === 0
+  // Navigation bounds: stay within current month
+  const canGoBack    = viewDate.getDate() > 1
+  const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const canGoForward = viewDate.getDate() < lastDayOfMonth
+
   const [page, setPage] = useState('dashboard')
   const [tab,  setTab]  = useState('today')
   const [dbLoading, setDbLoading] = useState(true)
@@ -1392,11 +1412,11 @@ function Dashboard({ theme, onToggleTheme }) {
   }
 
   function skipHabitToday(hid) {
-    const prev = (habitPrefs.skipped||{})[todayDate] || []
+    const prev = (habitPrefs.skipped||{})[viewDateStr] || []
     if (prev.includes(String(hid))) return
     const newPrefs = {
       ...habitPrefs,
-      skipped: { ...(habitPrefs.skipped||{}), [todayDate]: [...prev, String(hid)] }
+      skipped: { ...(habitPrefs.skipped||{}), [viewDateStr]: [...prev, String(hid)] }
     }
     saveProfileHabitPrefs(newPrefs)
   }
@@ -1406,7 +1426,7 @@ function Dashboard({ theme, onToggleTheme }) {
       ...habitPrefs,
       skipped: {
         ...(habitPrefs.skipped||{}),
-        [todayDate]: ((habitPrefs.skipped||{})[todayDate]||[]).filter(id => id !== String(hid))
+        [viewDateStr]: ((habitPrefs.skipped||{})[viewDateStr]||[]).filter(id => id !== String(hid))
       }
     }
     saveProfileHabitPrefs(newPrefs)
@@ -1537,7 +1557,7 @@ function Dashboard({ theme, onToggleTheme }) {
     try {
       const {data, error} = await supabase.from('custom_tasks').insert({
         user_id:user.id, label, icon, xp:Number(xp)||15,
-        is_default:false, specific_date:todayDate
+        is_default:false, specific_date:viewDateStr
       }).select().single()
       if (error) throw error
       if (data) setCustomTasks(prev => [...prev, {
@@ -1858,18 +1878,19 @@ function Dashboard({ theme, onToggleTheme }) {
     return all
   }, [builtInEffective, customDefaults, activePrefs.order])
 
-  // ── Daily skip ───────────────────────────────────────────────────────────
-  const todaySkipped       = (habitPrefs.skipped||{})[todayDate] || []
-  const effectiveToday     = useMemo(() => effectiveHabits.filter(h => !todaySkipped.includes(String(h.id))), [effectiveHabits, todaySkipped])
-  const todayBuiltInActive = useMemo(() => builtInEffective.filter(h => !todaySkipped.includes(h.id)), [builtInEffective, todaySkipped])
-  const skippedBuiltInToday = useMemo(() => builtInEffective.filter(h => todaySkipped.includes(String(h.id))), [builtInEffective, todaySkipped])
+  // ── Daily skip (for viewed day) ──────────────────────────────────────────
+  const viewSkippedRaw      = (habitPrefs.skipped||{})[viewDateStr]
+  const viewSkipped         = useMemo(() => viewSkippedRaw || [], [viewSkippedRaw])
+  const effectiveView       = useMemo(() => effectiveHabits.filter(h => !viewSkipped.includes(String(h.id))), [effectiveHabits, viewSkipped])
+  const viewBuiltInActive   = useMemo(() => builtInEffective.filter(h => !viewSkipped.includes(h.id)), [builtInEffective, viewSkipped])
+  const skippedBuiltInView  = useMemo(() => builtInEffective.filter(h => viewSkipped.includes(String(h.id))), [builtInEffective, viewSkipped])
 
   const dashStats = useMemo(() => {
     const totalHabitChecks = builtInEffective.reduce((a,h)=>a+habits[h.id].flat().filter(Boolean).length,0)
     const totalPossible    = Math.max(builtInEffective.length,1)*WEEKS*7
     const monthPct         = Math.round(totalHabitChecks/totalPossible*100)
-    const todayChecks      = todayBuiltInActive.filter(h=>habits[h.id][today.week][today.day]).length
-    const todayPct         = Math.round(todayChecks/Math.max(todayBuiltInActive.length,1)*100)
+    const viewChecks       = viewBuiltInActive.filter(h=>habits[h.id][viewWeek]?.[viewDayIdx]).length
+    const viewPct          = Math.round(viewChecks/Math.max(viewBuiltInActive.length,1)*100)
     const totalProspecting = Object.entries(counters).filter(([k])=>k.startsWith('prospecting')).reduce((a,[,v])=>a+v,0)
     const totalAppts       = Object.entries(counters).filter(([k])=>k.startsWith('appointments')).reduce((a,[,v])=>a+v,0)
     const totalShowings    = Object.entries(counters).filter(([k])=>k.startsWith('showing')).reduce((a,[,v])=>a+v,0)
@@ -1877,9 +1898,9 @@ function Dashboard({ theme, onToggleTheme }) {
     const totalBuyerReps   = buyerReps.filter(r => r.status !== 'closed').length
     const closedVol        = closedDeals.reduce((a,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
     const closedComm       = closedDeals.reduce((a,r) => a + resolveCommission(r.commission, r.price), 0)
-    const todayHabitXp     = builtInEffective.reduce((acc,h)=>{
-      if(!habits[h.id][today.week][today.day]) return acc
-      const ckey=`${h.id}-${today.week}-${today.day}`
+    const viewHabitXp      = builtInEffective.reduce((acc,h)=>{
+      if(!habits[h.id][viewWeek]?.[viewDayIdx]) return acc
+      const ckey=`${h.id}-${viewWeek}-${viewDayIdx}`
       const cnt=counters[ckey]||0
       return acc + h.xp + (cnt>0?Math.max(0,cnt-1)*(h.xpEach||0):0)
     },0)
@@ -1888,48 +1909,9 @@ function Dashboard({ theme, onToggleTheme }) {
       sessionPipeline.offer_received * PIPELINE_XP.offer_received +
       sessionPipeline.went_pending  * PIPELINE_XP.went_pending  +
       sessionPipeline.closed        * PIPELINE_XP.closed
-    return { totalHabitChecks, totalPossible, monthPct, todayChecks, todayPct, totalProspecting, totalAppts, totalShowings, totalListings, totalBuyerReps, closedVol, closedComm, todayHabitXp, sessionPipelineXp, todayXp: todayHabitXp + sessionPipelineXp }
-  }, [habits, counters, builtInEffective, todayBuiltInActive, today.week, today.day, listings, buyerReps, closedDeals, sessionPipeline])
-  const { totalHabitChecks, monthPct, todayChecks, todayPct, totalProspecting, totalAppts, totalShowings, totalListings, totalBuyerReps, closedVol, closedComm, todayHabitXp, sessionPipelineXp, todayXp } = dashStats
-
-  // ── Trends tab computed data (memoized) ──
-  const trendsData = useMemo(() => {
-    const weekBars = Array.from({length:WEEKS},(_,wi)=>{
-      const checks = builtInEffective.reduce((a,h)=>a+habits[h.id][wi].filter(Boolean).length,0)
-      const total  = Math.max(builtInEffective.length*7,1)
-      return { pct:Math.round(checks/total*100), checks, wi }
-    })
-    const cats = {}
-    builtInEffective.forEach(h=>{
-      if(!cats[h.cat]) cats[h.cat]={ label:h.cat, color:CAT[h.cat]?.color||'#888', done:0, total:0 }
-      cats[h.cat].done  += habits[h.id].flat().filter(Boolean).length
-      cats[h.cat].total += WEEKS*7
-    })
-    const catArr = Object.values(cats).sort((a,b)=>b.done-a.done)
-    const funnel = [
-      { label:'Appts Booked', val:totalAppts, color:'#0ea5e9' },
-      { label:'Showings',     val:totalShowings, color:'#10b981' },
-      { label:'Offers Made',  val:offersMade.length, color:'#f59e0b' },
-      { label:'Closed',       val:closedDeals.length, color:'#8b5cf6' },
-    ]
-    const maxFunnel = Math.max(...funnel.map(f=>f.val),1)
-    const totalMonthHabitXp = builtInEffective.reduce((acc,h)=>{
-      return acc + habits[h.id].flat().reduce((a,done,i)=>{
-        if(!done) return a
-        const wi=Math.floor(i/7), di=i%7
-        const ckey=`${h.id}-${wi}-${di}`
-        const cnt=counters[ckey]||0
-        return a + h.xp + (cnt>0?Math.max(0,cnt-1)*(h.xpEach||0):0)
-      },0)
-    },0)
-    const estimatedPipeXp =
-      offersMade.length     * PIPELINE_XP.offer_made    +
-      offersReceived.length * PIPELINE_XP.offer_received +
-      wentPendingCount      * PIPELINE_XP.went_pending  +
-      closedDeals.length    * PIPELINE_XP.closed
-    const totalXpShown = Math.max(totalMonthHabitXp + estimatedPipeXp, 1)
-    return { weekBars, catArr, funnel, maxFunnel, totalMonthHabitXp, estimatedPipeXp, totalXpShown }
-  }, [builtInEffective, habits, counters, totalAppts, totalShowings, offersMade, closedDeals, offersReceived, wentPendingCount])
+    return { totalHabitChecks, totalPossible, monthPct, viewChecks, viewPct, totalProspecting, totalAppts, totalShowings, totalListings, totalBuyerReps, closedVol, closedComm, viewHabitXp, sessionPipelineXp, viewXp: viewHabitXp + sessionPipelineXp }
+  }, [habits, counters, builtInEffective, viewBuiltInActive, viewWeek, viewDayIdx, listings, buyerReps, closedDeals, sessionPipeline])
+  const { totalHabitChecks, monthPct, viewChecks: todayChecks, viewPct: todayPct, totalProspecting, totalAppts, totalShowings, totalListings, totalBuyerReps, closedVol, closedComm, viewHabitXp: todayHabitXp, sessionPipelineXp, viewXp: todayXp } = dashStats
 
   const dateStr   = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})
   const quote = QUOTES[new Date().getDay()]
@@ -2179,7 +2161,7 @@ function Dashboard({ theme, onToggleTheme }) {
         <div className="stat-grid" style={{ marginBottom:18 }}>
           <StatCard icon="⚡" label="Today" value={`${todayPct}%`}
             color={todayPct>=80?'var(--green)':todayPct>=50?'var(--gold)':'var(--red)'}
-            sub={`${todayChecks}/${todayBuiltInActive.length} habits`}
+            sub={`${todayChecks}/${viewBuiltInActive.length} habits`}
             accent={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'}/>
           <StatCard icon="📅" label="Month"        value={`${monthPct}%`}   color="var(--gold)"  sub={`${totalHabitChecks} checks`}/>
           <StatCard icon="📞" label="Calls"         value={totalProspecting} color="var(--gold)"
@@ -2204,7 +2186,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
         {/* ── Tabs ──────────────────────────────────────────── */}
         <div className="tabs">
-          {[{id:'today',l:'Today'},{id:'weekly',l:'Week View'},{id:'trends',l:'📈 Trends'}].map(t=>(
+          {[{id:'today',l:'Today'},{id:'weekly',l:'Week View'}].map(t=>(
             <button key={t.id} className={`tab-item${tab===t.id?' on':''}`} onClick={()=>setTab(t.id)}>{t.l}</button>
           ))}
         </div>
@@ -2214,12 +2196,39 @@ function Dashboard({ theme, onToggleTheme }) {
           <>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
             <div style={{ fontSize:12, color:'var(--muted)' }}>
-              {todayXp > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", color:'var(--gold)', fontWeight:700 }}>+{todayXp.toLocaleString()} XP</span>} {todayXp > 0 ? 'earned today' : ''}
+              {todayXp > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", color:'var(--gold)', fontWeight:700 }}>+{todayXp.toLocaleString()} XP</span>} {todayXp > 0 ? (isViewingToday ? 'earned today' : `earned ${FULL_DAYS[viewDayIdx]}`) : ''}
             </div>
             <button className="btn-outline" onClick={() => setShowPrint(true)}
               style={{ fontSize:12, display:'flex', alignItems:'center', gap:5, padding:'7px 14px' }}>
-              🖨️ Print Daily Sheet
+              🖨️ Print {isViewingToday ? 'Daily' : FULL_DAYS[viewDayIdx]} Sheet
             </button>
+          </div>
+
+          {/* ── Day Navigator ── */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:12, marginBottom:16,
+            padding:'10px 16px', background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:10 }}>
+            <button onClick={() => setViewDayOffset(o => o - 1)} disabled={!canGoBack}
+              style={{ background:'none', border:'1px solid var(--b2)', borderRadius:6, cursor:canGoBack?'pointer':'default',
+                color:canGoBack?'var(--text)':'var(--dim)', fontSize:14, padding:'4px 10px', opacity:canGoBack?1:.4,
+                transition:'all .15s' }}>◀</button>
+            <div style={{ textAlign:'center', minWidth:180 }}>
+              <div style={{ fontSize:14, fontWeight:600, color:'var(--text)', letterSpacing:'-.01em' }}>
+                {FULL_DAYS[viewDayIdx]}, {viewDate.toLocaleDateString('en-US', { month:'long', day:'numeric' })}
+              </div>
+              {!isViewingToday && (
+                <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>Week {viewWeek + 1}</div>
+              )}
+            </div>
+            <button onClick={() => setViewDayOffset(o => o + 1)} disabled={!canGoForward}
+              style={{ background:'none', border:'1px solid var(--b2)', borderRadius:6, cursor:canGoForward?'pointer':'default',
+                color:canGoForward?'var(--text)':'var(--dim)', fontSize:14, padding:'4px 10px', opacity:canGoForward?1:.4,
+                transition:'all .15s' }}>▶</button>
+            {!isViewingToday && (
+              <button onClick={() => setViewDayOffset(0)}
+                style={{ background:'rgba(59,130,246,.1)', color:'#3b82f6', border:'1px solid rgba(59,130,246,.3)',
+                  borderRadius:6, fontSize:11, fontWeight:600, padding:'5px 12px', cursor:'pointer',
+                  transition:'all .15s' }}>Today</button>
+            )}
           </div>
 
           {/* ── Daily Standup (team members only, not owner) ── */}
@@ -2269,18 +2278,20 @@ function Dashboard({ theme, onToggleTheme }) {
           <div className="today-grid">
 
             {/* Habits checklist */}
-            <div className="card" style={{ padding:24, borderTop:`2.5px solid ${todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'}` }}>
+            <div className="card" style={{ padding:24, borderTop:`2.5px solid ${isViewingToday ? (todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626') : '#3b82f6'}` }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
                 <div>
-                  <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:3, letterSpacing:'-.015em' }}>Daily Habits</div>
+                  <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:3, letterSpacing:'-.015em' }}>
+                    {isViewingToday ? 'Daily Habits' : `${FULL_DAYS[viewDayIdx]} Habits`}
+                  </div>
                   <div style={{ fontSize:12, color:'var(--muted)' }}>
-                    {FULL_DAYS[today.day]} · {todayBuiltInActive.length - todayChecks > 0 ? `${todayBuiltInActive.length - todayChecks} remaining` : 'All done! 🎉'}
+                    {FULL_DAYS[viewDayIdx]} · {viewBuiltInActive.length - todayChecks > 0 ? `${viewBuiltInActive.length - todayChecks} remaining` : 'All done! 🎉'}
                   </div>
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:12 }}>
                   <div style={{ textAlign:'right' }}>
                     <div className="serif" style={{ fontSize:24, color: todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626', lineHeight:1, fontWeight:700, letterSpacing:'-.02em' }}>
-                      {todayChecks}<span style={{ fontSize:14, color:'var(--dim)', fontWeight:400 }}>/{todayBuiltInActive.length}</span>
+                      {todayChecks}<span style={{ fontSize:14, color:'var(--dim)', fontWeight:400 }}>/{viewBuiltInActive.length}</span>
                     </div>
                     <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>completed</div>
                   </div>
@@ -2290,15 +2301,15 @@ function Dashboard({ theme, onToggleTheme }) {
 
               {/* ── Unified task list: built-ins + custom defaults (ordered) ── */}
               <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
-                {effectiveToday.map(h => {
+                {effectiveView.map(h => {
                   if (h.isBuiltIn) {
-                    const done = habits[h.id][today.week][today.day]
+                    const done = habits[h.id][viewWeek]?.[viewDayIdx]
                     const cs   = CAT[h.cat]
-                    const ckey = `${h.id}-${today.week}-${today.day}`
+                    const ckey = `${h.id}-${viewWeek}-${viewDayIdx}`
                     const cnt  = counters[ckey]||0
                     return (
                       <div key={h.id} className={`habit-row${done?' done':''}`}>
-                        <button className="chk" onClick={()=>toggleHabit(h.id,today.week,today.day)}
+                        <button className="chk" onClick={()=>toggleHabit(h.id,viewWeek,viewDayIdx)}
                           style={done?{background:cs.light,borderColor:cs.color}:{}}>
                           {done && (
                             <svg width="11" height="8" viewBox="0 0 11 8" fill="none">
@@ -2327,7 +2338,7 @@ function Dashboard({ theme, onToggleTheme }) {
                                 const v = Math.max(1, parseInt(e.target.value)||1)
                                 setCounters(prev=>({...prev,[ckey]:v}))
                               }}
-                              onBlur={e => setCounterValue(h.id, today.week, today.day, e.target.value)}
+                              onBlur={e => setCounterValue(h.id, viewWeek, viewDayIdx, e.target.value)}
                               style={{
                                 width:48, textAlign:'center', background:'var(--bg2)',
                                 border:`1px solid ${cs.color}55`, borderRadius:6,
@@ -2351,11 +2362,11 @@ function Dashboard({ theme, onToggleTheme }) {
                     )
                   } else {
                     // Custom default task (in unified order)
-                    const ckey = `${h.id}-${today.week}-${today.day}`
+                    const ckey = `${h.id}-${viewWeek}-${viewDayIdx}`
                     const done = !!customDone[ckey]
                     return (
                       <div key={h.id} className={`habit-row${done?' done':''}`}>
-                        <button className="chk" onClick={()=>toggleCustomTask(h.id,today.week,today.day)}
+                        <button className="chk" onClick={()=>toggleCustomTask(h.id,viewWeek,viewDayIdx)}
                           style={done?{background:'rgba(6,182,212,.12)',borderColor:'#06b6d4'}:{}}>
                           {done && (
                             <svg width="11" height="8" viewBox="0 0 11 8" fill="none">
@@ -2386,19 +2397,19 @@ function Dashboard({ theme, onToggleTheme }) {
 
               {/* ── Day-specific tasks (today only) ─────────── */}
               {(()=>{
-                const dayTasks = customTasks.filter(t => !t.isDefault && t.specificDate === todayDate)
+                const dayTasks = customTasks.filter(t => !t.isDefault && t.specificDate === viewDateStr)
                 return (
                   <>
                     {dayTasks.length > 0 && (
                       <div style={{ borderTop:'1px solid var(--b1)', marginTop:14, paddingTop:12,
                         display:'flex', flexDirection:'column', gap:2 }}>
-                        <div className="label" style={{ marginBottom:6, fontSize:11 }}>Today Only</div>
+                        <div className="label" style={{ marginBottom:6, fontSize:11 }}>{isViewingToday ? 'Today Only' : `${FULL_DAYS[viewDayIdx]} Only`}</div>
                         {dayTasks.map(t => {
-                          const ckey = `${t.id}-${today.week}-${today.day}`
+                          const ckey = `${t.id}-${viewWeek}-${viewDayIdx}`
                           const done = !!customDone[ckey]
                           return (
                             <div key={t.id} className={`habit-row${done?' done':''}`}>
-                              <button className="chk" onClick={()=>toggleCustomTask(t.id,today.week,today.day)}
+                              <button className="chk" onClick={()=>toggleCustomTask(t.id,viewWeek,viewDayIdx)}
                                 style={done?{background:'rgba(6,182,212,.12)',borderColor:'#06b6d4'}:{}}>
                                 {done && (
                                   <svg width="11" height="8" viewBox="0 0 11 8" fill="none">
@@ -2424,15 +2435,15 @@ function Dashboard({ theme, onToggleTheme }) {
                     )}
                     <button className="btn-outline" onClick={()=>setAddTaskModal(true)}
                       style={{ marginTop:12, fontSize:12, width:'100%', justifyContent:'center' }}>
-                      + Add task for today
+                      + Add task for {isViewingToday ? 'today' : FULL_DAYS[viewDayIdx]}
                     </button>
 
                     {/* Skipped habits & tasks — restore inline */}
-                    {(skippedBuiltInToday.length > 0 || skippedTodayTasks.length > 0) && (
+                    {(skippedBuiltInView.length > 0 || skippedTodayTasks.length > 0) && (
                       <div style={{ marginTop:16, paddingTop:14, borderTop:'1px dashed var(--b2)' }}>
                         <div style={{ fontSize:10, color:'var(--dim)', fontWeight:700, letterSpacing:1,
-                          marginBottom:8, textTransform:'uppercase' }}>Skipped Today</div>
-                        {skippedBuiltInToday.map(h => (
+                          marginBottom:8, textTransform:'uppercase' }}>{isViewingToday ? 'Skipped Today' : `Skipped ${FULL_DAYS[viewDayIdx]}`}</div>
+                        {skippedBuiltInView.map(h => (
                           <div key={h.id} style={{ display:'flex', alignItems:'center', gap:8,
                             padding:'8px 4px', borderBottom:'1px solid var(--b1)', opacity:.55 }}>
                             <span style={{ fontSize:15, flexShrink:0 }}>{h.icon}</span>
@@ -2476,7 +2487,7 @@ function Dashboard({ theme, onToggleTheme }) {
                   {todayPct===100?'Perfect day! 🎉':todayPct>=80?'Almost there!':todayPct>=50?'Good progress':'Keep going'}
                 </div>
                 <div style={{ fontSize:12, color:'var(--muted)', marginTop:4 }}>
-                  {todayBuiltInActive.length-todayChecks === 0 ? 'All habits done' : `${todayBuiltInActive.length-todayChecks} habit${todayBuiltInActive.length-todayChecks!==1?'s':''} remaining`}
+                  {viewBuiltInActive.length-todayChecks === 0 ? 'All habits done' : `${viewBuiltInActive.length-todayChecks} habit${viewBuiltInActive.length-todayChecks!==1?'s':''} remaining`}
                 </div>
                 {streak > 0 && (
                   <div style={{ marginTop:14, padding:'8px 14px', background:'rgba(251,146,60,.08)', border:'1px solid rgba(251,146,60,.2)', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
@@ -2488,13 +2499,13 @@ function Dashboard({ theme, onToggleTheme }) {
                 )
               })()}
 
-              {HABITS.filter(h=>h.counter&&habits[h.id][today.week][today.day]).length>0 && (
+              {HABITS.filter(h=>h.counter&&habits[h.id][viewWeek]?.[viewDayIdx]).length>0 && (
                 <div className="card" style={{ padding:16 }}>
-                  <div className="label" style={{ marginBottom:10 }}>Today's Counts</div>
+                  <div className="label" style={{ marginBottom:10 }}>{isViewingToday ? "Today's Counts" : `${FULL_DAYS[viewDayIdx]}'s Counts`}</div>
                   {HABITS.filter(h=>h.counter).map(h=>{
-                    const ckey = `${h.id}-${today.week}-${today.day}`
+                    const ckey = `${h.id}-${viewWeek}-${viewDayIdx}`
                     const cnt  = counters[ckey]||0
-                    if (!habits[h.id][today.week][today.day]) return null
+                    if (!habits[h.id][viewWeek]?.[viewDayIdx]) return null
                     const cs = CAT[h.cat]
                     return (
                       <div key={h.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
@@ -2766,104 +2777,6 @@ function Dashboard({ theme, onToggleTheme }) {
           </div>
         )}
 
-        {/* ══ TRENDS ══════════════════════════════════════════ */}
-        {tab==='trends' && (() => {
-          const { weekBars, catArr, funnel, maxFunnel, totalMonthHabitXp, estimatedPipeXp, totalXpShown } = trendsData
-          return (
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:18, paddingBottom:8 }}>
-
-              {/* Week-by-week */}
-              <div className="card" style={{ padding:22 }}>
-                <div style={{ fontWeight:700, fontSize:13, color:'var(--text)', marginBottom:16 }}>📅 Week-by-Week Completion</div>
-                <div style={{ display:'flex', gap:14, alignItems:'flex-end', height:120 }}>
-                  {weekBars.map(({pct,checks,wi})=>(
-                    <div key={wi} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
-                      <div style={{ fontSize:11, fontWeight:700, color:pct>=70?'#10b981':pct>=40?'#f59e0b':'#dc2626' }}>{pct}%</div>
-                      <div style={{ width:'100%', background:'var(--b1)', borderRadius:6, overflow:'hidden', height:80,
-                        display:'flex', flexDirection:'column', justifyContent:'flex-end' }}>
-                        <div style={{ width:'100%', height:`${Math.max(pct,2)}%`, background:pct>=70?'#10b981':pct>=40?'#f59e0b':'#dc2626',
-                          borderRadius:6, transition:'height .5s' }}/>
-                      </div>
-                      <div style={{ fontSize:10, color:'var(--muted)' }}>Wk {wi+1}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Category breakdown */}
-              <div className="card" style={{ padding:22 }}>
-                <div style={{ fontWeight:700, fontSize:13, color:'var(--text)', marginBottom:16 }}>🏷 Habit Category Breakdown</div>
-                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                  {catArr.map(c=>(
-                    <div key={c.label}>
-                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:4 }}>
-                        <span style={{ color:c.color, fontWeight:600, textTransform:'capitalize' }}>{c.label}</span>
-                        <span style={{ color:'var(--muted)' }}>{c.done} / {c.total}</span>
-                      </div>
-                      <div style={{ height:8, background:'var(--b1)', borderRadius:99, overflow:'hidden' }}>
-                        <div style={{ height:'100%', width:`${Math.round(c.done/Math.max(c.total,1)*100)}%`,
-                          background:c.color, borderRadius:99, transition:'width .6s' }}/>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Pipeline funnel */}
-              <div className="card" style={{ padding:22 }}>
-                <div style={{ fontWeight:700, fontSize:13, color:'var(--text)', marginBottom:16 }}>🔽 Pipeline This Month</div>
-                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                  {funnel.map(f=>(
-                    <div key={f.label}>
-                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:4 }}>
-                        <span style={{ color:f.color, fontWeight:600 }}>{f.label}</span>
-                        <span style={{ fontWeight:700, color:'var(--text)' }}>{f.val}</span>
-                      </div>
-                      <div style={{ height:10, background:'var(--b1)', borderRadius:99, overflow:'hidden' }}>
-                        <div style={{ height:'100%', width:`${Math.max(Math.round(f.val/maxFunnel*100),f.val>0?4:0)}%`,
-                          background:f.color, borderRadius:99, transition:'width .6s' }}/>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* XP breakdown */}
-              <div className="card" style={{ padding:22 }}>
-                <div style={{ fontWeight:700, fontSize:13, color:'var(--text)', marginBottom:16 }}>⚡ XP Sources</div>
-                <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:18 }}>
-                  <div style={{ fontSize:32, fontWeight:800, color:'var(--gold)', fontFamily:"'Fraunces',serif" }}>
-                    {xp.toLocaleString()}
-                  </div>
-                  <div style={{ fontSize:11, color:'var(--muted)' }}>lifetime XP total</div>
-                </div>
-                {[
-                  { label:'Habits (this month)',   val:totalMonthHabitXp, color:'#0ea5e9' },
-                  { label:'Pipeline (this month)', val:estimatedPipeXp,   color:'#10b981' },
-                ].map(s=>(
-                  <div key={s.label} style={{ marginBottom:10 }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:4 }}>
-                      <span style={{ color:s.color, fontWeight:600 }}>{s.label}</span>
-                      <span style={{ color:'var(--text)' }}>+{s.val} XP</span>
-                    </div>
-                    <div style={{ height:8, background:'var(--b1)', borderRadius:99, overflow:'hidden' }}>
-                      <div style={{ height:'100%', width:`${Math.max(Math.round(s.val/totalXpShown*100),s.val>0?3:0)}%`,
-                        background:s.color, borderRadius:99, transition:'width .6s' }}/>
-                    </div>
-                  </div>
-                ))}
-                <div style={{ marginTop:16, padding:'10px 14px', background:'rgba(255,255,255,.03)',
-                  border:'1px solid var(--b1)', borderRadius:10, fontSize:12 }}>
-                  <div style={{ color:'var(--muted)', marginBottom:2 }}>Current Rank</div>
-                  <div style={{ fontWeight:700, color:rank.color, fontFamily:"'Fraunces',serif", fontSize:18 }}>
-                    {rank.icon} {rank.name}
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          )
-        })()}
 
         {/* ══ LISTINGS ════════════════════════════════════════ */}
         <div style={{ marginTop:36 }}>
@@ -3339,8 +3252,8 @@ function Dashboard({ theme, onToggleTheme }) {
           habits={habits}
           counters={counters}
           today={today}
-          todayDate={todayDate}
-          effectiveToday={effectiveToday}
+          todayDate={viewDateStr}
+          effectiveToday={effectiveView}
           customTasks={customTasks}
           customDone={customDone}
           offersMade={offersMade}
@@ -3349,6 +3262,7 @@ function Dashboard({ theme, onToggleTheme }) {
           closedDeals={closedDeals}
           buyerReps={buyerReps}
           onClose={() => setShowPrint(false)}
+          target={isViewingToday ? undefined : { wi: viewWeek, di: viewDayIdx, dateStr: viewDateStr }}
         />
       )}
 

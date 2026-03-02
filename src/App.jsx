@@ -1012,15 +1012,18 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
               const isP = String(r.commission||'').trim().endsWith('%')
               return (
                 <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
-                  <input className="pipe-input"
-                    value={isP ? String(r.commission||'').replace(/%$/,'') : (r.commission||'')}
-                    onChange={e => update(r.id, 'commission', isP ? e.target.value + '%' : e.target.value)}
-                    onBlur={e => persist(r.id, 'commission', isP ? e.target.value + '%' : e.target.value)}
-                    placeholder={isP ? '3' : '$0'}
-                    style={{ color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
+                  <div style={{ position:'relative' }}>
+                    <input className="pipe-input"
+                      value={isP ? String(r.commission||'').replace(/%$/,'') : (r.commission||'')}
+                      onChange={e => update(r.id, 'commission', isP ? e.target.value + '%' : e.target.value)}
+                      onBlur={e => persist(r.id, 'commission', isP ? e.target.value + '%' : e.target.value)}
+                      placeholder={isP ? '3' : '$0'}
+                      style={{ color: isP ? 'var(--muted)' : 'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
+                    {isP && <span style={{ position:'absolute', right:4, top:'50%', transform:'translateY(-50%)', fontSize:11, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", pointerEvents:'none' }}>%</span>}
+                  </div>
                   <div style={{ display:'flex', alignItems:'center', gap:4, minHeight:16 }}>
                     {isP && r.price && resolveCommission(r.commission, r.price) > 0 && (
-                      <span style={{ fontSize:10, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace" }}>
+                      <span style={{ fontSize:10, color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}>
                         = {fmtMoney(resolveCommission(r.commission, r.price))}
                       </span>
                     )}
@@ -3007,19 +3010,22 @@ function Dashboard({ theme, onToggleTheme }) {
                     const isP = String(l.commission||'').trim().endsWith('%')
                     return (
                       <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
-                        <input className="pipe-input"
-                          value={isP ? String(l.commission||'').replace(/%$/,'') : (l.commission||'')}
-                          onChange={e => {
-                            updateListingLocal(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)
-                          }}
-                          onBlur={e => {
-                            updateListing(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)
-                          }}
-                          placeholder={isP ? '3' : '$0'}
-                          style={{ color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
+                        <div style={{ position:'relative' }}>
+                          <input className="pipe-input"
+                            value={isP ? String(l.commission||'').replace(/%$/,'') : (l.commission||'')}
+                            onChange={e => {
+                              updateListingLocal(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)
+                            }}
+                            onBlur={e => {
+                              updateListing(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)
+                            }}
+                            placeholder={isP ? '3' : '$0'}
+                            style={{ color: isP ? 'var(--muted)' : 'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
+                          {isP && <span style={{ position:'absolute', right:4, top:'50%', transform:'translateY(-50%)', fontSize:11, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", pointerEvents:'none' }}>%</span>}
+                        </div>
                         <div style={{ display:'flex', alignItems:'center', gap:4, minHeight:16 }}>
                           {isP && l.price && resolveCommission(l.commission, l.price) > 0 && (
-                            <span style={{ fontSize:10, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace" }}>
+                            <span style={{ fontSize:10, color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}>
                               = {fmtMoney(resolveCommission(l.commission, l.price))}
                             </span>
                           )}

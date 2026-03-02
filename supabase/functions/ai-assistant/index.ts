@@ -206,8 +206,13 @@ Deno.serve(async (req) => {
 
     // Build context string
     const goals = profile.goals || {}
+    const bio = profile.habit_prefs?.bio || {}
     const contextBlock = [
       `AGENT PROFILE: ${profile.full_name || 'Agent'}, XP: ${profile.xp || 0}, Streak: ${profile.streak || 0} days`,
+      bio.specialty ? `SPECIALTY: ${bio.specialty}` : null,
+      bio.about ? `ABOUT: ${bio.about}` : null,
+      bio.license ? `LICENSE: ${bio.license}` : null,
+      bio.phone ? `PHONE: ${bio.phone}` : null,
       goals.monthly_closings ? `MONTHLY GOAL: ${goals.monthly_closings} closings` : null,
       goals.annual_volume ? `ANNUAL VOLUME GOAL: $${parsePrice(goals.annual_volume).toLocaleString()}` : null,
       `\nACTIVE LISTINGS (${activeListings.length}):`,
@@ -263,6 +268,7 @@ YOUR CAPABILITIES:
 6. PROSPECTING ADVICE: Based on the agent's activity patterns, suggest prospecting strategies, time-blocking recommendations, and lead source optimization.
 7. BUDGET CLARIFICATION: Analyze buyer financial data (pre-approval amount, comfortable payment range, down payment available) and suggest talking points for budget clarification calls. Flag mismatches between pre-approval amounts and search criteria or price ranges. Recommend when to push for updated pre-approval letters, and identify buyers who may need to adjust expectations.
 8. SEARCH CRITERIA REFINEMENT: Review buyer search parameters (location preferences, must-haves, nice-to-haves, timeline) and suggest refinements based on their budget, timeline urgency, and current market conditions. Identify gaps between must-haves and what's realistically available in their price range. Suggest alternative areas or compromises that could expand their options.
+9. MARKETING PLAN: Create comprehensive, personalized marketing plans based on the agent's current listings, buyer rep agreements, agent bio/specialty, and market position. Include social media content ideas (with specific post suggestions), open house strategies, email campaign templates, targeted outreach tactics, sphere-of-influence marketing, and digital advertising recommendations tailored to the agent's listings and specialties.
 
 GUIDELINES:
 - Be specific and actionable. Reference the agent's actual listings, pipeline, and data when giving advice.

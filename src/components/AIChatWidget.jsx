@@ -7,6 +7,7 @@ const QUICK_ACTIONS = [
   { label: 'Analyze My Listings', prompt: 'Analyze my current active listings and suggest strategies to reduce days on market and maximize sale price for each one.' },
   { label: 'Review My Pipeline', prompt: 'Review my current pipeline — offers made, pending deals, and recent closings. What should I focus on next?' },
   { label: 'Goal Progress Check', prompt: 'How am I tracking against my goals this month? Where are the gaps and what specific actions should I take to catch up?' },
+  { label: 'Marketing Plan', prompt: 'Write me a comprehensive marketing plan based on my current listings, buyer rep agreements, and my agent profile/bio. Include social media content ideas, open house strategies, email campaigns, and targeted outreach tactics personalized to my market and specialties.' },
   { label: 'Buyer Search Strategies', prompt: 'Review my buyer rep agreements — their search criteria, location preferences, must-haves, nice-to-haves, and timelines. Suggest search refinements, areas to expand into, and strategies to compete in the current market for each buyer.' },
   { label: 'Budget Clarification Call', prompt: 'Review my buyer rep agreements\' financial details — pre-approval amounts, comfortable payment ranges, and down payments. For each active buyer, give me talking points for a budget clarification call: flag any red flags or mismatches between their pre-approval and search criteria, suggest questions to ask, and recommend whether to push for an updated pre-approval letter.' },
   { label: 'Prospecting Tips', prompt: 'Based on my activity patterns this month, give me specific prospecting recommendations and time-blocking suggestions.' },
@@ -213,6 +214,22 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
     if (abortRef.current) abortRef.current.abort()
   }
 
+  function resetChat() {
+    if (streaming) stopStreaming()
+    setMessages([])
+    setInput('')
+    setGateError(null)
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+  }
+
+  const [copiedIdx, setCopiedIdx] = useState(null)
+  function copyMessage(text, idx) {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedIdx(idx)
+      setTimeout(() => setCopiedIdx(null), 1500)
+    })
+  }
+
   function handleKeyDown(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -280,6 +297,14 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
               }}>
                 {creditText}
               </span>
+            )}
+            {messages.length > 0 && (
+              <button onClick={resetChat} title="New chat" style={{
+                background:'none', border:'1px solid var(--b2)', borderRadius:7,
+                width:26, height:26, cursor:'pointer', color:'var(--muted)',
+                display:'flex', alignItems:'center', justifyContent:'center', fontSize:12,
+                transition:'all .15s',
+              }}>↺</button>
             )}
             <button onClick={onClose} style={{
               background:'none', border:'1px solid var(--b2)', borderRadius:7,
@@ -383,7 +408,8 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
                 <div style={{ padding:'0 12px' }}>
                   {messages.map((msg, i) => (
                     <div key={i} style={{
-                      display:'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                      display:'flex', flexDirection:'column',
+                      alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
                       marginBottom:10,
                     }}>
                       <div style={{
@@ -408,6 +434,15 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
                           }} />
                         )}
                       </div>
+                      {msg.role === 'assistant' && msg.content && !(streaming && i === messages.length - 1) && (
+                        <button onClick={() => copyMessage(msg.content, i)} style={{
+                          background:'none', border:'none', cursor:'pointer', padding:'3px 0',
+                          fontSize:10, color: copiedIdx === i ? 'var(--green)' : 'var(--dim)',
+                          fontFamily:"'JetBrains Mono',monospace", transition:'color .15s',
+                        }}>
+                          {copiedIdx === i ? '✓ Copied' : '📋 Copy'}
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>

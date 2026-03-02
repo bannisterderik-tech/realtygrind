@@ -226,13 +226,12 @@ Deno.serve(async (req) => {
     const myCoachingNotes = allCoachingNotes.filter((n: any) => n.agentId === user.id)
     const recentNotes = myCoachingNotes.slice(-10) // last 10 notes
 
-    // For team/brokerage plan users: fetch team member summaries
+    // For team owners/admins: fetch team member summaries
     let teamMemberContext = ''
     const isTeamOwner = profile.team_id && profile.teams?.created_by === user.id
     const isAdmin = isTeamOwner || (teamPrefs.admins || []).includes(user.id)
-    const hasTeamPlan = effectivePlan === 'team' || effectivePlan === 'brokerage'
 
-    if (profile.team_id && hasTeamPlan) {
+    if (isAdmin && profile.team_id) {
       const { data: teamMembers } = await admin
         .from('profiles')
         .select('id, full_name, xp, streak, goals, habit_prefs')
@@ -407,7 +406,7 @@ YOUR CAPABILITIES:
 9. MARKETING PLAN: Create comprehensive, personalized marketing plans based on the agent's current listings, buyer rep agreements, agent bio/specialty, and market position. Include social media content ideas (with specific post suggestions), open house strategies, email campaign templates, targeted outreach tactics, sphere-of-influence marketing, and digital advertising recommendations tailored to the agent's listings and specialties.
 10. STANDUP COACHING: If the agent submitted a daily standup, reference their stated priorities and blockers. Help them problem-solve blockers, validate their priorities against their pipeline, and suggest adjustments to their daily plan. For team owners, review the team's standups and flag agents who may need attention — missed standups, repeated blockers, or misaligned priorities.
 11. COACHING NOTE FOLLOW-UP: If coaching notes exist from the team leader, reference them in your advice. Help the agent act on praise (reinforce good habits), work toward goals (track progress), and address concerns (suggest concrete fixes). Keep the coach's guidance central to your recommendations.
-12. TEAM PERFORMANCE (team & brokerage plans): When team roster data is available, provide team-level insights — identify top performers, agents falling behind on habits or closings, accountability gaps, and opportunities for team challenges. Any team member can ask about their teammates' stats, listings, pipeline activity, and standups. For owners/admins, also reference coaching notes and suggest coaching interventions for specific agents. Help regular team members understand how they compare to peers, find collaboration opportunities, and learn from top performers on their team.
+12. TEAM PERFORMANCE (owners/admins only): When team roster data is available, provide team-level insights — identify top performers, agents falling behind on habits or closings, accountability gaps, and opportunities for team challenges. Reference coaching notes and suggest coaching interventions for specific agents based on their stats, standups, listings, pipeline activity, and coaching notes.
 
 GUIDELINES:
 - Be specific and actionable. Reference the agent's actual listings, pipeline, standups, coaching notes, and data when giving advice.
@@ -417,8 +416,8 @@ GUIDELINES:
 - When discussing pricing or comps, clarify that your analysis is based on available data and general market knowledge, not live MLS access.
 - When coaching notes exist, weave them naturally into your advice — don't just list them.
 - For team owners asking about their team, proactively highlight agents who need attention based on standups, habit streaks, and pipeline activity.
-- DUAL PERSPECTIVE: Always coach the user as an individual agent first (their own listings, pipeline, habits, goals), AND as a team member when team data is available. Help them see how their performance fits into the broader team picture. When asked about teammates, provide data-driven summaries based on available stats.
-- When a team member asks "how is [name] doing?" or "summarize my team", use the roster data to give concrete answers with XP, streaks, closings, listings, and pipeline stats — not vague generalities.`
+- DUAL PERSPECTIVE: Always coach the user as an individual agent first (their own listings, pipeline, habits, goals). For team owners/admins, also provide team-level insights using the roster data — who's performing, who needs attention, and how the team is tracking overall.
+- When an owner asks "how is [name] doing?" or "summarize my team", use the roster data to give concrete answers with XP, streaks, closings, listings, and pipeline stats — not vague generalities.`
 
     // ── 9. Call Claude API with streaming ────────────────────────────────────
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')

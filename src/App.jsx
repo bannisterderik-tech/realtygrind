@@ -1154,6 +1154,13 @@ function Dashboard({ theme, onToggleTheme }) {
   const [dbLoading, setDbLoading] = useState(true)
   const [aiWidgetOpen, setAiWidgetOpen] = useState(false)
 
+  // Force password setup for invited users
+  const [needsPassword, setNeedsPassword] = useState(false)
+  const [newPw, setNewPw] = useState('')
+  const [pwConfirm, setPwConfirm] = useState('')
+  const [pwError, setPwError] = useState('')
+  const [pwSaving, setPwSaving] = useState(false)
+
   // Habit state
   const [habits,   setHabits]   = useState(()=>{
     const g={}; HABITS.forEach(h=>{g[h.id]=Array(WEEKS).fill(null).map(()=>Array(7).fill(false))}); return g
@@ -1353,6 +1360,9 @@ function Dashboard({ theme, onToggleTheme }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  // Scroll to top on page navigation
+  useEffect(() => { window.scrollTo(0, 0) }, [page])
+
   // Redirect ai-assistant page navigation to floating widget
   useEffect(() => {
     if (page === 'ai-assistant') {
@@ -1360,6 +1370,31 @@ function Dashboard({ theme, onToggleTheme }) {
       setAiWidgetOpen(true)
     }
   }, [page])
+
+  // Check if invited user needs to set a password
+  useEffect(() => {
+    if (!dbLoading && user?.user_metadata?.team_id && !profile?.habit_prefs?.password_set) {
+      setNeedsPassword(true)
+    }
+  }, [dbLoading])
+
+  async function handleSetPassword() {
+    setPwError('')
+    if (newPw.length < 6) { setPwError('Password must be at least 6 characters.'); return }
+    if (newPw !== pwConfirm) { setPwError('Passwords do not match.'); return }
+    setPwSaving(true)
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPw })
+      if (error) throw error
+      const newPrefs = { ...habitPrefs, password_set: true }
+      setHabitPrefs(newPrefs)
+      await supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id)
+      setNeedsPassword(false)
+    } catch (e) {
+      setPwError(e.message || 'Failed to set password.')
+    }
+    setPwSaving(false)
+  }
 
   // ── XP ─────────────────────────────────────────────────────────────────────
   async function addXp(amount, color='var(--gold)') {
@@ -2097,6 +2132,37 @@ function Dashboard({ theme, onToggleTheme }) {
           }}>
             <span>🚪</span> Sign Out
           </button>
+        </div>
+      )}
+
+      {/* ── Force Password Modal for Invited Users ── */}
+      {needsPassword && (
+        <div style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(0,0,0,.55)',
+          display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+          <div style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:16,
+            padding:'32px 28px', maxWidth:400, width:'100%', boxShadow:'0 12px 48px rgba(0,0,0,.3)' }}>
+            <div style={{ textAlign:'center', marginBottom:20 }}>
+              <div style={{ fontSize:28, marginBottom:8 }}>🔐</div>
+              <div className="serif" style={{ fontSize:20, fontWeight:700, color:'var(--text)' }}>Set Your Password</div>
+              <div style={{ fontSize:13, color:'var(--muted)', marginTop:6, lineHeight:1.5 }}>
+                Create a password so you can sign in anytime.
+              </div>
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+              <input type="password" value={newPw} onChange={e=>setNewPw(e.target.value)}
+                placeholder="Password (min 6 characters)" className="field-input"
+                style={{ padding:'12px 14px', fontSize:14 }}/>
+              <input type="password" value={pwConfirm} onChange={e=>setPwConfirm(e.target.value)}
+                placeholder="Confirm password" className="field-input"
+                onKeyDown={e => e.key === 'Enter' && handleSetPassword()}
+                style={{ padding:'12px 14px', fontSize:14 }}/>
+              {pwError && <div style={{ fontSize:12, color:'var(--red)', padding:'4px 0' }}>{pwError}</div>}
+              <button onClick={handleSetPassword} disabled={pwSaving || newPw.length < 6}
+                className="btn-primary" style={{ padding:'12px', fontSize:14, fontWeight:700, marginTop:4 }}>
+                {pwSaving ? 'Saving…' : 'Set Password'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

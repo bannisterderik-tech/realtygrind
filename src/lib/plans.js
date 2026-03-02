@@ -11,8 +11,8 @@ export const PLANS = [
     maxMembers:15, cta:'Start Free Trial' },
   { id:'brokerage', name:'Brokerage', price:499, priceAnn:416, badge:'Best Value', color:'#8b5cf6',
     desc:'For brokers running a full operation.',
-    features:['Everything in Team','Unlimited agents','Multiple groups','Priority support','Early access to new features','Unlimited AI coaching credits'],
-    maxMembers:Infinity, cta:'Start Free Trial' },
+    features:['Everything in Team','50 agents included · $7/extra seat','Multiple groups','Priority support','Early access to new features','500 AI coaching credits/mo'],
+    maxMembers:50, extraSeatPrice:7, cta:'Start Free Trial' },
 ]
 
 export function getPlan(planId) {
@@ -42,7 +42,7 @@ export function isTeamMember(profile, userId) {
 }
 
 // ── AI credit limits per plan (1 credit = 1 AI message) ─────────────────────
-export const AI_CREDIT_LIMITS = { solo: 50, team: 250, brokerage: Infinity }
+export const AI_CREDIT_LIMITS = { solo: 50, team: 250, brokerage: 500 }
 
 export function getAICreditLimit(plan) {
   return AI_CREDIT_LIMITS[plan] ?? 0

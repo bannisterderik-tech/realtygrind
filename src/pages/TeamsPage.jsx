@@ -236,7 +236,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       const code = Math.random().toString(36).slice(2,7).toUpperCase()
       const maxMem = getMaxMembers(profile.plan)
       const {data:team,error:e} = await supabase.from('teams')
-        .insert({name:teamName.trim(), created_by:user.id, invite_code:code, max_members: maxMem === Infinity ? null : maxMem}).select().single()
+        .insert({name:teamName.trim(), created_by:user.id, invite_code:code, max_members: maxMem}).select().single()
       if (e) throw new Error(e.message)
       await supabase.from('team_members').insert({team_id:team.id, user_id:user.id, role:'owner'})
       await supabase.from('profiles').update({team_id:team.id}).eq('id',user.id)
@@ -255,7 +255,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       if (e||!team) throw new Error('Team not found. Check your invite code.')
       // Check member limit
       const {count} = await supabase.from('team_members').select('id',{count:'exact',head:true}).eq('team_id',team.id)
-      if (team.max_members && count >= team.max_members) throw new Error(`This team has reached its member limit (${team.max_members}). Ask the team owner to upgrade their plan.`)
+      if (team.max_members && count >= team.max_members) throw new Error(`This team has reached its ${team.max_members}-member limit. Contact support to add more seats ($7/seat/mo).`)
       await supabase.from('team_members').insert({team_id:team.id, user_id:user.id, role:'member'})
       await supabase.from('profiles').update({team_id:team.id}).eq('id',user.id)
       await refreshProfile()
@@ -391,7 +391,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
         const currentCount = members.length
         const pendingCount = (teamData?.team_prefs?.pending_invites || []).length
         if (currentCount + pendingCount >= teamData.max_members) {
-          throw new Error(`Team is at capacity (${teamData.max_members} members). Upgrade your plan to add more.`)
+          throw new Error(`Team is at capacity (${teamData.max_members} seats). Contact support to add more seats ($7/seat/mo).`)
         }
       }
       // Use raw fetch — supabase.functions.invoke doesn't support the new publishable key format
@@ -1272,7 +1272,10 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       background:'linear-gradient(135deg, rgba(217,119,6,.04) 0%, var(--surface) 60%)', borderTop:'2px solid rgba(217,119,6,.3)' }}>
                       <div>
                         <div className="serif" style={{ fontSize:28, color:'var(--text)', marginBottom:4, letterSpacing:'-.01em' }}>{teamData.name}</div>
-                        <div style={{ fontSize:12, color:'var(--muted)' }}>{members.length} member{members.length!==1?'s':''}</div>
+                        <div style={{ fontSize:12, color:'var(--muted)' }}>
+                          {members.length} member{members.length!==1?'s':''}
+                          {teamData.max_members ? ` · ${members.length}/${teamData.max_members} seats` : ''}
+                        </div>
                       </div>
                       <div style={{ display:'flex', gap:12, alignItems:'center' }}>
                         <div className="card-inset" style={{ padding:'10px 20px', textAlign:'center' }}>

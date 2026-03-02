@@ -18,7 +18,7 @@ const FAQS = [
   { q:'Does it work on mobile?',
     a:'Yes — RealtyGrind is fully responsive and works great on any phone or tablet. No app download needed.' },
   { q:'What is the AI Coaching Assistant?',
-    a:'The AI Assistant is a built-in coach powered by Claude that reads your live listings, pipeline, and goals. Ask it anything — listing pricing strategy, comp analysis, goal tracking, prospecting tips. Solo gets 50 credits/mo, Team gets 250 shared, Brokerage gets unlimited. 1 credit = 1 message.' },
+    a:'The AI Assistant is a built-in coach powered by Claude that reads your live listings, pipeline, and goals. Ask it anything — listing pricing strategy, comp analysis, goal tracking, prospecting tips. Solo gets 50 credits/mo, Team gets 250 shared, Brokerage gets 500. 1 credit = 1 message.' },
 ]
 
 const TESTIMONIALS = [
@@ -455,7 +455,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
                 {[
                   { plan:'Solo', credits:'50', color:'#94a3b8' },
                   { plan:'Team', credits:'250', color:'#d97706' },
-                  { plan:'Brokerage', credits:'Unlimited', color:'#8b5cf6' },
+                  { plan:'Brokerage', credits:'500', color:'#8b5cf6' },
                 ].map(p => (
                   <div key={p.plan} style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, fontFamily:'Poppins,sans-serif' }}>
                     <div style={{ width:8, height:8, borderRadius:'50%', background:p.color }} />

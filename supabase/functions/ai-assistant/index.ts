@@ -213,6 +213,90 @@ Deno.serve(async (req) => {
       habitCounts[h.habit_id] = (habitCounts[h.habit_id] || 0) + (h.counter_value || 1)
     }
 
+    // ── 7b. Fetch team data (standups, coaching notes, members) ──────────
+    const teamPrefs = profile.teams?.team_prefs || {}
+    const todayStr = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+
+    // This user's standup
+    const myStandup = profile.habit_prefs?.standup_today
+    const standupToday = myStandup?.date === todayStr ? myStandup : null
+
+    // Coaching notes about this user
+    const allCoachingNotes = teamPrefs.coaching_notes || []
+    const myCoachingNotes = allCoachingNotes.filter((n: any) => n.agentId === user.id)
+    const recentNotes = myCoachingNotes.slice(-10) // last 10 notes
+
+    // For team owners/admins: fetch team member summaries
+    let teamMemberContext = ''
+    const isTeamOwner = profile.team_id && profile.teams?.created_by === user.id
+    const isAdmin = isTeamOwner || (teamPrefs.admins || []).includes(user.id)
+
+    if (isAdmin && profile.team_id) {
+      const { data: teamMembers } = await admin
+        .from('profiles')
+        .select('id, full_name, xp, streak, goals, habit_prefs')
+        .eq('team_id', profile.team_id)
+        .neq('id', user.id)
+        .order('xp', { ascending: false })
+        .limit(50)
+
+      // Fetch this month's habit completions + transactions for each member
+      const memberIds = (teamMembers || []).map((m: any) => m.id)
+      const [memberHabitsRes, memberTxRes] = await Promise.all([
+        memberIds.length > 0
+          ? admin.from('habit_completions').select('user_id, habit_id, counter_value').eq('month_year', MONTH_YEAR).in('user_id', memberIds).limit(2000)
+          : { data: [] },
+        memberIds.length > 0
+          ? admin.from('transactions').select('user_id, type, price').eq('month_year', MONTH_YEAR).in('user_id', memberIds).limit(500)
+          : { data: [] },
+      ])
+
+      // Aggregate per member
+      const memberHabits: Record<string, number> = {}
+      for (const h of (memberHabitsRes.data || [])) {
+        memberHabits[h.user_id] = (memberHabits[h.user_id] || 0) + 1
+      }
+      const memberDeals: Record<string, { closed: number, volume: number }> = {}
+      for (const t of (memberTxRes.data || [])) {
+        if (t.type === 'closed') {
+          if (!memberDeals[t.user_id]) memberDeals[t.user_id] = { closed: 0, volume: 0 }
+          memberDeals[t.user_id].closed++
+          memberDeals[t.user_id].volume += parsePrice(t.price)
+        }
+      }
+
+      // Collect today's standups
+      const standupLines: string[] = []
+      const memberLines: string[] = []
+
+      for (const m of (teamMembers || [])) {
+        const mStandup = m.habit_prefs?.standup_today
+        const mGoals = m.goals || {}
+        const mBio = m.habit_prefs?.bio || {}
+        const deals = memberDeals[m.id] || { closed: 0, volume: 0 }
+        const habitCount = memberHabits[m.id] || 0
+
+        memberLines.push(`- ${m.full_name || 'Agent'} | XP: ${m.xp || 0} | Streak: ${m.streak || 0}d | Habits: ${habitCount} this month | Closed: ${deals.closed}${deals.volume > 0 ? ` ($${deals.volume.toLocaleString()})` : ''}${mBio.specialty ? ` | Specialty: ${mBio.specialty}` : ''}${mGoals.monthly_closings ? ` | Goal: ${mGoals.monthly_closings} closings` : ''}`)
+
+        if (mStandup?.date === todayStr) {
+          standupLines.push(`- ${m.full_name || 'Agent'}: Yesterday: ${mStandup.q1 || 'N/A'} | Today: ${mStandup.q2 || 'N/A'}${mStandup.q3 ? ` | Blockers: ${mStandup.q3}` : ''}`)
+        }
+      }
+
+      // Active challenges
+      const challenges = (teamPrefs.challenges || []).filter((c: any) => c.status === 'active')
+
+      teamMemberContext = [
+        `\nTEAM ROSTER (${(teamMembers || []).length} agents):`,
+        ...memberLines,
+        memberLines.length === 0 ? '- No team members yet' : null,
+        standupLines.length > 0 ? `\nTODAY'S STANDUPS:` : null,
+        ...standupLines,
+        challenges.length > 0 ? `\nACTIVE CHALLENGES:` : null,
+        ...challenges.map((c: any) => `- ${c.title} (metric: ${c.metric}, bonus: +${c.bonusXp} XP)`),
+      ].filter(Boolean).join('\n')
+    }
+
     // Build context string
     const goals = profile.goals || {}
     const bio = profile.habit_prefs?.bio || {}
@@ -224,6 +308,15 @@ Deno.serve(async (req) => {
       bio.phone ? `PHONE: ${bio.phone}` : null,
       goals.monthly_closings ? `MONTHLY GOAL: ${goals.monthly_closings} closings` : null,
       goals.annual_volume ? `ANNUAL VOLUME GOAL: $${parsePrice(goals.annual_volume).toLocaleString()}` : null,
+      // Team context
+      profile.team_id ? `\nTEAM: ${profile.teams?.name || 'Team'} (${isTeamOwner ? 'Owner' : isAdmin ? 'Admin' : 'Member'})` : null,
+      // Daily standup
+      standupToday ? `\nTODAY'S STANDUP:\n- Yesterday: ${standupToday.q1 || 'N/A'}\n- Today's priority: ${standupToday.q2 || 'N/A'}${standupToday.q3 ? `\n- Blockers: ${standupToday.q3}` : ''}` : null,
+      // Coaching notes about this agent
+      recentNotes.length > 0 ? `\nCOACHING NOTES (from team leader):` : null,
+      ...recentNotes.map((n: any) => `- [${n.type || 'general'}${n.pinned ? ', PINNED' : ''}] ${n.text}${n.replies?.length ? ` (${n.replies.length} replies)` : ''}`),
+      // Team member data (for owners/admins)
+      teamMemberContext || null,
       `\nACTIVE LISTINGS (${activeListings.length}):`,
       ...activeListings.slice(0, 20).map(l =>
         `- ${l.address || 'Unknown'} | Price: ${fmtPrice(l.price)} | Status: ${l.status || 'active'} | Commission: ${fmtComm(l.commission)} | Listed: ${l.month_year || 'unknown'}${getActivity(l.address)}`
@@ -278,13 +371,18 @@ YOUR CAPABILITIES:
 7. BUDGET CLARIFICATION: Analyze buyer financial data (pre-approval amount, comfortable payment range, down payment available) and suggest talking points for budget clarification calls. Flag mismatches between pre-approval amounts and search criteria or price ranges. Recommend when to push for updated pre-approval letters, and identify buyers who may need to adjust expectations.
 8. SEARCH CRITERIA REFINEMENT: Review buyer search parameters (location preferences, must-haves, nice-to-haves, timeline) and suggest refinements based on their budget, timeline urgency, and current market conditions. Identify gaps between must-haves and what's realistically available in their price range. Suggest alternative areas or compromises that could expand their options.
 9. MARKETING PLAN: Create comprehensive, personalized marketing plans based on the agent's current listings, buyer rep agreements, agent bio/specialty, and market position. Include social media content ideas (with specific post suggestions), open house strategies, email campaign templates, targeted outreach tactics, sphere-of-influence marketing, and digital advertising recommendations tailored to the agent's listings and specialties.
+10. STANDUP COACHING: If the agent submitted a daily standup, reference their stated priorities and blockers. Help them problem-solve blockers, validate their priorities against their pipeline, and suggest adjustments to their daily plan. For team owners, review the team's standups and flag agents who may need attention — missed standups, repeated blockers, or misaligned priorities.
+11. COACHING NOTE FOLLOW-UP: If coaching notes exist from the team leader, reference them in your advice. Help the agent act on praise (reinforce good habits), work toward goals (track progress), and address concerns (suggest concrete fixes). Keep the coach's guidance central to your recommendations.
+12. TEAM PERFORMANCE (owners/admins only): When team roster data is available, provide team-level insights — identify top performers, agents falling behind on habits or closings, accountability gaps, and opportunities for team challenges. Suggest coaching interventions for specific agents based on their stats, standups, and coaching notes.
 
 GUIDELINES:
-- Be specific and actionable. Reference the agent's actual listings, pipeline, and data when giving advice.
+- Be specific and actionable. Reference the agent's actual listings, pipeline, standups, coaching notes, and data when giving advice.
 - Keep responses concise but thorough. Use bullet points and clear structure.
 - If asked about market data you don't have, be transparent and suggest where to find it (MLS, RPR, Zillow, etc).
 - Encourage consistency and accountability — that's the RealtyGrind way.
-- When discussing pricing or comps, clarify that your analysis is based on available data and general market knowledge, not live MLS access.`
+- When discussing pricing or comps, clarify that your analysis is based on available data and general market knowledge, not live MLS access.
+- When coaching notes exist, weave them naturally into your advice — don't just list them.
+- For team owners asking about their team, proactively highlight agents who need attention based on standups, habit streaks, and pipeline activity.`
 
     // ── 9. Call Claude API with streaming ────────────────────────────────────
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')

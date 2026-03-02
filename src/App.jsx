@@ -914,6 +914,20 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
     await safeDb(supabase.from('transactions').update({ [field]: value }).eq('id', id))
   }
 
+  function toggleCommType(id) {
+    let newComm = ''
+    setRows(prev => prev.map(r => {
+      if (r.id !== id) return r
+      const raw = String(r.commission || '').trim()
+      const isPercent = raw.endsWith('%')
+      newComm = isPercent ? raw.replace(/%$/, '') : (raw ? raw + '%' : '%')
+      return { ...r, commission: newComm }
+    }))
+    if (!String(id).startsWith('tmp-')) {
+      safeDb(supabase.from('transactions').update({ commission: newComm }).eq('id', id))
+    }
+  }
+
   const totalVol  = useMemo(() => rows.reduce((a,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0), [rows])
   const totalComm = useMemo(() => rows.reduce((a,r) => a + resolveCommission(r.commission, r.price), 0), [rows])
 
@@ -921,8 +935,8 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
   const actionOpts = (statusOpts||[]).filter(o => o.v !== 'active')
 
   const cols = showSource
-    ? '1fr 110px 110px 90px 30px'
-    : `1fr 110px 110px ${actionOpts.length > 1 ? '168px' : '90px'} 30px`
+    ? '1fr 110px 150px 90px 30px'
+    : `1fr 110px 150px ${actionOpts.length > 1 ? '168px' : '90px'} 30px`
 
   return (
     <div className="card" style={{ padding:22, marginBottom:12, borderLeft:`3px solid ${accentColor}55`,
@@ -992,15 +1006,29 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
             <input className="pipe-input" value={r.price||''} onChange={e=>update(r.id,'price',e.target.value)}
               onBlur={e=>persist(r.id,'price',e.target.value)}
               placeholder="$0" style={{ color:accentColor, fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
-            <div style={{ position:'relative' }}>
-              <input className="pipe-input" value={r.commission||''} onChange={e=>update(r.id,'commission',e.target.value)}
-                onBlur={e=>persist(r.id,'commission',e.target.value)}
-                placeholder="optional" style={{ color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
-              {String(r.commission||'').trim().endsWith('%') && r.price && (
-                <span style={{ position:'absolute', right:4, top:'50%', transform:'translateY(-50%)',
-                  fontSize:9, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", pointerEvents:'none',
-                  opacity:.7 }}>
-                  ={fmtMoney(resolveCommission(r.commission, r.price))}
+            <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:3 }}>
+                <button onClick={()=>toggleCommType(r.id)} title={String(r.commission||'').trim().endsWith('%') ? 'Switch to flat fee' : 'Switch to percentage'} style={{
+                  background:'var(--bg2)', border:'1px solid var(--b2)', borderRadius:4,
+                  padding:'2px 5px', fontSize:10, fontWeight:700, cursor:'pointer', flexShrink:0,
+                  color: String(r.commission||'').trim().endsWith('%') ? '#8b5cf6' : 'var(--green)',
+                  lineHeight:1.2, fontFamily:"'JetBrains Mono',monospace", transition:'all .15s',
+                }}>{String(r.commission||'').trim().endsWith('%') ? '%' : '$'}</button>
+                <input className="pipe-input" value={String(r.commission||'').trim().endsWith('%') ? String(r.commission||'').replace(/%$/,'') : (r.commission||'')}
+                  onChange={e => {
+                    const isP = String(r.commission||'').trim().endsWith('%')
+                    update(r.id, 'commission', isP ? e.target.value + '%' : e.target.value)
+                  }}
+                  onBlur={e => {
+                    const isP = String(r.commission||'').trim().endsWith('%')
+                    persist(r.id, 'commission', isP ? e.target.value + '%' : e.target.value)
+                  }}
+                  placeholder={String(r.commission||'').trim().endsWith('%') ? '3' : '$0'}
+                  style={{ color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace", flex:1, minWidth:0 }}/>
+              </div>
+              {String(r.commission||'').trim().endsWith('%') && r.price && resolveCommission(r.commission, r.price) > 0 && (
+                <span style={{ fontSize:10, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", paddingLeft:28 }}>
+                  = {fmtMoney(resolveCommission(r.commission, r.price))}
                 </span>
               )}
             </div>
@@ -1114,7 +1142,6 @@ function Dashboard({ theme, onToggleTheme }) {
   const [newAddr,   setNewAddr]   = useState('')
   const [newPrice,  setNewPrice]  = useState('')
   const [newComm,   setNewComm]   = useState('')
-  const [commMode,  setCommMode]  = useState('$') // '$' or '%'
 
   // Buyer Rep Agreements
   const [buyerReps,     setBuyerReps]    = useState([])
@@ -1664,6 +1691,23 @@ function Dashboard({ theme, onToggleTheme }) {
     setListings(prev=>prev.map(l=>l.id===id?{...l,[field]:val}:l))
     const r = await safeDb(supabase.from('listings').update({[field]:val}).eq('id',id))
     if (!r.ok) showToast('Failed to save listing change')
+  }
+  function toggleListingCommType(id) {
+    setListings(prev => prev.map(l => {
+      if (l.id !== id) return l
+      const raw = String(l.commission || '').trim()
+      const isPercent = raw.endsWith('%')
+      const newComm = isPercent ? raw.replace(/%$/, '') : (raw ? raw + '%' : '%')
+      return { ...l, commission: newComm }
+    }))
+    // Persist the toggled value
+    const row = listings.find(l => l.id === id)
+    if (row) {
+      const raw = String(row.commission || '').trim()
+      const isPercent = raw.endsWith('%')
+      const newComm = isPercent ? raw.replace(/%$/, '') : (raw ? raw + '%' : '%')
+      safeDb(supabase.from('listings').update({ commission: newComm }).eq('id', id))
+    }
   }
 
   // Create an Offer Received pipeline entry from a listing (offer came in on your listing)
@@ -2912,17 +2956,10 @@ function Dashboard({ theme, onToggleTheme }) {
           <div className="card" style={{ padding:20 }}>
             <div className="resp-table"><div className="resp-table-inner" style={{ minWidth:680 }}>
             {/* Column headers */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 115px 1fr 30px', gap:8, padding:'3px 13px', marginBottom:6, border:'1px solid transparent' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 170px 1fr 30px', gap:8, padding:'3px 13px', marginBottom:6, border:'1px solid transparent' }}>
               <span className="label">Address</span>
               <span className="label">List Price</span>
-              <span className="label" style={{ display:'flex', alignItems:'center', gap:4 }}>
-                Commission
-                <button onClick={()=>setCommMode(m=>m==='$'?'%':'$')} style={{
-                  background:'var(--bg2)', border:'1px solid var(--b2)', borderRadius:4,
-                  padding:'1px 5px', fontSize:10, fontWeight:700, cursor:'pointer',
-                  color:'var(--green)', lineHeight:1.3, fontFamily:"'JetBrains Mono',monospace",
-                }}>{commMode}</button>
-              </span>
+              <span className="label">Commission</span>
               <span className="label">Status &amp; Actions</span>
               <span/>
             </div>
@@ -2935,7 +2972,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
             <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:12 }}>
               {listings.map(l => (
-                <div key={l.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 105px 115px 1fr 30px' }}>
+                <div key={l.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 105px 170px 1fr 30px' }}>
                   {/* Address + optional cross-month badge */}
                   <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
                     <input className="pipe-input" value={l.address||''}
@@ -2961,18 +2998,30 @@ function Dashboard({ theme, onToggleTheme }) {
                     placeholder="$0"
                     style={{ color:'var(--gold2)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
 
-                  {/* Commission */}
-                  <div style={{ position:'relative' }}>
-                    <input className="pipe-input" value={l.commission||''}
-                      onChange={e=>updateListingLocal(l.id,'commission',e.target.value)}
-                      onBlur={e=>updateListing(l.id,'commission',e.target.value)}
-                      placeholder={commMode==='%' ? '3%' : '$0'}
-                      style={{ color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
-                    {String(l.commission||'').trim().endsWith('%') && l.price && (
-                      <span style={{ position:'absolute', right:4, top:'50%', transform:'translateY(-50%)',
-                        fontSize:9, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", pointerEvents:'none',
-                        opacity:.7 }}>
-                        ={fmtMoney(resolveCommission(l.commission, l.price))}
+                  {/* Commission — per-row % / $ toggle */}
+                  <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:3 }}>
+                      <button onClick={()=>toggleListingCommType(l.id)} title={String(l.commission||'').trim().endsWith('%') ? 'Switch to flat fee' : 'Switch to percentage'} style={{
+                        background:'var(--bg2)', border:'1px solid var(--b2)', borderRadius:4,
+                        padding:'2px 5px', fontSize:10, fontWeight:700, cursor:'pointer', flexShrink:0,
+                        color: String(l.commission||'').trim().endsWith('%') ? '#8b5cf6' : 'var(--green)',
+                        lineHeight:1.2, fontFamily:"'JetBrains Mono',monospace", transition:'all .15s',
+                      }}>{String(l.commission||'').trim().endsWith('%') ? '%' : '$'}</button>
+                      <input className="pipe-input" value={String(l.commission||'').trim().endsWith('%') ? String(l.commission||'').replace(/%$/,'') : (l.commission||'')}
+                        onChange={e => {
+                          const isP = String(l.commission||'').trim().endsWith('%')
+                          updateListingLocal(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)
+                        }}
+                        onBlur={e => {
+                          const isP = String(l.commission||'').trim().endsWith('%')
+                          updateListing(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)
+                        }}
+                        placeholder={String(l.commission||'').trim().endsWith('%') ? '3' : '$0'}
+                        style={{ color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace", flex:1, minWidth:0 }}/>
+                    </div>
+                    {String(l.commission||'').trim().endsWith('%') && l.price && resolveCommission(l.commission, l.price) > 0 && (
+                      <span style={{ fontSize:10, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", paddingLeft:28 }}>
+                        = {fmtMoney(resolveCommission(l.commission, l.price))}
                       </span>
                     )}
                   </div>
@@ -3006,7 +3055,7 @@ function Dashboard({ theme, onToggleTheme }) {
             </div>
 
             {/* Add new listing */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 115px 1fr 30px', gap:8,
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 170px 1fr 30px', gap:8,
               borderTop:'1px solid var(--b1)', paddingTop:12, alignItems:'center' }}>
               <input className="field-input" value={newAddr} onChange={e=>setNewAddr(e.target.value)}
                 onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="New listing address…"

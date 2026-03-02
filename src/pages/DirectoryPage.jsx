@@ -218,7 +218,7 @@ export const ALL_APPS = [
 const CATS = ['All', 'CRM', 'Lead Gen', 'MLS', 'Transactions', 'Research', 'Productivity']
 
 export default function DirectoryPage({ onNavigate, theme, onToggleTheme }) {
-  const { user, profile } = useAuth()
+  const { profile } = useAuth()
   const [filter, setFilter]   = useState('All')
   const [search, setSearch]   = useState('')
 
@@ -411,6 +411,8 @@ export default function DirectoryPage({ onNavigate, theme, onToggleTheme }) {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
               {AI_TOOLS.map(tool => (
                 <div key={tool.id} onClick={() => onNavigate && onNavigate(tool.page)}
+                  role="button" tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNavigate && onNavigate(tool.page) } }}
                   className="card"
                   style={{
                     padding: 22, cursor: 'pointer', border: `1px solid ${tool.catBorder}`,
@@ -462,6 +464,8 @@ export default function DirectoryPage({ onNavigate, theme, onToggleTheme }) {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
               {CALCULATORS.map(calc => (
                 <div key={calc.id} onClick={() => onNavigate && onNavigate(calc.page)}
+                  role="button" tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNavigate && onNavigate(calc.page) } }}
                   className="card"
                   style={{
                     padding: 22, cursor: 'pointer', border: `1px solid ${calc.catBorder}`,

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { CSS, Loader, Wordmark, ThemeToggle, Ring, getRank, fmtMoney, RANKS } from '../design'
@@ -13,6 +13,28 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   const rank     = getRank(profile?.xp||0)
   const nextRank = RANKS.find(r => r.min > (profile?.xp||0))
   const rankPct  = nextRank ? Math.round(((profile?.xp||0)-rank.min)/(nextRank.min-rank.min)*100) : 100
+
+  // Unmount safety — prevent state updates after component unmounts
+  const mountedRef = useRef(true)
+  const timersRef  = useRef([])
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      timersRef.current.forEach(clearTimeout)
+      timersRef.current = []
+    }
+  }, [])
+
+  // Helper to register a setTimeout that auto-clears on unmount
+  function safeTimeout(fn, ms) {
+    const id = setTimeout(() => {
+      timersRef.current = timersRef.current.filter(t => t !== id)
+      fn()
+    }, ms)
+    timersRef.current.push(id)
+    return id
+  }
 
   const [name,       setName]       = useState(profile?.full_name||'')
   // Sync name when profile loads (initializer only runs once with null profile)
@@ -63,46 +85,50 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
       .eq('user_id', user.id).eq('is_default', true)
       .order('created_at')
       .then(({data}) => {
+        if (!mountedRef.current) return
         if (data) {
           setCustomTasks(data.filter(t => !t.is_deleted))
           setDeletedTasks(data.filter(t => t.is_deleted))
         }
         setCtLoaded(true)
       })
-  },[user?.id, ctLoaded])
+      .catch(err => { if (mountedRef.current) console.error('Failed to load custom tasks:', err) })
+  },[user?.id]) // eslint-disable-line react-hooks/exhaustive-deps — ctLoaded intentionally omitted to prevent double-fire
 
+  // Load habit_prefs (for solo users) and bio (always per-user) in a single query
   useEffect(()=>{
     if (!user?.id) return
     if (profile?.team_id && profile?.teams) {
-      // On a team — use team_prefs (owner and member both see team defaults)
+      // On a team — use team_prefs for habit prefs (owner and member both see team defaults)
       setHabitPrefs(profile.teams.team_prefs || { hidden:[], order:[], edits:{} })
-    } else if (!profile?.team_id) {
-      // Not on a team — load own habit_prefs
-      supabase.from('profiles').select('habit_prefs').eq('id', user.id).single()
-        .then(({data}) => { if (data?.habit_prefs) setHabitPrefs(data.habit_prefs) })
     }
+    // Always fetch per-user habit_prefs: solo users need it for habitPrefs,
+    // and all users need it for bio (bio is never stored in team_prefs)
+    supabase.from('profiles').select('habit_prefs').eq('id', user.id).single()
+      .then(({data}) => {
+        if (!mountedRef.current) return
+        if (data?.habit_prefs) {
+          // Only set habitPrefs from own profile when NOT on a team
+          if (!profile?.team_id) setHabitPrefs(data.habit_prefs)
+          // Bio is always per-user
+          if (data.habit_prefs.bio) setBio(b => ({ ...b, ...data.habit_prefs.bio }))
+        }
+      })
+      .catch(err => { if (mountedRef.current) console.error('Failed to load profile data:', err) })
   },[user?.id, profile?.team_id])
 
   useEffect(()=>{
     if (!user?.id) return
     supabase.from('profiles').select('goals').eq('id', user.id).single()
       .then(({data}) => {
+        if (!mountedRef.current) return
         if (data?.goals) {
           setGoals(g=>({ ...g, ...Object.fromEntries(Object.entries(data.goals).map(([k,v])=>[k,v||''])) }))
           if (data.goals.gci_target)     setGciTarget(String(data.goals.gci_target))
           if (data.goals.avg_commission) setAvgCommission(String(data.goals.avg_commission))
         }
       })
-  },[user?.id])
-
-  // Load professional bio from habit_prefs.bio (always per-user, never from team_prefs)
-  useEffect(()=>{
-    if (!user?.id) return
-    supabase.from('profiles').select('habit_prefs').eq('id', user.id).single()
-      .then(({ data }) => {
-        if (data?.habit_prefs?.bio)
-          setBio(b => ({ ...b, ...data.habit_prefs.bio }))
-      })
+      .catch(err => { if (mountedRef.current) console.error('Failed to load goals:', err) })
   },[user?.id])
 
   async function saveBio() {
@@ -112,7 +138,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
       const current = data?.habit_prefs || {}
       const { error } = await supabase.from('profiles').update({ habit_prefs: { ...current, bio } }).eq('id', user.id)
       if (error) throw error
-      setBioMsg('Saved ✓'); setTimeout(() => setBioMsg(''), 3000)
+      setBioMsg('Saved ✓'); safeTimeout(() => setBioMsg(''), 3000)
     } catch (err) {
       console.error('saveBio error:', err)
       setBioMsg('Failed to save')
@@ -162,11 +188,11 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
       const { error } = await supabase.from('profiles').update({ goals: merged }).eq('id', user.id)
       if (error) throw error
       setGoalsMsg('Goals saved!')
-      setTimeout(()=>setGoalsMsg(''), 2500)
+      safeTimeout(()=>setGoalsMsg(''), 2500)
     } catch (err) {
       console.error('saveGoals error:', err)
       setGoalsMsg('Failed to save')
-      setTimeout(()=>setGoalsMsg(''), 2500)
+      safeTimeout(()=>setGoalsMsg(''), 2500)
     } finally {
       setGoalsSaving(false)
     }
@@ -243,9 +269,9 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
       const { error } = await supabase.from('profiles').update({full_name:name.trim()}).eq('id',user.id)
       if (error) throw error
       await refreshProfile()
-      setSaveMsg('Saved ✓'); setTimeout(()=>setSaveMsg(''),3000)
+      setSaveMsg('Saved ✓'); safeTimeout(()=>setSaveMsg(''),3000)
     } catch (err) {
-      setSaveMsg('Failed to save'); setTimeout(()=>setSaveMsg(''),3000)
+      setSaveMsg('Failed to save'); safeTimeout(()=>setSaveMsg(''),3000)
       console.error('saveName error:', err)
     } finally {
       setSaving(false)
@@ -264,7 +290,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
       setPwMsg(`Error: ${err.message||'Failed to update'}`)
       console.error('savePassword error:', err)
     } finally {
-      setTimeout(()=>setPwMsg(''),4000)
+      safeTimeout(()=>setPwMsg(''),4000)
       setPwSaving(false)
     }
   }
@@ -340,12 +366,16 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   // ── Habit prefs helpers ────────────────────────────────────────────────────
   async function saveHabitPrefs(newPrefs) {
     setHabitPrefs(newPrefs)
-    if (isTeamOwner) {
-      // Owner: save to teams table — all members inherit these settings
-      await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
-      await refreshProfile()
-    } else {
-      await supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id)
+    try {
+      if (isTeamOwner) {
+        // Owner: save to teams table — all members inherit these settings
+        await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+        await refreshProfile()
+      } else {
+        await supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id)
+      }
+    } catch (err) {
+      console.error('saveHabitPrefs error:', err)
     }
   }
 
@@ -397,19 +427,25 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   const isTeamOwner = isOnTeam && profile?.teams?.created_by === user?.id
   const isMemberOnly = isOnTeam && !isTeamOwner
 
-  // Computed: unified habit list for the manager card
-  const builtInEff = HABITS
-    .filter(h => !(habitPrefs.hidden||[]).includes(h.id))
-    .map(h => { const ed=(habitPrefs.edits||{})[h.id]||{}; return {...h, label:ed.label||h.label, icon:ed.icon||h.icon, xp:ed.xp||h.xp, isBuiltIn:true} })
-  const customDefs  = isMemberOnly ? [] : customTasks.map(t => ({...t, isBuiltIn:false}))
-  const allHabItems = [...builtInEff, ...customDefs]
-  const habOrderArr = habitPrefs.order || []
-  if (habOrderArr.length) {
-    const idx={}; habOrderArr.forEach((id,i)=>idx[id]=i)
-    allHabItems.sort((a,b)=>(idx[a.id]??999)-(idx[b.id]??999))
-  }
-  const effectiveHabits = allHabItems
-  const hiddenBuiltIns  = HABITS.filter(h => (habitPrefs.hidden||[]).includes(h.id))
+  // Computed: unified habit list for the manager card (memoized to avoid re-computing every render)
+  const effectiveHabits = useMemo(() => {
+    const builtInEff = HABITS
+      .filter(h => !(habitPrefs.hidden||[]).includes(h.id))
+      .map(h => { const ed=(habitPrefs.edits||{})[h.id]||{}; return {...h, label:ed.label||h.label, icon:ed.icon||h.icon, xp:ed.xp||h.xp, isBuiltIn:true} })
+    const customDefs  = isMemberOnly ? [] : customTasks.map(t => ({...t, isBuiltIn:false}))
+    const allHabItems = [...builtInEff, ...customDefs]
+    const habOrderArr = habitPrefs.order || []
+    if (habOrderArr.length) {
+      const idx={}; habOrderArr.forEach((id,i)=>idx[id]=i)
+      allHabItems.sort((a,b)=>(idx[a.id]??999)-(idx[b.id]??999))
+    }
+    return allHabItems
+  }, [habitPrefs, customTasks, isMemberOnly])
+
+  const hiddenBuiltIns = useMemo(
+    () => HABITS.filter(h => (habitPrefs.hidden||[]).includes(h.id)),
+    [habitPrefs.hidden]
+  )
 
   // ── Income Goal Calculator helpers ──────────────────────────────────────────
   function getMonthsRemaining() {
@@ -450,9 +486,15 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
     Object.entries(newGoals).forEach(([k,v])=>{ const n=parseInt(v); if(n>0) parsed[k]=n })
     if (parseInt(gciTarget) > 0)     parsed.gci_target     = parseInt(gciTarget)
     if (parseInt(avgCommission) > 0) parsed.avg_commission = parseInt(avgCommission)
-    await supabase.from('profiles').update({ goals: parsed }).eq('id', user.id)
-    setGoalsMsg('Goals applied from calculator!')
-    setTimeout(()=>setGoalsMsg(''), 3000)
+    try {
+      await supabase.from('profiles').update({ goals: parsed }).eq('id', user.id)
+      setGoalsMsg('Goals applied from calculator!')
+      safeTimeout(()=>setGoalsMsg(''), 3000)
+    } catch (err) {
+      console.error('applyCalcAsGoals error:', err)
+      setGoalsMsg('Failed to apply goals')
+      safeTimeout(()=>setGoalsMsg(''), 3000)
+    }
   }
 
   return (

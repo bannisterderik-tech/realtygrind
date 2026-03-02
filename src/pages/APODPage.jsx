@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { CSS, Wordmark, ThemeToggle } from '../design'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -434,8 +434,8 @@ export default function APODPage({ onNavigate, theme, onToggleTheme }) {
     toastTimer.current = setTimeout(() => setToastMsg(''), 2400)
   }
 
-  // ── Compute (pure derivation from state) ──────────────────────────────────
-  function compute() {
+  // ── Compute (pure derivation from state, memoized) ────────────────────────
+  const d = useMemo(() => {
     const isActual = scenario === 'actual'
     const rents     = parseLines(isActual ? rentsA : rentsP)
     const otherIncM = n(isActual ? otherIncA : otherIncP)
@@ -482,9 +482,9 @@ export default function APODPage({ onNavigate, theme, onToggleTheme }) {
       mortgage: { price, downPct, down$, loan$, rate, term, pay, escrows, piti, isIO },
       dscr, cfM, cfY, capRate,
     }
-  }
-
-  const d = compute()
+  }, [scenario, rentsA, rentsP, otherIncA, otherIncP, vacPctA, vacPctP, utilsA, utilsP,
+      otherA, otherP, mgmtPctA, mgmtPctP, rmPctA, rmPctP, taxesG, insG, hoaG,
+      capPct, mPrice, mDown, mRate, mTerm, mIsIO, address])
 
   // ── Recalculate handlers ──────────────────────────────────────────────────
   function recalcCap() {
@@ -584,8 +584,7 @@ export default function APODPage({ onNavigate, theme, onToggleTheme }) {
       ] : ['Enter a purchase price in Mortgage Inputs to compute DSCR/PITI.']),
     ]
     const subject = `APOD Report — ${scenarioLabel}`
-    const cc = 'derik@theoperativegroup.com'
-    const mailto = `mailto:${encodeURIComponent(emailTo.trim())}?cc=${encodeURIComponent(cc)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`
+    const mailto = `mailto:${encodeURIComponent(emailTo.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`
     window.location.href = mailto
   }
 
@@ -667,7 +666,7 @@ export default function APODPage({ onNavigate, theme, onToggleTheme }) {
             <div className="div" />
 
             {/* Scenario panels side-by-side */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14, marginBottom: 20 }}>
 
               {/* ─ Actual ─ */}
               <div style={insetPanel(scenario === 'actual', 'var(--gold)')}>
@@ -827,7 +826,7 @@ export default function APODPage({ onNavigate, theme, onToggleTheme }) {
             </div>
 
             {/* KPIs */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 28 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10, marginBottom: 28 }}>
               <KPICard title="NOI (Annual)" value={money0(d.noiY)} sub={`Scenario: ${scenario === 'actual' ? 'Actual' : 'Pro Forma'}`} highlight />
               <KPICard title="Cash Flow After Debt Service"
                 value={`${money(d.cfM)}/mo`}
@@ -965,7 +964,7 @@ export default function APODPage({ onNavigate, theme, onToggleTheme }) {
                 <div style={{ fontSize: 11, color: 'var(--muted)' }}>Any change triggers Recalculate</div>
               </div>
               <div className="card-inset" style={{ padding: 18 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
                   {[
                     { label: 'Purchase Price', unit: '$', val: mPrice, set: setMPrice, ph: '0', step: 1000 },
                     { label: 'Down', unit: '%', val: mDown, set: setMDown, ph: '25', step: 0.1, max: 100 },
@@ -1014,7 +1013,7 @@ export default function APODPage({ onNavigate, theme, onToggleTheme }) {
                   {dscrInfo.text}
                 </span>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
                 <KPICard title="Loan Amount" value={d.mortgage.price > 0 ? money0(d.mortgage.loan$) : '—'} sub="Price − down payment" />
                 <KPICard
                   title={d.mortgage.isIO ? 'Interest-Only Payment' : 'P&I Payment'}

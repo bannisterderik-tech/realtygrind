@@ -9,8 +9,9 @@
 import Stripe from 'npm:stripe@14'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
+const ALLOWED_ORIGIN = Deno.env.get('APP_ORIGIN') || 'https://realtygrind.com'
 const CORS = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
@@ -37,11 +38,15 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { returnUrl } = await req.json()
+    let body: Record<string, unknown>
+    try { body = await req.json() } catch { body = {} }
+    const { returnUrl } = body as { returnUrl?: string }
 
     // Authenticate the caller
     const authHeader = req.headers.get('Authorization')
-    if (!authHeader) throw new Error('Missing Authorization header')
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Missing Authorization header' }), { status: 401, headers: { ...CORS, 'Content-Type': 'application/json' } })
+    }
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -49,7 +54,9 @@ Deno.serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     )
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) throw new Error('Unauthorized')
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...CORS, 'Content-Type': 'application/json' } })
+    }
 
     // Fetch stripe_customer_id from profile using service role
     const admin = createClient(
@@ -83,9 +90,9 @@ Deno.serve(async (req) => {
       { headers: { ...CORS, 'Content-Type': 'application/json' } }
     )
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err)
+    console.error('create-portal-session error:', err)
     return new Response(
-      JSON.stringify({ error: message }),
+      JSON.stringify({ error: 'Portal is temporarily unavailable. Please try again.' }),
       { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } }
     )
   }

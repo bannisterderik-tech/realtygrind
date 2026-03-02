@@ -49,23 +49,26 @@ Deno.serve(async (req) => {
   // ── checkout.session.completed ─────────────────────────────────────────
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.CheckoutSession
+    const userId  = session.client_reference_id
     const email   = session.customer_details?.email
 
     // Fetch the subscription to get planId from its metadata
-    // (session.subscription_data does NOT exist on the event payload)
     let planId: string | null = null
     let billingStatus: string = 'active'
     if (session.subscription) {
       try {
         const sub = await stripe.subscriptions.retrieve(session.subscription as string)
         planId = sub.metadata?.planId || null
-        billingStatus = sub.status // preserve 'trialing' for trial subscriptions
+        billingStatus = sub.status
       } catch (err) {
         console.error('Failed to fetch subscription:', err)
       }
     }
 
-    if (email) {
+    // Match by user ID (secure) first, fall back to email for legacy sessions
+    const matchColumn = userId ? 'id' : 'email'
+    const matchValue = userId || email
+    if (matchValue) {
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -74,7 +77,7 @@ Deno.serve(async (req) => {
           stripe_customer_id:      session.customer as string,
           stripe_subscription_id:  session.subscription as string,
         })
-        .eq('email', email)
+        .eq(matchColumn, matchValue)
 
       if (error) console.error('profiles update error (checkout):', error.message)
     }

@@ -1,7 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
+const ALLOWED_ORIGIN = Deno.env.get('APP_ORIGIN') || 'https://realtygrind.com'
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
@@ -33,7 +34,9 @@ Deno.serve(async (req: Request) => {
     }
     const userId = user.id
 
-    const { email, teamId } = await req.json()
+    let body: Record<string, unknown>
+    try { body = await req.json() } catch { return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }) }
+    const { email, teamId } = body as { email: string; teamId: string }
     if (!email || !teamId) {
       return new Response(JSON.stringify({ error: 'email and teamId are required' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -62,7 +65,33 @@ Deno.serve(async (req: Request) => {
       })
     }
 
-    // ── 3. Send the invite ────────────────────────────────────────────────────
+    // ── 3. Check team member count vs plan limit ──────────────────────────────
+    const PLAN_MAX_MEMBERS: Record<string, number> = { solo: 0, team: 15, brokerage: Infinity }
+    const { data: ownerProfile } = await adminClient
+      .from('profiles')
+      .select('plan, billing_status')
+      .eq('id', userId)
+      .single()
+    const maxMembers = PLAN_MAX_MEMBERS[ownerProfile?.plan || ''] ?? 0
+    const billingActive = ownerProfile?.billing_status === 'active' || ownerProfile?.billing_status === 'trialing'
+    if (!billingActive || maxMembers === 0) {
+      return new Response(JSON.stringify({ error: 'Your current plan does not support team invites.' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    if (maxMembers < Infinity) {
+      const { count } = await adminClient
+        .from('team_members')
+        .select('id', { count: 'exact', head: true })
+        .eq('team_id', teamId)
+      if ((count ?? 0) >= maxMembers) {
+        return new Response(JSON.stringify({ error: `Team is at the ${maxMembers}-member limit. Upgrade your plan to add more.` }), {
+          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+    }
+
+    // ── 4. Send the invite ────────────────────────────────────────────────────
     const { data: inviteData, error: inviteErr } = await adminClient.auth.admin.inviteUserByEmail(
       email.trim().toLowerCase(),
       { data: { team_id: teamId } }
@@ -79,7 +108,8 @@ Deno.serve(async (req: Request) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), {
+    console.error('invite-member error:', err)
+    return new Response(JSON.stringify({ error: 'Failed to send invite. Please try again.' }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }

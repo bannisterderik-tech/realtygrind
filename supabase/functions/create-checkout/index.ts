@@ -13,8 +13,9 @@
 import Stripe from 'npm:stripe@14'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
+const ALLOWED_ORIGIN = Deno.env.get('APP_ORIGIN') || 'https://realtygrind.com'
 const CORS = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
@@ -51,7 +52,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { planId, isAnnual, returnUrl } = await req.json()
+    let body: Record<string, unknown>
+    try { body = await req.json() } catch { return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } }) }
+    const { planId, isAnnual, returnUrl } = body as { planId: string; isAnnual: boolean; returnUrl?: string }
 
     const key = `${planId}_${isAnnual ? 'annual' : 'monthly'}`
     const priceId = PRICE_MAP[key]
@@ -62,8 +65,9 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Try to get the authed user's email to pre-fill checkout
+    // Get authed user's ID + email to pre-fill checkout and link via client_reference_id
     let customerEmail: string | undefined
+    let userId: string | undefined
     const authHeader = req.headers.get('Authorization')
     if (authHeader) {
       const supabase = createClient(
@@ -73,6 +77,7 @@ Deno.serve(async (req) => {
       )
       const { data: { user } } = await supabase.auth.getUser()
       if (user?.email) customerEmail = user.email
+      if (user?.id) userId = user.id
     }
 
     const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
@@ -83,7 +88,8 @@ Deno.serve(async (req) => {
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
       ...(customerEmail ? { customer_email: customerEmail } : {}),
-      success_url: `${getSafeReturnUrl(returnUrl)}?checkout=success&plan=${planId}`,
+      ...(userId ? { client_reference_id: userId } : {}),
+      success_url: `${getSafeReturnUrl(returnUrl)}?checkout=success&plan=${encodeURIComponent(planId)}`,
       cancel_url:  `${getSafeReturnUrl(returnUrl)}?checkout=cancelled`,
       allow_promotion_codes: true,
       subscription_data: {
@@ -97,9 +103,9 @@ Deno.serve(async (req) => {
       { headers: { ...CORS, 'Content-Type': 'application/json' } }
     )
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err)
+    console.error('create-checkout error:', err)
     return new Response(
-      JSON.stringify({ error: message }),
+      JSON.stringify({ error: 'Checkout is temporarily unavailable. Please try again.' }),
       { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } }
     )
   }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ThemeToggle } from '../design'
+import { ThemeToggle, RANKS } from '../design'
 import { PLANS } from '../lib/plans'
 
 // ── Data ─────────────────────────────────────────────────────────────────────
@@ -573,17 +573,11 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
                 Every habit you check and every deal you close earns XP. Watch your rank climb from Bronze to Diamond. Hit the button to see it happen live.
               </p>
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-                {[
-                  { rank:'Bronze',   min:'0',    color:'#cd7f32', icon:'🥉' },
-                  { rank:'Silver',   min:'500',  color:'#9ca3af', icon:'🥈' },
-                  { rank:'Gold',     min:'1,500', color:'#d97706', icon:'🥇' },
-                  { rank:'Platinum', min:'3,500', color:'#0ea5e9', icon:'💠' },
-                  { rank:'Diamond',  min:'7,000', color:'#8b5cf6', icon:'💎' },
-                ].map(r => (
-                  <div key={r.rank} style={{ display:'flex', alignItems:'center', gap:10, fontSize:14, fontFamily:'Poppins,sans-serif' }}>
+                {RANKS.map(r => (
+                  <div key={r.name} style={{ display:'flex', alignItems:'center', gap:10, fontSize:14, fontFamily:'Poppins,sans-serif' }}>
                     <span style={{ fontSize:16, width:22, flexShrink:0, textAlign:'center' }}>{r.icon}</span>
-                    <span style={{ fontWeight:700, color:r.color, width:70 }}>{r.rank}</span>
-                    <span style={{ color:'var(--muted)', fontSize:12 }}>{r.min}+ XP</span>
+                    <span style={{ fontWeight:700, color:r.color, width:70 }}>{r.name}</span>
+                    <span style={{ color:'var(--muted)', fontSize:12 }}>{r.min.toLocaleString()}+ XP</span>
                   </div>
                 ))}
               </div>
@@ -806,7 +800,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
             Start Free Trial →
           </button>
           <div style={{ marginTop:18, fontSize:12, color:'var(--dim)', fontFamily:'Poppins,sans-serif' }}>
-            Solo from $29/mo · Team plans from $199/mo · AI coaching included · Cancel anytime
+            Solo from ${PLANS.find(p=>p.id==='solo')?.price}/mo · Team plans from ${PLANS.find(p=>p.id==='team')?.price}/mo · AI coaching included · Cancel anytime
           </div>
         </div>
       </section>

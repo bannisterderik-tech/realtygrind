@@ -1,22 +1,29 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
-import { CSS, Loader, ThemeToggle } from '../design'
-import { isActiveBilling, isTeamMember, AI_CREDIT_LIMITS } from '../lib/plans'
+import { CSS, Loader } from '../design'
+import { isActiveBilling, isTeamMember } from '../lib/plans'
 
 const QUICK_ACTIONS = [
   { label: 'Analyze My Listings', prompt: 'Analyze my current active listings and suggest strategies to reduce days on market and maximize sale price for each one.' },
   { label: 'Review My Pipeline', prompt: 'Review my current pipeline — offers made, pending deals, and recent closings. What should I focus on next?' },
   { label: 'Goal Progress Check', prompt: 'How am I tracking against my goals this month? Where are the gaps and what specific actions should I take to catch up?' },
-  { label: 'Buyer Search Strategies', prompt: 'Review my buyer rep agreements and suggest search strategies, offer tactics, and ways to compete in the current market.' },
+  { label: 'Buyer Search Strategies', prompt: 'Review my buyer rep agreements — their search criteria, location preferences, must-haves, nice-to-haves, and timelines. Suggest search refinements, areas to expand into, and strategies to compete in the current market for each buyer.' },
+  { label: 'Budget Clarification Call', prompt: 'Review my buyer rep agreements\' financial details — pre-approval amounts, comfortable payment ranges, and down payments. For each active buyer, give me talking points for a budget clarification call: flag any red flags or mismatches between their pre-approval and search criteria, suggest questions to ask, and recommend whether to push for an updated pre-approval letter.' },
   { label: 'Prospecting Tips', prompt: 'Based on my activity patterns this month, give me specific prospecting recommendations and time-blocking suggestions.' },
   { label: 'Find Comps', prompt: 'Help me analyze comparable sales for my active listings. What pricing adjustments should I consider based on market trends?' },
 ]
 
+// Escape HTML entities to prevent XSS
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
 // Basic markdown: **bold**, # headers, - bullets, `code`
 function renderMarkdown(text) {
   if (!text) return ''
-  return text
+  // Escape HTML first to prevent XSS, then apply markdown transforms
+  return escapeHtml(text)
     .replace(/^### (.+)$/gm, '<h4 style="margin:12px 0 4px;font-size:14px;font-weight:700;color:var(--text)">$1</h4>')
     .replace(/^## (.+)$/gm, '<h3 style="margin:14px 0 6px;font-size:16px;font-weight:700;color:var(--text)">$1</h3>')
     .replace(/^# (.+)$/gm, '<h2 style="margin:16px 0 8px;font-size:18px;font-weight:700;color:var(--text)">$1</h2>')
@@ -37,6 +44,7 @@ export default function AIAssistantPage({ onNavigate, theme, onToggleTheme }) {
   const [input, setInput]             = useState('')
   const [streaming, setStreaming]      = useState(false)
   const [creditsUsed, setCreditsUsed] = useState(0)
+  const creditsUsedRef = useRef(0); creditsUsedRef.current = creditsUsed
   const [creditsLimit, setCreditsLimit] = useState(0)
   const [effectivePlan, setEffectivePlan] = useState('')
   const [gateError, setGateError]     = useState(null)  // 'subscription_required' | 'disabled_by_team' | 'credits_exhausted'
@@ -45,7 +53,7 @@ export default function AIAssistantPage({ onNavigate, theme, onToggleTheme }) {
   const scrollRef    = useRef(null)
   const textareaRef  = useRef(null)
   const messagesRef  = useRef(messages)
-  messagesRef.current = messages
+  useEffect(() => { messagesRef.current = messages }, [messages])
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -133,7 +141,7 @@ export default function AIAssistantPage({ onNavigate, theme, onToggleTheme }) {
         try { errData = await resp.json() } catch { /* non-JSON error */ }
         if (errData.error === 'credits_exhausted') {
           setGateError('credits_exhausted')
-          setCreditsUsed(errData.used || creditsUsed)
+          setCreditsUsed(errData.used || creditsUsedRef.current)
           setMessages(messagesRef.current)
           setStreaming(false)
           return
@@ -144,11 +152,13 @@ export default function AIAssistantPage({ onNavigate, theme, onToggleTheme }) {
         return
       }
 
-      // Parse SSE stream
+      // Parse SSE stream — throttle UI updates to avoid excessive re-renders
       const reader = resp.body.getReader()
       const decoder = new TextDecoder()
       let assistantText = ''
       let buffer = ''
+      let lastUpdate = 0
+      const THROTTLE_MS = 50
 
       setMessages([...newMessages, { role: 'assistant', content: '' }])
 
@@ -169,7 +179,11 @@ export default function AIAssistantPage({ onNavigate, theme, onToggleTheme }) {
             const parsed = JSON.parse(data)
             if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
               assistantText += parsed.delta.text
-              setMessages([...newMessages, { role: 'assistant', content: assistantText }])
+              const now = Date.now()
+              if (now - lastUpdate >= THROTTLE_MS) {
+                setMessages([...newMessages, { role: 'assistant', content: assistantText }])
+                lastUpdate = now
+              }
             }
           } catch {
             // Skip non-JSON SSE lines
@@ -177,7 +191,7 @@ export default function AIAssistantPage({ onNavigate, theme, onToggleTheme }) {
         }
       }
 
-      // Finalize
+      // Finalize — always commit final text
       if (assistantText) {
         setMessages([...newMessages, { role: 'assistant', content: assistantText }])
       }
@@ -193,7 +207,7 @@ export default function AIAssistantPage({ onNavigate, theme, onToggleTheme }) {
       setStreaming(false)
       abortRef.current = null
     }
-  }, [streaming, creditsUsed])
+  }, [streaming])
 
   function stopStreaming() {
     if (abortRef.current) abortRef.current.abort()
@@ -333,7 +347,7 @@ export default function AIAssistantPage({ onNavigate, theme, onToggleTheme }) {
                 flex: 1, overflowY: 'auto', padding: '8px 0', minHeight: 0,
               }}>
                 {/* Quick actions — shown when no messages */}
-                {messages.length === 0 && (
+                {messages.length === 0 && !gateError && (
                   <div style={{ padding: '40px 0 20px', textAlign: 'center' }}>
                     <div style={{ fontSize: 48, marginBottom: 16 }}>🤖</div>
                     <div className="serif" style={{ fontSize: 20, color: 'var(--text)', marginBottom: 6 }}>

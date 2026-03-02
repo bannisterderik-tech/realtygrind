@@ -8,8 +8,9 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
+const ALLOWED_ORIGIN = Deno.env.get('APP_ORIGIN') || 'https://realtygrind.com'
 const CORS = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
@@ -220,9 +221,25 @@ Deno.serve(async (req) => {
       ),
       closedListings.length === 0 ? '- None' : null,
       `\nBUYER REP AGREEMENTS (${buyerReps.length}):`,
-      ...buyerReps.slice(0, 15).map(b =>
-        `- ${b.address || 'Buyer'} | Budget: ${fmtPrice(b.price)} | Status: ${b.status || 'active'} | Added: ${b.month_year || 'unknown'}${getActivity(b.address)}`
-      ),
+      ...buyerReps.slice(0, 15).map(b => {
+        const d = b.buyer_details || {}
+        const parts = [`- ${b.address || 'Buyer'}`]
+        if (d.preApproval)   parts.push(`Pre-approval: ${d.preApproval}`)
+        if (d.paymentRange)  parts.push(`Payment: ${d.paymentRange}`)
+        if (d.downPayment)   parts.push(`Down: ${d.downPayment}`)
+        if (d.timeline)      parts.push(`Timeline: ${d.timeline}`)
+        if (d.dateSigned)    parts.push(`Signed: ${d.dateSigned}`)
+        if (d.dateExpires)   parts.push(`Expires: ${d.dateExpires}`)
+        if (d.lastCallDate)  parts.push(`Last Call: ${d.lastCallDate}`)
+        if (d.locationPrefs) parts.push(`Location: ${d.locationPrefs}`)
+        if (d.mustHaves)     parts.push(`Must-haves: ${d.mustHaves}`)
+        if (d.niceToHaves)   parts.push(`Nice-to-haves: ${d.niceToHaves}`)
+        parts.push(`Status: ${b.status || 'active'}`)
+        parts.push(`Added: ${b.month_year || 'unknown'}`)
+        const activity = getActivity(b.address)
+        if (activity) parts.push(activity.replace(' | Pipeline: ', 'Pipeline: '))
+        return parts.join(' | ')
+      }),
       buyerReps.length === 0 ? '- None' : null,
       `\nPIPELINE THIS MONTH: ${pipeline.offers_made} offers made, ${pipeline.offers_received} received, ${pipeline.pending} pending, ${pipeline.closed} closed (${pipeline.closed_volume > 0 ? `$${pipeline.closed_volume.toLocaleString()}` : '$0'} volume)`,
       `\nACTIVITY THIS MONTH:`,
@@ -244,6 +261,8 @@ YOUR CAPABILITIES:
 4. COMP RESEARCH: Use your knowledge of real estate markets to discuss comparable sales, pricing trends, and market conditions. While you don't have live MLS data, provide analysis based on the listing data available and general market knowledge for the area.
 5. GOAL TRACKING: Compare the agent's activity and closings against their stated goals. Identify gaps and suggest specific actions to get back on track.
 6. PROSPECTING ADVICE: Based on the agent's activity patterns, suggest prospecting strategies, time-blocking recommendations, and lead source optimization.
+7. BUDGET CLARIFICATION: Analyze buyer financial data (pre-approval amount, comfortable payment range, down payment available) and suggest talking points for budget clarification calls. Flag mismatches between pre-approval amounts and search criteria or price ranges. Recommend when to push for updated pre-approval letters, and identify buyers who may need to adjust expectations.
+8. SEARCH CRITERIA REFINEMENT: Review buyer search parameters (location preferences, must-haves, nice-to-haves, timeline) and suggest refinements based on their budget, timeline urgency, and current market conditions. Identify gaps between must-haves and what's realistically available in their price range. Suggest alternative areas or compromises that could expand their options.
 
 GUIDELINES:
 - Be specific and actionable. Reference the agent's actual listings, pipeline, and data when giving advice.
@@ -252,13 +271,7 @@ GUIDELINES:
 - Encourage consistency and accountability — that's the RealtyGrind way.
 - When discussing pricing or comps, clarify that your analysis is based on available data and general market knowledge, not live MLS access.`
 
-    // ── 9. Increment credit BEFORE calling Claude ───────────────────────────
-    await admin.from('profiles').update({
-      ai_credits_used: (profile.ai_credits_used || 0) + 1,
-      ai_credits_reset: month,
-    }).eq('id', user.id)
-
-    // ── 10. Call Claude API with streaming ───────────────────────────────────
+    // ── 9. Call Claude API with streaming ────────────────────────────────────
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
     if (!anthropicKey) return json({ error: 'ANTHROPIC_API_KEY not configured' }, 500)
 
@@ -286,6 +299,16 @@ GUIDELINES:
       return json({ error: `Claude API error (${claudeResponse.status}): ${detail}` }, 502)
     }
 
+    // ── 10. Increment credit AFTER successful Claude response ───────────────
+    // Use atomic SQL increment to prevent race conditions
+    await admin.rpc('increment_ai_credits', { user_id_param: user.id, reset_month: month }).catch(() => {
+      // Fallback to read-then-write if RPC doesn't exist yet
+      admin.from('profiles').update({
+        ai_credits_used: (profile.ai_credits_used || 0) + 1,
+        ai_credits_reset: month,
+      }).eq('id', user.id)
+    })
+
     // ── 11. Forward the stream directly ─────────────────────────────────────
     return new Response(claudeResponse.body, {
       headers: {
@@ -297,6 +320,6 @@ GUIDELINES:
     })
   } catch (err) {
     console.error('ai-assistant error:', err)
-    return json({ error: String(err) }, 500)
+    return json({ error: 'An unexpected error occurred. Please try again.' }, 500)
   }
 })

@@ -19,6 +19,21 @@ export function fmtMoney(v) {
   return n>=1e6 ? prefix+'$'+(n/1e6).toFixed(2)+'M' : n>=1e3 ? prefix+'$'+(n/1e3).toFixed(0)+'K' : prefix+'$'+Math.round(n).toLocaleString()
 }
 
+// Resolve commission to a dollar amount — handles both "$2500" and "3%" (calculated from price)
+export function resolveCommission(commStr, priceStr) {
+  const raw = String(commStr || '').trim()
+  if (!raw) return 0
+  if (raw.endsWith('%')) {
+    const pct = parseFloat(raw.replace(/%$/, ''))
+    if (isNaN(pct)) return 0
+    const price = parseFloat(String(priceStr || '').replace(/[^0-9.]/g, ''))
+    if (isNaN(price)) return 0
+    return (pct / 100) * price
+  }
+  const n = parseFloat(raw.replace(/[^0-9.]/g, ''))
+  return isNaN(n) ? 0 : n
+}
+
 export const CAT = {
   leads:     { color:'#0ea5e9', light:'rgba(14,165,233,.12)',  border:'rgba(14,165,233,.22)'  },
   listings:  { color:'#10b981', light:'rgba(16,185,129,.12)',  border:'rgba(16,185,129,.22)'  },

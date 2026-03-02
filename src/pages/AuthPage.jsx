@@ -15,6 +15,7 @@ export default function AuthPage({ theme, onToggleTheme, onBack }) {
     e.preventDefault()
     setErr(''); setOk(''); setLoading(true)
     try {
+      if (!supabase) { setErr('Service unavailable. Please try again later.'); return }
       if (mode==='signup') {
         const {error} = await supabase.auth.signUp({email, password:pw, options:{data:{full_name:name}}})
         if (error) setErr(error.message)
@@ -144,10 +145,10 @@ export default function AuthPage({ theme, onToggleTheme, onBack }) {
 
             <div style={{ textAlign:'center', marginTop:22, fontSize:13, color:'var(--muted)' }}>
               {mode==='login'?"Don't have an account? ":"Already have an account? "}
-              <span onClick={()=>switchMode(mode==='login'?'signup':'login')}
-                style={{ color:'var(--gold)', cursor:'pointer', fontWeight:600 }}>
+              <button type="button" onClick={()=>switchMode(mode==='login'?'signup':'login')}
+                style={{ color:'var(--gold)', cursor:'pointer', fontWeight:600, background:'none', border:'none', padding:0, font:'inherit', fontSize:'inherit' }}>
                 {mode==='login'?'Sign up free':'Sign in'}
-              </span>
+              </button>
             </div>
           </div>
         </div>

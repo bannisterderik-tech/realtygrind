@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext({})
@@ -111,12 +111,17 @@ export function AuthProvider({ children }) {
     }
   }
 
-  async function refreshProfile() {
-    if (user) fetchProfile(user.id, user.user_metadata)
-  }
+  const userRef = useRef(user)
+  userRef.current = user
+  const refreshProfile = useCallback(() => {
+    const u = userRef.current
+    if (u) fetchProfile(u.id, u.user_metadata)
+  }, [])
+
+  const contextValue = useMemo(() => ({ user, profile, loading, refreshProfile }), [user, profile, loading, refreshProfile])
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, refreshProfile }}>
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   )

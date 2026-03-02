@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { PLANS, getPlan, isActiveBilling, getPlanBadge, isTeamMember } from '../lib/plans'
 
 export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
-  const { user, profile, refreshProfile } = useAuth()
+  const { user, profile } = useAuth()
   const [annual, setAnnual] = useState(false)
   const [portalLoading, setPortalLoading] = useState(false)
   const [checkoutLoading, setCheckoutLoading] = useState(null) // planId or null
@@ -17,24 +17,36 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
   const isMember = isTeamMember(profile, user?.id)
   const teamName = profile?.teams?.name
 
+  // True if this account was set up directly in the DB (no Stripe customer)
+  const hasStripeCustomer = !!profile?.stripe_customer_id
+
   async function openPortal() {
+    if (!hasStripeCustomer) {
+      setError('Billing portal is not available — your plan was activated manually. Contact support@realtygrind.com to manage your subscription.')
+      return
+    }
     setPortalLoading(true); setError('')
     try {
+      if (!supabase) { setError('Service unavailable'); return }
       const { data, error: e } = await supabase.functions.invoke('create-portal-session', {
         body: { returnUrl: window.location.origin }
       })
       // Extract the real error message from the edge function response body
       if (e) {
         const body = typeof e.context === 'object' ? e.context : null
-        const msg = body?.error || e.message || 'Could not open billing portal.'
-        throw new Error(msg)
+        const msg = body?.error || e.message || ''
+        // Replace unhelpful SDK errors with a friendly message
+        if (msg.includes('Failed to send') || msg.includes('FunctionsFetchError'))
+          throw new Error('Could not reach billing service. Please try again later.')
+        throw new Error(msg || 'Could not open billing portal.')
       }
       if (data?.error) throw new Error(data.error)
       if (data?.url) window.location.href = data.url
       else throw new Error('No portal URL returned. You may need to subscribe to a plan first.')
     } catch (err) {
       console.error('Portal error:', err)
-      setError(err.message || 'Could not open billing portal.')
+      const msg = err.message || 'Could not open billing portal.'
+      setError(msg.includes('Failed to send') ? 'Could not reach billing service. Please try again later.' : msg)
     } finally {
       setPortalLoading(false)
     }
@@ -47,20 +59,24 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
     }
     setCheckoutLoading(planId); setError('')
     try {
+      if (!supabase) { setError('Service unavailable'); return }
       const { data, error: e } = await supabase.functions.invoke('create-checkout', {
         body: { planId, isAnnual: annual, returnUrl: window.location.origin }
       })
       if (e) {
         const body = typeof e.context === 'object' ? e.context : null
-        const msg = body?.error || e.message || 'Could not start checkout.'
-        throw new Error(msg)
+        const msg = body?.error || e.message || ''
+        if (msg.includes('Failed to send') || msg.includes('FunctionsFetchError'))
+          throw new Error('Could not reach billing service. Please try again later.')
+        throw new Error(msg || 'Could not start checkout.')
       }
       if (data?.error) throw new Error(data.error)
       if (data?.url) window.location.href = data.url
       else throw new Error('Checkout URL not available. Please try again.')
     } catch (err) {
       console.error('Checkout error:', err)
-      setError(err.message || 'Could not start checkout.')
+      const msg = err.message || 'Could not start checkout.'
+      setError(msg.includes('Failed to send') ? 'Could not reach billing service. Please try again later.' : msg)
     } finally {
       setCheckoutLoading(null)
     }
@@ -170,7 +186,7 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
                     </div>
                     <button className="btn-outline" onClick={openPortal} disabled={portalLoading}
                       style={{ fontSize:13, padding:'10px 22px', whiteSpace:'nowrap' }}>
-                      {portalLoading ? 'Opening...' : 'Manage Subscription'}
+                      {portalLoading ? 'Opening...' : hasStripeCustomer ? 'Manage Subscription' : 'Manage Plan'}
                     </button>
                   </div>
 

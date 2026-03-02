@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { CSS, Loader, Wordmark, ThemeToggle, Ring, getRank, CAT, StatCard, fmtMoney } from '../design'
@@ -19,8 +19,22 @@ const BUILT_IN_HABIT_IDS = [
   'prospecting','followup','appointments','showing','newlisting',
   'social','crm','market','networking','training','review',
 ]
-// Total month slots = 11 habits × 4 weeks × 7 days (matches App.jsx totalPossible)
-const TOTAL_MONTH_SLOTS = BUILT_IN_HABIT_IDS.length * 28
+// Current month in YYYY-MM format — used for habit/transaction queries
+const MONTH_YEAR = new Date().toISOString().slice(0,7)
+
+// UI_NOTE_LIMIT: character cap shown to the user in the coaching-note textarea.
+// MAX_NOTE_LEN (4000, defined inside the component) is the backend safety truncation
+// applied when persisting — it's intentionally larger so existing long notes aren't lost.
+const UI_NOTE_LIMIT = 500
+
+const CHALLENGE_METRICS = [
+  { value:'prospecting',  label:'Prospecting Calls' },
+  { value:'appointments', label:'Appointments Booked' },
+  { value:'showing',      label:'Property Showings' },
+  { value:'newlisting',   label:'Listings Taken' },
+  { value:'closed',       label:'Deals Closed' },
+  { value:'xp',           label:'Total XP' },
+]
 
 function getTodayIndices() {
   const d = new Date()
@@ -73,13 +87,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [transferTarget, setTransferTarget] = useState('')   // '' | memberId
   const [transferSaving, setTransferSaving] = useState(false)
   const [transferConfirm, setTransferConfirm] = useState(false) // two-step confirm
-  const fetchSeqRef = useRef(0)  // increments per fetch; stale results are discarded
+  const fetchSeqRef = useRef(0)        // increments per fetchMemberDetail; stale results are discarded
+  const fetchMembersSeqRef = useRef(0) // increments per fetchMembers; prevents stale team data
   const [confirmModal,    setConfirmModal]    = useState(null)   // { message, label, onConfirm } | null
   const [panelNoteForm,   setPanelNoteForm]   = useState(null)   // { text, type } | null
   const [panelNoteSaving, setPanelNoteSaving] = useState(false)
   const [teamListings,    setTeamListings]    = useState([])     // active listings for all team members
-
-  const MONTH_YEAR = new Date().toISOString().slice(0,7)
 
   // Depend only on team_id — prevents re-fetching every time the profile object
   // is recreated (e.g. on token refresh) while nothing meaningful has changed.
@@ -114,11 +127,14 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   },[viewingMember])
 
   async function fetchMembers(tid) {
+    const seq = ++fetchMembersSeqRef.current
     setLoading(true)
     try {
     const {data:mems} = await supabase.from('profiles').select('id,full_name,xp,streak,goals,habit_prefs').eq('team_id',tid).order('xp',{ascending:false})
+    if (seq !== fetchMembersSeqRef.current) return // stale — a newer fetch was triggered
     setMembers(mems||[])
     const {data:team} = await supabase.from('teams').select('*').eq('id',tid).single()
+    if (seq !== fetchMembersSeqRef.current) return
     setTeamData(team)
     // Load habit stats for all members
     if (mems?.length) {
@@ -127,6 +143,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
         .in('user_id',ids).eq('month_year',MONTH_YEAR).limit(5000)
       const {data:txs} = await supabase.from('transactions').select('user_id,type,price,commission')
         .in('user_id',ids).eq('month_year',MONTH_YEAR).limit(2000)
+      if (seq !== fetchMembersSeqRef.current) return
       const todayIdx = getTodayIndices()
       // Respect hidden habits so denominator matches what agents actually see
       const hiddenHabits = team?.team_prefs?.hidden || []
@@ -166,14 +183,15 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
         .gt('unit_count', 0)
         .order('created_at', { ascending: false })
         .limit(500)
+      if (seq !== fetchMembersSeqRef.current) return
       const nameMap = Object.fromEntries((mems||[]).map(m=>[m.id, m.full_name||'Agent']))
       setTeamListings((listRows||[]).map(l=>({ ...l, agentName: nameMap[l.user_id]||'Agent' })))
     }
     } catch (err) {
       console.error('fetchMembers error:', err)
-      setError('Failed to load team data. Please refresh.')
+      if (seq === fetchMembersSeqRef.current) setError('Failed to load team data. Please refresh.')
     } finally {
-      setLoading(false)
+      if (seq === fetchMembersSeqRef.current) setLoading(false)
     }
   }
 
@@ -316,9 +334,18 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       if (error) throw error
       // Update team_members roles to match: new owner becomes 'owner', old owner becomes 'member'
       const { error: e2 } = await supabase.from('team_members').update({ role: 'owner' }).eq('user_id', newOwnerId).eq('team_id', profile.team_id)
-      if (e2) console.error('Failed to update new owner role:', e2)
+      if (e2) {
+        // Rollback: revert teams.created_by to the original owner
+        await supabase.from('teams').update({ created_by: user.id }).eq('id', profile.team_id)
+        throw new Error('Failed to update new owner role. Transfer has been rolled back.')
+      }
       const { error: e3 } = await supabase.from('team_members').update({ role: 'member' }).eq('user_id', user.id).eq('team_id', profile.team_id)
-      if (e3) console.error('Failed to update old owner role:', e3)
+      if (e3) {
+        // Rollback: revert both changes
+        await supabase.from('teams').update({ created_by: user.id }).eq('id', profile.team_id)
+        await supabase.from('team_members').update({ role: 'member' }).eq('user_id', newOwnerId).eq('team_id', profile.team_id)
+        throw new Error('Failed to update old owner role. Transfer has been rolled back.')
+      }
       setTeamData(td => ({ ...td, created_by: newOwnerId }))
       setTransferTarget('')
       setTransferConfirm(false)
@@ -421,15 +448,6 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       console.error('removeInvite error:', err)
     }
   }
-
-  const CHALLENGE_METRICS = [
-    { value:'prospecting',  label:'Prospecting Calls' },
-    { value:'appointments', label:'Appointments Booked' },
-    { value:'showing',      label:'Property Showings' },
-    { value:'newlisting',   label:'Listings Taken' },
-    { value:'closed',       label:'Deals Closed' },
-    { value:'xp',           label:'Total XP' },
-  ]
 
   function getMemberMetricVal(memberId, metric) {
     const s = memberStats[memberId]||{}
@@ -753,22 +771,35 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     }
   }
 
-  // ── Derived values ─────────────────────────────────────────────────────────
-  const isTeamOwner      = !!(teamData?.created_by === user?.id)
-  const teamAdmins       = teamData?.team_prefs?.admins || []
-  const isAdmin          = teamAdmins.includes(user?.id) && !isTeamOwner
-  const allGroups        = teamData?.team_prefs?.groups || []
-  const myLedGroup       = allGroups.find(g => g.leaderId === user?.id) || null
-  const isGroupLeader    = !!myLedGroup && !isTeamOwner && !isAdmin
-  const myGroupMembers   = myLedGroup ? members.filter(m => myLedGroup.memberIds.includes(m.id)) : []
-  const canViewDetail    = (m) => isTeamOwner || isAdmin || (isGroupLeader && myLedGroup?.memberIds.includes(m.id))
-  const isAdminOrOwner   = isTeamOwner || isAdmin || isGroupLeader
-  const coachableMembers = (isGroupLeader && !isAdmin && !isTeamOwner)
-    ? myGroupMembers
-    : members.filter(m => m.id !== user?.id)
-  const allCoachingNotes = teamData?.team_prefs?.coaching_notes || []
-  const myCoachingNotes  = allCoachingNotes.filter(n => n.agentId === user?.id)
-  const pendingInvites   = teamData?.team_prefs?.pending_invites || []
+  // ── Derived values (memoized to avoid recomputing on every render) ────────
+  const {
+    isTeamOwner, teamAdmins, isAdmin, allGroups, myLedGroup,
+    isGroupLeader, myGroupMembers, isAdminOrOwner, coachableMembers,
+    allCoachingNotes, myCoachingNotes, pendingInvites,
+  } = useMemo(() => {
+    const _isTeamOwner      = !!(teamData?.created_by === user?.id)
+    const _teamAdmins       = teamData?.team_prefs?.admins || []
+    const _isAdmin          = _teamAdmins.includes(user?.id) && !_isTeamOwner
+    const _allGroups        = teamData?.team_prefs?.groups || []
+    const _myLedGroup       = _allGroups.find(g => g.leaderId === user?.id) || null
+    const _isGroupLeader    = !!_myLedGroup && !_isTeamOwner && !_isAdmin
+    const _myGroupMembers   = _myLedGroup ? members.filter(m => _myLedGroup.memberIds.includes(m.id)) : []
+    const _isAdminOrOwner   = _isTeamOwner || _isAdmin || _isGroupLeader
+    const _coachableMembers = (_isGroupLeader && !_isAdmin && !_isTeamOwner)
+      ? _myGroupMembers
+      : members.filter(m => m.id !== user?.id)
+    const _allCoachingNotes = teamData?.team_prefs?.coaching_notes || []
+    const _myCoachingNotes  = _allCoachingNotes.filter(n => n.agentId === user?.id)
+    const _pendingInvites   = teamData?.team_prefs?.pending_invites || []
+    return {
+      isTeamOwner: _isTeamOwner, teamAdmins: _teamAdmins, isAdmin: _isAdmin,
+      allGroups: _allGroups, myLedGroup: _myLedGroup, isGroupLeader: _isGroupLeader,
+      myGroupMembers: _myGroupMembers, isAdminOrOwner: _isAdminOrOwner,
+      coachableMembers: _coachableMembers, allCoachingNotes: _allCoachingNotes,
+      myCoachingNotes: _myCoachingNotes, pendingInvites: _pendingInvites,
+    }
+  }, [teamData, user?.id, members])
+  const canViewDetail = (m) => isTeamOwner || isAdmin || (isGroupLeader && myLedGroup?.memberIds.includes(m.id))
 
   return (
     <>
@@ -1933,11 +1964,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 <div>
                                   <div className="label" style={{ marginBottom:5 }}>Note</div>
                                   <textarea className="field-input" value={noteForm.text}
-                                    onChange={e=>setNoteForm(f=>({...f,text:e.target.value.slice(0,500)}))}
+                                    onChange={e=>setNoteForm(f=>({...f,text:e.target.value.slice(0,UI_NOTE_LIMIT)}))}
                                     placeholder="Write your coaching note here…" rows={4}
                                     style={{ width:'100%', resize:'vertical', minHeight:90 }}/>
                                   <div style={{ fontSize:10, color:'var(--dim)', textAlign:'right', marginTop:3 }}>
-                                    {(noteForm.text||'').length}/500
+                                    {(noteForm.text||'').length}/{UI_NOTE_LIMIT}
                                   </div>
                                 </div>
                                 <div style={{ display:'flex', gap:8 }}>
@@ -2653,11 +2684,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                           })}
                         </div>
                         <textarea className="field-input" value={panelNoteForm.text}
-                          onChange={e=>setPanelNoteForm(f=>({...f,text:e.target.value.slice(0,500)}))}
+                          onChange={e=>setPanelNoteForm(f=>({...f,text:e.target.value.slice(0,UI_NOTE_LIMIT)}))}
                           placeholder="Write coaching note…" rows={3}
                           style={{ width:'100%', resize:'vertical', fontSize:13, marginBottom:4, minHeight:72 }}/>
                         <div style={{ fontSize:10, color:'var(--dim)', textAlign:'right', marginBottom:8 }}>
-                          {(panelNoteForm.text||'').length}/500
+                          {(panelNoteForm.text||'').length}/{UI_NOTE_LIMIT}
                         </div>
                         <div style={{ display:'flex', gap:8 }}>
                           <button className="btn-primary" onClick={savePanelNote}

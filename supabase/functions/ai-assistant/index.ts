@@ -18,7 +18,7 @@ const CORS = {
 const CREDIT_LIMITS: Record<string, number> = {
   solo: 50,
   team: 250,
-  brokerage: Infinity,
+  brokerage: 500,
 }
 
 function json(body: unknown, status = 200) {
@@ -66,9 +66,18 @@ Deno.serve(async (req) => {
 
     // Determine effective plan tier
     const isTeamMember = !!(profile.team_id && profile.teams?.created_by !== user.id)
-    const effectivePlan = isTeamMember
-      ? (profile.teams?.max_members === Infinity || (profile.teams?.max_members || 0) > 15 ? 'brokerage' : 'team')
-      : (profile.plan || 'free')
+    let effectivePlan: string
+    if (isTeamMember) {
+      // Look up the team owner's actual plan instead of inferring from max_members
+      const { data: ownerProfile } = await admin
+        .from('profiles')
+        .select('plan')
+        .eq('id', profile.teams?.created_by)
+        .single()
+      effectivePlan = ownerProfile?.plan || 'team'
+    } else {
+      effectivePlan = profile.plan || 'free'
+    }
 
     // ── 3. Plan gate ────────────────────────────────────────────────────────
     const billing = profile.billing_status
@@ -95,8 +104,8 @@ Deno.serve(async (req) => {
 
     let creditsUsed = profile.ai_credits_used || 0
 
-    // For team plans, sum across all team members
-    if (effectivePlan === 'team' && profile.team_id) {
+    // For team & brokerage plans, sum credits across all team members (pooled)
+    if ((effectivePlan === 'team' || effectivePlan === 'brokerage') && profile.team_id) {
       const { data: teamMembers } = await admin
         .from('profiles')
         .select('ai_credits_used, ai_credits_reset')
@@ -109,15 +118,15 @@ Deno.serve(async (req) => {
 
     // GET requests return credit info only
     if (req.method === 'GET') {
-      return json({ credits_used: creditsUsed, credits_limit: limit === Infinity ? -1 : limit, plan: effectivePlan })
+      return json({ credits_used: creditsUsed, credits_limit: limit, plan: effectivePlan })
     }
 
-    // Check limit (brokerage = Infinity, always passes)
+    // Check credit limit
     if (creditsUsed >= limit) {
       return json({
         error: 'credits_exhausted',
         plan: effectivePlan,
-        limit: limit === Infinity ? -1 : limit,
+        limit,
         used: creditsUsed,
       }, 429)
     }

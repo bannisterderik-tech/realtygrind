@@ -85,7 +85,7 @@ export default function AIAssistantPage({ onNavigate, theme, onToggleTheme }) {
       const data = await resp.json()
       if (resp.ok) {
         setCreditsUsed(data.credits_used || 0)
-        setCreditsLimit(data.credits_limit === -1 ? Infinity : (data.credits_limit || 0))
+        setCreditsLimit(data.credits_limit || 0)
         setEffectivePlan(data.plan || '')
         setGateError(null)
       } else {
@@ -239,10 +239,8 @@ export default function AIAssistantPage({ onNavigate, theme, onToggleTheme }) {
   }
 
   // Credit display
-  const creditText = creditsLimit === Infinity
-    ? `${creditsUsed} used (unlimited)`
-    : `${creditsUsed}/${creditsLimit} credits`
-  const creditPct = creditsLimit === Infinity ? 0 : (creditsLimit > 0 ? (creditsUsed / creditsLimit) * 100 : 100)
+  const creditText = `${creditsUsed}/${creditsLimit} credits`
+  const creditPct = creditsLimit > 0 ? (creditsUsed / creditsLimit) * 100 : 100
 
   const nextPlan = effectivePlan === 'solo' ? 'Team' : effectivePlan === 'team' ? 'Brokerage' : null
 
@@ -323,11 +321,11 @@ export default function AIAssistantPage({ onNavigate, theme, onToggleTheme }) {
             }}>
               <div style={{ fontSize: 36, marginBottom: 12 }}>⚡</div>
               <div className="serif" style={{ fontSize: 18, color: 'var(--text)', marginBottom: 6 }}>
-                You've used all {creditsLimit === Infinity ? '' : creditsLimit} AI credits this month
+                You've used all {creditsLimit} AI credits this month
               </div>
               <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20, lineHeight: 1.6 }}>
                 {nextPlan
-                  ? `Upgrade to ${nextPlan} for ${nextPlan === 'Brokerage' ? 'unlimited' : 'more'} AI credits.`
+                  ? `Upgrade to ${nextPlan} for more AI credits.`
                   : 'Credits reset at the beginning of each month.'}
               </div>
               {nextPlan && (

@@ -91,7 +91,7 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
       const data = await resp.json()
       if (resp.ok) {
         setCreditsUsed(data.credits_used || 0)
-        setCreditsLimit(data.credits_limit === -1 ? Infinity : (data.credits_limit || 0))
+        setCreditsLimit(data.credits_limit || 0)
         setEffectivePlan(data.plan || '')
         setGateError(null)
       } else {
@@ -247,10 +247,8 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
   const isDisabledByTeam = profile?.teams?.team_prefs?.ai_tools?.assistant_enabled === false
 
   // Credit display
-  const creditText = creditsLimit === Infinity
-    ? `${creditsUsed} used`
-    : `${creditsUsed}/${creditsLimit}`
-  const creditPct = creditsLimit === Infinity ? 0 : (creditsLimit > 0 ? (creditsUsed / creditsLimit) * 100 : 100)
+  const creditText = `${creditsUsed}/${creditsLimit}`
+  const creditPct = creditsLimit > 0 ? (creditsUsed / creditsLimit) * 100 : 100
   const nextPlan = effectivePlan === 'solo' ? 'Team' : effectivePlan === 'team' ? 'Brokerage' : null
 
   const canChat = hasBilling && !isDisabledByTeam && gateError !== 'subscription_required' && gateError !== 'disabled_by_team'

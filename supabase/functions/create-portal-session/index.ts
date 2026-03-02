@@ -37,6 +37,13 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: CORS })
   }
 
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Method not allowed' }),
+      { status: 405, headers: { ...CORS, 'Content-Type': 'application/json' } }
+    )
+  }
+
   try {
     let body: Record<string, unknown>
     try { body = await req.json() } catch { body = {} }

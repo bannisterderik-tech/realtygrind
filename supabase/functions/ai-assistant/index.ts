@@ -144,10 +144,26 @@ Deno.serve(async (req) => {
       }, 429)
     }
 
+    // Only POST proceeds past credit check
+    if (req.method !== 'POST') {
+      return json({ error: 'Method not allowed' }, 405)
+    }
+
     // ── 6. Parse request body ───────────────────────────────────────────────
     const { messages } = await req.json()
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return json({ error: 'messages array is required' }, 400)
+    }
+
+    // Validate message roles — only allow user/assistant to prevent injection
+    const validRoles = new Set(['user', 'assistant'])
+    for (const m of messages) {
+      if (typeof m.role !== 'string' || !validRoles.has(m.role)) {
+        return json({ error: 'Invalid message role. Only user and assistant are allowed.' }, 400)
+      }
+      if (typeof m.content !== 'string' || m.content.length > 10000) {
+        return json({ error: 'Each message content must be a string under 10000 chars.' }, 400)
+      }
     }
 
     // ── 7. Gather RealtyGrind context ───────────────────────────────────────

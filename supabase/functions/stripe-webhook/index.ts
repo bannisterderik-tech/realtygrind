@@ -15,6 +15,11 @@ import Stripe from 'npm:stripe@14'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 Deno.serve(async (req) => {
+  // Only accept POST requests from Stripe
+  if (req.method !== 'POST') {
+    return new Response('Method not allowed', { status: 405 })
+  }
+
   const signature = req.headers.get('stripe-signature')
   if (!signature) {
     return new Response('Missing stripe-signature header', { status: 400 })
@@ -44,42 +49,71 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   )
 
+  // Idempotency: skip events already processed (upsert event ID)
+  const { data: existing } = await supabase
+    .from('processed_events')
+    .select('id')
+    .eq('event_id', event.id)
+    .maybeSingle()
+
+  if (existing) {
+    return new Response(JSON.stringify({ received: true, duplicate: true }), {
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  // Record event ID (best-effort — table may not exist yet, fail gracefully)
+  await supabase
+    .from('processed_events')
+    .insert({ event_id: event.id, event_type: event.type })
+    .then(() => {}, () => {})
+
   console.log(`Processing event: ${event.type}`)
 
   // ── checkout.session.completed ─────────────────────────────────────────
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.CheckoutSession
-    const userId  = session.client_reference_id
-    const email   = session.customer_details?.email
 
-    // Fetch the subscription to get planId from its metadata
+    // Fetch the subscription to get planId + userId from its metadata
     let planId: string | null = null
+    let userId: string | null = null
     let billingStatus: string = 'active'
     if (session.subscription) {
       try {
         const sub = await stripe.subscriptions.retrieve(session.subscription as string)
         planId = sub.metadata?.planId || null
-        billingStatus = sub.status
+        userId = sub.metadata?.userId || null
+        billingStatus = sub.status // preserve 'trialing' for trial subscriptions
       } catch (err) {
         console.error('Failed to fetch subscription:', err)
       }
     }
 
-    // Match by user ID (secure) first, fall back to email for legacy sessions
-    const matchColumn = userId ? 'id' : 'email'
-    const matchValue = userId || email
-    if (matchValue) {
+    const updatePayload = {
+      plan:                    planId,
+      billing_status:          billingStatus,
+      stripe_customer_id:      session.customer as string,
+      stripe_subscription_id:  session.subscription as string,
+    }
+
+    // Prefer userId from metadata (reliable), fall back to email (fragile)
+    if (userId) {
       const { error } = await supabase
         .from('profiles')
-        .update({
-          plan:                    planId,
-          billing_status:          billingStatus,
-          stripe_customer_id:      session.customer as string,
-          stripe_subscription_id:  session.subscription as string,
-        })
-        .eq(matchColumn, matchValue)
+        .update(updatePayload)
+        .eq('id', userId)
 
-      if (error) console.error('profiles update error (checkout):', error.message)
+      if (error) console.error('profiles update error (checkout by userId):', error.message)
+    } else {
+      const email = session.customer_details?.email
+      if (email) {
+        const { error } = await supabase
+          .from('profiles')
+          .update(updatePayload)
+          .eq('email', email)
+
+        if (error) console.error('profiles update error (checkout by email):', error.message)
+      }
     }
   }
 

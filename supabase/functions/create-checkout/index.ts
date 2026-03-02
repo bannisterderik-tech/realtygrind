@@ -51,10 +51,50 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: CORS })
   }
 
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Method not allowed' }),
+      { status: 405, headers: { ...CORS, 'Content-Type': 'application/json' } }
+    )
+  }
+
   try {
+    // Require authentication
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing Authorization header' }),
+        { status: 401, headers: { ...CORS, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } }
+    )
+    const { data: { user }, error: authErr } = await supabase.auth.getUser()
+    if (authErr || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...CORS, 'Content-Type': 'application/json' } }
+      )
+    }
+    const customerEmail = user.email
+    const userId = user.id
+
     let body: Record<string, unknown>
     try { body = await req.json() } catch { return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } }) }
     const { planId, isAnnual, returnUrl } = body as { planId: string; isAnnual: boolean; returnUrl?: string }
+
+    // Validate planId is a known string
+    const VALID_PLANS = ['solo', 'team', 'brokerage']
+    if (typeof planId !== 'string' || !VALID_PLANS.includes(planId)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid planId' }),
+        { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } }
+      )
+    }
 
     const key = `${planId}_${isAnnual ? 'annual' : 'monthly'}`
     const priceId = PRICE_MAP[key]
@@ -63,21 +103,6 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: `Unknown plan key: ${key}. Set the STRIPE_PRICE_* secrets in Supabase.` }),
         { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } }
       )
-    }
-
-    // Get authed user's ID + email to pre-fill checkout and link via client_reference_id
-    let customerEmail: string | undefined
-    let userId: string | undefined
-    const authHeader = req.headers.get('Authorization')
-    if (authHeader) {
-      const supabase = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_ANON_KEY')!,
-        { global: { headers: { Authorization: authHeader } } }
-      )
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user?.email) customerEmail = user.email
-      if (user?.id) userId = user.id
     }
 
     const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
@@ -94,7 +119,7 @@ Deno.serve(async (req) => {
       allow_promotion_codes: true,
       subscription_data: {
         trial_period_days: 14,
-        metadata: { planId, source: 'realtygrind' },
+        metadata: { planId, userId: user.id, source: 'realtygrind' },
       },
     })
 

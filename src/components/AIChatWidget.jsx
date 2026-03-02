@@ -91,7 +91,7 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
       const data = await resp.json()
       if (resp.ok) {
         setCreditsUsed(data.credits_used || 0)
-        setCreditsLimit(data.credits_limit || 0)
+        setCreditsLimit(data.credits_limit === -1 ? 500 : (data.credits_limit || 0))
         setEffectivePlan(data.plan || '')
         setGateError(null)
       } else {

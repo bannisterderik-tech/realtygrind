@@ -423,9 +423,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       if (!resp.ok) {
         const raw = result.error || 'Failed to send invite.'
         const alreadyExists = /already (registered|exists|invited)/i.test(raw) || /user.*exist/i.test(raw)
+        const isRateLimit = /rate.limit/i.test(raw)
         throw new Error(
           alreadyExists
             ? `${email} already has an account. Share your invite code with them and they can join directly.`
+            : isRateLimit
+            ? 'Too many invites sent recently. Please wait a few minutes and try again.'
             : raw
         )
       }

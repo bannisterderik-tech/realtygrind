@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const ALLOWED_ORIGINS = [
+  'https://realtygrind.vercel.app',
   'https://realtygrind.com',
   'http://localhost:5173',
   'http://localhost:4173',

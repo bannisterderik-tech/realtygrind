@@ -938,7 +938,7 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
 
   const cols = showSource
     ? '1fr 110px 150px 90px 30px'
-    : `1fr 110px 150px ${actionOpts.length > 1 ? '168px' : '90px'} 30px`
+    : '1fr 110px 150px 70px 1fr 30px'
 
   return (
     <div className="card" style={{ padding:22, marginBottom:12, borderLeft:`3px solid ${accentColor}55`,
@@ -990,8 +990,10 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
         <span className="label">ADDRESS</span>
         <span className="label">PRICE</span>
         <span className="label">COMMISSION</span>
-        <span className="label">{showSource ? 'SOURCE' : 'ACTIONS'}</span>
-        <span/>
+        {showSource
+          ? <><span className="label">SOURCE</span><span/></>
+          : <><span className="label">STATUS</span><span className="label">ACTIONS</span><span/></>
+        }
       </div>
 
       {rows.length === 0 && (
@@ -1036,9 +1038,15 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
                 </div>
               )
             })()}
-            {showSource
-              ? <span style={{ fontSize:11, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", padding:'0 2px' }}>{r.closedFrom||'Manual'}</span>
-              : <div style={{ display:'flex', gap:4, alignItems:'center', flexWrap:'nowrap' }}>
+            {showSource ? (
+              <><span style={{ fontSize:11, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", padding:'0 2px' }}>{r.closedFrom||'Manual'}</span>
+              <button className="btn-del" onClick={()=>remove(r)}>✕</button></>
+            ) : (
+              <>
+                <div style={{ display:'flex', alignItems:'center' }}>
+                  <span className="status-pill sp-active" style={{ fontSize:9 }}>● ACT</span>
+                </div>
+                <div style={{ display:'flex', gap:4, alignItems:'center', flexWrap:'nowrap' }}>
                   {actionOpts.map(o => (
                     <button key={o.v}
                       className={`act-btn ${o.v==='pending' ? 'act-btn-amber' : 'act-btn-green'}`}
@@ -1047,8 +1055,9 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
                     </button>
                   ))}
                 </div>
-            }
-            <button className="btn-del" onClick={()=>remove(r)}>✕</button>
+                <button className="btn-del" onClick={()=>remove(r)}>✕</button>
+              </>
+            )}
           </div>
         ))}
       </div>
@@ -1065,13 +1074,12 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
           <input className="field-input" value={comm} onChange={e=>setComm(e.target.value)}
             onKeyDown={e=>e.key==='Enter'&&add()} placeholder="3 (%)"
             style={{ padding:'8px 12px', color:'var(--green)', fontFamily:"'JetBrains Mono',monospace" }}/>
-          <div/>
           <button onClick={add} style={{
+            gridColumn:'span 3',
             background: accentColor, border:'none', color:'#fff', borderRadius:8,
-            width:30, height:30, fontSize:19, fontWeight:700, cursor:'pointer', lineHeight:1,
-            display:'flex', alignItems:'center', justifyContent:'center', transition:'all .15s',
-            flexShrink:0,
-          }}>+</button>
+            padding:'8px 14px', fontSize:12, fontWeight:700, cursor:'pointer', lineHeight:1,
+            display:'flex', alignItems:'center', justifyContent:'center', gap:4, transition:'all .15s',
+          }}>+ Add</button>
         </div>
       )}
       </div></div>{/* /resp-table-inner /resp-table */}
@@ -2887,11 +2895,12 @@ function Dashboard({ theme, onToggleTheme }) {
           <div className="card" style={{ padding:20 }}>
             <div className="resp-table"><div className="resp-table-inner" style={{ minWidth:680 }}>
             {/* Column headers */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 170px 1fr 30px', gap:8, padding:'3px 13px', marginBottom:6, border:'1px solid transparent' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 150px 90px 1fr 30px', gap:8, padding:'3px 13px', marginBottom:6, border:'1px solid transparent' }}>
               <span className="label">Address</span>
               <span className="label">List Price</span>
               <span className="label">Commission</span>
-              <span className="label">Status &amp; Actions</span>
+              <span className="label">Status</span>
+              <span className="label">Actions</span>
               <span/>
             </div>
 
@@ -2903,7 +2912,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
             <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:12 }}>
               {listings.map(l => (
-                <div key={l.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 105px 170px 1fr 30px' }}>
+                <div key={l.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 105px 150px 90px 1fr 30px' }}>
                   {/* Address + optional cross-month badge */}
                   <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
                     <input className="pipe-input" value={l.address||''}
@@ -2963,12 +2972,15 @@ function Dashboard({ theme, onToggleTheme }) {
                     )
                   })()}
 
-                  {/* Status + action buttons */}
-                  <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'nowrap' }}>
+                  {/* Status */}
+                  <div style={{ display:'flex', alignItems:'center' }}>
                     <span className={`status-pill sp-${l.status||'active'}`}>
-                      {l.status==='pending' ? '⏳ Pending' : l.status==='closed' ? '✓ Closed' : '● Active'}
+                      {l.status==='pending' ? '⏳ PEN' : l.status==='closed' ? '✓ CLO' : '● ACT'}
                     </span>
-                    {l.status !== 'closed' && (
+                  </div>
+                  {/* Actions */}
+                  <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'nowrap' }}>
+                    {l.status !== 'closed' ? (
                       <>
                         <button className="act-btn act-btn-blue" onClick={()=>handleListingOfferReceived(l)}
                           title="Log an offer received on this listing">
@@ -2983,6 +2995,8 @@ function Dashboard({ theme, onToggleTheme }) {
                           ✓ Closed
                         </button>
                       </>
+                    ) : (
+                      <span style={{ fontSize:10, color:'var(--dim)', fontStyle:'italic' }}>—</span>
                     )}
                   </div>
                   {/* Delete button — own grid column */}
@@ -2992,7 +3006,7 @@ function Dashboard({ theme, onToggleTheme }) {
             </div>
 
             {/* Add new listing */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 170px 1fr 30px', gap:8,
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 150px 90px 1fr 30px', gap:8,
               borderTop:'1px solid var(--b1)', paddingTop:12, alignItems:'center' }}>
               <input className="field-input" value={newAddr} onChange={e=>setNewAddr(e.target.value)}
                 onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="New listing address…"
@@ -3004,7 +3018,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="3 (%)"
                 style={{ padding:'8px 10px', color:'var(--green)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
               <button onClick={addListing} style={{
-                gridColumn:'span 2',
+                gridColumn:'span 3',
                 background:'var(--purple)', border:'none', color:'#fff', borderRadius:9,
                 padding:'9px 14px', fontSize:13, fontWeight:700, cursor:'pointer', lineHeight:1,
                 display:'flex', alignItems:'center', justifyContent:'center', gap:5,
@@ -3045,9 +3059,10 @@ function Dashboard({ theme, onToggleTheme }) {
           <div className="card" style={{ padding:20 }}>
             <div className="resp-table"><div className="resp-table-inner" style={{ minWidth:450 }}>
             {/* Column headers */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 240px 30px', gap:8, padding:'3px 13px', marginBottom:6, border:'1px solid transparent' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 80px 1fr 30px', gap:8, padding:'3px 13px', marginBottom:6, border:'1px solid transparent' }}>
               <span className="label">Client Name</span>
-              <span className="label">Status &amp; Actions</span>
+              <span className="label">Status</span>
+              <span className="label">Actions</span>
               <span/>
             </div>
 
@@ -3063,7 +3078,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 const isExpanded = expandedRep === rep.id
                 return (
                 <div key={rep.id}>
-                  <div className="pipe-row" style={{ gridTemplateColumns:'1fr auto' }}>
+                  <div className="pipe-row" style={{ gridTemplateColumns:'1fr 80px 1fr 30px' }}>
                     {/* Client name + expand toggle + optional month badge */}
                     <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
                       <button onClick={() => setExpandedRep(isExpanded ? null : rep.id)} style={{
@@ -3087,12 +3102,15 @@ function Dashboard({ theme, onToggleTheme }) {
                       )}
                     </div>
 
-                    {/* Status + actions + delete in one row */}
-                    <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'nowrap' }}>
+                    {/* Status */}
+                    <div style={{ display:'flex', alignItems:'center' }}>
                       <span className={`status-pill sp-${rep.status||'active'}`}>
-                        {rep.status === 'closed' ? '✓ Closed' : '● Active'}
+                        {rep.status === 'closed' ? '✓ CLO' : '● ACT'}
                       </span>
-                      {rep.status !== 'closed' && (
+                    </div>
+                    {/* Actions */}
+                    <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'nowrap' }}>
+                      {rep.status !== 'closed' ? (
                         <>
                           <button className="act-btn act-btn-blue"
                             onClick={() => setOfferModal({ repId:rep.id, repName:rep.clientName||'Buyer' })}>
@@ -3102,9 +3120,12 @@ function Dashboard({ theme, onToggleTheme }) {
                             ✓ Close Rep
                           </button>
                         </>
+                      ) : (
+                        <span style={{ fontSize:10, color:'var(--dim)', fontStyle:'italic' }}>—</span>
                       )}
-                      <button className="btn-del" style={{ marginLeft:4, flexShrink:0 }} onClick={() => removeBuyerRep(rep)}>✕</button>
                     </div>
+                    {/* Delete */}
+                    <button className="btn-del" style={{ flexShrink:0 }} onClick={() => removeBuyerRep(rep)}>✕</button>
                   </div>
 
                   {/* ── Expandable Buyer Details Panel ── */}

@@ -51,7 +51,7 @@ export function AuthProvider({ children }) {
       setUser(session.user)
       if (!profileLoadedRef.current) {
         profileLoadedRef.current = true
-        fetchProfile(session.user.id, session.user.user_metadata)
+        fetchProfile(session.user.id, session.user.user_metadata, session.user.email)
       } else {
         setLoading(false)
       }
@@ -63,7 +63,7 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  async function fetchProfile(userId, userMeta) {
+  async function fetchProfile(userId, userMeta, userEmail) {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -91,6 +91,17 @@ export function AuthProvider({ children }) {
           { onConflict: 'user_id' }
         )
         await supabase.from('profiles').update({ team_id: pendingTeamId }).eq('id', userId)
+        // Clean up pending invite for this user's email
+        if (userEmail) {
+          const { data: teamRow } = await supabase.from('teams').select('team_prefs').eq('id', pendingTeamId).single()
+          const pending = teamRow?.team_prefs?.pending_invites || []
+          const cleaned = pending.filter(i => i.email.toLowerCase() !== userEmail.toLowerCase())
+          if (cleaned.length !== pending.length) {
+            await supabase.from('teams').update({
+              team_prefs: { ...(teamRow.team_prefs || {}), pending_invites: cleaned }
+            }).eq('id', pendingTeamId)
+          }
+        }
         const { data: updated } = await supabase
           .from('profiles')
           .select('*, teams(name, invite_code, created_by, team_prefs)')
@@ -115,7 +126,7 @@ export function AuthProvider({ children }) {
   userRef.current = user
   const refreshProfile = useCallback(() => {
     const u = userRef.current
-    if (u) fetchProfile(u.id, u.user_metadata)
+    if (u) fetchProfile(u.id, u.user_metadata, u.email)
   }, [])
 
   const contextValue = useMemo(() => ({ user, profile, loading, refreshProfile }), [user, profile, loading, refreshProfile])

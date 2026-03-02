@@ -462,13 +462,15 @@ GUIDELINES:
 
     // ── 10. Increment credit AFTER successful Claude response ───────────────
     // Use atomic SQL increment to prevent race conditions
-    await admin.rpc('increment_ai_credits', { user_id_param: user.id, reset_month: month }).catch(() => {
+    try {
+      await admin.rpc('increment_ai_credits', { user_id_param: user.id, reset_month: month })
+    } catch {
       // Fallback to read-then-write if RPC doesn't exist yet
-      admin.from('profiles').update({
+      await admin.from('profiles').update({
         ai_credits_used: (profile.ai_credits_used || 0) + 1,
         ai_credits_reset: month,
       }).eq('id', user.id)
-    })
+    }
 
     // ── 11. Forward the stream directly ─────────────────────────────────────
     return new Response(claudeResponse.body, {
@@ -480,7 +482,7 @@ GUIDELINES:
       },
     })
   } catch (err) {
-    console.error('ai-assistant error:', err)
-    return json({ error: 'An unexpected error occurred. Please try again.' }, 500)
+    console.error('ai-assistant error:', err?.message || err, err?.stack || '')
+    return json({ error: `An unexpected error occurred. Please try again. [${err?.message || 'unknown'}]` }, 500)
   }
 })

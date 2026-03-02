@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, createContext, useContext } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback, createContext, useContext, Component, memo } from 'react'
 import { AuthProvider, useAuth } from './lib/AuthContext'
 import { supabase } from './lib/supabase'
 import AuthPage from './pages/AuthPage'
@@ -8,9 +8,78 @@ import ProfilePage from './pages/ProfilePage'
 import DirectoryPage from './pages/DirectoryPage'
 import APODPage from './pages/APODPage'
 import BillingPage from './pages/BillingPage'
-import { CSS, Ring, StatCard, Wordmark, Loader, ThemeToggle, PageNav, getRank, fmtMoney, RANKS, CAT } from './design'
+import AIAssistantPage from './pages/AIAssistantPage'
+import AIChatWidget from './components/AIChatWidget'
+import { CSS, Ring, StatCard, Wordmark, Loader, ThemeToggle, getRank, fmtMoney, resolveCommission, RANKS, CAT } from './design'
 import { HABITS } from './habits'
 import { getPlanBadge } from './lib/plans'
+
+// ─── Safe DB wrapper ────────────────────────────────────────────────────────────
+// Wraps any Supabase promise so fire-and-forget calls never silently fail.
+// Returns { ok: true } on success, { ok: false, msg: string } on failure.
+async function safeDb(promise) {
+  try {
+    const { error } = await promise
+    if (error) { console.error('DB error:', error.message); return { ok: false, msg: error.message } }
+    return { ok: true }
+  } catch (err) {
+    console.error('DB exception:', err)
+    return { ok: false, msg: err?.message || 'Network error' }
+  }
+}
+
+// ─── Error Boundary ─────────────────────────────────────────────────────────────
+// Catches any JS error in a child tree so the entire app doesn't white-screen.
+// Shows a recovery card with a button to navigate back to the dashboard.
+
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+  componentDidCatch(error, info) {
+    console.error('ErrorBoundary caught:', error, info?.componentStack)
+  }
+  render() {
+    if (this.state.hasError) {
+      const reset = () => {
+        this.setState({ hasError: false, error: null })
+        if (this.props.onReset) this.props.onReset()
+      }
+      return (
+        <div style={{ minHeight:'60vh', display:'flex', alignItems:'center', justifyContent:'center', padding:32 }}>
+          <div style={{ textAlign:'center', maxWidth:420 }}>
+            <div style={{ fontSize:48, marginBottom:16 }}>⚠️</div>
+            <div style={{ fontSize:20, fontWeight:700, color:'var(--text)', marginBottom:8, fontFamily:'Poppins,sans-serif' }}>
+              Something went wrong
+            </div>
+            <div style={{ fontSize:13, color:'var(--muted)', lineHeight:1.7, marginBottom:24, fontFamily:'Poppins,sans-serif' }}>
+              This page ran into an unexpected error. Your data is safe — nothing was lost.
+            </div>
+            <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
+              <button onClick={reset} style={{
+                padding:'10px 24px', borderRadius:8, fontSize:13, fontWeight:700, cursor:'pointer',
+                background:'var(--gold)', color:'#fff', border:'none', fontFamily:'Poppins,sans-serif',
+              }}>
+                Go to Dashboard
+              </button>
+              <button onClick={() => window.location.reload()} style={{
+                padding:'10px 24px', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer',
+                background:'transparent', color:'var(--muted)', border:'1px solid var(--b3)', fontFamily:'Poppins,sans-serif',
+              }}>
+                Reload Page
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 // ─── Theme context ─────────────────────────────────────────────────────────────
 
@@ -26,6 +95,33 @@ const WEEKS       = 4
 // NOTE: MONTH_YEAR is intentionally computed inside the App component (see below)
 // so it never goes stale if the user keeps the tab open across a month boundary.
 const MONTHS      = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+const WEEK_COLORS = ['#0ea5e9','#10b981','#f43f5e','#f59e0b']
+const QUOTES      = [
+  "The market rewards consistency.", "Every call is a door. Open more.", "Top producers are built one habit at a time.",
+  "Your pipeline today is your commission next quarter.", "Make the uncomfortable call. Every time.",
+  "Discipline bridges goals and achievement.", "Listings don't find agents. Agents find listings.",
+]
+
+const DEFAULT_PREFS = { hidden:[], order:[], edits:{} }
+
+// ── Week-view row helpers (shared across daily cards) ─────────────────────────
+const weekRowStyle = (checked, cs) => ({
+  display:'flex', alignItems:'center', gap:6, flex:1, textAlign:'left',
+  background:checked?cs.light:'transparent', border:`1px solid ${checked?cs.border:'transparent'}`,
+  borderRadius:7, padding:'5px 7px', cursor:'pointer', transition:'all .15s',
+})
+const weekCheckBox = (checked, color) => (
+  <div style={{ width:11, height:11, borderRadius:3, flexShrink:0,
+    border:`1.5px solid ${checked?color:'var(--b3)'}`,
+    background:checked?color:'transparent' }}/>
+)
+const weekRemoveBtn = (onClick) => (
+  <button onClick={onClick} title="Remove from this day" style={{
+    background:'none', border:'none', cursor:'pointer', fontSize:14,
+    color:'var(--muted)', padding:'2px 5px', lineHeight:1, borderRadius:4, flexShrink:0,
+  }}>×</button>
+)
+
 function fmtMonth(my) {
   if (!my) return ''
   const [y,m] = my.split('-')
@@ -56,7 +152,7 @@ function AddTaskModal({ onSubmit, onClose }) {
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:1000,
       display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="card" style={{ padding:24, width:'100%', maxWidth:400, animation:'fadeUp .2s ease' }}>
+      <div className="card" style={{ padding:24, width:'100%', maxWidth:400 }}>
         <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:18 }}>
           <span style={{ fontSize:20 }}>📋</span>
           <div className="serif" style={{ fontSize:18, color:'var(--text)' }}>Add Task for Today</div>
@@ -106,7 +202,7 @@ function OfferModal({ repName, onSubmit, onClose }) {
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:1000,
       display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="card" style={{ padding:28, width:'100%', maxWidth:440, animation:'fadeUp .2s ease' }}>
+      <div className="card" style={{ padding:28, width:'100%', maxWidth:440 }}>
         <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
           <span style={{ fontSize:20 }}>📤</span>
           <div className="serif" style={{ fontSize:20, color:'var(--text)' }}>Log Offer Made</div>
@@ -597,7 +693,10 @@ function BuyersWeeklyModal({ buyerReps, offersMade, onClose }) {
                 No buyer rep agreements on record.
               </div>
             ) : (
-              buyerReps.map(rep => (
+              buyerReps.map(rep => {
+                const bd = rep.buyerDetails || {}
+                const hasDetails = bd.preApproval || bd.timeline || bd.lastCallDate || bd.locationPrefs
+                return (
                 <div key={rep.id}>
                   <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:5 }}>
                     <span style={{ fontSize:10, padding:'2px 7px', borderRadius:4, fontWeight:700,
@@ -612,6 +711,14 @@ function BuyersWeeklyModal({ buyerReps, offersMade, onClose }) {
                       {rep.clientName || 'Unnamed Buyer'}
                     </span>
                   </div>
+                  {hasDetails && (
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:'4px 12px', marginBottom:6, fontSize:11, color:'var(--dim)' }}>
+                      {bd.preApproval && <span>Pre-approval: <strong style={{ color:'var(--text)' }}>{bd.preApproval}</strong></span>}
+                      {bd.timeline && <span>Timeline: <strong style={{ color:'var(--text)' }}>{bd.timeline}</strong></span>}
+                      {bd.lastCallDate && <span>Last call: <strong style={{ color:'var(--text)' }}>{bd.lastCallDate}</strong></span>}
+                      {bd.locationPrefs && <span>Area: <strong style={{ color:'var(--text)' }}>{bd.locationPrefs}</strong></span>}
+                    </div>
+                  )}
                   <textarea
                     value={repNotes[rep.id] || ''}
                     onChange={e => setNote(rep.id, e.target.value)}
@@ -621,7 +728,8 @@ function BuyersWeeklyModal({ buyerReps, offersMade, onClose }) {
                       resize:'vertical', boxSizing:'border-box', fontFamily:'inherit', lineHeight:1.5 }}
                   />
                 </div>
-              ))
+                )
+              })
             )}
 
             <div>
@@ -681,11 +789,14 @@ function BuyersWeeklyModal({ buyerReps, offersMade, onClose }) {
             <div style={{ fontSize:12, color:'#888', marginBottom:16, fontStyle:'italic' }}>No buyer rep agreements on record.</div>
           ) : (
             <div style={{ marginBottom:20 }}>
-              {buyerReps.map((rep, i) => (
+              {buyerReps.map((rep, i) => {
+                const bd = rep.buyerDetails || {}
+                const hasFinancial = bd.preApproval || bd.paymentRange || bd.downPayment
+                const hasCriteria = bd.locationPrefs || bd.mustHaves || bd.niceToHaves || bd.timeline
+                return (
                 <div key={rep.id} style={{ marginBottom:10, paddingBottom:10,
                   borderBottom: i < buyerReps.length-1 ? '1px solid #e5e5e5' : 'none' }}>
-                  <div style={{ display:'flex', alignItems:'baseline', gap:10,
-                    marginBottom: repNotes[rep.id] ? 5 : 0 }}>
+                  <div style={{ display:'flex', alignItems:'baseline', gap:10, marginBottom:4 }}>
                     <span style={{ fontSize:11, fontWeight:700, padding:'1px 6px', borderRadius:3,
                       background: rep.status==='closed'?'#dcfce7':'#e0f2fe',
                       color:      rep.status==='closed'?'#15803d':'#0369a1',
@@ -695,7 +806,23 @@ function BuyersWeeklyModal({ buyerReps, offersMade, onClose }) {
                     <span style={{ fontSize:13, fontWeight:700, color:'#111' }}>
                       {rep.clientName || '—'}
                     </span>
+                    {bd.timeline && (
+                      <span style={{ fontSize:10, color:'#666', fontWeight:600 }}>({bd.timeline})</span>
+                    )}
                   </div>
+                  {(hasFinancial || hasCriteria || bd.dateSigned || bd.lastCallDate) && (
+                    <div style={{ fontSize:11, color:'#555', lineHeight:1.8, marginBottom:repNotes[rep.id]?4:0, display:'flex', flexWrap:'wrap', gap:'0 16px' }}>
+                      {bd.preApproval && <span>Pre-approval: <strong>{bd.preApproval}</strong></span>}
+                      {bd.paymentRange && <span>Payment: <strong>{bd.paymentRange}</strong></span>}
+                      {bd.downPayment && <span>Down: <strong>{bd.downPayment}</strong></span>}
+                      {bd.dateSigned && <span>Signed: <strong>{bd.dateSigned}</strong></span>}
+                      {bd.dateExpires && <span>Expires: <strong>{bd.dateExpires}</strong></span>}
+                      {bd.lastCallDate && <span>Last call: <strong>{bd.lastCallDate}</strong></span>}
+                      {bd.locationPrefs && <span>Area: <strong>{bd.locationPrefs}</strong></span>}
+                      {bd.mustHaves && <span>Must-haves: <strong>{bd.mustHaves}</strong></span>}
+                      {bd.niceToHaves && <span>Nice-to-haves: <strong>{bd.niceToHaves}</strong></span>}
+                    </div>
+                  )}
                   {repNotes[rep.id] && (
                     <div style={{ fontSize:12, color:'#333', lineHeight:1.7, whiteSpace:'pre-wrap',
                       borderLeft:'3px solid #aaa', paddingLeft:10, marginTop:4 }}>
@@ -703,7 +830,8 @@ function BuyersWeeklyModal({ buyerReps, offersMade, onClose }) {
                     </div>
                   )}
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
 
@@ -758,7 +886,9 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
 
   async function add() {
     if (!addr.trim()) return
-    const tmp = { id:`tmp-${Date.now()}`, address:addr.trim(), price:price.trim(), commission:comm.trim(), status:'active' }
+    const rawC = comm.trim()
+    const commVal = rawC && !rawC.endsWith('%') ? rawC + '%' : rawC
+    const tmp = { id:`tmp-${Date.now()}`, address:addr.trim(), price:price.trim(), commission:commVal, status:'active' }
     setRows(prev => [...prev, tmp])
     setAddr(''); setPrice(''); setComm('')
     if (onAdd) {
@@ -770,9 +900,11 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
 
   async function remove(row) {
     if (!window.confirm(`Remove "${row.address || 'this entry'}"?`)) return
+    const snapshot = rows
     setRows(prev => prev.filter(r => r.id !== row.id))
     if (row.id && !String(row.id).startsWith('tmp-')) {
-      await supabase.from('transactions').delete().eq('id', row.id)
+      const r = await safeDb(supabase.from('transactions').delete().eq('id', row.id))
+      if (!r.ok) { setRows(snapshot); return }
     }
     if (onRemove) onRemove(row)
   }
@@ -781,18 +913,32 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
 
   async function persist(id, field, value) {
     if (!id || String(id).startsWith('tmp-')) return
-    await supabase.from('transactions').update({ [field]: value }).eq('id', id)
+    await safeDb(supabase.from('transactions').update({ [field]: value }).eq('id', id))
   }
 
-  const totalVol  = rows.reduce((a,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
-  const totalComm = rows.reduce((a,r)=>{ const n=parseFloat(String(r.commission||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
+  function toggleCommType(id) {
+    let newComm = ''
+    setRows(prev => prev.map(r => {
+      if (r.id !== id) return r
+      const raw = String(r.commission || '').trim()
+      const isPercent = raw.endsWith('%')
+      newComm = isPercent ? raw.replace(/%$/, '') : (raw ? raw + '%' : '%')
+      return { ...r, commission: newComm }
+    }))
+    if (!String(id).startsWith('tmp-')) {
+      safeDb(supabase.from('transactions').update({ commission: newComm }).eq('id', id))
+    }
+  }
+
+  const totalVol  = useMemo(() => rows.reduce((a,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0), [rows])
+  const totalComm = useMemo(() => rows.reduce((a,r) => a + resolveCommission(r.commission, r.price), 0), [rows])
 
   // Action buttons replace the dropdown — filter out 'active' (current state) to show only forward actions
   const actionOpts = (statusOpts||[]).filter(o => o.v !== 'active')
 
   const cols = showSource
-    ? '1fr 110px 110px 90px 30px'
-    : `1fr 110px 110px ${actionOpts.length > 1 ? '168px' : '90px'} 30px`
+    ? '1fr 110px 150px 90px 30px'
+    : '1fr 110px 150px 70px 1fr 30px'
 
   return (
     <div className="card" style={{ padding:22, marginBottom:12, borderLeft:`3px solid ${accentColor}55`,
@@ -844,8 +990,10 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
         <span className="label">ADDRESS</span>
         <span className="label">PRICE</span>
         <span className="label">COMMISSION</span>
-        <span className="label">{showSource ? 'SOURCE' : 'ACTIONS'}</span>
-        <span/>
+        {showSource
+          ? <><span className="label">SOURCE</span><span/></>
+          : <><span className="label">STATUS</span><span className="label">ACTIONS</span><span/></>
+        }
       </div>
 
       {rows.length === 0 && (
@@ -862,12 +1010,43 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
             <input className="pipe-input" value={r.price||''} onChange={e=>update(r.id,'price',e.target.value)}
               onBlur={e=>persist(r.id,'price',e.target.value)}
               placeholder="$0" style={{ color:accentColor, fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
-            <input className="pipe-input" value={r.commission||''} onChange={e=>update(r.id,'commission',e.target.value)}
-              onBlur={e=>persist(r.id,'commission',e.target.value)}
-              placeholder="optional" style={{ color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
-            {showSource
-              ? <span style={{ fontSize:11, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", padding:'0 2px' }}>{r.closedFrom||'Manual'}</span>
-              : <div style={{ display:'flex', gap:4, alignItems:'center', flexWrap:'nowrap' }}>
+            {(() => {
+              const isP = String(r.commission||'').trim().endsWith('%')
+              return (
+                <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
+                  <div style={{ position:'relative' }}>
+                    <input className="pipe-input"
+                      value={isP ? String(r.commission||'').replace(/%$/,'') : (r.commission||'')}
+                      onChange={e => update(r.id, 'commission', isP ? e.target.value + '%' : e.target.value)}
+                      onBlur={e => persist(r.id, 'commission', isP ? e.target.value + '%' : e.target.value)}
+                      placeholder={isP ? '3' : '$0'}
+                      style={{ color: isP ? 'var(--muted)' : 'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
+                    {isP && <span style={{ position:'absolute', right:4, top:'50%', transform:'translateY(-50%)', fontSize:11, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", pointerEvents:'none' }}>%</span>}
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:4, minHeight:16 }}>
+                    {isP && r.price && resolveCommission(r.commission, r.price) > 0 && (
+                      <span style={{ fontSize:13, color:'var(--green)', fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>
+                        = {fmtMoney(resolveCommission(r.commission, r.price))}
+                      </span>
+                    )}
+                    <button onClick={()=>toggleCommType(r.id)} style={{
+                      background:'none', border:'none', cursor:'pointer', padding:0, marginLeft:'auto',
+                      fontSize:9, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace",
+                      textDecoration:'underline', textUnderlineOffset:2,
+                    }}>{isP ? 'Flat fee' : 'Use %'}</button>
+                  </div>
+                </div>
+              )
+            })()}
+            {showSource ? (
+              <><span style={{ fontSize:11, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", padding:'0 2px' }}>{r.closedFrom||'Manual'}</span>
+              <button className="btn-del" onClick={()=>remove(r)}>✕</button></>
+            ) : (
+              <>
+                <div style={{ display:'flex', alignItems:'center' }}>
+                  <span className="status-pill sp-active" style={{ fontSize:9 }}>● ACT</span>
+                </div>
+                <div style={{ display:'flex', gap:4, alignItems:'center', flexWrap:'nowrap' }}>
                   {actionOpts.map(o => (
                     <button key={o.v}
                       className={`act-btn ${o.v==='pending' ? 'act-btn-amber' : 'act-btn-green'}`}
@@ -876,8 +1055,9 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
                     </button>
                   ))}
                 </div>
-            }
-            <button className="btn-del" onClick={()=>remove(r)}>✕</button>
+                <button className="btn-del" onClick={()=>remove(r)}>✕</button>
+              </>
+            )}
           </div>
         ))}
       </div>
@@ -892,15 +1072,14 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
             onKeyDown={e=>e.key==='Enter'&&add()} placeholder="Price"
             style={{ padding:'8px 12px', color:accentColor, fontFamily:"'JetBrains Mono',monospace" }}/>
           <input className="field-input" value={comm} onChange={e=>setComm(e.target.value)}
-            onKeyDown={e=>e.key==='Enter'&&add()} placeholder="Commission"
+            onKeyDown={e=>e.key==='Enter'&&add()} placeholder="3 (%)"
             style={{ padding:'8px 12px', color:'var(--green)', fontFamily:"'JetBrains Mono',monospace" }}/>
-          <div/>
           <button onClick={add} style={{
+            gridColumn:'span 3',
             background: accentColor, border:'none', color:'#fff', borderRadius:8,
-            width:30, height:30, fontSize:19, fontWeight:700, cursor:'pointer', lineHeight:1,
-            display:'flex', alignItems:'center', justifyContent:'center', transition:'all .15s',
-            flexShrink:0,
-          }}>+</button>
+            padding:'8px 14px', fontSize:12, fontWeight:700, cursor:'pointer', lineHeight:1,
+            display:'flex', alignItems:'center', justifyContent:'center', gap:4, transition:'all .15s',
+          }}>+ Add</button>
         </div>
       )}
       </div></div>{/* /resp-table-inner /resp-table */}
@@ -908,23 +1087,80 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
   )
 }
 
+// ─── HabitCell (memoized) ──────────────────────────────────────────────────────
+
+const HabitCell = memo(function HabitCell({ habitId, weekIndex, dayIndex, checked, counter, isCounter, today, onToggle, onIncrement, catStyle, animCell }) {
+  const isToday = weekIndex===today.week && dayIndex===today.day
+  const ckey    = `${habitId}-${weekIndex}-${dayIndex}`
+  return (
+    <td style={{ textAlign:'center', padding:'5px 2px', borderLeft:dayIndex===0?'1px solid var(--b1)':'none' }}>
+      <button onClick={()=>onToggle(habitId,weekIndex,dayIndex)} style={{
+        width:20, height:20, borderRadius:5,
+        border:`1.5px solid ${checked?catStyle.color:isToday?'var(--gold)':'var(--b2)'}`,
+        background:checked?catStyle.light:'transparent', cursor:'pointer',
+        display:'flex', alignItems:'center', justifyContent:'center',
+        animation:animCell===ckey?'pop .25s ease':'none', transition:'all .15s',
+      }}>
+        {checked && <span style={{ fontSize:8, color:catStyle.color, fontWeight:700 }}>✓</span>}
+        {isToday && !checked && <span style={{ width:4, height:4, borderRadius:'50%', background:'var(--gold)', display:'block' }}/>}
+      </button>
+      {isCounter && checked && (
+        <div style={{ display:'flex', alignItems:'center', gap:1, marginTop:2, justifyContent:'center' }}>
+          <span style={{ fontSize:8, color:catStyle.color, fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>{counter||1}</span>
+          <button onClick={()=>onIncrement(habitId,weekIndex,dayIndex)} style={{
+            width:11, height:11, borderRadius:3, border:`1px solid ${catStyle.color}`, background:'transparent',
+            cursor:'pointer', fontSize:9, lineHeight:1, color:catStyle.color, fontWeight:700,
+            display:'flex', alignItems:'center', justifyContent:'center',
+          }}>+</button>
+        </div>
+      )}
+    </td>
+  )
+})
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 function Dashboard({ theme, onToggleTheme }) {
   const { user, profile } = useAuth()
-  const today = getToday()
   // Computed per-render so it never goes stale if tab stays open across a month boundary
-  const MONTH_YEAR = new Date().toISOString().slice(0, 7)
+  const now = new Date()
+  const MONTH_YEAR = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`
+  const todayWeek = Math.min(Math.floor((now.getDate()-1)/7),3)
+  const todayDay  = now.getDay()
+  const today = useMemo(() => ({ week: todayWeek, day: todayDay }), [todayWeek, todayDay])
+
+  // Day navigation for the Today tab — offset from real today
+  const [viewDayOffset, setViewDayOffset] = useState(0)
+  const viewDate = useMemo(() => {
+    const d = new Date()
+    d.setDate(d.getDate() + viewDayOffset)
+    // Clamp to current month
+    if (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) {
+      return now // fallback to today if offset goes outside month
+    }
+    return d
+  }, [viewDayOffset])
+  const viewWeek    = Math.min(Math.floor((viewDate.getDate() - 1) / 7), 3)
+  const viewDayIdx  = viewDate.getDay()
+  const viewDateStr = `${viewDate.getFullYear()}-${String(viewDate.getMonth() + 1).padStart(2, '0')}-${String(viewDate.getDate()).padStart(2, '0')}`
+  const isViewingToday = viewDayOffset === 0
+  // Navigation bounds: stay within current month
+  const canGoBack    = viewDate.getDate() > 1
+  const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const canGoForward = viewDate.getDate() < lastDayOfMonth
 
   const [page, setPage] = useState('dashboard')
   const [tab,  setTab]  = useState('today')
   const [dbLoading, setDbLoading] = useState(true)
+  const [aiWidgetOpen, setAiWidgetOpen] = useState(false)
 
   // Habit state
   const [habits,   setHabits]   = useState(()=>{
     const g={}; HABITS.forEach(h=>{g[h.id]=Array(WEEKS).fill(null).map(()=>Array(7).fill(false))}); return g
   })
   const [counters, setCounters] = useState({})
+  const habitsRef   = useRef(habits);   habitsRef.current   = habits
+  const countersRef = useRef(counters); countersRef.current = counters
   const [xp,             setXp]             = useState(0)
   const xpRef = useRef(0)  // always-current mirror of xp; prevents stale-closure in addXp/deductPipelineXp/toggleHabit
   const [streak,         setStreak]         = useState(0)
@@ -943,6 +1179,16 @@ function Dashboard({ theme, onToggleTheme }) {
   const [buyerReps,     setBuyerReps]    = useState([])
   const [newRepClient,  setNewRepClient] = useState('')
   const [offerModal,    setOfferModal]   = useState(null) // null | { repId, repName }
+  const [expandedRep,   setExpandedRep]  = useState(null) // buyer rep id or null
+
+  // Toast for error feedback
+  const [toast, setToast] = useState(null) // { msg } or null
+  const toastTimer = useRef(null)
+  function showToast(msg) {
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    setToast({ msg })
+    toastTimer.current = setTimeout(() => setToast(null), 4000)
+  }
 
   // Pipeline
   const [offersMade,       setOffersMade]       = useState([])
@@ -972,7 +1218,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [standup,       setStandup]       = useState({ q1:'', q2:'', q3:'' })
   const [standupDone,   setStandupDone]   = useState(false)
   const [standupSaving, setStandupSaving] = useState(false)
-  const todayDate = new Date().toISOString().slice(0,10)
+  const todayDate = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD in local timezone
 
   // Depend on user.id only — prevents re-running when a new user object is created
   // (e.g. on token refresh) while the same user is still logged in.
@@ -1024,7 +1270,8 @@ function Dashboard({ theme, onToggleTheme }) {
         price:l.price||'', commission:l.commission||'', monthYear:l.month_year||''
       })))
       setBuyerReps(allL.filter(l => l.unit_count === 0).map(r => ({
-        id:r.id, clientName:r.address||'', status:r.status||'active', monthYear:r.month_year||''
+        id:r.id, clientName:r.address||'', status:r.status||'active', monthYear:r.month_year||'',
+        buyerDetails:r.buyer_details||{}
       })))
     }
 
@@ -1073,21 +1320,46 @@ function Dashboard({ theme, onToggleTheme }) {
   // even when called multiple times before a re-render (prevents stale-closure XP corruption)
   useEffect(() => { xpRef.current = xp }, [xp])
 
-  // ESC key closes any open modal
+  // Auto-clear XP pop notification with proper cleanup
+  useEffect(() => {
+    if (!xpPop) return
+    const timer = setTimeout(() => setXpPop(null), 1400)
+    return () => clearTimeout(timer)
+  }, [xpPop])
+
+  // Auto-clear habit animation cell with proper cleanup
+  useEffect(() => {
+    if (!animCell) return
+    const timer = setTimeout(() => setAnimCell(null), 300)
+    return () => clearTimeout(timer)
+  }, [animCell])
+
+  // ESC key closes any open modal — use refs to avoid re-attaching listener on every modal change
+  const modalsRef = useRef({})
+  modalsRef.current = { offerModal, addTaskModal, showPrint, plannerPrint, showWeeklyUpdate, showBuyersUpdate, aiWidgetOpen }
   useEffect(() => {
     const onKey = e => {
       if (e.key !== 'Escape') return
-      if (offerModal)        setOfferModal(null)
-      else if (addTaskModal) setAddTaskModal(false)
-      else if (showPrint)    setShowPrint(false)
-      else if (plannerPrint) setPlannerPrint(null)
-      else if (showWeeklyUpdate) setShowWeeklyUpdate(false)
-      else if (showBuyersUpdate) setShowBuyersUpdate(false)
-      else if (showCommSummary)  setShowCommSummary(false)
+      const m = modalsRef.current
+      if (m.aiWidgetOpen)      setAiWidgetOpen(false)
+      else if (m.offerModal)        setOfferModal(null)
+      else if (m.addTaskModal) setAddTaskModal(false)
+      else if (m.showPrint)    setShowPrint(false)
+      else if (m.plannerPrint) setPlannerPrint(null)
+      else if (m.showWeeklyUpdate) setShowWeeklyUpdate(false)
+      else if (m.showBuyersUpdate) setShowBuyersUpdate(false)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [offerModal, addTaskModal, showPrint, plannerPrint, showWeeklyUpdate, showBuyersUpdate, showCommSummary])
+  }, [])
+
+  // Redirect ai-assistant page navigation to floating widget
+  useEffect(() => {
+    if (page === 'ai-assistant') {
+      setPage('dashboard')
+      setAiWidgetOpen(true)
+    }
+  }, [page])
 
   // ── XP ─────────────────────────────────────────────────────────────────────
   async function addXp(amount, color='var(--gold)') {
@@ -1095,8 +1367,8 @@ function Dashboard({ theme, onToggleTheme }) {
     xpRef.current = nxp  // eagerly update so back-to-back calls get the right base value
     setXp(nxp)
     setXpPop({ val:`+${amount} XP`, color })
-    setTimeout(()=>setXpPop(null), 1400)
-    await supabase.from('profiles').update({xp:nxp}).eq('id',user.id)
+    const r = await safeDb(supabase.from('profiles').update({xp:nxp}).eq('id',user.id))
+    if (!r.ok) showToast('Failed to save XP — please refresh')
     return nxp
   }
 
@@ -1111,8 +1383,8 @@ function Dashboard({ theme, onToggleTheme }) {
     xpRef.current = nxp  // eagerly update ref
     setXp(nxp)
     setXpPop({ val:`-${amount} XP`, color:'#dc2626' })
-    setTimeout(()=>setXpPop(null), 1400)
-    await supabase.from('profiles').update({xp:nxp}).eq('id',user.id)
+    const r = await safeDb(supabase.from('profiles').update({xp:nxp}).eq('id',user.id))
+    if (!r.ok) showToast('Failed to save XP — please refresh')
     setSessionPipeline(prev => ({...prev, [type]: Math.max(0, prev[type]-1)}))
     if (type === 'went_pending') setWentPendingCount(prev => Math.max(0, prev - 1))
   }
@@ -1120,31 +1392,31 @@ function Dashboard({ theme, onToggleTheme }) {
   // Persist a new Offer Made to DB, award XP, return saved row with real ID
   async function handleOfferMadeAdd(tmpRow) {
     const data = await dbInsert('offer_made', tmpRow)
-    await awardPipelineXp('offer_made', '#0ea5e9')
     if (!data) return null
+    await awardPipelineXp('offer_made', '#0ea5e9')
     return { id:data.id, address:data.address||tmpRow.address, price:data.price||'', commission:data.commission||'', status:'active', closedFrom:'' }
   }
 
   // Persist a new Offer Received to DB, award XP, return saved row with real ID
   async function handleOfferReceivedAdd(tmpRow) {
     const data = await dbInsert('offer_received', tmpRow)
-    await awardPipelineXp('offer_received', '#8b5cf6')
     if (!data) return null
+    await awardPipelineXp('offer_received', '#8b5cf6')
     return { id:data.id, address:data.address||tmpRow.address, price:data.price||'', commission:data.commission||'', status:'active', closedFrom:'' }
   }
 
   // ── Profile habit prefs (for per-user skip) ────────────────────────────────
   async function saveProfileHabitPrefs(newPrefs) {
     setHabitPrefs(newPrefs)
-    await supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id)
+    await safeDb(supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id))
   }
 
   function skipHabitToday(hid) {
-    const prev = (habitPrefs.skipped||{})[todayDate] || []
+    const prev = (habitPrefs.skipped||{})[viewDateStr] || []
     if (prev.includes(String(hid))) return
     const newPrefs = {
       ...habitPrefs,
-      skipped: { ...(habitPrefs.skipped||{}), [todayDate]: [...prev, String(hid)] }
+      skipped: { ...(habitPrefs.skipped||{}), [viewDateStr]: [...prev, String(hid)] }
     }
     saveProfileHabitPrefs(newPrefs)
   }
@@ -1154,7 +1426,7 @@ function Dashboard({ theme, onToggleTheme }) {
       ...habitPrefs,
       skipped: {
         ...(habitPrefs.skipped||{}),
-        [todayDate]: ((habitPrefs.skipped||{})[todayDate]||[]).filter(id => id !== String(hid))
+        [viewDateStr]: ((habitPrefs.skipped||{})[viewDateStr]||[]).filter(id => id !== String(hid))
       }
     }
     saveProfileHabitPrefs(newPrefs)
@@ -1192,13 +1464,13 @@ function Dashboard({ theme, onToggleTheme }) {
   }
 
   // ── Habits ─────────────────────────────────────────────────────────────────
-  async function toggleHabit(hid, week, day) {
-    const newVal = !habits[hid][week][day]
+  const toggleHabit = useCallback(async (hid, week, day) => {
+    const newVal = !habitsRef.current[hid][week][day]
     setHabits(prev=>{ const n={...prev}; n[hid]=n[hid].map((w,wi)=>wi===week?w.map((d,di)=>di===day?newVal:d):w); return n })
     // Use effectiveHabits so edited XP/label/icon values take effect
     const hBase = HABITS.find(x=>x.id===hid)
     if (!hBase) return  // defensive: unknown habit id
-    const hEd   = (activePrefs.edits||{})[hid] || {}
+    const hEd   = (activePrefsRef.current.edits||{})[hid] || {}
     const h     = { ...hBase, xp: hEd.xp || hBase.xp }
     const cat   = CAT[h.cat]
     if (!cat) return  // defensive: unknown category
@@ -1206,52 +1478,52 @@ function Dashboard({ theme, onToggleTheme }) {
       await addXp(h.xp, cat.color)
       const ckey = `${hid}-${week}-${day}`
       if (h.counter) setCounters(prev=>({...prev,[ckey]:1}))
-      await supabase.from('habit_completions').upsert({
+      await safeDb(supabase.from('habit_completions').upsert({
         user_id:user.id, habit_id:hid, week_index:week, day_index:day,
         month_year:MONTH_YEAR, xp_earned:h.xp, counter_value:h.counter?1:0
-      },{onConflict:'user_id,habit_id,week_index,day_index,month_year'})
+      },{onConflict:'user_id,habit_id,week_index,day_index,month_year'}))
     } else {
       const ckey = `${hid}-${week}-${day}`
-      const lost = h.xp + Math.max(0,(counters[ckey]||1)-1)*(h.xpEach||0)
+      const lost = h.xp + Math.max(0,(countersRef.current[ckey]||1)-1)*(h.xpEach||0)
       const nxp  = Math.max(0, xpRef.current - lost)
       xpRef.current = nxp  // eagerly update ref before DB write
       setXp(nxp)
-      await supabase.from('profiles').update({xp:nxp}).eq('id',user.id)
-      await supabase.from('habit_completions').delete()
-        .eq('user_id',user.id).eq('habit_id',hid).eq('week_index',week).eq('day_index',day).eq('month_year',MONTH_YEAR)
+      await safeDb(supabase.from('profiles').update({xp:nxp}).eq('id',user.id))
+      await safeDb(supabase.from('habit_completions').delete()
+        .eq('user_id',user.id).eq('habit_id',hid).eq('week_index',week).eq('day_index',day).eq('month_year',MONTH_YEAR))
       if (h.counter) setCounters(prev=>{ const n={...prev}; delete n[ckey]; return n })
     }
     setAnimCell(`${hid}-${week}-${day}`)
-    setTimeout(()=>setAnimCell(null),300)
-  }
+  }, [user?.id, MONTH_YEAR])
 
-  async function setCounterValue(hid, week, day, rawVal) {
+  const setCounterValue = useCallback(async (hid, week, day, rawVal) => {
     const v     = Math.max(1, parseInt(rawVal) || 1)
     const hBase = HABITS.find(x=>x.id===hid)
     if (!hBase) return  // defensive: unknown habit id
-    const hEd   = (activePrefs.edits||{})[hid] || {}
+    const hEd   = (activePrefsRef.current.edits||{})[hid] || {}
     const h     = { ...hBase, xp: hEd.xp || hBase.xp }
     const ckey  = `${hid}-${week}-${day}`
-    const oldCnt = counters[ckey] || 1
+    const oldCnt = countersRef.current[ckey] || 1
     setCounters(prev=>({...prev,[ckey]:v}))
     // XP delta: difference in extra-unit XP between old and new count
     const xpDiff = (v - oldCnt) * (h.xpEach || 0)
     if (xpDiff !== 0) {
       const nxp = Math.max(0, xpRef.current + xpDiff)
+      xpRef.current = nxp
       setXp(nxp)
-      await supabase.from('profiles').update({xp:nxp}).eq('id',user.id)
+      await safeDb(supabase.from('profiles').update({xp:nxp}).eq('id',user.id))
     }
-    await supabase.from('habit_completions').upsert({
+    await safeDb(supabase.from('habit_completions').upsert({
       user_id:user.id, habit_id:hid, week_index:week, day_index:day,
       month_year:MONTH_YEAR, xp_earned:(h.xp||0)+Math.max(0,v-1)*(h.xpEach||0), counter_value:v
-    },{onConflict:'user_id,habit_id,week_index,day_index,month_year'})
-  }
+    },{onConflict:'user_id,habit_id,week_index,day_index,month_year'}))
+  }, [user?.id, MONTH_YEAR])
 
-  function incrementCounter(hid, week, day) {
+  const incrementCounter = useCallback((hid, week, day) => {
     const ckey = `${hid}-${week}-${day}`
-    const cur  = counters[ckey] || 1
+    const cur  = countersRef.current[ckey] || 1
     setCounterValue(hid, week, day, cur + 1)
-  }
+  }, [setCounterValue])
 
   // ── Custom tasks ────────────────────────────────────────────────────────────
   async function toggleCustomTask(taskId, week, day) {
@@ -1265,19 +1537,19 @@ function Dashboard({ theme, onToggleTheme }) {
     if (!task) return
     if (newVal) {
       await addXp(task.xp, '#06b6d4')
-      await supabase.from('habit_completions').upsert({
+      await safeDb(supabase.from('habit_completions').upsert({
         user_id:user.id, habit_id:taskId, week_index:week, day_index:day,
         month_year:MONTH_YEAR, xp_earned:task.xp, counter_value:0
-      },{onConflict:'user_id,habit_id,week_index,day_index,month_year'})
+      },{onConflict:'user_id,habit_id,week_index,day_index,month_year'}))
     } else {
-      const nxp = Math.max(0, xp - task.xp)
+      const nxp = Math.max(0, xpRef.current - task.xp)
+      xpRef.current = nxp
       setXp(nxp)
       setXpPop({ val:`-${task.xp} XP`, color:'#dc2626' })
-      setTimeout(()=>setXpPop(null), 1400)
-      await supabase.from('profiles').update({xp:nxp}).eq('id',user.id)
-      await supabase.from('habit_completions').delete()
+      await safeDb(supabase.from('profiles').update({xp:nxp}).eq('id',user.id))
+      await safeDb(supabase.from('habit_completions').delete()
         .eq('user_id',user.id).eq('habit_id',taskId)
-        .eq('week_index',week).eq('day_index',day).eq('month_year',MONTH_YEAR)
+        .eq('week_index',week).eq('day_index',day).eq('month_year',MONTH_YEAR))
     }
   }
 
@@ -1285,7 +1557,7 @@ function Dashboard({ theme, onToggleTheme }) {
     try {
       const {data, error} = await supabase.from('custom_tasks').insert({
         user_id:user.id, label, icon, xp:Number(xp)||15,
-        is_default:false, specific_date:todayDate
+        is_default:false, specific_date:viewDateStr
       }).select().single()
       if (error) throw error
       if (data) setCustomTasks(prev => [...prev, {
@@ -1377,15 +1649,19 @@ function Dashboard({ theme, onToggleTheme }) {
 
   // ── Pipeline helpers ───────────────────────────────────────────────────────
   async function dbInsert(type, item, closedFrom='') {
-    const {data} = await supabase.from('transactions').insert({
+    const {data, error} = await supabase.from('transactions').insert({
       user_id:user.id, type, address:item.address||'', price:item.price||'',
       commission:item.commission||'', status:type==='closed'?'closed':'active',
       closed_from:closedFrom||item.closedFrom||null, month_year:MONTH_YEAR
     }).select().single()
+    if (error) { console.error('dbInsert error:', error.message); return null }
     return data
   }
   async function dbDelete(id) {
-    if (id && !String(id).startsWith('tmp-')) await supabase.from('transactions').delete().eq('id',id)
+    if (id && !String(id).startsWith('tmp-')) {
+      const {error} = await supabase.from('transactions').delete().eq('id',id)
+      if (error) console.error('dbDelete error:', error.message)
+    }
   }
 
   async function handleOfferStatus(row, newStatus, srcSetter) {
@@ -1400,8 +1676,8 @@ function Dashboard({ theme, onToggleTheme }) {
       const data = await dbInsert('closed', row, 'Offers')
       if (data) {
         setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:'Offers'}])
-        const comm = parseFloat(String(row.commission||'').replace(/[^0-9.]/g,''))||0
-        setCelebration({ address:row.address||'Deal Closed', commission:row.commission||'', newComm:comm })
+        const comm = resolveCommission(row.commission, row.price)
+        setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
       }
       await awardPipelineXp('closed', '#10b981')
     }
@@ -1413,8 +1689,8 @@ function Dashboard({ theme, onToggleTheme }) {
       const data = await dbInsert('closed', row, row.closedFrom||'Pending')
       if (data) {
         setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:row.closedFrom||'Pending'}])
-        const comm = parseFloat(String(row.commission||'').replace(/[^0-9.]/g,''))||0
-        setCelebration({ address:row.address||'Deal Closed', commission:row.commission||'', newComm:comm })
+        const comm = resolveCommission(row.commission, row.price)
+        setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
       }
       await awardPipelineXp('closed', '#10b981')
     }
@@ -1423,9 +1699,12 @@ function Dashboard({ theme, onToggleTheme }) {
   // ── Listings ───────────────────────────────────────────────────────────────
   async function addListing() {
     if (!newAddr.trim()) return
+    // Default commission to percentage mode — append % if user entered a value without it
+    const rawComm = newComm.trim()
+    const commVal = rawComm && !rawComm.endsWith('%') ? rawComm + '%' : rawComm
     const {data} = await supabase.from('listings').insert({
       user_id:user.id, address:newAddr.trim(), unit_count:1,
-      price:newPrice.trim(), commission:newComm.trim(),
+      price:newPrice.trim(), commission:commVal,
       status:'active', month_year:MONTH_YEAR
     }).select().single()
     if (data) setListings(prev=>[...prev,{id:data.id,address:data.address,status:'active',price:data.price||'',commission:data.commission||'',monthYear:data.month_year||MONTH_YEAR}])
@@ -1434,16 +1713,36 @@ function Dashboard({ theme, onToggleTheme }) {
 
   async function removeListing(listing) {
     if (!window.confirm(`Remove listing "${listing.address}"?`)) return
+    const snapshot = listings
     setListings(prev=>prev.filter(l=>l.id!==listing.id))
-    await supabase.from('listings').delete().eq('id',listing.id)
+    const r = await safeDb(supabase.from('listings').delete().eq('id',listing.id))
+    if (!r.ok) { setListings(snapshot); showToast('Failed to remove listing') }
   }
 
+  function updateListingLocal(id, field, val) {
+    setListings(prev=>prev.map(l=>l.id===id?{...l,[field]:val}:l))
+  }
   async function updateListing(id, field, val) {
     setListings(prev=>prev.map(l=>l.id===id?{...l,[field]:val}:l))
-    if (field==='address')    await supabase.from('listings').update({address:val}).eq('id',id)
-    if (field==='status')     await supabase.from('listings').update({status:val}).eq('id',id)
-    if (field==='price')      await supabase.from('listings').update({price:val}).eq('id',id)
-    if (field==='commission') await supabase.from('listings').update({commission:val}).eq('id',id)
+    const r = await safeDb(supabase.from('listings').update({[field]:val}).eq('id',id))
+    if (!r.ok) showToast('Failed to save listing change')
+  }
+  function toggleListingCommType(id) {
+    setListings(prev => prev.map(l => {
+      if (l.id !== id) return l
+      const raw = String(l.commission || '').trim()
+      const isPercent = raw.endsWith('%')
+      const newComm = isPercent ? raw.replace(/%$/, '') : (raw ? raw + '%' : '%')
+      return { ...l, commission: newComm }
+    }))
+    // Persist the toggled value
+    const row = listings.find(l => l.id === id)
+    if (row) {
+      const raw = String(row.commission || '').trim()
+      const isPercent = raw.endsWith('%')
+      const newComm = isPercent ? raw.replace(/%$/, '') : (raw ? raw + '%' : '%')
+      safeDb(supabase.from('listings').update({ commission: newComm }).eq('id', id))
+    }
   }
 
   // Create an Offer Received pipeline entry from a listing (offer came in on your listing)
@@ -1469,8 +1768,8 @@ function Dashboard({ theme, onToggleTheme }) {
       const data = await dbInsert('closed', {address:listing.address, price:lPrice, commission:lComm}, 'Listing')
       if (data) {
         setClosedDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'closed',closedFrom:'Listing'}])
-        const comm = parseFloat(String(lComm||'').replace(/[^0-9.]/g,''))||0
-        setCelebration({ address:listing.address||'Deal Closed', commission:lComm||'', newComm:comm })
+        const comm = resolveCommission(lComm, lPrice)
+        setCelebration({ address:listing.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (lComm||''), newComm:comm })
       }
       await awardPipelineXp('closed', '#10b981')
     }
@@ -1483,24 +1782,52 @@ function Dashboard({ theme, onToggleTheme }) {
       user_id:user.id, address:newRepClient.trim(), unit_count:0,
       price:'', commission:'', status:'active', month_year:MONTH_YEAR
     }).select().single()
-    if (data) setBuyerReps(prev => [...prev, { id:data.id, clientName:data.address, status:'active', monthYear:data.month_year||MONTH_YEAR }])
+    if (data) setBuyerReps(prev => [...prev, { id:data.id, clientName:data.address, status:'active', monthYear:data.month_year||MONTH_YEAR, buyerDetails:{} }])
     setNewRepClient('')
   }
 
   async function removeBuyerRep(rep) {
     if (!window.confirm(`Remove buyer rep "${rep.clientName}"?`)) return
+    const snapshot = buyerReps
     setBuyerReps(prev => prev.filter(r => r.id !== rep.id))
-    await supabase.from('listings').delete().eq('id', rep.id)
+    const r = await safeDb(supabase.from('listings').delete().eq('id', rep.id))
+    if (!r.ok) { setBuyerReps(snapshot); showToast('Failed to remove buyer rep') }
   }
 
-  async function updateBuyerRepClient(id, val) {
+  function updateBuyerRepLocal(id, val) {
     setBuyerReps(prev => prev.map(r => r.id === id ? {...r, clientName:val} : r))
-    await supabase.from('listings').update({address:val}).eq('id', id)
+  }
+  async function persistBuyerRep(id, val) {
+    setBuyerReps(prev => prev.map(r => r.id === id ? {...r, clientName:val} : r))
+    const r = await safeDb(supabase.from('listings').update({address:val}).eq('id', id))
+    if (!r.ok) showToast('Failed to save client name')
   }
 
   async function closeBuyerRep(rep) {
+    const snapshot = buyerReps
     setBuyerReps(prev => prev.map(r => r.id === rep.id ? {...r, status:'closed'} : r))
-    await supabase.from('listings').update({status:'closed'}).eq('id', rep.id)
+    const r = await safeDb(supabase.from('listings').update({status:'closed'}).eq('id', rep.id))
+    if (!r.ok) { setBuyerReps(snapshot); showToast('Failed to close buyer rep') }
+  }
+
+  // Update a single buyer_details field locally (no auto-save — user clicks Save)
+  function updateBuyerRepDetail(id, field, value) {
+    setBuyerReps(prev => prev.map(r => r.id === id
+      ? {...r, buyerDetails: {...(r.buyerDetails||{}), [field]: value}, _dirty: true}
+      : r
+    ))
+  }
+  // Persist full buyer_details to DB (called by Save button)
+  const [savingRepId, setSavingRepId] = useState(null)
+  async function saveBuyerRepDetails(id) {
+    const rep = buyerReps.find(r => r.id === id)
+    if (!rep) return
+    setSavingRepId(id)
+    const r = await safeDb(supabase.from('listings').update({ buyer_details: rep.buyerDetails || {} }).eq('id', id))
+    setSavingRepId(null)
+    if (!r.ok) { showToast('Failed to save buyer details'); return }
+    // Clear dirty flag on success
+    setBuyerReps(prev => prev.map(r => r.id === id ? {...r, _dirty: false} : r))
   }
 
   async function submitBuyerRepOffer(addr, price, comm) {
@@ -1525,66 +1852,69 @@ function Dashboard({ theme, onToggleTheme }) {
   const isOnTeam    = !!profile?.team_id
   const isTeamOwner = isOnTeam && profile?.teams?.created_by === user?.id
   const activePrefs = isOnTeam
-    ? (profile?.teams?.team_prefs || { hidden:[], order:[], edits:{} })
+    ? (profile?.teams?.team_prefs || DEFAULT_PREFS)
     : habitPrefs
+  const activePrefsRef = useRef(activePrefs); activePrefsRef.current = activePrefs
 
   // ── Effective habits: built-ins (with edits, hidden removed) + custom defaults, ordered ──
-  const builtInEffective = HABITS
+  const builtInEffective = useMemo(() => HABITS
     .filter(h => !(activePrefs.hidden||[]).includes(h.id))
     .map(h => {
       const ed = (activePrefs.edits||{})[h.id] || {}
       return { ...h, label:ed.label||h.label, icon:ed.icon||h.icon, xp:ed.xp||h.xp, isBuiltIn:true }
     })
-  const customDefaults = isOnTeam && !isTeamOwner
-    ? []  // team members can't have permanent custom defaults in Today
+  , [activePrefs.hidden, activePrefs.edits])
+  const customDefaults = useMemo(() => isOnTeam && !isTeamOwner
+    ? []
     : customTasks.filter(t => t.isDefault).map(t => ({ ...t, isBuiltIn:false }))
-  const allEffective   = [...builtInEffective, ...customDefaults]
-  const orderArr       = activePrefs.order || []
-  if (orderArr.length) {
-    const idx = {}; orderArr.forEach((id,i) => idx[id]=i)
-    allEffective.sort((a,b) => (idx[a.id]??999) - (idx[b.id]??999))
-  }
-  const effectiveHabits = allEffective
+  , [isOnTeam, isTeamOwner, customTasks])
+  const effectiveHabits = useMemo(() => {
+    const all = [...builtInEffective, ...customDefaults]
+    const orderArr = activePrefs.order || []
+    if (orderArr.length) {
+      const idx = {}; orderArr.forEach((id,i) => idx[id]=i)
+      all.sort((a,b) => (idx[a.id]??999) - (idx[b.id]??999))
+    }
+    return all
+  }, [builtInEffective, customDefaults, activePrefs.order])
 
-  // ── Daily skip ───────────────────────────────────────────────────────────
-  const todaySkipped       = (habitPrefs.skipped||{})[todayDate] || []
-  const effectiveToday     = effectiveHabits.filter(h => !todaySkipped.includes(String(h.id)))
-  const todayBuiltInActive = builtInEffective.filter(h => !todaySkipped.includes(h.id))
-  const skippedBuiltInToday = builtInEffective.filter(h => todaySkipped.includes(String(h.id)))
+  // ── Daily skip (for viewed day) ──────────────────────────────────────────
+  const viewSkippedRaw      = (habitPrefs.skipped||{})[viewDateStr]
+  const viewSkipped         = useMemo(() => viewSkippedRaw || [], [viewSkippedRaw])
+  const effectiveView       = useMemo(() => effectiveHabits.filter(h => !viewSkipped.includes(String(h.id))), [effectiveHabits, viewSkipped])
+  const viewBuiltInActive   = useMemo(() => builtInEffective.filter(h => !viewSkipped.includes(h.id)), [builtInEffective, viewSkipped])
+  const skippedBuiltInView  = useMemo(() => builtInEffective.filter(h => viewSkipped.includes(String(h.id))), [builtInEffective, viewSkipped])
 
-  const totalHabitChecks = builtInEffective.reduce((a,h)=>a+habits[h.id].flat().filter(Boolean).length,0)
-  const totalPossible    = Math.max(builtInEffective.length,1)*WEEKS*7
-  const monthPct         = Math.round(totalHabitChecks/totalPossible*100)
-  const todayChecks      = todayBuiltInActive.filter(h=>habits[h.id][today.week][today.day]).length
-  const todayPct         = Math.round(todayChecks/Math.max(todayBuiltInActive.length,1)*100)
-  const totalProspecting = Object.entries(counters).filter(([k])=>k.startsWith('prospecting')).reduce((a,[,v])=>a+v,0)
-  const totalAppts       = Object.entries(counters).filter(([k])=>k.startsWith('appointments')).reduce((a,[,v])=>a+v,0)
-  const totalShowings    = Object.entries(counters).filter(([k])=>k.startsWith('showing')).reduce((a,[,v])=>a+v,0)
-  const totalListings    = listings.filter(l => l.status !== 'closed').length
-  const totalBuyerReps   = buyerReps.filter(r => r.status !== 'closed').length
-  const closedVol        = closedDeals.reduce((a,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
-  const closedComm       = closedDeals.reduce((a,r)=>{ const n=parseFloat(String(r.commission||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
-  const todayHabitXp     = HABITS.reduce((acc,h)=>{
-    if(!habits[h.id][today.week][today.day]) return acc
-    const ckey=`${h.id}-${today.week}-${today.day}`
-    const cnt=counters[ckey]||0
-    return acc + h.xp + (cnt>0?Math.max(0,cnt-1)*(h.xpEach||0):0)
-  },0)
-  const sessionPipelineXp =
-    sessionPipeline.offer_made    * PIPELINE_XP.offer_made    +
-    sessionPipeline.offer_received * PIPELINE_XP.offer_received +
-    sessionPipeline.went_pending  * PIPELINE_XP.went_pending  +
-    sessionPipeline.closed        * PIPELINE_XP.closed
-  const todayXp = todayHabitXp + sessionPipelineXp
+  const dashStats = useMemo(() => {
+    const totalHabitChecks = builtInEffective.reduce((a,h)=>a+habits[h.id].flat().filter(Boolean).length,0)
+    const totalPossible    = Math.max(builtInEffective.length,1)*WEEKS*7
+    const monthPct         = Math.round(totalHabitChecks/totalPossible*100)
+    const viewChecks       = viewBuiltInActive.filter(h=>habits[h.id][viewWeek]?.[viewDayIdx]).length
+    const viewPct          = Math.round(viewChecks/Math.max(viewBuiltInActive.length,1)*100)
+    const totalProspecting = Object.entries(counters).filter(([k])=>k.startsWith('prospecting')).reduce((a,[,v])=>a+v,0)
+    const totalAppts       = Object.entries(counters).filter(([k])=>k.startsWith('appointments')).reduce((a,[,v])=>a+v,0)
+    const totalShowings    = Object.entries(counters).filter(([k])=>k.startsWith('showing')).reduce((a,[,v])=>a+v,0)
+    const totalListings    = listings.filter(l => l.status !== 'closed').length
+    const totalBuyerReps   = buyerReps.filter(r => r.status !== 'closed').length
+    const closedVol        = closedDeals.reduce((a,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
+    const closedComm       = closedDeals.reduce((a,r) => a + resolveCommission(r.commission, r.price), 0)
+    const viewHabitXp      = builtInEffective.reduce((acc,h)=>{
+      if(!habits[h.id][viewWeek]?.[viewDayIdx]) return acc
+      const ckey=`${h.id}-${viewWeek}-${viewDayIdx}`
+      const cnt=counters[ckey]||0
+      return acc + h.xp + (cnt>0?Math.max(0,cnt-1)*(h.xpEach||0):0)
+    },0)
+    const sessionPipelineXp =
+      sessionPipeline.offer_made    * PIPELINE_XP.offer_made    +
+      sessionPipeline.offer_received * PIPELINE_XP.offer_received +
+      sessionPipeline.went_pending  * PIPELINE_XP.went_pending  +
+      sessionPipeline.closed        * PIPELINE_XP.closed
+    return { totalHabitChecks, totalPossible, monthPct, viewChecks, viewPct, totalProspecting, totalAppts, totalShowings, totalListings, totalBuyerReps, closedVol, closedComm, viewHabitXp, sessionPipelineXp, viewXp: viewHabitXp + sessionPipelineXp }
+  }, [habits, counters, builtInEffective, viewBuiltInActive, viewWeek, viewDayIdx, listings, buyerReps, closedDeals, sessionPipeline])
+  const { totalHabitChecks, monthPct, viewChecks: todayChecks, viewPct: todayPct, totalProspecting, totalAppts, totalShowings, totalListings, totalBuyerReps, closedVol, closedComm, viewHabitXp: todayHabitXp, sessionPipelineXp, viewXp: todayXp } = dashStats
 
   const dateStr   = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})
-  const weekColors = ['#0ea5e9','#10b981','#f43f5e','#f59e0b']
-  const quotes    = [
-    "The market rewards consistency.", "Every call is a door. Open more.", "Top producers are built one habit at a time.",
-    "Your pipeline today is your commission next quarter.", "Make the uncomfortable call. Every time.",
-    "Discipline bridges goals and achievement.", "Listings don't find agents. Agents find listings.",
-  ]
-  const quote = quotes[new Date().getDay()]
+  const quote = QUOTES[new Date().getDay()]
   const timeGreeting = (() => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening' })()
 
   return (
@@ -1600,7 +1930,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
       {/* ── Deal Celebration ───────────────────────────────── */}
       {celebration && (() => {
-        const ytd = closedDeals.reduce((a,r)=>{ const n=parseFloat(String(r.commission||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
+        const ytd = closedDeals.reduce((a,r) => a + resolveCommission(r.commission, r.price), 0)
         const year = new Date().getFullYear()
         const confettiColors = ['#10b981','#f59e0b','#3b82f6','#f43f5e','#8b5cf6','#fb923c','#06b6d4','#d97706']
         const pieces = Array.from({length:22},(_,i)=>({
@@ -1684,7 +2014,7 @@ function Dashboard({ theme, onToggleTheme }) {
           <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
           <button className={`nav-btn mob-hide${page==='teams'?' active':''}`} onClick={()=>setPage('teams')}>👥 Teams</button>
 
-          <button className={`nav-btn mob-hide${(page==='directory'||page==='apod')?' active':''}`} onClick={()=>setPage('directory')}>🔗 Tools</button>
+          <button className={`nav-btn mob-hide${(page==='directory'||page==='apod'||page==='ai-assistant')?' active':''}`} onClick={()=>setPage('directory')}>🔗 Tools</button>
 
           {/* Rank + Streak chips — hidden on mobile */}
           <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
@@ -1737,7 +2067,7 @@ function Dashboard({ theme, onToggleTheme }) {
           position:'fixed', top:52, left:0, right:0, zIndex:199,
           background:'var(--nav-bg)', borderBottom:'1px solid rgba(255,255,255,.08)',
           display:'flex', flexDirection:'column', padding:'8px 10px 14px',
-          animation:'fadeUp .18s ease', boxShadow:'0 8px 24px rgba(0,0,0,.4)'
+          boxShadow:'0 8px 24px rgba(0,0,0,.4)'
         }}>
           {[
             { p:'dashboard', icon:'🏠', label:'Home' },
@@ -1770,14 +2100,17 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
       )}
 
-      {page==='teams'     && <TeamsPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
-      {page==='billing'   && <BillingPage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
-      {page==='profile'   && <ProfilePage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}
-                                             onTaskDeleted={syncTaskDeleted} onTaskRestored={syncTaskRestored}/>}
-      {page==='directory' && <DirectoryPage onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
-      {page==='apod'      && <APODPage      onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/>}
+      {page==='teams'     && <ErrorBoundary key="teams" onReset={()=>setPage('dashboard')}><TeamsPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      {page==='billing'   && <ErrorBoundary key="billing" onReset={()=>setPage('dashboard')}><BillingPage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      {page==='profile'   && <ErrorBoundary key="profile" onReset={()=>setPage('dashboard')}><ProfilePage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}
+                                             onTaskDeleted={syncTaskDeleted} onTaskRestored={syncTaskRestored}/></ErrorBoundary>}
+      {page==='directory' && <ErrorBoundary key="directory" onReset={()=>setPage('dashboard')}><DirectoryPage onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      {page==='apod'      && <ErrorBoundary key="apod" onReset={()=>setPage('dashboard')}><APODPage      onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      {/* AI Assistant now handled by floating widget — see useEffect redirect below */}
 
-      {page==='dashboard' && (dbLoading ? <Loader/> : (
+      {page==='dashboard' && (
+      <ErrorBoundary key="dashboard" onReset={()=>window.location.reload()}>
+      {dbLoading ? <Loader/> : (
       <div className="page-inner">
 
         {/* ── Hero Header ─────────────────────────────────────── */}
@@ -1828,7 +2161,7 @@ function Dashboard({ theme, onToggleTheme }) {
         <div className="stat-grid" style={{ marginBottom:18 }}>
           <StatCard icon="⚡" label="Today" value={`${todayPct}%`}
             color={todayPct>=80?'var(--green)':todayPct>=50?'var(--gold)':'var(--red)'}
-            sub={`${todayChecks}/${todayBuiltInActive.length} habits`}
+            sub={`${todayChecks}/${viewBuiltInActive.length} habits`}
             accent={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'}/>
           <StatCard icon="📅" label="Month"        value={`${monthPct}%`}   color="var(--gold)"  sub={`${totalHabitChecks} checks`}/>
           <StatCard icon="📞" label="Calls"         value={totalProspecting} color="var(--gold)"
@@ -1853,7 +2186,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
         {/* ── Tabs ──────────────────────────────────────────── */}
         <div className="tabs">
-          {[{id:'today',l:'Today'},{id:'monthly',l:'Monthly Grid'},{id:'weekly',l:'Week View'},{id:'trends',l:'📈 Trends'}].map(t=>(
+          {[{id:'today',l:'Today'},{id:'weekly',l:'Week View'}].map(t=>(
             <button key={t.id} className={`tab-item${tab===t.id?' on':''}`} onClick={()=>setTab(t.id)}>{t.l}</button>
           ))}
         </div>
@@ -1863,12 +2196,39 @@ function Dashboard({ theme, onToggleTheme }) {
           <>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
             <div style={{ fontSize:12, color:'var(--muted)' }}>
-              {todayXp > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", color:'var(--gold)', fontWeight:700 }}>+{todayXp.toLocaleString()} XP</span>} {todayXp > 0 ? 'earned today' : ''}
+              {todayXp > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", color:'var(--gold)', fontWeight:700 }}>+{todayXp.toLocaleString()} XP</span>} {todayXp > 0 ? (isViewingToday ? 'earned today' : `earned ${FULL_DAYS[viewDayIdx]}`) : ''}
             </div>
             <button className="btn-outline" onClick={() => setShowPrint(true)}
               style={{ fontSize:12, display:'flex', alignItems:'center', gap:5, padding:'7px 14px' }}>
-              🖨️ Print Daily Sheet
+              🖨️ Print {isViewingToday ? 'Daily' : FULL_DAYS[viewDayIdx]} Sheet
             </button>
+          </div>
+
+          {/* ── Day Navigator ── */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:12, marginBottom:16,
+            padding:'10px 16px', background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:10 }}>
+            <button onClick={() => setViewDayOffset(o => o - 1)} disabled={!canGoBack}
+              style={{ background:'none', border:'1px solid var(--b2)', borderRadius:6, cursor:canGoBack?'pointer':'default',
+                color:canGoBack?'var(--text)':'var(--dim)', fontSize:14, padding:'4px 10px', opacity:canGoBack?1:.4,
+                transition:'all .15s' }}>◀</button>
+            <div style={{ textAlign:'center', minWidth:180 }}>
+              <div style={{ fontSize:14, fontWeight:600, color:'var(--text)', letterSpacing:'-.01em' }}>
+                {FULL_DAYS[viewDayIdx]}, {viewDate.toLocaleDateString('en-US', { month:'long', day:'numeric' })}
+              </div>
+              {!isViewingToday && (
+                <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>Week {viewWeek + 1}</div>
+              )}
+            </div>
+            <button onClick={() => setViewDayOffset(o => o + 1)} disabled={!canGoForward}
+              style={{ background:'none', border:'1px solid var(--b2)', borderRadius:6, cursor:canGoForward?'pointer':'default',
+                color:canGoForward?'var(--text)':'var(--dim)', fontSize:14, padding:'4px 10px', opacity:canGoForward?1:.4,
+                transition:'all .15s' }}>▶</button>
+            {!isViewingToday && (
+              <button onClick={() => setViewDayOffset(0)}
+                style={{ background:'rgba(59,130,246,.1)', color:'#3b82f6', border:'1px solid rgba(59,130,246,.3)',
+                  borderRadius:6, fontSize:11, fontWeight:600, padding:'5px 12px', cursor:'pointer',
+                  transition:'all .15s' }}>Today</button>
+            )}
           </div>
 
           {/* ── Daily Standup (team members only, not owner) ── */}
@@ -1918,18 +2278,20 @@ function Dashboard({ theme, onToggleTheme }) {
           <div className="today-grid">
 
             {/* Habits checklist */}
-            <div className="card" style={{ padding:24, borderTop:`2.5px solid ${todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'}` }}>
+            <div className="card" style={{ padding:24, borderTop:`2.5px solid ${isViewingToday ? (todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626') : '#3b82f6'}` }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
                 <div>
-                  <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:3, letterSpacing:'-.015em' }}>Daily Habits</div>
+                  <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:3, letterSpacing:'-.015em' }}>
+                    {isViewingToday ? 'Daily Habits' : `${FULL_DAYS[viewDayIdx]} Habits`}
+                  </div>
                   <div style={{ fontSize:12, color:'var(--muted)' }}>
-                    {FULL_DAYS[today.day]} · {todayBuiltInActive.length - todayChecks > 0 ? `${todayBuiltInActive.length - todayChecks} remaining` : 'All done! 🎉'}
+                    {FULL_DAYS[viewDayIdx]} · {viewBuiltInActive.length - todayChecks > 0 ? `${viewBuiltInActive.length - todayChecks} remaining` : 'All done! 🎉'}
                   </div>
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:12 }}>
                   <div style={{ textAlign:'right' }}>
                     <div className="serif" style={{ fontSize:24, color: todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626', lineHeight:1, fontWeight:700, letterSpacing:'-.02em' }}>
-                      {todayChecks}<span style={{ fontSize:14, color:'var(--dim)', fontWeight:400 }}>/{todayBuiltInActive.length}</span>
+                      {todayChecks}<span style={{ fontSize:14, color:'var(--dim)', fontWeight:400 }}>/{viewBuiltInActive.length}</span>
                     </div>
                     <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>completed</div>
                   </div>
@@ -1939,15 +2301,15 @@ function Dashboard({ theme, onToggleTheme }) {
 
               {/* ── Unified task list: built-ins + custom defaults (ordered) ── */}
               <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
-                {effectiveToday.map(h => {
+                {effectiveView.map(h => {
                   if (h.isBuiltIn) {
-                    const done = habits[h.id][today.week][today.day]
+                    const done = habits[h.id][viewWeek]?.[viewDayIdx]
                     const cs   = CAT[h.cat]
-                    const ckey = `${h.id}-${today.week}-${today.day}`
+                    const ckey = `${h.id}-${viewWeek}-${viewDayIdx}`
                     const cnt  = counters[ckey]||0
                     return (
                       <div key={h.id} className={`habit-row${done?' done':''}`}>
-                        <button className="chk" onClick={()=>toggleHabit(h.id,today.week,today.day)}
+                        <button className="chk" onClick={()=>toggleHabit(h.id,viewWeek,viewDayIdx)}
                           style={done?{background:cs.light,borderColor:cs.color}:{}}>
                           {done && (
                             <svg width="11" height="8" viewBox="0 0 11 8" fill="none">
@@ -1976,7 +2338,7 @@ function Dashboard({ theme, onToggleTheme }) {
                                 const v = Math.max(1, parseInt(e.target.value)||1)
                                 setCounters(prev=>({...prev,[ckey]:v}))
                               }}
-                              onBlur={e => setCounterValue(h.id, today.week, today.day, e.target.value)}
+                              onBlur={e => setCounterValue(h.id, viewWeek, viewDayIdx, e.target.value)}
                               style={{
                                 width:48, textAlign:'center', background:'var(--bg2)',
                                 border:`1px solid ${cs.color}55`, borderRadius:6,
@@ -2000,11 +2362,11 @@ function Dashboard({ theme, onToggleTheme }) {
                     )
                   } else {
                     // Custom default task (in unified order)
-                    const ckey = `${h.id}-${today.week}-${today.day}`
+                    const ckey = `${h.id}-${viewWeek}-${viewDayIdx}`
                     const done = !!customDone[ckey]
                     return (
                       <div key={h.id} className={`habit-row${done?' done':''}`}>
-                        <button className="chk" onClick={()=>toggleCustomTask(h.id,today.week,today.day)}
+                        <button className="chk" onClick={()=>toggleCustomTask(h.id,viewWeek,viewDayIdx)}
                           style={done?{background:'rgba(6,182,212,.12)',borderColor:'#06b6d4'}:{}}>
                           {done && (
                             <svg width="11" height="8" viewBox="0 0 11 8" fill="none">
@@ -2035,19 +2397,19 @@ function Dashboard({ theme, onToggleTheme }) {
 
               {/* ── Day-specific tasks (today only) ─────────── */}
               {(()=>{
-                const dayTasks = customTasks.filter(t => !t.isDefault && t.specificDate === todayDate)
+                const dayTasks = customTasks.filter(t => !t.isDefault && t.specificDate === viewDateStr)
                 return (
                   <>
                     {dayTasks.length > 0 && (
                       <div style={{ borderTop:'1px solid var(--b1)', marginTop:14, paddingTop:12,
                         display:'flex', flexDirection:'column', gap:2 }}>
-                        <div className="label" style={{ marginBottom:6, fontSize:11 }}>Today Only</div>
+                        <div className="label" style={{ marginBottom:6, fontSize:11 }}>{isViewingToday ? 'Today Only' : `${FULL_DAYS[viewDayIdx]} Only`}</div>
                         {dayTasks.map(t => {
-                          const ckey = `${t.id}-${today.week}-${today.day}`
+                          const ckey = `${t.id}-${viewWeek}-${viewDayIdx}`
                           const done = !!customDone[ckey]
                           return (
                             <div key={t.id} className={`habit-row${done?' done':''}`}>
-                              <button className="chk" onClick={()=>toggleCustomTask(t.id,today.week,today.day)}
+                              <button className="chk" onClick={()=>toggleCustomTask(t.id,viewWeek,viewDayIdx)}
                                 style={done?{background:'rgba(6,182,212,.12)',borderColor:'#06b6d4'}:{}}>
                                 {done && (
                                   <svg width="11" height="8" viewBox="0 0 11 8" fill="none">
@@ -2073,15 +2435,15 @@ function Dashboard({ theme, onToggleTheme }) {
                     )}
                     <button className="btn-outline" onClick={()=>setAddTaskModal(true)}
                       style={{ marginTop:12, fontSize:12, width:'100%', justifyContent:'center' }}>
-                      + Add task for today
+                      + Add task for {isViewingToday ? 'today' : FULL_DAYS[viewDayIdx]}
                     </button>
 
                     {/* Skipped habits & tasks — restore inline */}
-                    {(skippedBuiltInToday.length > 0 || skippedTodayTasks.length > 0) && (
+                    {(skippedBuiltInView.length > 0 || skippedTodayTasks.length > 0) && (
                       <div style={{ marginTop:16, paddingTop:14, borderTop:'1px dashed var(--b2)' }}>
                         <div style={{ fontSize:10, color:'var(--dim)', fontWeight:700, letterSpacing:1,
-                          marginBottom:8, textTransform:'uppercase' }}>Skipped Today</div>
-                        {skippedBuiltInToday.map(h => (
+                          marginBottom:8, textTransform:'uppercase' }}>{isViewingToday ? 'Skipped Today' : `Skipped ${FULL_DAYS[viewDayIdx]}`}</div>
+                        {skippedBuiltInView.map(h => (
                           <div key={h.id} style={{ display:'flex', alignItems:'center', gap:8,
                             padding:'8px 4px', borderBottom:'1px solid var(--b1)', opacity:.55 }}>
                             <span style={{ fontSize:15, flexShrink:0 }}>{h.icon}</span>
@@ -2125,7 +2487,7 @@ function Dashboard({ theme, onToggleTheme }) {
                   {todayPct===100?'Perfect day! 🎉':todayPct>=80?'Almost there!':todayPct>=50?'Good progress':'Keep going'}
                 </div>
                 <div style={{ fontSize:12, color:'var(--muted)', marginTop:4 }}>
-                  {todayBuiltInActive.length-todayChecks === 0 ? 'All habits done' : `${todayBuiltInActive.length-todayChecks} habit${todayBuiltInActive.length-todayChecks!==1?'s':''} remaining`}
+                  {viewBuiltInActive.length-todayChecks === 0 ? 'All habits done' : `${viewBuiltInActive.length-todayChecks} habit${viewBuiltInActive.length-todayChecks!==1?'s':''} remaining`}
                 </div>
                 {streak > 0 && (
                   <div style={{ marginTop:14, padding:'8px 14px', background:'rgba(251,146,60,.08)', border:'1px solid rgba(251,146,60,.2)', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
@@ -2137,13 +2499,13 @@ function Dashboard({ theme, onToggleTheme }) {
                 )
               })()}
 
-              {HABITS.filter(h=>h.counter&&habits[h.id][today.week][today.day]).length>0 && (
+              {HABITS.filter(h=>h.counter&&habits[h.id][viewWeek]?.[viewDayIdx]).length>0 && (
                 <div className="card" style={{ padding:16 }}>
-                  <div className="label" style={{ marginBottom:10 }}>Today's Counts</div>
+                  <div className="label" style={{ marginBottom:10 }}>{isViewingToday ? "Today's Counts" : `${FULL_DAYS[viewDayIdx]}'s Counts`}</div>
                   {HABITS.filter(h=>h.counter).map(h=>{
-                    const ckey = `${h.id}-${today.week}-${today.day}`
+                    const ckey = `${h.id}-${viewWeek}-${viewDayIdx}`
                     const cnt  = counters[ckey]||0
-                    if (!habits[h.id][today.week][today.day]) return null
+                    if (!habits[h.id][viewWeek]?.[viewDayIdx]) return null
                     const cs = CAT[h.cat]
                     return (
                       <div key={h.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
@@ -2223,108 +2585,9 @@ function Dashboard({ theme, onToggleTheme }) {
           </>
         )}
 
-        {/* ══ MONTHLY GRID ════════════════════════════════════ */}
-        {tab==='monthly' && (
-          <div style={{ animation:'fadeUp .3s ease' }}>
-            <div className="card" style={{ padding:20, marginBottom:16 }}>
-              <div className="label" style={{ marginBottom:16 }}>Weekly Completion</div>
-              <div style={{ display:'flex', gap:28, flexWrap:'wrap', justifyContent:'space-around', alignItems:'center' }}>
-                {Array(WEEKS).fill(null).map((_,wi)=>{
-                  const wTotal=HABITS.reduce((a,h)=>a+habits[h.id][wi].filter(Boolean).length,0)
-                  return <Ring key={wi} pct={Math.round(wTotal/(HABITS.length*7)*100)} size={88}
-                    color={weekColors[wi]} label={`Week ${wi+1}`} sub={`${wTotal}/${HABITS.length*7}`}/>
-                })}
-                <div style={{ width:1, height:70, background:'var(--b1)' }}/>
-                <Ring pct={monthPct} size={108} color="var(--gold)" label="Monthly" sub={`${totalHabitChecks}/${totalPossible}`}/>
-              </div>
-            </div>
-
-            <div className="card" style={{ overflowX:'auto' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse', minWidth:780 }}>
-                <thead>
-                  <tr style={{ borderBottom:'1px solid var(--b1)' }}>
-                    <th style={{ padding:'12px 16px', textAlign:'left', minWidth:200 }}>
-                      <span className="label">Habit</span>
-                    </th>
-                    {Array(WEEKS).fill(null).map((_,wi)=>(
-                      <th key={wi} colSpan={7} style={{ padding:'10px 4px', textAlign:'center',
-                        borderLeft:'1px solid var(--b1)' }}>
-                        <span style={{ fontSize:10, fontWeight:700, color:weekColors[wi], letterSpacing:.8 }}>WK {wi+1}</span>
-                      </th>
-                    ))}
-                    <th style={{ padding:'10px 14px', borderLeft:'1px solid var(--b1)' }}><span className="label">XP</span></th>
-                    <th style={{ padding:'10px 14px' }}><span className="label">%</span></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {HABITS.map((h,hi)=>{
-                    const done = habits[h.id].flat().filter(Boolean).length
-                    const pct  = Math.round(done/(WEEKS*7)*100)
-                    const cs   = CAT[h.cat]
-                    const habitTotal = h.counter ? Object.entries(counters).filter(([k])=>k.startsWith(h.id)).reduce((a,[,v])=>a+v,0) : 0
-                    const xpEarned   = done*h.xp + (habitTotal>0?habitTotal*(h.xpEach||0):0)
-                    return (
-                      <tr key={h.id} style={{ borderBottom:'1px solid var(--b1)', background:hi%2===0?'transparent':'var(--bg)' }}>
-                        <td style={{ padding:'7px 16px' }}>
-                          <div style={{ display:'flex', alignItems:'center', gap:7, flexWrap:'wrap' }}>
-                            <span style={{ fontSize:14 }}>{h.icon}</span>
-                            <span style={{ fontSize:12, fontWeight:500, color:'var(--text)' }}>{h.label}</span>
-                            <span style={{ fontSize:9, padding:'1px 5px', borderRadius:3, background:cs.light, color:cs.color, border:`1px solid ${cs.border}` }}>{h.cat}</span>
-                            {habitTotal>0 && <span style={{ fontSize:9, padding:'1px 5px', borderRadius:3, background:cs.light, color:cs.color, fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>×{habitTotal}</span>}
-                          </div>
-                        </td>
-                        {Array(WEEKS).fill(null).map((_,wi)=>Array(7).fill(null).map((__,di)=>{
-                          const checked = habits[h.id][wi][di]
-                          const isToday = wi===today.week && di===today.day
-                          const ckey    = `${h.id}-${wi}-${di}`
-                          return (
-                            <td key={`${wi}-${di}`} style={{ textAlign:'center', padding:'5px 2px', borderLeft:di===0?'1px solid var(--b1)':'none' }}>
-                              <button onClick={()=>toggleHabit(h.id,wi,di)} style={{
-                                width:20, height:20, borderRadius:5,
-                                border:`1.5px solid ${checked?cs.color:isToday?'var(--gold)':'var(--b2)'}`,
-                                background:checked?cs.light:'transparent', cursor:'pointer',
-                                display:'flex', alignItems:'center', justifyContent:'center',
-                                animation:animCell===ckey?'pop .25s ease':'none', transition:'all .15s',
-                              }}>
-                                {checked && <span style={{ fontSize:8, color:cs.color, fontWeight:700 }}>✓</span>}
-                                {isToday && !checked && <span style={{ width:4, height:4, borderRadius:'50%', background:'var(--gold)', display:'block' }}/>}
-                              </button>
-                              {h.counter && checked && (
-                                <div style={{ display:'flex', alignItems:'center', gap:1, marginTop:2, justifyContent:'center' }}>
-                                  <span style={{ fontSize:8, color:cs.color, fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>{counters[ckey]||1}</span>
-                                  <button onClick={()=>incrementCounter(h.id,wi,di)} style={{
-                                    width:11, height:11, borderRadius:3, border:`1px solid ${cs.color}`, background:'transparent',
-                                    cursor:'pointer', fontSize:9, lineHeight:1, color:cs.color, fontWeight:700,
-                                    display:'flex', alignItems:'center', justifyContent:'center',
-                                  }}>+</button>
-                                </div>
-                              )}
-                            </td>
-                          )
-                        }))}
-                        <td style={{ padding:'0 14px', textAlign:'right', borderLeft:'1px solid var(--b1)', whiteSpace:'nowrap' }}>
-                          <span className="mono" style={{ fontSize:11, color:cs.color, fontWeight:700 }}>+{xpEarned.toLocaleString()}</span>
-                        </td>
-                        <td style={{ padding:'0 14px', minWidth:80 }}>
-                          <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-                            <div style={{ flex:1, height:4, background:'var(--b1)', borderRadius:2, overflow:'hidden' }}>
-                              <div style={{ height:'100%', background:cs.color, borderRadius:2, width:`${pct}%`, transition:'width .4s' }}/>
-                            </div>
-                            <span style={{ fontSize:10, color:'var(--dim)', width:28, fontFamily:"'JetBrains Mono',monospace" }}>{pct}%</span>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
         {/* ══ WEEKLY ══════════════════════════════════════════ */}
         {tab==='weekly' && (
-          <div style={{ animation:'fadeUp .3s ease' }}>
+          <div>
             <div style={{ marginBottom:16, fontSize:13, color:'var(--muted)' }}>
               Week {today.week+1} — ✓ toggle · × remove from day · ↩ restore · + add · 🖨️ print
             </div>
@@ -2350,26 +2613,8 @@ function Dashboard({ theme, onToggleTheme }) {
                 const totalActive  = activeBuiltIn.length + activeDefaults.length + activeDayTasks.length
                 const pct          = Math.round(totalDone / Math.max(totalActive, 1) * 100)
                 const isToday      = di===today.day
-                const dc           = weekColors[di%4]
+                const dc           = WEEK_COLORS[di%4]
                 const isFormOpen   = plannerTaskForm?.wi===wi && plannerTaskForm?.di===di
-
-                // Shared row style helpers
-                const rowStyle = (checked, cs) => ({
-                  display:'flex', alignItems:'center', gap:6, flex:1, textAlign:'left',
-                  background:checked?cs.light:'transparent', border:`1px solid ${checked?cs.border:'transparent'}`,
-                  borderRadius:7, padding:'5px 7px', cursor:'pointer', transition:'all .15s',
-                })
-                const checkBox = (checked, color) => (
-                  <div style={{ width:11, height:11, borderRadius:3, flexShrink:0,
-                    border:`1.5px solid ${checked?color:'var(--b3)'}`,
-                    background:checked?color:'transparent' }}/>
-                )
-                const removeBtn = (onClick) => (
-                  <button onClick={onClick} title="Remove from this day" style={{
-                    background:'none', border:'none', cursor:'pointer', fontSize:14,
-                    color:'var(--muted)', padding:'2px 5px', lineHeight:1, borderRadius:4, flexShrink:0,
-                  }}>×</button>
-                )
 
                 return (
                   <div key={di} className="card" style={{
@@ -2396,13 +2641,13 @@ function Dashboard({ theme, onToggleTheme }) {
                         const cs = CAT[h.cat]
                         return (
                           <div key={h.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
-                            <button onClick={()=>toggleHabit(h.id,wi,di)} style={rowStyle(checked,cs)}>
-                              {checkBox(checked, cs.color)}
+                            <button onClick={()=>toggleHabit(h.id,wi,di)} style={weekRowStyle(checked,cs)}>
+                              {weekCheckBox(checked, cs.color)}
                               <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
                                 textDecoration:checked?'line-through':'none' }}>{h.icon} {h.label}</span>
                               <span className="mono" style={{ fontSize:9, color:cs.color }}>+{h.xp}</span>
                             </button>
-                            {removeBtn(()=>dateStr && skipHabitForDate(h.id, dateStr))}
+                            {weekRemoveBtn(()=>dateStr && skipHabitForDate(h.id, dateStr))}
                           </div>
                         )
                       })}
@@ -2416,12 +2661,12 @@ function Dashboard({ theme, onToggleTheme }) {
                           const cs = { light:'rgba(6,182,212,.1)', color:'#06b6d4', border:'rgba(6,182,212,.3)' }
                           return (
                             <div key={t.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
-                              <button onClick={()=>toggleCustomTask(t.id,wi,di)} style={rowStyle(checked,cs)}>
-                                {checkBox(checked,'#06b6d4')}
+                              <button onClick={()=>toggleCustomTask(t.id,wi,di)} style={weekRowStyle(checked,cs)}>
+                                {weekCheckBox(checked,'#06b6d4')}
                                 <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
                                   textDecoration:checked?'line-through':'none' }}>{t.icon} {t.label}</span>
                               </button>
-                              {removeBtn(()=>dateStr && skipHabitForDate(t.id, dateStr))}
+                              {weekRemoveBtn(()=>dateStr && skipHabitForDate(t.id, dateStr))}
                             </div>
                           )
                         })}
@@ -2436,12 +2681,12 @@ function Dashboard({ theme, onToggleTheme }) {
                           const cs = { light:'rgba(139,92,246,.1)', color:'#8b5cf6', border:'rgba(139,92,246,.3)' }
                           return (
                             <div key={t.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
-                              <button onClick={()=>toggleCustomTask(t.id,wi,di)} style={rowStyle(checked,cs)}>
-                                {checkBox(checked,'#8b5cf6')}
+                              <button onClick={()=>toggleCustomTask(t.id,wi,di)} style={weekRowStyle(checked,cs)}>
+                                {weekCheckBox(checked,'#8b5cf6')}
                                 <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
                                   textDecoration:checked?'line-through':'none' }}>{t.icon} {t.label}</span>
                               </button>
-                              {removeBtn(()=>deleteDayTask(t))}
+                              {weekRemoveBtn(()=>deleteDayTask(t))}
                             </div>
                           )
                         })}
@@ -2532,141 +2777,6 @@ function Dashboard({ theme, onToggleTheme }) {
           </div>
         )}
 
-        {/* ══ TRENDS ══════════════════════════════════════════ */}
-        {tab==='trends' && (() => {
-          // ── Week-by-week completion ──
-          const weekBars = Array.from({length:WEEKS},(_,wi)=>{
-            const checks = builtInEffective.reduce((a,h)=>a+habits[h.id][wi].filter(Boolean).length,0)
-            const total  = Math.max(builtInEffective.length*7,1)
-            return { pct:Math.round(checks/total*100), checks, wi }
-          })
-          // ── Category breakdown ──
-          const cats = {}
-          builtInEffective.forEach(h=>{
-            if(!cats[h.cat]) cats[h.cat]={ label:h.cat, color:CAT[h.cat]?.color||'#888', done:0, total:0 }
-            cats[h.cat].done  += habits[h.id].flat().filter(Boolean).length
-            cats[h.cat].total += WEEKS*7
-          })
-          const catArr = Object.values(cats).sort((a,b)=>b.done-a.done)
-          // ── Pipeline funnel ──
-          const funnel = [
-            { label:'Appts Booked', val:totalAppts, color:'#0ea5e9' },
-            { label:'Showings',     val:totalShowings, color:'#10b981' },
-            { label:'Offers Made',  val:offersMade.length, color:'#f59e0b' },
-            { label:'Closed',       val:closedDeals.length, color:'#8b5cf6' },
-          ]
-          const maxFunnel = Math.max(...funnel.map(f=>f.val),1)
-          // ── XP breakdown ──
-          const totalMonthHabitXp = builtInEffective.reduce((acc,h)=>{
-            return acc + habits[h.id].flat().reduce((a,done,i)=>{
-              if(!done) return a
-              const wi=Math.floor(i/7), di=i%7
-              const ckey=`${h.id}-${wi}-${di}`
-              const cnt=counters[ckey]||0
-              return a + h.xp + (cnt>0?Math.max(0,cnt-1)*(h.xpEach||0):0)
-            },0)
-          },0)
-          const estimatedPipeXp =
-            offersMade.length     * PIPELINE_XP.offer_made    +
-            offersReceived.length * PIPELINE_XP.offer_received +
-            wentPendingCount      * PIPELINE_XP.went_pending  +
-            closedDeals.length    * PIPELINE_XP.closed
-          const totalXpShown = Math.max(totalMonthHabitXp + estimatedPipeXp, 1)
-          return (
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:18, animation:'fadeUp .3s ease', paddingBottom:8 }}>
-
-              {/* Week-by-week */}
-              <div className="card" style={{ padding:22 }}>
-                <div style={{ fontWeight:700, fontSize:13, color:'var(--text)', marginBottom:16 }}>📅 Week-by-Week Completion</div>
-                <div style={{ display:'flex', gap:14, alignItems:'flex-end', height:120 }}>
-                  {weekBars.map(({pct,checks,wi})=>(
-                    <div key={wi} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
-                      <div style={{ fontSize:11, fontWeight:700, color:pct>=70?'#10b981':pct>=40?'#f59e0b':'#dc2626' }}>{pct}%</div>
-                      <div style={{ width:'100%', background:'var(--b1)', borderRadius:6, overflow:'hidden', height:80,
-                        display:'flex', flexDirection:'column', justifyContent:'flex-end' }}>
-                        <div style={{ width:'100%', height:`${Math.max(pct,2)}%`, background:pct>=70?'#10b981':pct>=40?'#f59e0b':'#dc2626',
-                          borderRadius:6, transition:'height .5s' }}/>
-                      </div>
-                      <div style={{ fontSize:10, color:'var(--muted)' }}>Wk {wi+1}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Category breakdown */}
-              <div className="card" style={{ padding:22 }}>
-                <div style={{ fontWeight:700, fontSize:13, color:'var(--text)', marginBottom:16 }}>🏷 Habit Category Breakdown</div>
-                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                  {catArr.map(c=>(
-                    <div key={c.label}>
-                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:4 }}>
-                        <span style={{ color:c.color, fontWeight:600, textTransform:'capitalize' }}>{c.label}</span>
-                        <span style={{ color:'var(--muted)' }}>{c.done} / {c.total}</span>
-                      </div>
-                      <div style={{ height:8, background:'var(--b1)', borderRadius:99, overflow:'hidden' }}>
-                        <div style={{ height:'100%', width:`${Math.round(c.done/Math.max(c.total,1)*100)}%`,
-                          background:c.color, borderRadius:99, transition:'width .6s' }}/>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Pipeline funnel */}
-              <div className="card" style={{ padding:22 }}>
-                <div style={{ fontWeight:700, fontSize:13, color:'var(--text)', marginBottom:16 }}>🔽 Pipeline This Month</div>
-                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                  {funnel.map(f=>(
-                    <div key={f.label}>
-                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:4 }}>
-                        <span style={{ color:f.color, fontWeight:600 }}>{f.label}</span>
-                        <span style={{ fontWeight:700, color:'var(--text)' }}>{f.val}</span>
-                      </div>
-                      <div style={{ height:10, background:'var(--b1)', borderRadius:99, overflow:'hidden' }}>
-                        <div style={{ height:'100%', width:`${Math.max(Math.round(f.val/maxFunnel*100),f.val>0?4:0)}%`,
-                          background:f.color, borderRadius:99, transition:'width .6s' }}/>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* XP breakdown */}
-              <div className="card" style={{ padding:22 }}>
-                <div style={{ fontWeight:700, fontSize:13, color:'var(--text)', marginBottom:16 }}>⚡ XP Sources</div>
-                <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:18 }}>
-                  <div style={{ fontSize:32, fontWeight:800, color:'var(--gold)', fontFamily:"'Fraunces',serif" }}>
-                    {xp.toLocaleString()}
-                  </div>
-                  <div style={{ fontSize:11, color:'var(--muted)' }}>lifetime XP total</div>
-                </div>
-                {[
-                  { label:'Habits (this month)',   val:totalMonthHabitXp, color:'#0ea5e9' },
-                  { label:'Pipeline (this month)', val:estimatedPipeXp,   color:'#10b981' },
-                ].map(s=>(
-                  <div key={s.label} style={{ marginBottom:10 }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:4 }}>
-                      <span style={{ color:s.color, fontWeight:600 }}>{s.label}</span>
-                      <span style={{ color:'var(--text)' }}>+{s.val} XP</span>
-                    </div>
-                    <div style={{ height:8, background:'var(--b1)', borderRadius:99, overflow:'hidden' }}>
-                      <div style={{ height:'100%', width:`${Math.max(Math.round(s.val/totalXpShown*100),s.val>0?3:0)}%`,
-                        background:s.color, borderRadius:99, transition:'width .6s' }}/>
-                    </div>
-                  </div>
-                ))}
-                <div style={{ marginTop:16, padding:'10px 14px', background:'rgba(255,255,255,.03)',
-                  border:'1px solid var(--b1)', borderRadius:10, fontSize:12 }}>
-                  <div style={{ color:'var(--muted)', marginBottom:2 }}>Current Rank</div>
-                  <div style={{ fontWeight:700, color:rank.color, fontFamily:"'Fraunces',serif", fontSize:18 }}>
-                    {rank.icon} {rank.name}
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          )
-        })()}
 
         {/* ══ LISTINGS ════════════════════════════════════════ */}
         <div style={{ marginTop:36 }}>
@@ -2698,11 +2808,12 @@ function Dashboard({ theme, onToggleTheme }) {
           <div className="card" style={{ padding:20 }}>
             <div className="resp-table"><div className="resp-table-inner" style={{ minWidth:680 }}>
             {/* Column headers */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 115px 280px 30px', gap:8, padding:'3px 13px', marginBottom:6, border:'1px solid transparent' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 150px 90px 1fr 30px', gap:8, padding:'3px 13px', marginBottom:6, border:'1px solid transparent' }}>
               <span className="label">Address</span>
               <span className="label">List Price</span>
               <span className="label">Commission</span>
-              <span className="label">Status &amp; Actions</span>
+              <span className="label">Status</span>
+              <span className="label">Actions</span>
               <span/>
             </div>
 
@@ -2714,11 +2825,12 @@ function Dashboard({ theme, onToggleTheme }) {
 
             <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:12 }}>
               {listings.map(l => (
-                <div key={l.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 105px 115px auto' }}>
+                <div key={l.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 105px 150px 90px 1fr 30px' }}>
                   {/* Address + optional cross-month badge */}
                   <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
                     <input className="pipe-input" value={l.address||''}
-                      onChange={e=>updateListing(l.id,'address',e.target.value)} placeholder="Address…"
+                      onChange={e=>updateListingLocal(l.id,'address',e.target.value)}
+                      onBlur={e=>updateListing(l.id,'address',e.target.value)} placeholder="Address…"
                       style={{ flex:1, minWidth:0 }}/>
                     {l.monthYear && l.monthYear !== MONTH_YEAR && (
                       <span title={`Listed in ${fmtMonth(l.monthYear)}`} style={{
@@ -2734,24 +2846,54 @@ function Dashboard({ theme, onToggleTheme }) {
 
                   {/* List Price */}
                   <input className="pipe-input" value={l.price||''}
-                    onChange={e=>updateListing(l.id,'price',e.target.value)}
+                    onChange={e=>updateListingLocal(l.id,'price',e.target.value)}
                     onBlur={e=>updateListing(l.id,'price',e.target.value)}
                     placeholder="$0"
                     style={{ color:'var(--gold2)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
 
-                  {/* Commission */}
-                  <input className="pipe-input" value={l.commission||''}
-                    onChange={e=>updateListing(l.id,'commission',e.target.value)}
-                    onBlur={e=>updateListing(l.id,'commission',e.target.value)}
-                    placeholder="comm."
-                    style={{ color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
+                  {/* Commission — % by default, "Flat fee" to switch */}
+                  {(() => {
+                    const isP = String(l.commission||'').trim().endsWith('%')
+                    return (
+                      <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
+                        <div style={{ position:'relative' }}>
+                          <input className="pipe-input"
+                            value={isP ? String(l.commission||'').replace(/%$/,'') : (l.commission||'')}
+                            onChange={e => {
+                              updateListingLocal(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)
+                            }}
+                            onBlur={e => {
+                              updateListing(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)
+                            }}
+                            placeholder={isP ? '3' : '$0'}
+                            style={{ color: isP ? 'var(--muted)' : 'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
+                          {isP && <span style={{ position:'absolute', right:4, top:'50%', transform:'translateY(-50%)', fontSize:11, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", pointerEvents:'none' }}>%</span>}
+                        </div>
+                        <div style={{ display:'flex', alignItems:'center', gap:4, minHeight:16 }}>
+                          {isP && l.price && resolveCommission(l.commission, l.price) > 0 && (
+                            <span style={{ fontSize:13, color:'var(--green)', fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>
+                              = {fmtMoney(resolveCommission(l.commission, l.price))}
+                            </span>
+                          )}
+                          <button onClick={()=>toggleListingCommType(l.id)} style={{
+                            background:'none', border:'none', cursor:'pointer', padding:0, marginLeft:'auto',
+                            fontSize:9, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace",
+                            textDecoration:'underline', textUnderlineOffset:2,
+                          }}>{isP ? 'Flat fee' : 'Use %'}</button>
+                        </div>
+                      </div>
+                    )
+                  })()}
 
-                  {/* Status + action buttons + delete in one row */}
-                  <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'nowrap' }}>
+                  {/* Status */}
+                  <div style={{ display:'flex', alignItems:'center' }}>
                     <span className={`status-pill sp-${l.status||'active'}`}>
-                      {l.status==='pending' ? '⏳ Pending' : l.status==='closed' ? '✓ Closed' : '● Active'}
+                      {l.status==='pending' ? '⏳ PEN' : l.status==='closed' ? '✓ CLO' : '● ACT'}
                     </span>
-                    {l.status !== 'closed' && (
+                  </div>
+                  {/* Actions */}
+                  <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'nowrap' }}>
+                    {l.status !== 'closed' ? (
                       <>
                         <button className="act-btn act-btn-blue" onClick={()=>handleListingOfferReceived(l)}
                           title="Log an offer received on this listing">
@@ -2766,15 +2908,18 @@ function Dashboard({ theme, onToggleTheme }) {
                           ✓ Closed
                         </button>
                       </>
+                    ) : (
+                      <span style={{ fontSize:10, color:'var(--dim)', fontStyle:'italic' }}>—</span>
                     )}
-                    <button className="btn-del" style={{ marginLeft:4, flexShrink:0 }} onClick={()=>removeListing(l)}>✕</button>
                   </div>
+                  {/* Delete button — own grid column */}
+                  <button className="btn-del" style={{ flexShrink:0 }} onClick={()=>removeListing(l)}>✕</button>
                 </div>
               ))}
             </div>
 
             {/* Add new listing */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 115px auto', gap:8,
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 150px 90px 1fr 30px', gap:8,
               borderTop:'1px solid var(--b1)', paddingTop:12, alignItems:'center' }}>
               <input className="field-input" value={newAddr} onChange={e=>setNewAddr(e.target.value)}
                 onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="New listing address…"
@@ -2783,10 +2928,10 @@ function Dashboard({ theme, onToggleTheme }) {
                 onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="$0"
                 style={{ padding:'8px 10px', color:'var(--gold2)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
               <input className="field-input" value={newComm} onChange={e=>setNewComm(e.target.value)}
-                onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="Commission"
+                onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="3 (%)"
                 style={{ padding:'8px 10px', color:'var(--green)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
               <button onClick={addListing} style={{
-                gridColumn:'span 2',
+                gridColumn:'span 3',
                 background:'var(--purple)', border:'none', color:'#fff', borderRadius:9,
                 padding:'9px 14px', fontSize:13, fontWeight:700, cursor:'pointer', lineHeight:1,
                 display:'flex', alignItems:'center', justifyContent:'center', gap:5,
@@ -2827,9 +2972,10 @@ function Dashboard({ theme, onToggleTheme }) {
           <div className="card" style={{ padding:20 }}>
             <div className="resp-table"><div className="resp-table-inner" style={{ minWidth:450 }}>
             {/* Column headers */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 240px 30px', gap:8, padding:'3px 13px', marginBottom:6, border:'1px solid transparent' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 80px 1fr 30px', gap:8, padding:'3px 13px', marginBottom:6, border:'1px solid transparent' }}>
               <span className="label">Client Name</span>
-              <span className="label">Status &amp; Actions</span>
+              <span className="label">Status</span>
+              <span className="label">Actions</span>
               <span/>
             </div>
 
@@ -2840,45 +2986,180 @@ function Dashboard({ theme, onToggleTheme }) {
             )}
 
             <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:12 }}>
-              {buyerReps.map(rep => (
-                <div key={rep.id} className="pipe-row" style={{ gridTemplateColumns:'1fr auto' }}>
-                  {/* Client name + optional month badge */}
-                  <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
-                    <input className="pipe-input" value={rep.clientName||''}
-                      onChange={e => updateBuyerRepClient(rep.id, e.target.value)}
-                      placeholder="Client name…" style={{ flex:1, minWidth:0 }}/>
-                    {rep.monthYear && rep.monthYear !== MONTH_YEAR && (
-                      <span title={`Added in ${fmtMonth(rep.monthYear)}`} style={{
-                        flexShrink:0, fontSize:9, padding:'2px 6px', borderRadius:4,
-                        background:'var(--bg2)', color:'var(--dim)',
-                        fontFamily:"'JetBrains Mono',monospace", fontWeight:600, letterSpacing:.3,
-                        border:'1px solid var(--b2)', whiteSpace:'nowrap',
-                      }}>
-                        {fmtMonth(rep.monthYear)}
+              {buyerReps.map(rep => {
+                const bd = rep.buyerDetails || {}
+                const isExpanded = expandedRep === rep.id
+                return (
+                <div key={rep.id}>
+                  <div className="pipe-row" style={{ gridTemplateColumns:'1fr 80px 1fr 30px' }}>
+                    {/* Client name + expand toggle + optional month badge */}
+                    <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
+                      <button onClick={() => setExpandedRep(isExpanded ? null : rep.id)} style={{
+                        background:'none', border:'none', cursor:'pointer', padding:'2px 4px', fontSize:12,
+                        color:'var(--dim)', transition:'transform .2s', transform: isExpanded ? 'rotate(90deg)' : 'none',
+                        flexShrink:0, lineHeight:1
+                      }} title="Toggle details">&#9654;</button>
+                      <input className="pipe-input" value={rep.clientName||''}
+                        onChange={e => updateBuyerRepLocal(rep.id, e.target.value)}
+                        onBlur={e => persistBuyerRep(rep.id, e.target.value)}
+                        placeholder="Client name…" style={{ flex:1, minWidth:0 }}/>
+                      {rep.monthYear && rep.monthYear !== MONTH_YEAR && (
+                        <span title={`Added in ${fmtMonth(rep.monthYear)}`} style={{
+                          flexShrink:0, fontSize:9, padding:'2px 6px', borderRadius:4,
+                          background:'var(--bg2)', color:'var(--dim)',
+                          fontFamily:"'JetBrains Mono',monospace", fontWeight:600, letterSpacing:.3,
+                          border:'1px solid var(--b2)', whiteSpace:'nowrap',
+                        }}>
+                          {fmtMonth(rep.monthYear)}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Status */}
+                    <div style={{ display:'flex', alignItems:'center' }}>
+                      <span className={`status-pill sp-${rep.status||'active'}`}>
+                        {rep.status === 'closed' ? '✓ CLO' : '● ACT'}
                       </span>
-                    )}
+                    </div>
+                    {/* Actions */}
+                    <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'nowrap' }}>
+                      {rep.status !== 'closed' ? (
+                        <>
+                          <button className="act-btn act-btn-blue"
+                            onClick={() => setOfferModal({ repId:rep.id, repName:rep.clientName||'Buyer' })}>
+                            📤 Offer Made
+                          </button>
+                          <button className="act-btn act-btn-amber" onClick={() => closeBuyerRep(rep)}>
+                            ✓ Close Rep
+                          </button>
+                        </>
+                      ) : (
+                        <span style={{ fontSize:10, color:'var(--dim)', fontStyle:'italic' }}>—</span>
+                      )}
+                    </div>
+                    {/* Delete */}
+                    <button className="btn-del" style={{ flexShrink:0 }} onClick={() => removeBuyerRep(rep)}>✕</button>
                   </div>
 
-                  {/* Status + actions + delete in one row */}
-                  <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'nowrap' }}>
-                    <span className={`status-pill sp-${rep.status||'active'}`}>
-                      {rep.status === 'closed' ? '✓ Closed' : '● Active'}
-                    </span>
-                    {rep.status !== 'closed' && (
-                      <>
-                        <button className="act-btn act-btn-blue"
-                          onClick={() => setOfferModal({ repId:rep.id, repName:rep.clientName||'Buyer' })}>
-                          📤 Offer Made
+                  {/* ── Expandable Buyer Details Panel ── */}
+                  {isExpanded && (
+                    <div style={{ padding:'14px 16px 16px', background:'var(--bg2)', borderRadius:8,
+                      margin:'4px 0 8px', animation:'slideDown .2s ease', border:'1px solid var(--b1)' }}>
+
+                      {/* Financial */}
+                      <div style={{ marginBottom:14 }}>
+                        <div className="label" style={{ marginBottom:6, fontSize:10, letterSpacing:'.08em', textTransform:'uppercase', color:'var(--blue)', fontWeight:700 }}>
+                          Financial
+                        </div>
+                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:8 }}>
+                          <div>
+                            <div className="label" style={{ marginBottom:2 }}>Pre-Approval Amount</div>
+                            <input className="field-input" value={bd.preApproval||''} placeholder="$450,000"
+                              onChange={e => updateBuyerRepDetail(rep.id, 'preApproval', e.target.value)}
+                              style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}/>
+                          </div>
+                          <div>
+                            <div className="label" style={{ marginBottom:2 }}>Payment Range</div>
+                            <input className="field-input" value={bd.paymentRange||''} placeholder="$2,800/mo"
+                              onChange={e => updateBuyerRepDetail(rep.id, 'paymentRange', e.target.value)}
+                              style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}/>
+                          </div>
+                          <div>
+                            <div className="label" style={{ marginBottom:2 }}>Down Payment</div>
+                            <input className="field-input" value={bd.downPayment||''} placeholder="$90,000"
+                              onChange={e => updateBuyerRepDetail(rep.id, 'downPayment', e.target.value)}
+                              style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}/>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Agreement Dates */}
+                      <div style={{ marginBottom:14 }}>
+                        <div className="label" style={{ marginBottom:6, fontSize:10, letterSpacing:'.08em', textTransform:'uppercase', color:'var(--gold2)', fontWeight:700 }}>
+                          Agreement
+                        </div>
+                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:8 }}>
+                          <div>
+                            <div className="label" style={{ marginBottom:2 }}>Date Signed</div>
+                            <input className="field-input" type="date" value={bd.dateSigned||''}
+                              onChange={e => updateBuyerRepDetail(rep.id, 'dateSigned', e.target.value)}
+                              style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}/>
+                          </div>
+                          <div>
+                            <div className="label" style={{ marginBottom:2 }}>Date Expires</div>
+                            <input className="field-input" type="date" value={bd.dateExpires||''}
+                              onChange={e => updateBuyerRepDetail(rep.id, 'dateExpires', e.target.value)}
+                              style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}/>
+                          </div>
+                          <div>
+                            <div className="label" style={{ marginBottom:2 }}>Last Call</div>
+                            <input className="field-input" type="date" value={bd.lastCallDate||''}
+                              onChange={e => updateBuyerRepDetail(rep.id, 'lastCallDate', e.target.value)}
+                              style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}/>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Search Criteria */}
+                      <div style={{ marginBottom:14 }}>
+                        <div className="label" style={{ marginBottom:6, fontSize:10, letterSpacing:'.08em', textTransform:'uppercase', color:'var(--green)', fontWeight:700 }}>
+                          Search Criteria
+                        </div>
+                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))', gap:8 }}>
+                          <div>
+                            <div className="label" style={{ marginBottom:2 }}>Location Preferences</div>
+                            <textarea className="field-input" value={bd.locationPrefs||''} placeholder="North Austin, Round Rock, Cedar Park…"
+                              onChange={e => updateBuyerRepDetail(rep.id, 'locationPrefs', e.target.value)}
+                              style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box', minHeight:38, resize:'vertical', fontFamily:'inherit' }}/>
+                          </div>
+                          <div>
+                            <div className="label" style={{ marginBottom:2 }}>Must-Haves</div>
+                            <textarea className="field-input" value={bd.mustHaves||''} placeholder="3+ bed, 2+ bath, garage, good schools…"
+                              onChange={e => updateBuyerRepDetail(rep.id, 'mustHaves', e.target.value)}
+                              style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box', minHeight:38, resize:'vertical', fontFamily:'inherit' }}/>
+                          </div>
+                          <div>
+                            <div className="label" style={{ marginBottom:2 }}>Nice-to-Haves</div>
+                            <textarea className="field-input" value={bd.niceToHaves||''} placeholder="Pool, open floor plan, cul-de-sac…"
+                              onChange={e => updateBuyerRepDetail(rep.id, 'niceToHaves', e.target.value)}
+                              style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box', minHeight:38, resize:'vertical', fontFamily:'inherit' }}/>
+                          </div>
+                          <div>
+                            <div className="label" style={{ marginBottom:2 }}>Timeline</div>
+                            <select className="field-input" value={bd.timeline||''}
+                              onChange={e => updateBuyerRepDetail(rep.id, 'timeline', e.target.value)}
+                              style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}>
+                              <option value="">Select…</option>
+                              <option value="Urgent">Urgent</option>
+                              <option value="1-3 months">1-3 months</option>
+                              <option value="3-6 months">3-6 months</option>
+                              <option value="6+ months">6+ months</option>
+                              <option value="Flexible">Flexible</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Save button */}
+                      <div style={{ display:'flex', justifyContent:'flex-end', paddingTop:10, borderTop:'1px solid var(--b1)' }}>
+                        <button onClick={() => saveBuyerRepDetails(rep.id)}
+                          disabled={savingRepId === rep.id}
+                          style={{
+                            background: rep._dirty ? 'var(--blue)' : 'var(--b2)',
+                            color: rep._dirty ? '#fff' : 'var(--dim)',
+                            border:'none', borderRadius:7, padding:'8px 20px', fontSize:12,
+                            fontWeight:700, cursor: rep._dirty ? 'pointer' : 'default',
+                            transition:'background .15s, color .15s',
+                            display:'flex', alignItems:'center', gap:6,
+                          }}>
+                          {savingRepId === rep.id ? 'Saving...' : rep._dirty ? 'Save Details' : 'Saved'}
                         </button>
-                        <button className="act-btn act-btn-amber" onClick={() => closeBuyerRep(rep)}>
-                          ✓ Close Rep
-                        </button>
-                      </>
-                    )}
-                    <button className="btn-del" style={{ marginLeft:4, flexShrink:0 }} onClick={() => removeBuyerRep(rep)}>✕</button>
-                  </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ))}
+                )
+              })}
             </div>
 
             {/* Add new buyer rep */}
@@ -2944,7 +3225,9 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
 
       </div>
-      ))}
+      )}
+      </ErrorBoundary>
+      )}
 
       {/* ── Offer Modal ─────────────────────────────────── */}
       {offerModal && (
@@ -2969,8 +3252,8 @@ function Dashboard({ theme, onToggleTheme }) {
           habits={habits}
           counters={counters}
           today={today}
-          todayDate={todayDate}
-          effectiveToday={effectiveToday}
+          todayDate={viewDateStr}
+          effectiveToday={effectiveView}
           customTasks={customTasks}
           customDone={customDone}
           offersMade={offersMade}
@@ -2979,6 +3262,7 @@ function Dashboard({ theme, onToggleTheme }) {
           closedDeals={closedDeals}
           buyerReps={buyerReps}
           onClose={() => setShowPrint(false)}
+          target={isViewingToday ? undefined : { wi: viewWeek, di: viewDayIdx, dateStr: viewDateStr }}
         />
       )}
 
@@ -3025,6 +3309,29 @@ function Dashboard({ theme, onToggleTheme }) {
           onClose={() => setShowBuyersUpdate(false)}
         />
       )}
+
+      {/* Error toast */}
+      {toast && (
+        <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:9999,
+          background:'#dc2626', color:'#fff', padding:'10px 22px', borderRadius:10,
+          fontFamily:'Poppins,sans-serif', fontWeight:600, fontSize:13,
+          boxShadow:'0 8px 32px rgba(220,38,38,.35)', display:'flex', alignItems:'center', gap:10,
+          animation:'slideDown .25s ease', maxWidth:'90vw' }}>
+          <span style={{ flexShrink:0 }}>&#9888;</span>
+          <span>{toast.msg}</span>
+          <button onClick={() => setToast(null)} style={{ background:'none', border:'none', color:'#fff',
+            cursor:'pointer', fontWeight:700, fontSize:15, padding:'0 4px', lineHeight:1, flexShrink:0 }}>&#215;</button>
+        </div>
+      )}
+
+      {/* ── Floating AI Chat Widget ── */}
+      <AIChatWidget
+        isOpen={aiWidgetOpen}
+        onToggle={() => setAiWidgetOpen(o => !o)}
+        onClose={() => setAiWidgetOpen(false)}
+        onNavigate={setPage}
+        theme={theme}
+      />
     </div>
   )
 }
@@ -3038,12 +3345,15 @@ function AppInner() {
   const [checkoutMsg, setCheckoutMsg] = useState(null) // 'success' | 'cancelled'
   const [checkoutLoading, setCheckoutLoading] = useState(false)
 
-  function toggleTheme() {
-    const next = theme==='light' ? 'dark' : 'light'
-    setTheme(next)
-    localStorage.setItem('rg_theme', next)
-    document.documentElement.setAttribute('data-theme', next)
-  }
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => {
+      const next = prev==='light' ? 'dark' : 'light'
+      localStorage.setItem('rg_theme', next)
+      document.documentElement.setAttribute('data-theme', next)
+      return next
+    })
+  }, [])
+  const themeValue = useMemo(() => ({ theme, toggle: toggleTheme }), [theme, toggleTheme])
 
   useEffect(()=>{
     document.documentElement.setAttribute('data-theme', theme)
@@ -3066,22 +3376,28 @@ function AppInner() {
     const status = params.get('checkout')
     if (status) {
       setCheckoutMsg(status)
-      // Clean URL without reloading
       window.history.replaceState({}, '', window.location.pathname)
-      setTimeout(()=>setCheckoutMsg(null), 6000)
     }
   },[])
+  // Auto-clear checkout message with proper cleanup
+  useEffect(()=>{
+    if (!checkoutMsg) return
+    const timer = setTimeout(()=>setCheckoutMsg(null), 6000)
+    return ()=>clearTimeout(timer)
+  },[checkoutMsg])
 
   // After sign-in, run any pending checkout
   useEffect(()=>{
-    if (!user) return
+    if (!user?.id) return
     const pending = localStorage.getItem('rg_pending_plan')
     if (pending) {
       localStorage.removeItem('rg_pending_plan')
-      const { planId, isAnnual } = JSON.parse(pending)
-      startCheckout(planId, isAnnual)
+      try {
+        const { planId, isAnnual } = JSON.parse(pending)
+        if (planId) startCheckout(planId, isAnnual)
+      } catch { /* corrupted localStorage — ignore */ }
     }
-  },[user])
+  },[user?.id])
 
   async function startCheckout(planId, isAnnual) {
     setCheckoutLoading(true)
@@ -3131,12 +3447,14 @@ function AppInner() {
           <span style={{ color:'#fff', fontFamily:'Poppins,sans-serif', fontWeight:600 }}>Redirecting to checkout…</span>
         </div>
       )}
-      {showAuth
-        ? <AuthPage theme={theme} onToggleTheme={toggleTheme} onBack={()=>setShowAuth(false)}/>
-        : <LandingPage theme={theme} onToggleTheme={toggleTheme}
-            onGetStarted={()=>setShowAuth(true)}
-            onSubscribe={handleSubscribe}/>
-      }
+      <ErrorBoundary key={showAuth ? 'auth' : 'landing'} onReset={()=>setShowAuth(false)}>
+        {showAuth
+          ? <AuthPage theme={theme} onToggleTheme={toggleTheme} onBack={()=>setShowAuth(false)}/>
+          : <LandingPage theme={theme} onToggleTheme={toggleTheme}
+              onGetStarted={()=>setShowAuth(true)}
+              onSubscribe={handleSubscribe}/>
+        }
+      </ErrorBoundary>
     </div>
   )
 
@@ -3159,7 +3477,7 @@ function AppInner() {
           Checkout cancelled — no charge was made.
         </div>
       )}
-      <ThemeCtx.Provider value={{ theme, toggle:toggleTheme }}>
+      <ThemeCtx.Provider value={themeValue}>
         <Dashboard theme={theme} onToggleTheme={toggleTheme}/>
       </ThemeCtx.Provider>
     </div>

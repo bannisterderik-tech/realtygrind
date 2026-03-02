@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { CSS, Loader, Wordmark, ThemeToggle, Ring, getRank, CAT, StatCard, fmtMoney } from '../design'
 import { HABITS } from '../habits'
 import { canUseTeams, getMaxMembers, getPlan, isActiveBilling } from '../lib/plans'
+import { ALL_APPS } from './DirectoryPage'
 
 const HABITS_FOR_DISPLAY = [
   { id:'prospecting', label:'Prospecting', cat:'leads' },
@@ -18,8 +19,22 @@ const BUILT_IN_HABIT_IDS = [
   'prospecting','followup','appointments','showing','newlisting',
   'social','crm','market','networking','training','review',
 ]
-// Total month slots = 11 habits × 4 weeks × 7 days (matches App.jsx totalPossible)
-const TOTAL_MONTH_SLOTS = BUILT_IN_HABIT_IDS.length * 28
+// Current month in YYYY-MM format — used for habit/transaction queries
+const MONTH_YEAR = new Date().toISOString().slice(0,7)
+
+// UI_NOTE_LIMIT: character cap shown to the user in the coaching-note textarea.
+// MAX_NOTE_LEN (4000, defined inside the component) is the backend safety truncation
+// applied when persisting — it's intentionally larger so existing long notes aren't lost.
+const UI_NOTE_LIMIT = 500
+
+const CHALLENGE_METRICS = [
+  { value:'prospecting',  label:'Prospecting Calls' },
+  { value:'appointments', label:'Appointments Booked' },
+  { value:'showing',      label:'Property Showings' },
+  { value:'newlisting',   label:'Listings Taken' },
+  { value:'closed',       label:'Deals Closed' },
+  { value:'xp',           label:'Total XP' },
+]
 
 function getTodayIndices() {
   const d = new Date()
@@ -72,13 +87,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [transferTarget, setTransferTarget] = useState('')   // '' | memberId
   const [transferSaving, setTransferSaving] = useState(false)
   const [transferConfirm, setTransferConfirm] = useState(false) // two-step confirm
-  const fetchSeqRef = useRef(0)  // increments per fetch; stale results are discarded
+  const fetchSeqRef = useRef(0)        // increments per fetchMemberDetail; stale results are discarded
+  const fetchMembersSeqRef = useRef(0) // increments per fetchMembers; prevents stale team data
   const [confirmModal,    setConfirmModal]    = useState(null)   // { message, label, onConfirm } | null
   const [panelNoteForm,   setPanelNoteForm]   = useState(null)   // { text, type } | null
   const [panelNoteSaving, setPanelNoteSaving] = useState(false)
   const [teamListings,    setTeamListings]    = useState([])     // active listings for all team members
-
-  const MONTH_YEAR = new Date().toISOString().slice(0,7)
 
   // Depend only on team_id — prevents re-fetching every time the profile object
   // is recreated (e.g. on token refresh) while nothing meaningful has changed.
@@ -113,11 +127,14 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   },[viewingMember])
 
   async function fetchMembers(tid) {
+    const seq = ++fetchMembersSeqRef.current
     setLoading(true)
     try {
     const {data:mems} = await supabase.from('profiles').select('id,full_name,xp,streak,goals,habit_prefs').eq('team_id',tid).order('xp',{ascending:false})
+    if (seq !== fetchMembersSeqRef.current) return // stale — a newer fetch was triggered
     setMembers(mems||[])
     const {data:team} = await supabase.from('teams').select('*').eq('id',tid).single()
+    if (seq !== fetchMembersSeqRef.current) return
     setTeamData(team)
     // Load habit stats for all members
     if (mems?.length) {
@@ -126,6 +143,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
         .in('user_id',ids).eq('month_year',MONTH_YEAR).limit(5000)
       const {data:txs} = await supabase.from('transactions').select('user_id,type,price,commission')
         .in('user_id',ids).eq('month_year',MONTH_YEAR).limit(2000)
+      if (seq !== fetchMembersSeqRef.current) return
       const todayIdx = getTodayIndices()
       // Respect hidden habits so denominator matches what agents actually see
       const hiddenHabits = team?.team_prefs?.hidden || []
@@ -165,14 +183,15 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
         .gt('unit_count', 0)
         .order('created_at', { ascending: false })
         .limit(500)
+      if (seq !== fetchMembersSeqRef.current) return
       const nameMap = Object.fromEntries((mems||[]).map(m=>[m.id, m.full_name||'Agent']))
       setTeamListings((listRows||[]).map(l=>({ ...l, agentName: nameMap[l.user_id]||'Agent' })))
     }
     } catch (err) {
       console.error('fetchMembers error:', err)
-      setError('Failed to load team data. Please refresh.')
+      if (seq === fetchMembersSeqRef.current) setError('Failed to load team data. Please refresh.')
     } finally {
-      setLoading(false)
+      if (seq === fetchMembersSeqRef.current) setLoading(false)
     }
   }
 
@@ -262,7 +281,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
         const { error: e0 } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
         if (e0) throw e0
       }
-      const { error: e1 } = await supabase.from('team_members').delete().eq('user_id', user.id)
+      const { error: e1 } = await supabase.from('team_members').delete().eq('user_id', user.id).eq('team_id', profile.team_id)
       if (e1) throw e1
       const { error: e2 } = await supabase.from('profiles').update({ team_id: null }).eq('id', user.id)
       if (e2) throw e2
@@ -313,6 +332,20 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     try {
       const { error } = await supabase.from('teams').update({ created_by: newOwnerId }).eq('id', profile.team_id)
       if (error) throw error
+      // Update team_members roles to match: new owner becomes 'owner', old owner becomes 'member'
+      const { error: e2 } = await supabase.from('team_members').update({ role: 'owner' }).eq('user_id', newOwnerId).eq('team_id', profile.team_id)
+      if (e2) {
+        // Rollback: revert teams.created_by to the original owner
+        await supabase.from('teams').update({ created_by: user.id }).eq('id', profile.team_id)
+        throw new Error('Failed to update new owner role. Transfer has been rolled back.')
+      }
+      const { error: e3 } = await supabase.from('team_members').update({ role: 'member' }).eq('user_id', user.id).eq('team_id', profile.team_id)
+      if (e3) {
+        // Rollback: revert both changes
+        await supabase.from('teams').update({ created_by: user.id }).eq('id', profile.team_id)
+        await supabase.from('team_members').update({ role: 'member' }).eq('user_id', newOwnerId).eq('team_id', profile.team_id)
+        throw new Error('Failed to update old owner role. Transfer has been rolled back.')
+      }
       setTeamData(td => ({ ...td, created_by: newOwnerId }))
       setTransferTarget('')
       setTransferConfirm(false)
@@ -415,15 +448,6 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       console.error('removeInvite error:', err)
     }
   }
-
-  const CHALLENGE_METRICS = [
-    { value:'prospecting',  label:'Prospecting Calls' },
-    { value:'appointments', label:'Appointments Booked' },
-    { value:'showing',      label:'Property Showings' },
-    { value:'newlisting',   label:'Listings Taken' },
-    { value:'closed',       label:'Deals Closed' },
-    { value:'xp',           label:'Total XP' },
-  ]
 
   function getMemberMetricVal(memberId, metric) {
     const s = memberStats[memberId]||{}
@@ -747,22 +771,35 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     }
   }
 
-  // ── Derived values ─────────────────────────────────────────────────────────
-  const isTeamOwner      = !!(teamData?.created_by === user?.id)
-  const teamAdmins       = teamData?.team_prefs?.admins || []
-  const isAdmin          = teamAdmins.includes(user?.id) && !isTeamOwner
-  const allGroups        = teamData?.team_prefs?.groups || []
-  const myLedGroup       = allGroups.find(g => g.leaderId === user?.id) || null
-  const isGroupLeader    = !!myLedGroup && !isTeamOwner && !isAdmin
-  const myGroupMembers   = myLedGroup ? members.filter(m => myLedGroup.memberIds.includes(m.id)) : []
-  const canViewDetail    = (m) => isTeamOwner || isAdmin || (isGroupLeader && myLedGroup?.memberIds.includes(m.id))
-  const isAdminOrOwner   = isTeamOwner || isAdmin || isGroupLeader
-  const coachableMembers = (isGroupLeader && !isAdmin && !isTeamOwner)
-    ? myGroupMembers
-    : members.filter(m => m.id !== user?.id)
-  const allCoachingNotes = teamData?.team_prefs?.coaching_notes || []
-  const myCoachingNotes  = allCoachingNotes.filter(n => n.agentId === user?.id)
-  const pendingInvites   = teamData?.team_prefs?.pending_invites || []
+  // ── Derived values (memoized to avoid recomputing on every render) ────────
+  const {
+    isTeamOwner, teamAdmins, isAdmin, allGroups, myLedGroup,
+    isGroupLeader, myGroupMembers, isAdminOrOwner, coachableMembers,
+    allCoachingNotes, myCoachingNotes, pendingInvites,
+  } = useMemo(() => {
+    const _isTeamOwner      = !!(teamData?.created_by === user?.id)
+    const _teamAdmins       = teamData?.team_prefs?.admins || []
+    const _isAdmin          = _teamAdmins.includes(user?.id) && !_isTeamOwner
+    const _allGroups        = teamData?.team_prefs?.groups || []
+    const _myLedGroup       = _allGroups.find(g => g.leaderId === user?.id) || null
+    const _isGroupLeader    = !!_myLedGroup && !_isTeamOwner && !_isAdmin
+    const _myGroupMembers   = _myLedGroup ? members.filter(m => _myLedGroup.memberIds.includes(m.id)) : []
+    const _isAdminOrOwner   = _isTeamOwner || _isAdmin || _isGroupLeader
+    const _coachableMembers = (_isGroupLeader && !_isAdmin && !_isTeamOwner)
+      ? _myGroupMembers
+      : members.filter(m => m.id !== user?.id)
+    const _allCoachingNotes = teamData?.team_prefs?.coaching_notes || []
+    const _myCoachingNotes  = _allCoachingNotes.filter(n => n.agentId === user?.id)
+    const _pendingInvites   = teamData?.team_prefs?.pending_invites || []
+    return {
+      isTeamOwner: _isTeamOwner, teamAdmins: _teamAdmins, isAdmin: _isAdmin,
+      allGroups: _allGroups, myLedGroup: _myLedGroup, isGroupLeader: _isGroupLeader,
+      myGroupMembers: _myGroupMembers, isAdminOrOwner: _isAdminOrOwner,
+      coachableMembers: _coachableMembers, allCoachingNotes: _allCoachingNotes,
+      myCoachingNotes: _myCoachingNotes, pendingInvites: _pendingInvites,
+    }
+  }, [teamData, user?.id, members])
+  const canViewDetail = (m) => isTeamOwner || isAdmin || (isGroupLeader && myLedGroup?.memberIds.includes(m.id))
 
   return (
     <>
@@ -788,7 +825,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
 
           {/* No team menu */}
           {mode==='menu' && (
-            <div style={{ maxWidth:560, animation:'fadeUp .25s ease' }}>
+            <div style={{ maxWidth:560 }}>
               {!canUseTeams(profile) && (() => {
                 const hasSub = profile?.stripe_customer_id && isActiveBilling(profile?.billing_status)
                 const currentPlan = getPlan(profile?.plan)
@@ -796,7 +833,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                   <div className="card" style={{ padding:24, marginBottom:16, borderLeft:'3px solid #d97706',
                     background:'rgba(217,119,6,.06)' }}>
                     <div style={{ fontWeight:700, color:'var(--text)', fontSize:15, marginBottom:6 }}>
-                      Teams require a Team plan ($99/mo)
+                      Teams require a Team plan ($199/mo)
                     </div>
                     <div style={{ fontSize:13, color:'var(--muted)', lineHeight:1.6, marginBottom:14 }}>
                       {hasSub && currentPlan
@@ -857,7 +894,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
 
           {/* Create form */}
           {mode==='create' && (
-            <div style={{ maxWidth:420, animation:'fadeUp .25s ease' }}>
+            <div style={{ maxWidth:420 }}>
               <div className="serif" style={{ fontSize:26, color:'var(--text)', marginBottom:4 }}>Create a Team</div>
               <div style={{ fontSize:13, color:'var(--muted)', marginBottom:24 }}>Give your team a name — teammates join with your invite code.</div>
               <div className="card" style={{ padding:24, display:'flex', flexDirection:'column', gap:16 }}>
@@ -878,7 +915,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
 
           {/* Join form */}
           {mode==='join' && (
-            <div style={{ maxWidth:380, animation:'fadeUp .25s ease' }}>
+            <div style={{ maxWidth:380 }}>
               <div className="serif" style={{ fontSize:26, color:'var(--text)', marginBottom:4 }}>Join a Team</div>
               <div style={{ fontSize:13, color:'var(--muted)', marginBottom:24 }}>Enter the 5-character invite code from your team lead.</div>
               <div className="card" style={{ padding:24, display:'flex', flexDirection:'column', gap:16 }}>
@@ -900,7 +937,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
 
           {/* My team */}
           {mode==='myteam' && (
-            <div style={{ animation:'fadeUp .25s ease' }}>
+            <div>
               {loading && !members.length ? <Loader/> : (
                 <>
 
@@ -915,7 +952,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                     const activeChallenges = (group.challenges||[]).filter(c=>c.status==='active')
                     const endedChallenges  = (group.challenges||[]).filter(c=>c.status==='ended').slice(-3).reverse()
                     return (
-                      <div style={{ animation:'fadeUp .2s ease' }}>
+                      <div>
                         {/* Header */}
                         <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:24, flexWrap:'wrap' }}>
                           <button className="btn-outline" style={{ fontSize:12, padding:'7px 14px' }}
@@ -1927,11 +1964,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 <div>
                                   <div className="label" style={{ marginBottom:5 }}>Note</div>
                                   <textarea className="field-input" value={noteForm.text}
-                                    onChange={e=>setNoteForm(f=>({...f,text:e.target.value.slice(0,500)}))}
+                                    onChange={e=>setNoteForm(f=>({...f,text:e.target.value.slice(0,UI_NOTE_LIMIT)}))}
                                     placeholder="Write your coaching note here…" rows={4}
                                     style={{ width:'100%', resize:'vertical', minHeight:90 }}/>
                                   <div style={{ fontSize:10, color:'var(--dim)', textAlign:'right', marginTop:3 }}>
-                                    {(noteForm.text||'').length}/500
+                                    {(noteForm.text||'').length}/{UI_NOTE_LIMIT}
                                   </div>
                                 </div>
                                 <div style={{ display:'flex', gap:8 }}>
@@ -2214,6 +2251,101 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                             </div>
                           </div>
 
+                          {/* ── AI Tools toggle ── */}
+                          <div className="card" style={{ padding: 24, marginBottom: 20 }}>
+                            <div className="serif" style={{ fontSize: 18, color: 'var(--text)', marginBottom: 8 }}>🤖 AI Tools</div>
+                            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16, lineHeight: 1.6 }}>
+                              Control whether team members can access AI-powered tools like the AI Assistant.
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                              <div>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>AI Assistant</div>
+                                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Real estate coaching, listing analysis, and pipeline review</div>
+                              </div>
+                              <button
+                                onClick={async () => {
+                                  const current = teamData?.team_prefs?.ai_tools?.assistant_enabled !== false
+                                  const newAiTools = { ...(teamData?.team_prefs?.ai_tools || {}), assistant_enabled: !current }
+                                  const newPrefs = { ...(teamData?.team_prefs || {}), ai_tools: newAiTools }
+                                  try {
+                                    const { error } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                    if (error) throw error
+                                    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+                                  } catch (err) {
+                                    setError('Failed to update AI settings.')
+                                    console.error('toggleAI error:', err)
+                                  }
+                                }}
+                                style={{
+                                  width: 48, height: 26, borderRadius: 13, cursor: 'pointer', border: 'none',
+                                  position: 'relative', flexShrink: 0, transition: 'background .2s',
+                                  background: (teamData?.team_prefs?.ai_tools?.assistant_enabled !== false)
+                                    ? '#8b5cf6' : 'var(--b2)',
+                                }}
+                              >
+                                <div style={{
+                                  width: 20, height: 20, borderRadius: 10,
+                                  background: '#fff', position: 'absolute', top: 3,
+                                  transition: 'left .2s',
+                                  left: (teamData?.team_prefs?.ai_tools?.assistant_enabled !== false) ? 25 : 3,
+                                }} />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* ── Tools Directory ── */}
+                          <div className="card" style={{ padding: 24, marginBottom: 20 }}>
+                            <div className="serif" style={{ fontSize: 18, color: 'var(--text)', marginBottom: 8 }}>🔗 Tools Directory</div>
+                            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16, lineHeight: 1.6 }}>
+                              Select which real estate tools appear in your team's Tools page. Only enabled tools will be visible to team members.
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {ALL_APPS.map(app => {
+                                const enabledTools = teamData?.team_prefs?.enabled_tools
+                                const defaultIds = ['fub','redx','skyslope','rmls','gdrive','gmail','zillow','rpr','ylopo']
+                                const isEnabled = enabledTools ? enabledTools.includes(app.id) : defaultIds.includes(app.id)
+                                return (
+                                  <div key={app.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', borderRadius: 8, background: 'var(--bg2)', border: '1px solid var(--b1)' }}>
+                                    <span style={{ fontSize: 18, flexShrink: 0 }}>{app.icon}</span>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{app.name}</div>
+                                      <div style={{ fontSize: 10, color: 'var(--muted)' }}>{app.category}</div>
+                                    </div>
+                                    <button
+                                      onClick={async () => {
+                                        const current = teamData?.team_prefs?.enabled_tools || defaultIds
+                                        const updated = isEnabled
+                                          ? current.filter(id => id !== app.id)
+                                          : [...current, app.id]
+                                        const newPrefs = { ...(teamData?.team_prefs || {}), enabled_tools: updated }
+                                        try {
+                                          const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                          if (err) throw err
+                                          setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+                                        } catch (err) {
+                                          setError('Failed to update tools.')
+                                          console.error('toggleTool error:', err)
+                                        }
+                                      }}
+                                      style={{
+                                        width: 42, height: 24, borderRadius: 12, cursor: 'pointer', border: 'none',
+                                        position: 'relative', flexShrink: 0, transition: 'background .2s',
+                                        background: isEnabled ? '#10b981' : 'var(--b2)',
+                                      }}
+                                    >
+                                      <div style={{
+                                        width: 18, height: 18, borderRadius: 9,
+                                        background: '#fff', position: 'absolute', top: 3,
+                                        transition: 'left .2s',
+                                        left: isEnabled ? 21 : 3,
+                                      }} />
+                                    </button>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+
                           {/* Transfer Ownership — danger zone */}
                           <div style={{ border:'1px solid rgba(220,38,38,.25)', borderRadius:12, padding:24 }}>
                             <div className="serif" style={{ fontSize:18, color:'var(--red)', marginBottom:8 }}>⚠️ Transfer Ownership</div>
@@ -2304,7 +2436,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
               borderLeft:'3px solid var(--b3)',
               boxShadow:'-8px 0 32px rgba(0,0,0,.45)',
               display:'flex', flexDirection:'column',
-              animation:'slideInRight .22s cubic-bezier(.4,0,.2,1)' }}>
+              }}>
 
               {/* Header */}
               <div style={{ padding:'24px 24px 20px', borderBottom:'1px solid var(--b2)', flexShrink:0,
@@ -2552,11 +2684,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                           })}
                         </div>
                         <textarea className="field-input" value={panelNoteForm.text}
-                          onChange={e=>setPanelNoteForm(f=>({...f,text:e.target.value.slice(0,500)}))}
+                          onChange={e=>setPanelNoteForm(f=>({...f,text:e.target.value.slice(0,UI_NOTE_LIMIT)}))}
                           placeholder="Write coaching note…" rows={3}
                           style={{ width:'100%', resize:'vertical', fontSize:13, marginBottom:4, minHeight:72 }}/>
                         <div style={{ fontSize:10, color:'var(--dim)', textAlign:'right', marginBottom:8 }}>
-                          {(panelNoteForm.text||'').length}/500
+                          {(panelNoteForm.text||'').length}/{UI_NOTE_LIMIT}
                         </div>
                         <div style={{ display:'flex', gap:8 }}>
                           <button className="btn-primary" onClick={savePanelNote}
@@ -2694,10 +2826,10 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
         <div style={{ position:'fixed', inset:0, zIndex:2000,
           background:'rgba(0,0,0,.65)', backdropFilter:'blur(4px)',
           display:'flex', alignItems:'center', justifyContent:'center',
-          padding:20, animation:'fadeIn .15s ease' }}
+          padding:20 }}
           onClick={()=>setConfirmModal(null)}>
           <div className="card" style={{ padding:'24px 28px', maxWidth:400, width:'100%',
-            borderTop:'3px solid var(--red)', animation:'scaleIn .18s ease' }}
+            borderTop:'3px solid var(--red)' }}
             onClick={e=>e.stopPropagation()}>
             <div style={{ fontSize:14, color:'var(--text)', marginBottom:22, lineHeight:1.65 }}>
               {confirmModal.message}

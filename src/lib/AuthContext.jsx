@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext({})
@@ -8,17 +8,53 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const mountedRef = useRef(true)
+  const profileLoadedRef = useRef(false)  // prevents duplicate profile fetches
 
   useEffect(() => {
     mountedRef.current = true
+    profileLoadedRef.current = false
 
     // onAuthStateChange fires immediately with INITIAL_SESSION — no need to also
     // call getSession(), which was causing fetchProfile to run twice on mount.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    if (!supabase) { setLoading(false); return }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mountedRef.current) return
-      setUser(session?.user ?? null)
-      if (session?.user) fetchProfile(session.user.id, session.user.user_metadata)
-      else { setProfile(null); setLoading(false) }
+
+      // ── SIGNED_OUT is the ONLY event that should clear state ──
+      if (event === 'SIGNED_OUT') {
+        setUser(null)
+        setProfile(null)
+        setLoading(false)
+        profileLoadedRef.current = false
+        return
+      }
+
+      // ── No session: only act on INITIAL_SESSION (first load, user not logged in) ──
+      // All other events without a session (network blips during refresh) are ignored
+      // to prevent unmount/remount duplication.
+      if (!session?.user) {
+        if (event === 'INITIAL_SESSION') {
+          setUser(null)
+          setProfile(null)
+          setLoading(false)
+        }
+        return
+      }
+
+      // ── TOKEN_REFRESHED — user data unchanged, just update token ref ──
+      if (event === 'TOKEN_REFRESHED') {
+        setUser(session.user)
+        return
+      }
+
+      // ── INITIAL_SESSION or SIGNED_IN — load profile once ──
+      setUser(session.user)
+      if (!profileLoadedRef.current) {
+        profileLoadedRef.current = true
+        fetchProfile(session.user.id, session.user.user_metadata)
+      } else {
+        setLoading(false)
+      }
     })
 
     return () => {
@@ -75,12 +111,17 @@ export function AuthProvider({ children }) {
     }
   }
 
-  async function refreshProfile() {
-    if (user) fetchProfile(user.id, user.user_metadata)
-  }
+  const userRef = useRef(user)
+  userRef.current = user
+  const refreshProfile = useCallback(() => {
+    const u = userRef.current
+    if (u) fetchProfile(u.id, u.user_metadata)
+  }, [])
+
+  const contextValue = useMemo(() => ({ user, profile, loading, refreshProfile }), [user, profile, loading, refreshProfile])
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, refreshProfile }}>
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   )

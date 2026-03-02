@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { CSS, ThemeToggle } from '../design'
+import { CSS } from '../design'
 
 export default function AuthPage({ theme, onToggleTheme, onBack }) {
   const [mode,    setMode]    = useState('login')
@@ -15,6 +15,7 @@ export default function AuthPage({ theme, onToggleTheme, onBack }) {
     e.preventDefault()
     setErr(''); setOk(''); setLoading(true)
     try {
+      if (!supabase) { setErr('Service unavailable. Please try again later.'); return }
       if (mode==='signup') {
         const {error} = await supabase.auth.signUp({email, password:pw, options:{data:{full_name:name}}})
         if (error) setErr(error.message)
@@ -84,7 +85,7 @@ export default function AuthPage({ theme, onToggleTheme, onBack }) {
           </button>
         </div>
 
-        <div style={{ width:'100%', maxWidth:400, position:'relative', zIndex:1, animation:'fadeUp .35s ease' }}>
+        <div style={{ width:'100%', maxWidth:400, position:'relative', zIndex:1 }}>
           {/* Logo */}
           <div style={{ textAlign:'center', marginBottom:40 }}>
             <div style={{ fontFamily:"'Fraunces',serif", fontSize:30, fontWeight:700, color:'var(--text)',
@@ -144,10 +145,10 @@ export default function AuthPage({ theme, onToggleTheme, onBack }) {
 
             <div style={{ textAlign:'center', marginTop:22, fontSize:13, color:'var(--muted)' }}>
               {mode==='login'?"Don't have an account? ":"Already have an account? "}
-              <span onClick={()=>switchMode(mode==='login'?'signup':'login')}
-                style={{ color:'var(--gold)', cursor:'pointer', fontWeight:600 }}>
+              <button type="button" onClick={()=>switchMode(mode==='login'?'signup':'login')}
+                style={{ color:'var(--gold)', cursor:'pointer', fontWeight:600, background:'none', border:'none', padding:0, font:'inherit', fontSize:'inherit' }}>
                 {mode==='login'?'Sign up free':'Sign in'}
-              </span>
+              </button>
             </div>
           </div>
         </div>

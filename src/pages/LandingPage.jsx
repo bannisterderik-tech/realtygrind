@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ThemeToggle } from '../design'
+import { ThemeToggle, RANKS } from '../design'
 import { PLANS } from '../lib/plans'
 
 // ── Data ─────────────────────────────────────────────────────────────────────
@@ -17,6 +17,8 @@ const FAQS = [
     a:'XP (experience points) are earned by completing daily habits, closing deals, and winning team challenges. As XP accumulates you climb through ranks: Bronze, Silver, Gold, Platinum, Diamond.' },
   { q:'Does it work on mobile?',
     a:'Yes — RealtyGrind is fully responsive and works great on any phone or tablet. No app download needed.' },
+  { q:'What is the AI Coaching Assistant?',
+    a:'The AI Assistant is a built-in coach powered by Claude that reads your live listings, pipeline, and goals. Ask it anything — listing pricing strategy, comp analysis, goal tracking, prospecting tips. Solo gets 50 credits/mo, Team gets 250 shared, Brokerage gets unlimited. 1 credit = 1 message.' },
 ]
 
 const TESTIMONIALS = [
@@ -47,7 +49,15 @@ const FEATURES = [
   { icon:'🏆', title:'XP & Ranks', desc:'Bronze through Diamond. Every habit and every deal earns XP. Gamified accountability.' },
   { icon:'🎯', title:'Team Challenges', desc:'Leaders create time-limited challenges with XP bonuses. Teams compete live.' },
   { icon:'📋', title:'Coaching Notes', desc:'Private per-agent coaching notes with type tags. Agents reply in-thread. Leaders pin critical feedback.' },
-  { icon:'⚡', title:'Daily Standups', desc:'Agents submit a 3-question daily standup. Leaders see the live feed and spot patterns.' },
+  { icon:'🤖', title:'AI Coaching Assistant', desc:'Get personalized strategy advice from AI that reads your listings, pipeline, and goals. Listing strategy, comp research, and accountability coaching built in.' },
+]
+
+// ── Static AI demo conversation (pure data, zero state/effects) ──────────────
+const AI_DEMO = [
+  { role:'user', text:'My listing at 142 Maple St has been sitting for 22 days. What should I do?' },
+  { role:'ai', text:"Based on your listing data, here's my analysis:\n\n**Why it's sitting:**\n- 22 days is above the area median of 14 DOM\n- Price may be 3-5% above recent comps\n\n**Recommended actions:**\n1. **Price adjustment** — Consider reducing to $470-475K to hit \"new listing\" feeds\n2. **Refresh marketing** — New photos, twilight shots generate 2x engagement\n3. **Open house blitz** — Back-to-back opens this weekend\n4. **Agent outreach** — Top 20 buyer agents, \"price improvement\" email" },
+  { role:'user', text:'How am I tracking against my monthly goal?' },
+  { role:'ai', text:"You're at **2 closings** vs your goal of **4**.\n\n- 3 offers made, 2 pending, 2 closed\n- Commission this month: $18,200\n- Need 2 more closings in 12 days\n\n**To close the gap:**\n- Follow up with title on your 2 pending deals today\n- Ramp prospecting to 25 calls/day this week" },
 ]
 
 // ── CSS ──────────────────────────────────────────────────────────────────────
@@ -102,6 +112,16 @@ const LCSS = `
 .lp-feat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;}
 .lp-feat-card{background:var(--surface);border:1px solid var(--b2);border-radius:16px;padding:22px;}
 
+/* AI demo chat */
+.lp-ai-chat{background:var(--surface);border:1px solid var(--b2);border-radius:20px;overflow:hidden;max-width:520px;}
+.lp-ai-header{padding:14px 20px;border-bottom:1px solid var(--b2);display:flex;align-items:center;gap:10px;}
+.lp-ai-messages{padding:20px;display:flex;flex-direction:column;gap:14px;max-height:420px;overflow-y:auto;}
+.lp-ai-msg{max-width:92%;padding:12px 16px;border-radius:14px;font-size:12.5px;line-height:1.7;font-family:Poppins,sans-serif;}
+.lp-ai-msg.user{align-self:flex-end;background:rgba(180,83,9,.1);border:1px solid rgba(180,83,9,.2);color:var(--text);}
+.lp-ai-msg.ai{align-self:flex-start;background:var(--bg2);border:1px solid var(--b1);color:var(--text);}
+.lp-ai-input{padding:12px 20px;border-top:1px solid var(--b2);display:flex;align-items:center;gap:10px;}
+.lp-ai-input-field{flex:1;background:var(--bg2);border:1.5px solid var(--b2);border-radius:10px;padding:10px 14px;font-size:12px;color:var(--muted);font-family:Poppins,sans-serif;}
+
 /* Testimonials */
 .lp-test-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}
 .lp-testimonial{background:var(--surface);border:1px solid var(--b2);border-radius:20px;padding:28px 24px;}
@@ -129,6 +149,7 @@ const LCSS = `
   .lp-pricing-grid{grid-template-columns:1fr;}
   .lp-pipe-grid{grid-template-columns:repeat(2,1fr);}
   .lp-print-paper{transform:none;max-width:100%;}
+  .lp-ai-chat{max-width:100%;}
   .lp-nav-links{display:none !important;}
   .lp-nav-ctas{display:none !important;}
   .lp-hamburger{display:flex !important;}
@@ -288,7 +309,9 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
         </button>
       </nav>
 
-      {/* ── Hero ────────────────────────────────────────────────── */}
+      {/* ═══════════════════════════════════════════════════════════
+          1. HERO
+      ═══════════════════════════════════════════════════════════ */}
       <section className="lp-section" style={{ paddingTop:128, paddingBottom:80 }}>
         <div className="lp-max">
           <div className="lp-hero-grid">
@@ -301,7 +324,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
                 <span style={{ color:gold }}>Track Everything.</span>
               </h1>
               <p style={{ fontSize:17, color:'var(--muted)', lineHeight:1.75, marginBottom:36, fontFamily:'Poppins,sans-serif', maxWidth:480 }}>
-                The habit tracker, pipeline manager, and team accountability platform built specifically for agents who refuse to wing it.
+                The habit tracker, pipeline manager, AI coaching assistant, and team accountability platform built specifically for agents who refuse to wing it.
               </p>
               <div style={{ display:'flex', gap:14, flexWrap:'wrap', marginBottom:28 }}>
                 <button className="lp-gold-btn" onClick={onGetStarted}>Start for Free →</button>
@@ -316,7 +339,9 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
         </div>
       </section>
 
-      {/* ── Stats ──────────────────────────────────────────────── */}
+      {/* ═══════════════════════════════════════════════════════════
+          2. STATS BAR
+      ═══════════════════════════════════════════════════════════ */}
       <section style={{ padding:'48px 24px', background: theme === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.02)', borderTop:'1px solid var(--b1)', borderBottom:'1px solid var(--b1)' }}>
         <div className="lp-max">
           <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:24, textAlign:'center' }}>
@@ -336,28 +361,9 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
         </div>
       </section>
 
-      {/* ── Features ────────────────────────────────────────────── */}
-      <section id="features" className="lp-section" style={{ background: theme === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.02)', borderTop:'1px solid var(--b1)', borderBottom:'1px solid var(--b1)' }}>
-        <div className="lp-max">
-          <div style={{ textAlign:'center', marginBottom:56 }}>
-            <div style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:gold, marginBottom:12, fontFamily:'Poppins,sans-serif' }}>Features</div>
-            <h2 className="serif" style={{ fontSize:'clamp(28px,4vw,48px)', fontWeight:800, lineHeight:1.1, letterSpacing:'-.025em' }}>
-              Everything you need to <span style={{ color:gold }}>dominate.</span>
-            </h2>
-          </div>
-          <div className="lp-feat-grid">
-            {FEATURES.map(f => (
-              <div key={f.title} className="lp-feat-card">
-                <div style={{ fontSize:28, marginBottom:12 }}>{f.icon}</div>
-                <div style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginBottom:6, fontFamily:'Poppins,sans-serif' }}>{f.title}</div>
-                <div style={{ fontSize:12, color:'var(--muted)', lineHeight:1.7, fontFamily:'Poppins,sans-serif' }}>{f.desc}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Habit Demo ──────────────────────────────────────────── */}
+      {/* ═══════════════════════════════════════════════════════════
+          3. HABIT TRACKER DEMO (interactive — the core product)
+      ═══════════════════════════════════════════════════════════ */}
       <section className="lp-section">
         <div className="lp-max">
           <div className="lp-split">
@@ -414,8 +420,192 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
         </div>
       </section>
 
-      {/* ── Print & Offline ────────────────────────────────────── */}
+      {/* ═══════════════════════════════════════════════════════════
+          4. AI COACHING ASSISTANT (the differentiator)
+      ═══════════════════════════════════════════════════════════ */}
+      <section className="lp-section" style={{ background: theme === 'dark' ? 'rgba(139,92,246,.04)' : 'rgba(139,92,246,.03)', borderTop:'1px solid var(--b1)', borderBottom:'1px solid var(--b1)' }}>
+        <div className="lp-max">
+          <div className="lp-split">
+            <div>
+              <div style={{ display:'inline-flex', alignItems:'center', gap:8, marginBottom:14 }}>
+                <div style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:'#8b5cf6', fontFamily:'Poppins,sans-serif' }}>AI Coaching Assistant</div>
+                <span style={{ fontSize:9, padding:'3px 10px', borderRadius:20, fontWeight:700, background:'rgba(139,92,246,.12)', color:'#8b5cf6', border:'1px solid rgba(139,92,246,.25)', fontFamily:"'JetBrains Mono',monospace", letterSpacing:.5 }}>NEW</span>
+              </div>
+              <h2 className="serif" style={{ fontSize:'clamp(28px,4vw,50px)', fontWeight:800, lineHeight:1.1, letterSpacing:'-.025em', marginBottom:18 }}>
+                Your personal<br />listing <span style={{ color:gold }}>strategist.</span>
+              </h2>
+              <p style={{ fontSize:15, color:'var(--muted)', lineHeight:1.75, marginBottom:28, fontFamily:'Poppins,sans-serif' }}>
+                Ask your AI assistant anything about your business. It reads your live listings, pipeline data, and goals — then delivers personalized coaching, pricing strategy, and comp analysis.
+              </p>
+              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                {[
+                  ['📊','Analyzes your active listings & pipeline','#0ea5e9'],
+                  ['💬','Personalized coaching based on your data','#8b5cf6'],
+                  ['🎯','Goal tracking & accountability insights','#d97706'],
+                  ['🏠','Listing strategy & pricing recommendations','#10b981'],
+                  ['📈','Prospecting tips & time-block suggestions','#f43f5e'],
+                ].map(([icon, text, col]) => (
+                  <div key={text} style={{ display:'flex', alignItems:'center', gap:10, fontSize:14, fontFamily:'Poppins,sans-serif' }}>
+                    <span style={{ fontSize:15, width:18, flexShrink:0 }}>{icon}</span>
+                    <span style={{ color:'var(--text)' }}>{text}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop:24, display:'flex', gap:16, flexWrap:'wrap', alignItems:'center' }}>
+                {[
+                  { plan:'Solo', credits:'50', color:'#94a3b8' },
+                  { plan:'Team', credits:'250', color:'#d97706' },
+                  { plan:'Brokerage', credits:'Unlimited', color:'#8b5cf6' },
+                ].map(p => (
+                  <div key={p.plan} style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, fontFamily:'Poppins,sans-serif' }}>
+                    <div style={{ width:8, height:8, borderRadius:'50%', background:p.color }} />
+                    <span style={{ fontWeight:700, color:p.color }}>{p.plan}:</span>
+                    <span style={{ color:'var(--muted)' }}>{p.credits} credits/mo</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Static AI chat mockup — zero state, zero effects */}
+            <div className="lp-ai-chat">
+              <div className="lp-ai-header">
+                <div style={{ width:32, height:32, borderRadius:10, background:'rgba(139,92,246,.12)', border:'1px solid rgba(139,92,246,.25)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>
+                  🤖
+                </div>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', fontFamily:'Poppins,sans-serif' }}>AI Assistant</div>
+                  <div style={{ fontSize:10, color:'var(--muted)', fontFamily:'Poppins,sans-serif' }}>Powered by Claude</div>
+                </div>
+                <div style={{ marginLeft:'auto', fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:20, background:'rgba(139,92,246,.1)', color:'#8b5cf6', border:'1px solid rgba(139,92,246,.25)', fontFamily:'Poppins,sans-serif' }}>
+                  BETA
+                </div>
+              </div>
+              <div className="lp-ai-messages">
+                {AI_DEMO.map((msg, i) => (
+                  <div key={i} className={`lp-ai-msg ${msg.role}`}>
+                    {msg.text.split('\n').map((line, li) => {
+                      const parts = line.split(/(\*\*[^*]+\*\*)/).map((seg, si) =>
+                        seg.startsWith('**') && seg.endsWith('**')
+                          ? <strong key={si}>{seg.slice(2, -2)}</strong>
+                          : seg
+                      )
+                      const isBullet = line.match(/^(\d+\.\s|-\s)/)
+                      return (
+                        <div key={li} style={{
+                          paddingLeft: isBullet ? 8 : 0,
+                          marginTop: li > 0 && line === '' ? 6 : li > 0 ? 2 : 0,
+                        }}>
+                          {parts}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ))}
+              </div>
+              <div className="lp-ai-input">
+                <div className="lp-ai-input-field">Ask about your listings, pipeline, goals...</div>
+                <div style={{ width:32, height:32, borderRadius:8, background:gold, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, cursor:'default' }}>
+                  <span style={{ color:'#fff', fontSize:14, fontWeight:700 }}>&#8593;</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════════════════════
+          5. PIPELINE TRACKER
+      ═══════════════════════════════════════════════════════════ */}
+      <section className="lp-section">
+        <div className="lp-max">
+          <div style={{ textAlign:'center', marginBottom:56 }}>
+            <div style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:'#10b981', marginBottom:12, fontFamily:'Poppins,sans-serif' }}>Pipeline Tracker</div>
+            <h2 className="serif" style={{ fontSize:'clamp(28px,4vw,48px)', fontWeight:800, lineHeight:1.1, letterSpacing:'-.025em', marginBottom:12 }}>
+              Every deal, <span style={{ color:gold }}>at a glance.</span>
+            </h2>
+            <p style={{ fontSize:15, color:'var(--muted)', lineHeight:1.75, fontFamily:'Poppins,sans-serif', maxWidth:560, margin:'0 auto' }}>
+              Track offers, pending deals, and closings in a simple board. Commission totals update automatically.
+            </p>
+          </div>
+          <div className="lp-pipe-grid">
+            {[
+              { stage:'Offers Made', color:'#0ea5e9', deals:[{ addr:'142 Maple St', comm:'$8,400' }, { addr:'88 River Rd', comm:'$6,200' }] },
+              { stage:'Offers Received', color:'#8b5cf6', deals:[{ addr:'309 Pine Ave', comm:'$12,000' }] },
+              { stage:'Pending', color:'#f97316', deals:[{ addr:'7 Oak Lane', comm:'$9,800' }, { addr:'512 Birch Dr', comm:'$14,500' }] },
+              { stage:'Closed', color:'#10b981', deals:[{ addr:'214 Elm St', comm:'$11,100' }] },
+            ].map(col => (
+              <div key={col.stage} className="lp-pipe-col">
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                  <div style={{ width:8, height:8, borderRadius:'50%', background:col.color }} />
+                  <div style={{ fontSize:11, fontWeight:700, color:'var(--text)', fontFamily:'Poppins,sans-serif' }}>{col.stage}</div>
+                </div>
+                <div style={{ fontSize:10, color:'var(--muted)', fontFamily:'Poppins,sans-serif' }}>{col.deals.length} deal{col.deals.length !== 1 ? 's' : ''}</div>
+                {col.deals.map(d => (
+                  <div key={d.addr} className="lp-pipe-deal">
+                    <div style={{ fontWeight:600, color:'var(--text)', marginBottom:2 }}>{d.addr}</div>
+                    <div style={{ color:col.color, fontWeight:700, fontSize:11 }}>{d.comm}</div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          <div style={{ textAlign:'center', marginTop:32 }}>
+            <div style={{ display:'inline-flex', alignItems:'center', gap:12, background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:14, padding:'14px 28px' }}>
+              <span style={{ fontSize:11, color:'var(--muted)', fontFamily:'Poppins,sans-serif', fontWeight:600 }}>Total Commission Tracked</span>
+              <span className="serif" style={{ fontSize:28, fontWeight:800, color:gold }}>$62,000</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════════════════════
+          6. XP & RANK SYSTEM
+      ═══════════════════════════════════════════════════════════ */}
       <section className="lp-section" style={{ background: theme === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.02)', borderTop:'1px solid var(--b1)', borderBottom:'1px solid var(--b1)' }}>
+        <div className="lp-max">
+          <div className="lp-split">
+            <div>
+              <div style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:'#d97706', marginBottom:12, fontFamily:'Poppins,sans-serif' }}>XP & Rank System</div>
+              <h2 className="serif" style={{ fontSize:'clamp(28px,4vw,50px)', fontWeight:800, lineHeight:1.1, letterSpacing:'-.025em', marginBottom:18 }}>
+                Turn discipline<br />into <span style={{ color:gold }}>status.</span>
+              </h2>
+              <p style={{ fontSize:15, color:'var(--muted)', lineHeight:1.75, marginBottom:28, fontFamily:'Poppins,sans-serif' }}>
+                Every habit you check and every deal you close earns XP. Watch your rank climb from Bronze to Diamond. Hit the button to see it happen live.
+              </p>
+              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                {RANKS.map(r => (
+                  <div key={r.name} style={{ display:'flex', alignItems:'center', gap:10, fontSize:14, fontFamily:'Poppins,sans-serif' }}>
+                    <span style={{ fontSize:16, width:22, flexShrink:0, textAlign:'center' }}>{r.icon}</span>
+                    <span style={{ fontWeight:700, color:r.color, width:70 }}>{r.name}</span>
+                    <span style={{ color:'var(--muted)', fontSize:12 }}>{r.min.toLocaleString()}+ XP</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ display:'flex', justifyContent:'center' }}>
+              <div style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:20, padding:32, textAlign:'center', minWidth:280 }}>
+                <div style={{ fontSize:10, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:'var(--muted)', marginBottom:16, fontFamily:'Poppins,sans-serif' }}>Your Rank</div>
+                <div style={{ fontSize:48, marginBottom:4 }}>🥈</div>
+                <div className="serif" style={{ fontSize:32, fontWeight:800, color:'#9ca3af', marginBottom:4 }}>Silver</div>
+                <div style={{ fontSize:13, color:'var(--muted)', fontFamily:'Poppins,sans-serif', marginBottom:24 }}>1,200 XP total</div>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, fontFamily:'Poppins,sans-serif', marginBottom:8 }}>
+                  <span style={{ color:'#9ca3af', fontWeight:600 }}>Silver</span>
+                  <span style={{ color:'#d97706', fontWeight:600 }}>Gold</span>
+                </div>
+                <div className="lp-rank-bar-wrap">
+                  <div className="lp-rank-bar-fill" style={{ width:'70%', background:'linear-gradient(90deg, #9ca3af, #d97706)' }} />
+                </div>
+                <div style={{ fontSize:12, color:'var(--muted)', fontFamily:'Poppins,sans-serif', marginTop:8 }}>300 XP to Gold</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════════════════════
+          7. PRINT & OFFLINE
+      ═══════════════════════════════════════════════════════════ */}
+      <section className="lp-section">
         <div className="lp-max">
           <div className="lp-split">
             <div style={{ display:'flex', justifyContent:'center' }}>
@@ -467,98 +657,32 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
         </div>
       </section>
 
-      {/* ── Pipeline Tracker ─────────────────────────────────────── */}
-      <section className="lp-section">
+      {/* ═══════════════════════════════════════════════════════════
+          8. FEATURES GRID (overview recap before social proof)
+      ═══════════════════════════════════════════════════════════ */}
+      <section id="features" className="lp-section" style={{ background: theme === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.02)', borderTop:'1px solid var(--b1)', borderBottom:'1px solid var(--b1)' }}>
         <div className="lp-max">
           <div style={{ textAlign:'center', marginBottom:56 }}>
-            <div style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:'#10b981', marginBottom:12, fontFamily:'Poppins,sans-serif' }}>Pipeline Tracker</div>
-            <h2 className="serif" style={{ fontSize:'clamp(28px,4vw,48px)', fontWeight:800, lineHeight:1.1, letterSpacing:'-.025em', marginBottom:12 }}>
-              Every deal, <span style={{ color:gold }}>at a glance.</span>
+            <div style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:gold, marginBottom:12, fontFamily:'Poppins,sans-serif' }}>Features</div>
+            <h2 className="serif" style={{ fontSize:'clamp(28px,4vw,48px)', fontWeight:800, lineHeight:1.1, letterSpacing:'-.025em' }}>
+              Everything you need to <span style={{ color:gold }}>dominate.</span>
             </h2>
-            <p style={{ fontSize:15, color:'var(--muted)', lineHeight:1.75, fontFamily:'Poppins,sans-serif', maxWidth:560, margin:'0 auto' }}>
-              Track offers, pending deals, and closings in a simple board. Commission totals update automatically.
-            </p>
           </div>
-          <div className="lp-pipe-grid">
-            {[
-              { stage:'Offers Made', color:'#0ea5e9', deals:[{ addr:'142 Maple St', comm:'$8,400' }, { addr:'88 River Rd', comm:'$6,200' }] },
-              { stage:'Offers Received', color:'#8b5cf6', deals:[{ addr:'309 Pine Ave', comm:'$12,000' }] },
-              { stage:'Pending', color:'#f97316', deals:[{ addr:'7 Oak Lane', comm:'$9,800' }, { addr:'512 Birch Dr', comm:'$14,500' }] },
-              { stage:'Closed', color:'#10b981', deals:[{ addr:'214 Elm St', comm:'$11,100' }] },
-            ].map(col => (
-              <div key={col.stage} className="lp-pipe-col">
-                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-                  <div style={{ width:8, height:8, borderRadius:'50%', background:col.color }} />
-                  <div style={{ fontSize:11, fontWeight:700, color:'var(--text)', fontFamily:'Poppins,sans-serif' }}>{col.stage}</div>
-                </div>
-                <div style={{ fontSize:10, color:'var(--muted)', fontFamily:'Poppins,sans-serif' }}>{col.deals.length} deal{col.deals.length !== 1 ? 's' : ''}</div>
-                {col.deals.map(d => (
-                  <div key={d.addr} className="lp-pipe-deal">
-                    <div style={{ fontWeight:600, color:'var(--text)', marginBottom:2 }}>{d.addr}</div>
-                    <div style={{ color:col.color, fontWeight:700, fontSize:11 }}>{d.comm}</div>
-                  </div>
-                ))}
+          <div className="lp-feat-grid">
+            {FEATURES.map(f => (
+              <div key={f.title} className="lp-feat-card">
+                <div style={{ fontSize:28, marginBottom:12 }}>{f.icon}</div>
+                <div style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginBottom:6, fontFamily:'Poppins,sans-serif' }}>{f.title}</div>
+                <div style={{ fontSize:12, color:'var(--muted)', lineHeight:1.7, fontFamily:'Poppins,sans-serif' }}>{f.desc}</div>
               </div>
             ))}
           </div>
-          <div style={{ textAlign:'center', marginTop:32 }}>
-            <div style={{ display:'inline-flex', alignItems:'center', gap:12, background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:14, padding:'14px 28px' }}>
-              <span style={{ fontSize:11, color:'var(--muted)', fontFamily:'Poppins,sans-serif', fontWeight:600 }}>Total Commission Tracked</span>
-              <span className="serif" style={{ fontSize:28, fontWeight:800, color:gold }}>$62,000</span>
-            </div>
-          </div>
         </div>
       </section>
 
-      {/* ── XP & Rank System ─────────────────────────────────────── */}
-      <section className="lp-section" style={{ background: theme === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.02)', borderTop:'1px solid var(--b1)', borderBottom:'1px solid var(--b1)' }}>
-        <div className="lp-max">
-          <div className="lp-split">
-            <div>
-              <div style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:'#d97706', marginBottom:12, fontFamily:'Poppins,sans-serif' }}>XP & Rank System</div>
-              <h2 className="serif" style={{ fontSize:'clamp(28px,4vw,50px)', fontWeight:800, lineHeight:1.1, letterSpacing:'-.025em', marginBottom:18 }}>
-                Turn discipline<br />into <span style={{ color:gold }}>status.</span>
-              </h2>
-              <p style={{ fontSize:15, color:'var(--muted)', lineHeight:1.75, marginBottom:28, fontFamily:'Poppins,sans-serif' }}>
-                Every habit you check and every deal you close earns XP. Watch your rank climb from Bronze to Diamond. Hit the button to see it happen live.
-              </p>
-              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-                {[
-                  { rank:'Bronze',   min:'0',    color:'#cd7f32', icon:'🥉' },
-                  { rank:'Silver',   min:'500',  color:'#9ca3af', icon:'🥈' },
-                  { rank:'Gold',     min:'1,500', color:'#d97706', icon:'🥇' },
-                  { rank:'Platinum', min:'3,500', color:'#0ea5e9', icon:'💠' },
-                  { rank:'Diamond',  min:'7,000', color:'#8b5cf6', icon:'💎' },
-                ].map(r => (
-                  <div key={r.rank} style={{ display:'flex', alignItems:'center', gap:10, fontSize:14, fontFamily:'Poppins,sans-serif' }}>
-                    <span style={{ fontSize:16, width:22, flexShrink:0, textAlign:'center' }}>{r.icon}</span>
-                    <span style={{ fontWeight:700, color:r.color, width:70 }}>{r.rank}</span>
-                    <span style={{ color:'var(--muted)', fontSize:12 }}>{r.min}+ XP</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div style={{ display:'flex', justifyContent:'center' }}>
-              <div style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:20, padding:32, textAlign:'center', minWidth:280 }}>
-                <div style={{ fontSize:10, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:'var(--muted)', marginBottom:16, fontFamily:'Poppins,sans-serif' }}>Your Rank</div>
-                <div style={{ fontSize:48, marginBottom:4 }}>🥈</div>
-                <div className="serif" style={{ fontSize:32, fontWeight:800, color:'#9ca3af', marginBottom:4 }}>Silver</div>
-                <div style={{ fontSize:13, color:'var(--muted)', fontFamily:'Poppins,sans-serif', marginBottom:24 }}>1,200 XP total</div>
-                <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, fontFamily:'Poppins,sans-serif', marginBottom:8 }}>
-                  <span style={{ color:'#9ca3af', fontWeight:600 }}>Silver</span>
-                  <span style={{ color:'#d97706', fontWeight:600 }}>Gold</span>
-                </div>
-                <div className="lp-rank-bar-wrap">
-                  <div className="lp-rank-bar-fill" style={{ width:'70%', background:'linear-gradient(90deg, #9ca3af, #d97706)' }} />
-                </div>
-                <div style={{ fontSize:12, color:'var(--muted)', fontFamily:'Poppins,sans-serif', marginTop:8 }}>300 XP to Gold</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Testimonials ────────────────────────────────────────── */}
+      {/* ═══════════════════════════════════════════════════════════
+          9. TESTIMONIALS
+      ═══════════════════════════════════════════════════════════ */}
       <section className="lp-section">
         <div className="lp-max">
           <div style={{ textAlign:'center', marginBottom:56 }}>
@@ -585,7 +709,9 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
         </div>
       </section>
 
-      {/* ── Pricing ─────────────────────────────────────────────── */}
+      {/* ═══════════════════════════════════════════════════════════
+          10. PRICING
+      ═══════════════════════════════════════════════════════════ */}
       <section id="pricing" className="lp-section" style={{ background: theme === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.02)', borderTop:'1px solid var(--b1)', borderBottom:'1px solid var(--b1)' }}>
         <div className="lp-max">
           <div style={{ textAlign:'center', marginBottom:48 }}>
@@ -634,7 +760,9 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
         </div>
       </section>
 
-      {/* ── FAQ ──────────────────────────────────────────────────── */}
+      {/* ═══════════════════════════════════════════════════════════
+          11. FAQ
+      ═══════════════════════════════════════════════════════════ */}
       <section id="faq" className="lp-section">
         <div className="lp-max" style={{ maxWidth:700 }}>
           <div style={{ textAlign:'center', marginBottom:48 }}>
@@ -655,7 +783,9 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
         </div>
       </section>
 
-      {/* ── Final CTA ───────────────────────────────────────────── */}
+      {/* ═══════════════════════════════════════════════════════════
+          12. FINAL CTA
+      ═══════════════════════════════════════════════════════════ */}
       <section style={{ padding:'104px 24px', textAlign:'center' }}>
         <div style={{ maxWidth:600, margin:'0 auto' }}>
           <div style={{ fontSize:52, marginBottom:18 }}>🏡</div>
@@ -664,13 +794,13 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
             <span style={{ color:gold }}>Start grinding.</span>
           </h2>
           <p style={{ fontSize:16, color:'var(--muted)', lineHeight:1.75, marginBottom:38, fontFamily:'Poppins,sans-serif' }}>
-            Join agents who track every habit, coach their team, and actually hit their production goals.
+            Join agents who track every habit, get AI-powered coaching, and actually hit their production goals.
           </p>
           <button className="lp-gold-btn" style={{ fontSize:17, padding:'17px 44px' }} onClick={onGetStarted}>
             Start Free Trial →
           </button>
           <div style={{ marginTop:18, fontSize:12, color:'var(--dim)', fontFamily:'Poppins,sans-serif' }}>
-            Solo from $9/mo · Team plans from $99/mo · Cancel anytime
+            Solo from ${PLANS.find(p=>p.id==='solo')?.price}/mo · Team plans from ${PLANS.find(p=>p.id==='team')?.price}/mo · AI coaching included · Cancel anytime
           </div>
         </div>
       </section>

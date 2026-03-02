@@ -1,5 +1,20 @@
 import { useState } from 'react'
 import { CSS, Wordmark, ThemeToggle } from '../design'
+import { useAuth } from '../lib/AuthContext'
+
+const AI_TOOLS = [
+  {
+    id: 'ai-assistant',
+    name: 'AI Assistant',
+    icon: '🤖',
+    category: 'AI',
+    catColor: '#8b5cf6',
+    catBg: 'rgba(139,92,246,.1)',
+    catBorder: 'rgba(139,92,246,.25)',
+    desc: 'AI-powered real estate coaching — listing strategy, pipeline review, comp research, and goal tracking.',
+    page: 'ai-assistant',
+  },
+]
 
 const CALCULATORS = [
   {
@@ -15,7 +30,9 @@ const CALCULATORS = [
   },
 ]
 
-const APPS = [
+// ── Master list of all available external tools ─────────────────────────────
+// Team leaders and solo agents can toggle which of these show in their directory.
+export const ALL_APPS = [
   {
     id: 'fub',
     name: 'Follow Up Boss',
@@ -124,15 +141,104 @@ const APPS = [
     url: 'https://stars.ylopo.com/auth',
     display: 'stars.ylopo.com',
   },
+  {
+    id: 'canva',
+    name: 'Canva',
+    icon: '🎨',
+    category: 'Productivity',
+    catColor: '#f59e0b',
+    catBg: 'rgba(245,158,11,.1)',
+    catBorder: 'rgba(245,158,11,.25)',
+    desc: 'Design marketing flyers, social media posts, and listing presentations.',
+    url: 'https://www.canva.com',
+    display: 'canva.com',
+  },
+  {
+    id: 'dotloop',
+    name: 'dotloop',
+    icon: '🔄',
+    category: 'Transactions',
+    catColor: '#10b981',
+    catBg: 'rgba(16,185,129,.1)',
+    catBorder: 'rgba(16,185,129,.25)',
+    desc: 'Transaction management, e-signatures, and compliance workflows.',
+    url: 'https://www.dotloop.com',
+    display: 'dotloop.com',
+  },
+  {
+    id: 'kvcore',
+    name: 'kvCORE',
+    icon: '💡',
+    category: 'CRM',
+    catColor: '#0ea5e9',
+    catBg: 'rgba(14,165,233,.1)',
+    catBorder: 'rgba(14,165,233,.25)',
+    desc: 'Real estate platform with CRM, IDX website, and lead generation tools.',
+    url: 'https://kvcore.com',
+    display: 'kvcore.com',
+  },
+  {
+    id: 'realtor',
+    name: 'Realtor.com',
+    icon: '🏘️',
+    category: 'Research',
+    catColor: '#38bdf8',
+    catBg: 'rgba(56,189,248,.1)',
+    catBorder: 'rgba(56,189,248,.25)',
+    desc: 'Property listings, market data, and consumer home search portal.',
+    url: 'https://www.realtor.com',
+    display: 'realtor.com',
+  },
+  {
+    id: 'bombbomb',
+    name: 'BombBomb',
+    icon: '🎬',
+    category: 'Lead Gen',
+    catColor: '#f43f5e',
+    catBg: 'rgba(244,63,94,.1)',
+    catBorder: 'rgba(244,63,94,.25)',
+    desc: 'Video email marketing — record and send personal video messages to leads and clients.',
+    url: 'https://bombbomb.com',
+    display: 'bombbomb.com',
+  },
+  {
+    id: 'matterport',
+    name: 'Matterport',
+    icon: '📷',
+    category: 'Productivity',
+    catColor: '#f59e0b',
+    catBg: 'rgba(245,158,11,.1)',
+    catBorder: 'rgba(245,158,11,.25)',
+    desc: '3D virtual tours and digital twins for property listings.',
+    url: 'https://matterport.com',
+    display: 'matterport.com',
+  },
 ]
 
 const CATS = ['All', 'CRM', 'Lead Gen', 'MLS', 'Transactions', 'Research', 'Productivity']
 
 export default function DirectoryPage({ onNavigate, theme, onToggleTheme }) {
+  const { profile } = useAuth()
   const [filter, setFilter]   = useState('All')
   const [search, setSearch]   = useState('')
 
-  const visible = APPS.filter(a => {
+  // Determine which tools are enabled for this user
+  // Team members use team_prefs.enabled_tools, solo agents use habit_prefs.enabled_tools
+  // If no preference is set, all original 9 tools are shown (backwards compatible)
+  const isOnTeam = !!profile?.team_id
+  const teamPrefs = profile?.teams?.team_prefs
+  const enabledToolIds = isOnTeam
+    ? (teamPrefs?.enabled_tools || null)
+    : (profile?.habit_prefs?.enabled_tools || null)
+
+  // Filter ALL_APPS to only show enabled tools
+  // null = no preference set yet → show the original default set
+  const DEFAULT_TOOL_IDS = ['fub','redx','skyslope','rmls','gdrive','gmail','zillow','rpr','ylopo']
+  const activeTools = enabledToolIds
+    ? ALL_APPS.filter(a => enabledToolIds.includes(a.id))
+    : ALL_APPS.filter(a => DEFAULT_TOOL_IDS.includes(a.id))
+
+  const visible = activeTools.filter(a => {
     const matchCat    = filter === 'All' || a.category === filter
     const matchSearch = !search || a.name.toLowerCase().includes(search.toLowerCase()) ||
                         a.category.toLowerCase().includes(search.toLowerCase()) ||
@@ -156,7 +262,7 @@ export default function DirectoryPage({ onNavigate, theme, onToggleTheme }) {
               </div>
             </div>
             <div style={{ fontSize:13, color:'var(--muted)', paddingLeft:2 }}>
-              Quick access to every platform The Operative Group uses daily
+              Quick access to every platform your team uses daily
             </div>
           </div>
 
@@ -287,6 +393,64 @@ export default function DirectoryPage({ onNavigate, theme, onToggleTheme }) {
             </div>
           )}
 
+          {/* ── AI Tools section ─────────────────────────── */}
+          <div style={{ marginTop: 40 }}>
+            <div style={{ height: 1, background: 'var(--b1)', marginBottom: 28 }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <span style={{ fontSize: 22 }}>🤖</span>
+              <div className="serif" style={{ fontSize: 24, color: 'var(--text)' }}>AI Tools</div>
+              <span style={{
+                fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 700,
+                background: 'rgba(139,92,246,.12)', color: '#8b5cf6', border: '1px solid rgba(139,92,246,.25)',
+                fontFamily: "'JetBrains Mono',monospace", letterSpacing: .5,
+              }}>BETA</span>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>
+              AI-powered coaching and analysis for your real estate business
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
+              {AI_TOOLS.map(tool => (
+                <div key={tool.id} onClick={() => onNavigate && onNavigate(tool.page)}
+                  role="button" tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNavigate && onNavigate(tool.page) } }}
+                  className="card"
+                  style={{
+                    padding: 22, cursor: 'pointer', border: `1px solid ${tool.catBorder}`,
+                    display: 'flex', flexDirection: 'column', gap: 0,
+                    transition: 'all .15s', position: 'relative', overflow: 'hidden',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.borderColor = tool.catColor
+                    e.currentTarget.style.transform   = 'translateY(-2px)'
+                    e.currentTarget.style.boxShadow   = `0 8px 28px ${tool.catColor}18`
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = tool.catBorder
+                    e.currentTarget.style.transform   = 'translateY(0)'
+                    e.currentTarget.style.boxShadow   = 'var(--shadow)'
+                  }}
+                >
+                  <div style={{ position: 'absolute', top: -30, right: -30, width: 100, height: 100, borderRadius: '50%', background: tool.catBg, pointerEvents: 'none' }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+                    <div style={{ width: 52, height: 52, borderRadius: 14, background: tool.catBg, border: `1px solid ${tool.catBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, flexShrink: 0 }}>
+                      {tool.icon}
+                    </div>
+                    <span style={{ fontSize: 9, padding: '3px 8px', borderRadius: 20, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", letterSpacing: .4, background: tool.catBg, color: tool.catColor, border: `1px solid ${tool.catBorder}` }}>
+                      {tool.category.toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="serif" style={{ fontSize: 20, color: 'var(--text)', fontWeight: 700, marginBottom: 6, lineHeight: 1.2 }}>{tool.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.65, marginBottom: 16, flex: 1 }}>{tool.desc}</div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <div style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 7, background: tool.catBg, color: tool.catColor, border: `1px solid ${tool.catBorder}`, fontFamily: "'JetBrains Mono',monospace", letterSpacing: .3, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      Open →
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* ── Calculators section ──────────────────────── */}
           <div style={{ marginTop: 40 }}>
             <div style={{ height: 1, background: 'var(--b1)', marginBottom: 28 }} />
@@ -300,6 +464,8 @@ export default function DirectoryPage({ onNavigate, theme, onToggleTheme }) {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
               {CALCULATORS.map(calc => (
                 <div key={calc.id} onClick={() => onNavigate && onNavigate(calc.page)}
+                  role="button" tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNavigate && onNavigate(calc.page) } }}
                   className="card"
                   style={{
                     padding: 22, cursor: 'pointer', border: `1px solid ${calc.catBorder}`,
@@ -342,7 +508,7 @@ export default function DirectoryPage({ onNavigate, theme, onToggleTheme }) {
           <div style={{ marginTop:40, paddingTop:20, borderTop:'1px solid var(--b1)',
             display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12 }}>
             <div style={{ fontSize:11, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", letterSpacing:1 }}>
-              {APPS.length} TOOLS · {CALCULATORS.length} CALCULATORS · THE OPERATIVE GROUP
+              {activeTools.length} TOOLS · {AI_TOOLS.length} AI · {CALCULATORS.length} CALCULATORS
             </div>
             <div style={{ fontSize:11, color:'var(--dim)' }}>
               All apps open in a new tab

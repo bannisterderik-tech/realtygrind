@@ -886,7 +886,9 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
 
   async function add() {
     if (!addr.trim()) return
-    const tmp = { id:`tmp-${Date.now()}`, address:addr.trim(), price:price.trim(), commission:comm.trim(), status:'active' }
+    const rawC = comm.trim()
+    const commVal = rawC && !rawC.endsWith('%') ? rawC + '%' : rawC
+    const tmp = { id:`tmp-${Date.now()}`, address:addr.trim(), price:price.trim(), commission:commVal, status:'active' }
     setRows(prev => [...prev, tmp])
     setAddr(''); setPrice(''); setComm('')
     if (onAdd) {
@@ -1006,32 +1008,31 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
             <input className="pipe-input" value={r.price||''} onChange={e=>update(r.id,'price',e.target.value)}
               onBlur={e=>persist(r.id,'price',e.target.value)}
               placeholder="$0" style={{ color:accentColor, fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
-            <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:3 }}>
-                <button onClick={()=>toggleCommType(r.id)} title={String(r.commission||'').trim().endsWith('%') ? 'Switch to flat fee' : 'Switch to percentage'} style={{
-                  background:'var(--bg2)', border:'1px solid var(--b2)', borderRadius:4,
-                  padding:'2px 5px', fontSize:10, fontWeight:700, cursor:'pointer', flexShrink:0,
-                  color: String(r.commission||'').trim().endsWith('%') ? '#8b5cf6' : 'var(--green)',
-                  lineHeight:1.2, fontFamily:"'JetBrains Mono',monospace", transition:'all .15s',
-                }}>{String(r.commission||'').trim().endsWith('%') ? '%' : '$'}</button>
-                <input className="pipe-input" value={String(r.commission||'').trim().endsWith('%') ? String(r.commission||'').replace(/%$/,'') : (r.commission||'')}
-                  onChange={e => {
-                    const isP = String(r.commission||'').trim().endsWith('%')
-                    update(r.id, 'commission', isP ? e.target.value + '%' : e.target.value)
-                  }}
-                  onBlur={e => {
-                    const isP = String(r.commission||'').trim().endsWith('%')
-                    persist(r.id, 'commission', isP ? e.target.value + '%' : e.target.value)
-                  }}
-                  placeholder={String(r.commission||'').trim().endsWith('%') ? '3' : '$0'}
-                  style={{ color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace", flex:1, minWidth:0 }}/>
-              </div>
-              {String(r.commission||'').trim().endsWith('%') && r.price && resolveCommission(r.commission, r.price) > 0 && (
-                <span style={{ fontSize:10, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", paddingLeft:28 }}>
-                  = {fmtMoney(resolveCommission(r.commission, r.price))}
-                </span>
-              )}
-            </div>
+            {(() => {
+              const isP = String(r.commission||'').trim().endsWith('%')
+              return (
+                <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
+                  <input className="pipe-input"
+                    value={isP ? String(r.commission||'').replace(/%$/,'') : (r.commission||'')}
+                    onChange={e => update(r.id, 'commission', isP ? e.target.value + '%' : e.target.value)}
+                    onBlur={e => persist(r.id, 'commission', isP ? e.target.value + '%' : e.target.value)}
+                    placeholder={isP ? '3' : '$0'}
+                    style={{ color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
+                  <div style={{ display:'flex', alignItems:'center', gap:4, minHeight:16 }}>
+                    {isP && r.price && resolveCommission(r.commission, r.price) > 0 && (
+                      <span style={{ fontSize:10, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace" }}>
+                        = {fmtMoney(resolveCommission(r.commission, r.price))}
+                      </span>
+                    )}
+                    <button onClick={()=>toggleCommType(r.id)} style={{
+                      background:'none', border:'none', cursor:'pointer', padding:0, marginLeft:'auto',
+                      fontSize:9, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace",
+                      textDecoration:'underline', textUnderlineOffset:2,
+                    }}>{isP ? 'Flat fee' : 'Use %'}</button>
+                  </div>
+                </div>
+              )
+            })()}
             {showSource
               ? <span style={{ fontSize:11, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", padding:'0 2px' }}>{r.closedFrom||'Manual'}</span>
               : <div style={{ display:'flex', gap:4, alignItems:'center', flexWrap:'nowrap' }}>
@@ -1059,7 +1060,7 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
             onKeyDown={e=>e.key==='Enter'&&add()} placeholder="Price"
             style={{ padding:'8px 12px', color:accentColor, fontFamily:"'JetBrains Mono',monospace" }}/>
           <input className="field-input" value={comm} onChange={e=>setComm(e.target.value)}
-            onKeyDown={e=>e.key==='Enter'&&add()} placeholder="Commission"
+            onKeyDown={e=>e.key==='Enter'&&add()} placeholder="3 (%)"
             style={{ padding:'8px 12px', color:'var(--green)', fontFamily:"'JetBrains Mono',monospace" }}/>
           <div/>
           <button onClick={add} style={{
@@ -1667,9 +1668,12 @@ function Dashboard({ theme, onToggleTheme }) {
   // ── Listings ───────────────────────────────────────────────────────────────
   async function addListing() {
     if (!newAddr.trim()) return
+    // Default commission to percentage mode — append % if user entered a value without it
+    const rawComm = newComm.trim()
+    const commVal = rawComm && !rawComm.endsWith('%') ? rawComm + '%' : rawComm
     const {data} = await supabase.from('listings').insert({
       user_id:user.id, address:newAddr.trim(), unit_count:1,
-      price:newPrice.trim(), commission:newComm.trim(),
+      price:newPrice.trim(), commission:commVal,
       status:'active', month_year:MONTH_YEAR
     }).select().single()
     if (data) setListings(prev=>[...prev,{id:data.id,address:data.address,status:'active',price:data.price||'',commission:data.commission||'',monthYear:data.month_year||MONTH_YEAR}])
@@ -2998,33 +3002,36 @@ function Dashboard({ theme, onToggleTheme }) {
                     placeholder="$0"
                     style={{ color:'var(--gold2)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
 
-                  {/* Commission — per-row % / $ toggle */}
-                  <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:3 }}>
-                      <button onClick={()=>toggleListingCommType(l.id)} title={String(l.commission||'').trim().endsWith('%') ? 'Switch to flat fee' : 'Switch to percentage'} style={{
-                        background:'var(--bg2)', border:'1px solid var(--b2)', borderRadius:4,
-                        padding:'2px 5px', fontSize:10, fontWeight:700, cursor:'pointer', flexShrink:0,
-                        color: String(l.commission||'').trim().endsWith('%') ? '#8b5cf6' : 'var(--green)',
-                        lineHeight:1.2, fontFamily:"'JetBrains Mono',monospace", transition:'all .15s',
-                      }}>{String(l.commission||'').trim().endsWith('%') ? '%' : '$'}</button>
-                      <input className="pipe-input" value={String(l.commission||'').trim().endsWith('%') ? String(l.commission||'').replace(/%$/,'') : (l.commission||'')}
-                        onChange={e => {
-                          const isP = String(l.commission||'').trim().endsWith('%')
-                          updateListingLocal(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)
-                        }}
-                        onBlur={e => {
-                          const isP = String(l.commission||'').trim().endsWith('%')
-                          updateListing(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)
-                        }}
-                        placeholder={String(l.commission||'').trim().endsWith('%') ? '3' : '$0'}
-                        style={{ color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace", flex:1, minWidth:0 }}/>
-                    </div>
-                    {String(l.commission||'').trim().endsWith('%') && l.price && resolveCommission(l.commission, l.price) > 0 && (
-                      <span style={{ fontSize:10, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", paddingLeft:28 }}>
-                        = {fmtMoney(resolveCommission(l.commission, l.price))}
-                      </span>
-                    )}
-                  </div>
+                  {/* Commission — % by default, "Flat fee" to switch */}
+                  {(() => {
+                    const isP = String(l.commission||'').trim().endsWith('%')
+                    return (
+                      <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
+                        <input className="pipe-input"
+                          value={isP ? String(l.commission||'').replace(/%$/,'') : (l.commission||'')}
+                          onChange={e => {
+                            updateListingLocal(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)
+                          }}
+                          onBlur={e => {
+                            updateListing(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)
+                          }}
+                          placeholder={isP ? '3' : '$0'}
+                          style={{ color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
+                        <div style={{ display:'flex', alignItems:'center', gap:4, minHeight:16 }}>
+                          {isP && l.price && resolveCommission(l.commission, l.price) > 0 && (
+                            <span style={{ fontSize:10, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace" }}>
+                              = {fmtMoney(resolveCommission(l.commission, l.price))}
+                            </span>
+                          )}
+                          <button onClick={()=>toggleListingCommType(l.id)} style={{
+                            background:'none', border:'none', cursor:'pointer', padding:0, marginLeft:'auto',
+                            fontSize:9, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace",
+                            textDecoration:'underline', textUnderlineOffset:2,
+                          }}>{isP ? 'Flat fee' : 'Use %'}</button>
+                        </div>
+                      </div>
+                    )
+                  })()}
 
                   {/* Status + action buttons */}
                   <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'nowrap' }}>
@@ -3064,7 +3071,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="$0"
                 style={{ padding:'8px 10px', color:'var(--gold2)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
               <input className="field-input" value={newComm} onChange={e=>setNewComm(e.target.value)}
-                onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="Commission"
+                onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="3 (%)"
                 style={{ padding:'8px 10px', color:'var(--green)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
               <button onClick={addListing} style={{
                 gridColumn:'span 2',

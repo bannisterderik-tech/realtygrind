@@ -2207,6 +2207,12 @@ function Dashboard({ theme, onToggleTheme }) {
           {/* ── Day Navigator ── */}
           <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:12, marginBottom:16,
             padding:'10px 16px', background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:10 }}>
+            {!isViewingToday && (
+              <button onClick={() => setViewDayOffset(0)}
+                style={{ background:'rgba(59,130,246,.1)', color:'#3b82f6', border:'1px solid rgba(59,130,246,.3)',
+                  borderRadius:6, fontSize:11, fontWeight:600, padding:'5px 12px', cursor:'pointer',
+                  transition:'all .15s' }}>Today</button>
+            )}
             <button onClick={() => setViewDayOffset(o => o - 1)} disabled={!canGoBack}
               style={{ background:'none', border:'1px solid var(--b2)', borderRadius:6, cursor:canGoBack?'pointer':'default',
                 color:canGoBack?'var(--text)':'var(--dim)', fontSize:14, padding:'4px 10px', opacity:canGoBack?1:.4,
@@ -2223,12 +2229,6 @@ function Dashboard({ theme, onToggleTheme }) {
               style={{ background:'none', border:'1px solid var(--b2)', borderRadius:6, cursor:canGoForward?'pointer':'default',
                 color:canGoForward?'var(--text)':'var(--dim)', fontSize:14, padding:'4px 10px', opacity:canGoForward?1:.4,
                 transition:'all .15s' }}>▶</button>
-            {!isViewingToday && (
-              <button onClick={() => setViewDayOffset(0)}
-                style={{ background:'rgba(59,130,246,.1)', color:'#3b82f6', border:'1px solid rgba(59,130,246,.3)',
-                  borderRadius:6, fontSize:11, fontWeight:600, padding:'5px 12px', cursor:'pointer',
-                  transition:'all .15s' }}>Today</button>
-            )}
           </div>
 
           {/* ── Daily Standup (team members only, not owner) ── */}

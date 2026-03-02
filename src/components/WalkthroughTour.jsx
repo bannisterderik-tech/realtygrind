@@ -11,21 +11,19 @@ const STEPS = [
 
 function getPosition(el, placement) {
   const rect = el.getBoundingClientRect()
-  const scrollY = window.scrollY
-  const scrollX = window.scrollX
   const GAP = 14
 
   if (placement === 'bottom') {
     return {
-      top: rect.bottom + scrollY + GAP,
-      left: rect.left + scrollX + rect.width / 2,
+      top: rect.bottom + GAP,
+      left: rect.left + rect.width / 2,
       arrowSide: 'top',
     }
   }
   // top
   return {
-    top: rect.top + scrollY - GAP,
-    left: rect.left + scrollX + rect.width / 2,
+    top: rect.top - GAP,
+    left: rect.left + rect.width / 2,
     arrowSide: 'bottom',
   }
 }
@@ -46,10 +44,17 @@ export default function WalkthroughTour({ active, onComplete }) {
       else onComplete()
       return
     }
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    // For nav items (sticky), scroll page to top so they're naturally visible.
+    // For content items, scroll them into the viewport center.
+    const isNavItem = s.id.endsWith('-nav')
+    if (isNavItem) {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } else {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
     setTimeout(() => {
       const r = el.getBoundingClientRect()
-      setTargetRect({ top: r.top + window.scrollY, left: r.left + window.scrollX, width: r.width, height: r.height })
+      setTargetRect({ top: r.top, left: r.left, width: r.width, height: r.height })
       setPos(getPosition(el, s.placement))
     }, 350)
   }, [active, step, onComplete])
@@ -87,7 +92,7 @@ export default function WalkthroughTour({ active, onComplete }) {
 
       {/* Spotlight cutout */}
       <div style={{
-        position: 'absolute',
+        position: 'fixed',
         top: targetRect.top - 6,
         left: targetRect.left - 6,
         width: targetRect.width + 12,
@@ -100,7 +105,7 @@ export default function WalkthroughTour({ active, onComplete }) {
 
       {/* Tooltip */}
       <div style={{
-        position: 'absolute',
+        position: 'fixed',
         top: pos.top,
         left: pos.left,
         transform: isTop ? 'translate(-50%, -100%)' : 'translateX(-50%)',

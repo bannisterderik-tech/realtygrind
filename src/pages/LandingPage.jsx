@@ -18,7 +18,7 @@ const FAQS = [
   { q:'Does it work on mobile?',
     a:'Yes — RealtyGrind is fully responsive and works great on any phone or tablet. No app download needed.' },
   { q:'What is the AI Coaching Assistant?',
-    a:'The AI Assistant is a built-in coach powered by Claude that reads your live listings, pipeline, and goals. Ask it anything — listing pricing strategy, comp analysis, goal tracking, prospecting tips. Solo gets 50 credits/mo, Team gets 250 shared, Brokerage gets 500. 1 credit = 1 message.' },
+    a:'The AI Assistant is a built-in coach powered by Claude that reads your live listings, pipeline, and goals. Ask it anything — listing pricing strategy, comp analysis, goal tracking, prospecting tips. Solo gets 50 credits/mo, Team gets 250 shared, Brokerage gets unlimited. 1 credit = 1 message.' },
 ]
 
 const TESTIMONIALS = [
@@ -42,14 +42,14 @@ const DEMO_HABITS = [
 ]
 
 const FEATURES = [
-  { icon:'📞', title:'Habit Tracker', desc:'11 core real estate habits built in. Check them off daily, earn XP, and extend your streak.' },
-  { icon:'✕',  title:'Skip & Restore', desc:'X out any habit without breaking your streak. Restore it instantly whenever you are ready.' },
-  { icon:'🖨️', title:'Print Checklist', desc:'Print or save your daily habit sheet as a PDF with notes column, pipeline snapshot, and signature line.' },
-  { icon:'💰', title:'Pipeline Tracker', desc:'Log offers, pending deals, and closings. Commission counter ticks up in real time.' },
-  { icon:'🏆', title:'XP & Ranks', desc:'Bronze through Diamond. Every habit and every deal earns XP. Gamified accountability.' },
-  { icon:'🎯', title:'Team Challenges', desc:'Leaders create time-limited challenges with XP bonuses. Teams compete live.' },
-  { icon:'📋', title:'Coaching Notes', desc:'Private per-agent coaching notes with type tags. Agents reply in-thread. Leaders pin critical feedback.' },
-  { icon:'🤖', title:'AI Coaching Assistant', desc:'Get personalized strategy advice from AI that reads your listings, pipeline, and goals. Listing strategy, comp research, and accountability coaching built in.' },
+  { icon:'🏆', title:'XP & Ranks', desc:'Bronze through Diamond. Every habit and deal earns XP. Gamified accountability that keeps you grinding.', showRanks:true, ai:'AI tracks your XP pace and predicts rank-up dates' },
+  { icon:'⏭️', title:'Skip & Restore', desc:'Skip any habit without breaking your streak. Restore it when you\'re ready. Flexibility without losing momentum.', ai:'AI notices skip patterns and suggests schedule adjustments' },
+  { icon:'🎯', title:'Goals & Metrics', desc:'Set monthly targets for calls, showings, closings, and GCI. Real-time progress tracking with annual production reports and trend analysis.', ai:'AI flags when you\'re behind pace and suggests catch-up plans' },
+  { icon:'🖨️', title:'Print & Offline', desc:'One-click PDF of your daily checklist, weekly listing updates, buyer updates, and pipeline snapshots. No signal needed.' },
+  { icon:'👥', title:'Roster & Standups', desc:'See your entire team ranked by XP. Daily standups, member stats, active listings board, and full visibility into who\'s grinding.', ai:'AI generates team performance summaries for leaders' },
+  { icon:'🏅', title:'Team Challenges', desc:'Leaders create time-limited challenges with XP bonuses. Accountability groups compete live across custom metrics.', ai:'AI suggests challenge targets based on team performance' },
+  { icon:'📋', title:'Coaching Notes', desc:'Private per-agent coaching notes with type tags. Agents reply in-thread. Leaders pin critical feedback.', ai:'AI reads coaching history to personalize advice' },
+  { icon:'🔗', title:'Tool Directory', desc:'Quick-launch links to Follow Up Boss, REDX, SkySlope, Zillow, and 10+ more. Filter by category, toggle per user.' },
 ]
 
 // ── Static AI demo conversation (pure data, zero state/effects) ──────────────
@@ -340,7 +340,27 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
       </section>
 
       {/* ═══════════════════════════════════════════════════════════
-          2. HABIT TRACKER DEMO (interactive — the core product)
+          2. FEATURE HIGHLIGHTS BAR
+      ═══════════════════════════════════════════════════════════ */}
+      <section style={{ padding:'32px 24px', background: theme === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.02)', borderTop:'1px solid var(--b1)', borderBottom:'1px solid var(--b1)' }}>
+        <div className="lp-max" style={{ display:'flex', justifyContent:'center', gap:48, flexWrap:'wrap' }}>
+          {[
+            { num:'∞', label:'Custom habits', icon:'📞' },
+            { num:'5', label:'Rank tiers', icon:'🏆' },
+            { num:'AI', label:'Coaching built in', icon:'🤖' },
+            { num:'PDF', label:'Print & go', icon:'🖨️' },
+          ].map(s => (
+            <div key={s.label} style={{ textAlign:'center', minWidth:80 }}>
+              <div style={{ fontSize:28, marginBottom:6 }}>{s.icon}</div>
+              <div className="serif" style={{ fontSize:26, fontWeight:800, color:gold, lineHeight:1 }}>{s.num}</div>
+              <div style={{ fontSize:11, color:'var(--muted)', fontFamily:'Poppins,sans-serif', marginTop:4 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════════════════════
+          3. HABIT TRACKER DEMO (interactive — the core product)
       ═══════════════════════════════════════════════════════════ */}
       <section className="lp-section">
         <div className="lp-max">
@@ -355,7 +375,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
               </p>
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                 {[
-                  ['✓','11 built-in real estate habits','#0ea5e9'],
+                  ['✓','Use our defaults or create your own','#0ea5e9'],
                   ['✕','Skip any habit — streak stays safe','#f43f5e'],
                   ['✓','Custom tasks with your own XP values','#10b981'],
                   ['✓','Streak tracking across every habit','#d97706'],
@@ -364,6 +384,12 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
                     <span style={{ color:col, fontWeight:800, fontSize:15, width:18, flexShrink:0 }}>{sym}</span>{text}
                   </div>
                 ))}
+              </div>
+              <div style={{ marginTop:20, display:'flex', alignItems:'flex-start', gap:10, padding:'12px 16px', borderRadius:12, background:'rgba(139,92,246,.06)', border:'1px solid rgba(139,92,246,.15)' }}>
+                <span style={{ fontSize:14, flexShrink:0, lineHeight:1.6 }}>🤖</span>
+                <div style={{ fontSize:12, color:'var(--muted)', lineHeight:1.6, fontFamily:'Poppins,sans-serif' }}>
+                  <strong style={{ color:'#8b5cf6' }}>AI knows your habits</strong> — "You've skipped prospecting 3 days straight. Try front-loading it at 8 AM."
+                </div>
               </div>
             </div>
             <div style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:20, padding:24 }}>
@@ -433,7 +459,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
                 {[
                   { plan:'Solo', credits:'50', color:'#94a3b8' },
                   { plan:'Team', credits:'250', color:'#d97706' },
-                  { plan:'Brokerage', credits:'500', color:'#8b5cf6' },
+                  { plan:'Brokerage', credits:'Unlimited', color:'#8b5cf6' },
                 ].map(p => (
                   <div key={p.plan} style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, fontFamily:'Poppins,sans-serif' }}>
                     <div style={{ width:8, height:8, borderRadius:'50%', background:p.color }} />
@@ -533,117 +559,26 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
               <span className="serif" style={{ fontSize:28, fontWeight:800, color:gold }}>$62,000</span>
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* ═══════════════════════════════════════════════════════════
-          6. XP & RANK SYSTEM
-      ═══════════════════════════════════════════════════════════ */}
-      <section className="lp-section" style={{ background: theme === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.02)', borderTop:'1px solid var(--b1)', borderBottom:'1px solid var(--b1)' }}>
-        <div className="lp-max">
-          <div className="lp-split">
-            <div>
-              <div style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:'#d97706', marginBottom:12, fontFamily:'Poppins,sans-serif' }}>XP & Rank System</div>
-              <h2 className="serif" style={{ fontSize:'clamp(28px,4vw,50px)', fontWeight:800, lineHeight:1.1, letterSpacing:'-.025em', marginBottom:18 }}>
-                Turn discipline<br />into <span style={{ color:gold }}>status.</span>
-              </h2>
-              <p style={{ fontSize:15, color:'var(--muted)', lineHeight:1.75, marginBottom:28, fontFamily:'Poppins,sans-serif' }}>
-                Every habit you check and every deal you close earns XP. Watch your rank climb from Bronze to Diamond. Hit the button to see it happen live.
-              </p>
-              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-                {RANKS.map(r => (
-                  <div key={r.name} style={{ display:'flex', alignItems:'center', gap:10, fontSize:14, fontFamily:'Poppins,sans-serif' }}>
-                    <span style={{ fontSize:16, width:22, flexShrink:0, textAlign:'center' }}>{r.icon}</span>
-                    <span style={{ fontWeight:700, color:r.color, width:70 }}>{r.name}</span>
-                    <span style={{ color:'var(--muted)', fontSize:12 }}>{r.min.toLocaleString()}+ XP</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div style={{ display:'flex', justifyContent:'center' }}>
-              <div style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:20, padding:32, textAlign:'center', minWidth:280 }}>
-                <div style={{ fontSize:10, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:'var(--muted)', marginBottom:16, fontFamily:'Poppins,sans-serif' }}>Your Rank</div>
-                <div style={{ fontSize:48, marginBottom:4 }}>🥈</div>
-                <div className="serif" style={{ fontSize:32, fontWeight:800, color:'#9ca3af', marginBottom:4 }}>Silver</div>
-                <div style={{ fontSize:13, color:'var(--muted)', fontFamily:'Poppins,sans-serif', marginBottom:24 }}>1,200 XP total</div>
-                <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, fontFamily:'Poppins,sans-serif', marginBottom:8 }}>
-                  <span style={{ color:'#9ca3af', fontWeight:600 }}>Silver</span>
-                  <span style={{ color:'#d97706', fontWeight:600 }}>Gold</span>
-                </div>
-                <div className="lp-rank-bar-wrap">
-                  <div className="lp-rank-bar-fill" style={{ width:'70%', background:'linear-gradient(90deg, #9ca3af, #d97706)' }} />
-                </div>
-                <div style={{ fontSize:12, color:'var(--muted)', fontFamily:'Poppins,sans-serif', marginTop:8 }}>300 XP to Gold</div>
-              </div>
+          <div style={{ display:'flex', justifyContent:'center', marginTop:16 }}>
+            <div style={{ display:'inline-flex', alignItems:'center', gap:10, padding:'10px 20px', borderRadius:12, background:'rgba(139,92,246,.06)', border:'1px solid rgba(139,92,246,.15)' }}>
+              <span style={{ fontSize:14 }}>🤖</span>
+              <span style={{ fontSize:12, color:'var(--muted)', fontFamily:'Poppins,sans-serif' }}>
+                <strong style={{ color:'#8b5cf6' }}>AI reads your pipeline</strong> — pricing strategy, comp analysis, and deal prioritization
+              </span>
             </div>
           </div>
         </div>
       </section>
 
       {/* ═══════════════════════════════════════════════════════════
-          7. PRINT & OFFLINE
-      ═══════════════════════════════════════════════════════════ */}
-      <section className="lp-section">
-        <div className="lp-max">
-          <div className="lp-split">
-            <div style={{ display:'flex', justifyContent:'center' }}>
-              <div className="lp-print-paper">
-                <div style={{ textAlign:'center', marginBottom:14 }}>
-                  <div style={{ fontSize:14, fontWeight:700, letterSpacing:1 }}>DAILY CHECKLIST</div>
-                  <div style={{ fontSize:10, color:'#6b7280', marginTop:2 }}>Tuesday, March 4 · Alex M.</div>
-                </div>
-                <div style={{ borderTop:'2px solid #111', marginBottom:10 }} />
-                {['Prospecting calls','Appointments set','Showings completed','New listing signed','Follow-up emails','Market study'].map((h, i) => (
-                  <div key={h} className="lp-print-row">
-                    <div className="lp-print-box" style={ i < 3 ? { background:'#111', display:'flex', alignItems:'center', justifyContent:'center' } : {}}>
-                      {i < 3 && <span style={{ color:'#fff', fontSize:8, fontWeight:700 }}>✓</span>}
-                    </div>
-                    <span style={{ fontSize:11 }}>{h}</span>
-                    <div className="lp-print-dots" />
-                    <span style={{ fontSize:9, color:'#9ca3af', width:40, textAlign:'right' }}>Notes</span>
-                  </div>
-                ))}
-                <div style={{ borderTop:'1px solid #d1d5db', marginTop:14, paddingTop:10, display:'flex', justifyContent:'space-between', fontSize:9, color:'#6b7280' }}>
-                  <span>Pipeline: 3 active · 1 pending</span>
-                  <span>Signature: ___________</span>
-                </div>
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:'#06b6d4', marginBottom:12, fontFamily:'Poppins,sans-serif' }}>Print & Use Offline</div>
-              <h2 className="serif" style={{ fontSize:'clamp(28px,4vw,50px)', fontWeight:800, lineHeight:1.1, letterSpacing:'-.025em', marginBottom:18 }}>
-                Take it with you.<br />No signal needed.
-              </h2>
-              <p style={{ fontSize:15, color:'var(--muted)', lineHeight:1.75, marginBottom:28, fontFamily:'Poppins,sans-serif' }}>
-                Print your daily habit sheet as a clean PDF. Includes every habit with a notes column, your pipeline snapshot, and a signature line. Perfect for car time, open houses, or agents who like a paper trail.
-              </p>
-              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-                {[
-                  ['🖨️','One-click PDF export','#06b6d4'],
-                  ['📝','Notes column for each habit','#8b5cf6'],
-                  ['📊','Pipeline snapshot included','#10b981'],
-                  ['✍️','Signature line for accountability','#f97316'],
-                ].map(([icon, text, col]) => (
-                  <div key={text} style={{ display:'flex', alignItems:'center', gap:10, fontSize:14, fontFamily:'Poppins,sans-serif' }}>
-                    <span style={{ fontSize:15, width:18, flexShrink:0 }}>{icon}</span>
-                    <span style={{ color:'var(--text)' }}>{text}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ═══════════════════════════════════════════════════════════
-          8. FEATURES GRID (overview recap before social proof)
+          6. ALL FEATURES (compact grid — complete coverage)
       ═══════════════════════════════════════════════════════════ */}
       <section id="features" className="lp-section" style={{ background: theme === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.02)', borderTop:'1px solid var(--b1)', borderBottom:'1px solid var(--b1)' }}>
         <div className="lp-max">
           <div style={{ textAlign:'center', marginBottom:56 }}>
-            <div style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:gold, marginBottom:12, fontFamily:'Poppins,sans-serif' }}>Features</div>
+            <div style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:gold, marginBottom:12, fontFamily:'Poppins,sans-serif' }}>Everything You Need</div>
             <h2 className="serif" style={{ fontSize:'clamp(28px,4vw,48px)', fontWeight:800, lineHeight:1.1, letterSpacing:'-.025em' }}>
-              Everything you need to <span style={{ color:gold }}>dominate.</span>
+              Built for the <span style={{ color:gold }}>grind.</span>
             </h2>
           </div>
           <div className="lp-feat-grid">
@@ -652,6 +587,20 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
                 <div style={{ fontSize:28, marginBottom:12 }}>{f.icon}</div>
                 <div style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginBottom:6, fontFamily:'Poppins,sans-serif' }}>{f.title}</div>
                 <div style={{ fontSize:12, color:'var(--muted)', lineHeight:1.7, fontFamily:'Poppins,sans-serif' }}>{f.desc}</div>
+                {f.showRanks && (
+                  <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:10 }}>
+                    {RANKS.map(r => (
+                      <span key={r.name} style={{ fontSize:10, padding:'2px 8px', borderRadius:12, background:`${r.color}18`, color:r.color, fontWeight:700, fontFamily:'Poppins,sans-serif', border:`1px solid ${r.color}30` }}>
+                        {r.icon} {r.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {f.ai && (
+                  <div style={{ marginTop:10, display:'flex', alignItems:'center', gap:6, fontSize:10, color:'#8b5cf6', fontFamily:'Poppins,sans-serif', fontStyle:'italic' }}>
+                    <span style={{ fontStyle:'normal' }}>🤖</span> {f.ai}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -659,7 +608,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
       </section>
 
       {/* ═══════════════════════════════════════════════════════════
-          9. TESTIMONIALS
+          7. TESTIMONIALS
       ═══════════════════════════════════════════════════════════ */}
       <section className="lp-section">
         <div className="lp-max">
@@ -688,7 +637,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
       </section>
 
       {/* ═══════════════════════════════════════════════════════════
-          10. PRICING
+          8. PRICING
       ═══════════════════════════════════════════════════════════ */}
       <section id="pricing" className="lp-section" style={{ background: theme === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.02)', borderTop:'1px solid var(--b1)', borderBottom:'1px solid var(--b1)' }}>
         <div className="lp-max">
@@ -739,7 +688,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
       </section>
 
       {/* ═══════════════════════════════════════════════════════════
-          11. FAQ
+          9. FAQ
       ═══════════════════════════════════════════════════════════ */}
       <section id="faq" className="lp-section">
         <div className="lp-max" style={{ maxWidth:700 }}>
@@ -762,7 +711,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
       </section>
 
       {/* ═══════════════════════════════════════════════════════════
-          12. FINAL CTA
+          10. FINAL CTA
       ═══════════════════════════════════════════════════════════ */}
       <section style={{ padding:'104px 24px', textAlign:'center' }}>
         <div style={{ maxWidth:600, margin:'0 auto' }}>
@@ -778,7 +727,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
             Start Free Trial →
           </button>
           <div style={{ marginTop:18, fontSize:12, color:'var(--dim)', fontFamily:'Poppins,sans-serif' }}>
-            Solo from ${PLANS.find(p=>p.id==='solo')?.price}/mo · Team plans from ${PLANS.find(p=>p.id==='team')?.price}/mo · AI coaching included · Cancel anytime
+            Solo from $29/mo · Team plans from $199/mo · AI coaching included · Cancel anytime
           </div>
         </div>
       </section>

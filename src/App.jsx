@@ -879,7 +879,7 @@ function BuyersWeeklyModal({ buyerReps, offersMade, onClose }) {
 
 // ─── Pipeline section ─────────────────────────────────────────────────────────
 
-function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onStatusChange, showSource, statusOpts, onAdd, onRemove }) {
+function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onStatusChange, showSource, statusOpts, onAdd, onRemove, userId }) {
   const [addr,  setAddr]  = useState('')
   const [price, setPrice] = useState('')
   const [comm,  setComm]  = useState('')
@@ -903,7 +903,7 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
     const snapshot = rows
     setRows(prev => prev.filter(r => r.id !== row.id))
     if (row.id && !String(row.id).startsWith('tmp-')) {
-      const r = await safeDb(supabase.from('transactions').delete().eq('id', row.id))
+      const r = await safeDb(supabase.from('transactions').delete().eq('id', row.id).eq('user_id', userId))
       if (!r.ok) { setRows(snapshot); return }
     }
     if (onRemove) onRemove(row)
@@ -913,7 +913,7 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
 
   async function persist(id, field, value) {
     if (!id || String(id).startsWith('tmp-')) return
-    await safeDb(supabase.from('transactions').update({ [field]: value }).eq('id', id))
+    await safeDb(supabase.from('transactions').update({ [field]: value }).eq('id', id).eq('user_id', userId))
   }
 
   function toggleCommType(id) {
@@ -926,7 +926,7 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
       return { ...r, commission: newComm }
     }))
     if (!String(id).startsWith('tmp-')) {
-      safeDb(supabase.from('transactions').update({ commission: newComm }).eq('id', id))
+      safeDb(supabase.from('transactions').update({ commission: newComm }).eq('id', id).eq('user_id', userId))
     }
   }
 
@@ -1694,7 +1694,7 @@ function Dashboard({ theme, onToggleTheme }) {
   }
   async function dbDelete(id) {
     if (id && !String(id).startsWith('tmp-')) {
-      const {error} = await supabase.from('transactions').delete().eq('id',id)
+      const {error} = await supabase.from('transactions').delete().eq('id',id).eq('user_id',user.id)
       if (error) console.error('dbDelete error:', error.message)
     }
   }
@@ -1750,7 +1750,7 @@ function Dashboard({ theme, onToggleTheme }) {
     if (!window.confirm(`Remove listing "${listing.address}"?`)) return
     const snapshot = listings
     setListings(prev=>prev.filter(l=>l.id!==listing.id))
-    const r = await safeDb(supabase.from('listings').delete().eq('id',listing.id))
+    const r = await safeDb(supabase.from('listings').delete().eq('id',listing.id).eq('user_id',user.id))
     if (!r.ok) { setListings(snapshot); showToast('Failed to remove listing') }
   }
 
@@ -1759,7 +1759,7 @@ function Dashboard({ theme, onToggleTheme }) {
   }
   async function updateListing(id, field, val) {
     setListings(prev=>prev.map(l=>l.id===id?{...l,[field]:val}:l))
-    const r = await safeDb(supabase.from('listings').update({[field]:val}).eq('id',id))
+    const r = await safeDb(supabase.from('listings').update({[field]:val}).eq('id',id).eq('user_id',user.id))
     if (!r.ok) showToast('Failed to save listing change')
   }
   function toggleListingCommType(id) {
@@ -1776,7 +1776,7 @@ function Dashboard({ theme, onToggleTheme }) {
       const raw = String(row.commission || '').trim()
       const isPercent = raw.endsWith('%')
       const newComm = isPercent ? raw.replace(/%$/, '') : (raw ? raw + '%' : '%')
-      safeDb(supabase.from('listings').update({ commission: newComm }).eq('id', id))
+      safeDb(supabase.from('listings').update({ commission: newComm }).eq('id', id).eq('user_id', user.id))
     }
   }
 
@@ -1825,7 +1825,7 @@ function Dashboard({ theme, onToggleTheme }) {
     if (!window.confirm(`Remove buyer rep "${rep.clientName}"?`)) return
     const snapshot = buyerReps
     setBuyerReps(prev => prev.filter(r => r.id !== rep.id))
-    const r = await safeDb(supabase.from('listings').delete().eq('id', rep.id))
+    const r = await safeDb(supabase.from('listings').delete().eq('id', rep.id).eq('user_id', user.id))
     if (!r.ok) { setBuyerReps(snapshot); showToast('Failed to remove buyer rep') }
   }
 
@@ -1834,14 +1834,14 @@ function Dashboard({ theme, onToggleTheme }) {
   }
   async function persistBuyerRep(id, val) {
     setBuyerReps(prev => prev.map(r => r.id === id ? {...r, clientName:val} : r))
-    const r = await safeDb(supabase.from('listings').update({address:val}).eq('id', id))
+    const r = await safeDb(supabase.from('listings').update({address:val}).eq('id', id).eq('user_id', user.id))
     if (!r.ok) showToast('Failed to save client name')
   }
 
   async function closeBuyerRep(rep) {
     const snapshot = buyerReps
     setBuyerReps(prev => prev.map(r => r.id === rep.id ? {...r, status:'closed'} : r))
-    const r = await safeDb(supabase.from('listings').update({status:'closed'}).eq('id', rep.id))
+    const r = await safeDb(supabase.from('listings').update({status:'closed'}).eq('id', rep.id).eq('user_id', user.id))
     if (!r.ok) { setBuyerReps(snapshot); showToast('Failed to close buyer rep') }
   }
 
@@ -1858,7 +1858,7 @@ function Dashboard({ theme, onToggleTheme }) {
     const rep = buyerReps.find(r => r.id === id)
     if (!rep) return
     setSavingRepId(id)
-    const r = await safeDb(supabase.from('listings').update({ buyer_details: rep.buyerDetails || {} }).eq('id', id))
+    const r = await safeDb(supabase.from('listings').update({ buyer_details: rep.buyerDetails || {} }).eq('id', id).eq('user_id', user.id))
     setSavingRepId(null)
     if (!r.ok) { showToast('Failed to save buyer details'); return }
     // Clear dirty flag on success
@@ -3259,27 +3259,27 @@ function Dashboard({ theme, onToggleTheme }) {
           </div>
 
           <PipelineSection title="Offers Made" icon="📤" accentColor="#0ea5e9" xpLabel={PIPELINE_XP.offer_made}
-            rows={offersMade} setRows={setOffersMade}
+            rows={offersMade} setRows={setOffersMade} userId={user.id}
             onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersMade)}
             onAdd={handleOfferMadeAdd}
             onRemove={()=>deductPipelineXp('offer_made')}
             statusOpts={[{v:'active',l:'Active'},{v:'pending',l:'Move to Pending'},{v:'closed',l:'Mark Closed'}]}/>
 
           <PipelineSection title="Offers Received" icon="📥" accentColor="#8b5cf6" xpLabel={PIPELINE_XP.offer_received}
-            rows={offersReceived} setRows={setOffersReceived}
+            rows={offersReceived} setRows={setOffersReceived} userId={user.id}
             onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersReceived)}
             onAdd={handleOfferReceivedAdd}
             onRemove={()=>deductPipelineXp('offer_received')}
             statusOpts={[{v:'active',l:'Active'},{v:'pending',l:'Move to Pending'},{v:'closed',l:'Mark Closed'}]}/>
 
           <PipelineSection title="Went Pending" icon="⏳" accentColor="#f59e0b" xpLabel={PIPELINE_XP.went_pending}
-            rows={pendingDeals} setRows={setPendingDeals}
+            rows={pendingDeals} setRows={setPendingDeals} userId={user.id}
             onStatusChange={(r,s)=>handlePendingStatus(r,s)}
             onRemove={()=>deductPipelineXp('went_pending')}
             statusOpts={[{v:'active',l:'Active'},{v:'closed',l:'Mark Closed'}]}/>
 
           <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
-            rows={closedDeals} setRows={setClosedDeals}
+            rows={closedDeals} setRows={setClosedDeals} userId={user.id}
             onRemove={()=>deductPipelineXp('closed')}
             showSource={true}/>
         </div>

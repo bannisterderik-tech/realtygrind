@@ -298,9 +298,9 @@ function PrintDailyModal({ habits, counters, today, todayDate, effectiveToday, c
     { label:'Prospecting Calls',            val: prospectCount },
     { label:'Appointments Booked',          val: apptCount },
     { label:'Buyer Rep Agreements Signed',  val: braSignedCount },
-    { label:'Offers Made',                  val: offersMadeCount },
-    { label:'Offers Received',              val: offersReceivedCount },
-    { label:'Offers Pending',               val: wentPendingCount },
+    { label:'Offers Made',                  val: offersMade.length },
+    { label:'Offers Received',              val: offersReceived.length },
+    { label:'Offers Pending',               val: pendingDeals.length },
     { label:'Closed Deals',                 val: closedDeals.length },
   ]
   return (

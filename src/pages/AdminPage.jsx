@@ -30,6 +30,82 @@ function relativeTime(date) {
   return `${Math.floor(s / 3600)}h ago`
 }
 
+function UserRow({ u, badge, indent, showTeam = true }) {
+  const ep = effectivePlan(u)
+  const epColor = PLAN_COLORS[ep] || PLAN_COLORS.free
+  return (
+    <div style={{
+      padding: indent ? '10px 18px 10px 52px' : '12px 18px',
+      display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+      borderBottom: '1px solid var(--b1)',
+      ...(indent ? {} : { borderLeft: `3px solid ${epColor}` }),
+    }}>
+      {/* Avatar */}
+      <div style={{
+        width: indent ? 28 : 34, height: indent ? 28 : 34, borderRadius: 99,
+        background: `linear-gradient(135deg, ${epColor}, ${epColor}88)`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: '#fff', fontWeight: 700, fontSize: indent ? 11 : 13, flexShrink: 0,
+      }}>
+        {(u.full_name || u.email || '?')[0].toUpperCase()}
+      </div>
+      {/* Name + email */}
+      <div style={{ flex: 1, minWidth: 120 }}>
+        <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {u.full_name || '(no name)'}
+          {badge && (
+            <span style={{
+              marginLeft: 6, fontSize: 9, padding: '1px 6px', borderRadius: 4, fontWeight: 700, verticalAlign: 'middle',
+              background: badge === 'Owner' ? '#d9770622' : '#6366f122',
+              color: badge === 'Owner' ? '#d97706' : '#6366f1',
+            }}>{badge.toUpperCase()}</span>
+          )}
+          {u.app_role === 'admin' && (
+            <span style={{ marginLeft: 6, fontSize: 9, background: '#8b5cf622', color: '#8b5cf6', padding: '1px 6px', borderRadius: 4, fontWeight: 700, verticalAlign: 'middle' }}>ADMIN</span>
+          )}
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: "'JetBrains Mono', monospace", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {u.email || u.id.slice(0, 12)}
+        </div>
+      </div>
+      {/* Plan badge */}
+      <span style={{
+        fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em',
+        padding: '3px 8px', borderRadius: 5,
+        background: epColor + '18', color: epColor, border: `1px solid ${epColor}33`,
+      }}>
+        {PLAN_LABELS[ep] || ep}
+      </span>
+      {/* Billing pill */}
+      <span style={{
+        fontSize: 10, fontWeight: 600, textTransform: 'capitalize',
+        padding: '3px 8px', borderRadius: 5,
+        ...billingPill(u.billing_status),
+      }}>
+        {(u.billing_status || 'free').replace('_', ' ')}
+      </span>
+      {/* Team name (only in flat views) */}
+      {showTeam && u.team_name && (
+        <span style={{ fontSize: 10, color: 'var(--muted)', background: 'var(--bg2)', padding: '3px 8px', borderRadius: 5 }}>
+          {u.team_name}
+        </span>
+      )}
+      {/* Stats */}
+      <div className="mono" style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'right', minWidth: 60 }}>
+        <div>{(u.xp || 0).toLocaleString()} XP</div>
+        <div>🔥 {u.streak || 0}d</div>
+      </div>
+      {/* AI credits */}
+      <div style={{ textAlign: 'right', minWidth: 40 }}>
+        <div className="label" style={{ fontSize: 9, marginBottom: 2 }}>AI</div>
+        <div className="mono" style={{ fontSize: 12, color: '#8b5cf6', fontWeight: 600 }}>
+          {u.ai_credits_used || 0}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminPage({ onNavigate }) {
   const { profile } = useAuth()
   const [tab, setTab] = useState('overview')
@@ -40,6 +116,8 @@ export default function AdminPage({ onNavigate }) {
   const [planFilter, setPlanFilter] = useState('all')
   const [billingFilter, setBillingFilter] = useState('all')
   const [lastRefresh, setLastRefresh] = useState(null)
+  const [userView, setUserView] = useState('teams') // 'solo' | 'teams' | 'free'
+  const [expandedTeams, setExpandedTeams] = useState(new Set())
 
   const isAdmin = profile?.app_role === 'admin'
 
@@ -107,13 +185,18 @@ export default function AdminPage({ onNavigate }) {
         total_teams: teamIds.size,
       }
 
+      // Build team owner lookup
+      const teamOwnerMap = {}
+      for (const t of (teams || [])) teamOwnerMap[t.id] = t.created_by
+
       // All users still appear in the user list, but admins are marked
       const users = allProfiles.map(p => ({
         ...p,
         team_name: p.team_id ? (teamMap[p.team_id] || null) : null,
+        is_team_owner: p.team_id ? (teamOwnerMap[p.team_id] === p.id) : false,
       }))
 
-      setData({ stats, users })
+      setData({ stats, users, teams: teams || [] })
       setLastRefresh(new Date())
     } catch (err) {
       console.error('Admin dashboard error:', err)
@@ -135,6 +218,69 @@ export default function AdminPage({ onNavigate }) {
       return matchSearch && matchPlan && matchBilling
     })
   }, [data?.users, search, planFilter, billingFilter])
+
+  // Group users by team for the Teams view
+  const teamGroups = useMemo(() => {
+    if (!data?.users) return []
+    const groups = {}
+    const term = search.toLowerCase()
+    for (const u of data.users) {
+      if (u.app_role === 'admin') continue
+      if (!u.team_id) continue
+      // search filter
+      if (term && !(u.full_name || '').toLowerCase().includes(term) && !(u.email || '').toLowerCase().includes(term)
+        && !(u.team_name || '').toLowerCase().includes(term)) continue
+      if (!groups[u.team_id]) {
+        groups[u.team_id] = { team_id: u.team_id, team_name: u.team_name || 'Unnamed Team', owner: null, members: [] }
+      }
+      if (u.is_team_owner) groups[u.team_id].owner = u
+      else groups[u.team_id].members.push(u)
+    }
+    // Sort: teams with owners first, then by team name
+    return Object.values(groups).sort((a, b) => {
+      const planA = a.owner?.plan || ''
+      const planB = b.owner?.plan || ''
+      if (planA !== planB) return planA === 'brokerage' ? -1 : planB === 'brokerage' ? 1 : planA === 'team' ? -1 : 1
+      return (a.team_name || '').localeCompare(b.team_name || '')
+    })
+  }, [data?.users, search])
+
+  // Solo users: have a paid plan, no team
+  const soloUsers = useMemo(() => {
+    if (!data?.users) return []
+    const term = search.toLowerCase()
+    return data.users.filter(u => {
+      if (u.app_role === 'admin') return false
+      if (u.team_id) return false
+      const ep = effectivePlan(u)
+      if (ep !== 'solo') return false
+      if (term && !(u.full_name || '').toLowerCase().includes(term) && !(u.email || '').toLowerCase().includes(term)) return false
+      return true
+    })
+  }, [data?.users, search])
+
+  // Free users: no plan, no team
+  const freeUsers = useMemo(() => {
+    if (!data?.users) return []
+    const term = search.toLowerCase()
+    return data.users.filter(u => {
+      if (u.app_role === 'admin') return false
+      if (u.team_id) return false
+      const ep = effectivePlan(u)
+      if (ep !== 'free') return false
+      if (term && !(u.full_name || '').toLowerCase().includes(term) && !(u.email || '').toLowerCase().includes(term)) return false
+      return true
+    })
+  }, [data?.users, search])
+
+  function toggleTeam(teamId) {
+    setExpandedTeams(prev => {
+      const next = new Set(prev)
+      if (next.has(teamId)) next.delete(teamId)
+      else next.add(teamId)
+      return next
+    })
+  }
 
   // ── Access guard ────────────────────────────────────────────────────────
   if (!isAdmin) {
@@ -275,122 +421,148 @@ export default function AdminPage({ onNavigate }) {
               {/* ═══════════ USERS TAB ═══════════ */}
               {tab === 'users' && (
                 <div>
-                  {/* Filters */}
-                  <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+                  {/* Search */}
+                  <div style={{ marginBottom: 16 }}>
                     <input
                       className="field-input"
-                      style={{ flex: 1, minWidth: 180, padding: '8px 12px', fontSize: 13 }}
-                      placeholder="Search name or email..."
+                      style={{ width: '100%', padding: '8px 12px', fontSize: 13 }}
+                      placeholder="Search name, email, or team..."
                       value={search}
                       onChange={e => setSearch(e.target.value)}
                     />
-                    <select className="field-input" style={{ minWidth: 110, padding: '8px 10px', fontSize: 13 }}
-                      value={planFilter} onChange={e => setPlanFilter(e.target.value)}>
-                      <option value="all">All Plans</option>
-                      <option value="solo">Solo</option>
-                      <option value="team">Team</option>
-                      <option value="brokerage">Brokerage</option>
-                      <option value="team_member">Team Member</option>
-                      <option value="free">Free</option>
-                    </select>
-                    <select className="field-input" style={{ minWidth: 120, padding: '8px 10px', fontSize: 13 }}
-                      value={billingFilter} onChange={e => setBillingFilter(e.target.value)}>
-                      <option value="all">All Billing</option>
-                      <option value="active">Active</option>
-                      <option value="trialing">Trialing</option>
-                      <option value="past_due">Past Due</option>
-                      <option value="cancelled">Cancelled</option>
-                      <option value="free">Free</option>
-                    </select>
                   </div>
 
-                  <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
-                    Showing {filteredUsers.length} of {data.users.length} users
-                  </div>
-
-                  {/* User list */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {filteredUsers.length === 0 && (
-                      <div className="empty-state" style={{ padding: 40 }}>
-                        <div className="empty-icon">🔍</div>
-                        <div>No users match your filters</div>
-                      </div>
-                    )}
-                    {filteredUsers.map(u => {
-                      const ep = effectivePlan(u)
-                      const epColor = PLAN_COLORS[ep] || PLAN_COLORS.free
-                      return (
-                      <div key={u.id} className="card" style={{
-                        padding: '14px 18px',
-                        display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
-                        borderLeft: `3px solid ${epColor}`,
-                      }}>
-                        {/* Avatar */}
-                        <div style={{
-                          width: 36, height: 36, borderRadius: 99,
-                          background: `linear-gradient(135deg, ${epColor}, ${epColor}88)`,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          color: '#fff', fontWeight: 700, fontSize: 14, flexShrink: 0,
+                  {/* Sub-tabs: Teams | Solo | Free */}
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+                    {[
+                      { id: 'teams', label: `Teams (${teamGroups.length})`, icon: '🏢' },
+                      { id: 'solo', label: `Solo (${soloUsers.length})`, icon: '👤' },
+                      { id: 'free', label: `Free (${freeUsers.length})`, icon: '🆓' },
+                    ].map(v => (
+                      <button key={v.id}
+                        onClick={() => setUserView(v.id)}
+                        style={{
+                          padding: '7px 14px', fontSize: 12, fontWeight: 600, borderRadius: 8,
+                          border: userView === v.id ? '1.5px solid var(--gold)' : '1px solid var(--b1)',
+                          background: userView === v.id ? 'var(--gold-bg, rgba(217,119,6,.08))' : 'var(--surface)',
+                          color: userView === v.id ? 'var(--gold)' : 'var(--muted)',
+                          cursor: 'pointer', transition: 'all .2s',
                         }}>
-                          {(u.full_name || u.email || '?')[0].toUpperCase()}
-                        </div>
+                        {v.icon} {v.label}
+                      </button>
+                    ))}
+                  </div>
 
-                        {/* Name + email */}
-                        <div style={{ flex: 1, minWidth: 140 }}>
-                          <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {u.full_name || '(no name)'}
-                            {u.app_role === 'admin' && (
-                              <span style={{ marginLeft: 6, fontSize: 9, background: '#8b5cf622', color: '#8b5cf6', padding: '1px 6px', borderRadius: 4, fontWeight: 700, verticalAlign: 'middle' }}>ADMIN</span>
+                  {/* ── Teams View ── */}
+                  {userView === 'teams' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {teamGroups.length === 0 && (
+                        <div className="empty-state" style={{ padding: 40 }}>
+                          <div className="empty-icon">🏢</div>
+                          <div>No teams found</div>
+                        </div>
+                      )}
+                      {teamGroups.map(g => {
+                        const isOpen = expandedTeams.has(g.team_id)
+                        const ownerPlan = g.owner?.plan || 'free'
+                        const ownerColor = PLAN_COLORS[ownerPlan] || PLAN_COLORS.free
+                        const totalMembers = (g.owner ? 1 : 0) + g.members.length
+                        return (
+                          <div key={g.team_id} className="card" style={{ overflow: 'hidden' }}>
+                            {/* Team header — clickable to expand */}
+                            <div
+                              onClick={() => toggleTeam(g.team_id)}
+                              style={{
+                                padding: '14px 18px', cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: 12,
+                                borderLeft: `3px solid ${ownerColor}`,
+                                background: isOpen ? 'var(--bg2)' : 'transparent',
+                                transition: 'background .2s',
+                              }}>
+                              <span style={{ fontSize: 14, color: 'var(--muted)', width: 18, textAlign: 'center', flexShrink: 0 }}>
+                                {isOpen ? '▾' : '▸'}
+                              </span>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>
+                                  {g.team_name}
+                                </div>
+                                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                                  {g.owner ? (g.owner.full_name || g.owner.email || 'Unknown owner') : 'No owner found'} · {totalMembers} member{totalMembers !== 1 ? 's' : ''}
+                                </div>
+                              </div>
+                              {/* Owner plan badge */}
+                              <span style={{
+                                fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em',
+                                padding: '3px 8px', borderRadius: 5,
+                                background: ownerColor + '18', color: ownerColor,
+                                border: `1px solid ${ownerColor}33`,
+                              }}>
+                                {PLAN_LABELS[ownerPlan] || ownerPlan}
+                              </span>
+                              {/* Billing pill */}
+                              {g.owner && (
+                                <span style={{
+                                  fontSize: 10, fontWeight: 600, textTransform: 'capitalize',
+                                  padding: '3px 8px', borderRadius: 5,
+                                  ...billingPill(g.owner.billing_status),
+                                }}>
+                                  {(g.owner.billing_status || 'free').replace('_', ' ')}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Expanded: owner + members */}
+                            {isOpen && (
+                              <div style={{ borderTop: '1px solid var(--b1)' }}>
+                                {/* Owner row */}
+                                {g.owner && (
+                                  <UserRow u={g.owner} badge="Owner" indent={false} />
+                                )}
+                                {/* Members */}
+                                {g.members.length > 0 ? g.members.map(m => (
+                                  <UserRow key={m.id} u={m} badge="Member" indent={true} />
+                                )) : (
+                                  <div style={{ padding: '12px 18px 12px 52px', fontSize: 12, color: 'var(--muted)', fontStyle: 'italic' }}>
+                                    No team members yet
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
-                          <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: "'JetBrains Mono', monospace", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {u.email || u.id.slice(0, 12)}
-                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* ── Solo View ── */}
+                  {userView === 'solo' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {soloUsers.length === 0 && (
+                        <div className="empty-state" style={{ padding: 40 }}>
+                          <div className="empty-icon">👤</div>
+                          <div>No solo subscribers</div>
                         </div>
+                      )}
+                      {soloUsers.map(u => (
+                        <UserRow key={u.id} u={u} showTeam={false} />
+                      ))}
+                    </div>
+                  )}
 
-                        {/* Plan badge */}
-                        <span style={{
-                          fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em',
-                          padding: '3px 8px', borderRadius: 5,
-                          background: epColor + '18',
-                          color: epColor,
-                          border: `1px solid ${epColor}33`,
-                        }}>
-                          {PLAN_LABELS[ep] || ep}
-                        </span>
-
-                        {/* Billing pill */}
-                        <span style={{
-                          fontSize: 10, fontWeight: 600, textTransform: 'capitalize',
-                          padding: '3px 8px', borderRadius: 5,
-                          ...billingPill(u.billing_status),
-                        }}>
-                          {(u.billing_status || 'free').replace('_', ' ')}
-                        </span>
-
-                        {/* Team */}
-                        {u.team_name && (
-                          <span style={{ fontSize: 10, color: 'var(--muted)', background: 'var(--bg2)', padding: '3px 8px', borderRadius: 5 }}>
-                            {u.team_name}
-                          </span>
-                        )}
-
-                        {/* Stats */}
-                        <div className="mono" style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'right', minWidth: 65 }}>
-                          <div>{(u.xp || 0).toLocaleString()} XP</div>
-                          <div>🔥 {u.streak || 0}d</div>
+                  {/* ── Free View ── */}
+                  {userView === 'free' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {freeUsers.length === 0 && (
+                        <div className="empty-state" style={{ padding: 40 }}>
+                          <div className="empty-icon">🆓</div>
+                          <div>No unaffiliated free users</div>
                         </div>
-
-                        {/* AI credits */}
-                        <div style={{ textAlign: 'right', minWidth: 45 }}>
-                          <div className="label" style={{ fontSize: 9, marginBottom: 2 }}>AI</div>
-                          <div className="mono" style={{ fontSize: 12, color: '#8b5cf6', fontWeight: 600 }}>
-                            {u.ai_credits_used || 0}
-                          </div>
-                        </div>
-                      </div>
-                    )})}
-                  </div>
+                      )}
+                      {freeUsers.map(u => (
+                        <UserRow key={u.id} u={u} showTeam={false} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 

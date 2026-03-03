@@ -2644,7 +2644,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
         {/* ── Tabs ──────────────────────────────────────────── */}
         <div className="tabs">
-          {[{id:'today',l:'Today'},{id:'weekly',l:'Week View'}].map(t=>(
+          {[{id:'today',l:'Today'},{id:'weekly',l:'Week View'},{id:'heatmap',l:'Heatmap'}].map(t=>(
             <button key={t.id} className={`tab-item${tab===t.id?' on':''}`} onClick={()=>setTab(t.id)}>{t.l}</button>
           ))}
         </div>
@@ -3078,10 +3078,9 @@ function Dashboard({ theme, onToggleTheme }) {
           </>
         )}
 
-        {/* ══ WEEKLY ══════════════════════════════════════════ */}
-        {tab==='weekly' && (
+        {/* ══ HEATMAP ════════════════════════════════════════ */}
+        {tab==='heatmap' && (
           <div>
-            {/* ── Month Heatmap ────────────────────────────── */}
             <div className="card" style={{ padding:16, marginBottom:18 }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
                 <span className="label" style={{ letterSpacing:.8 }}>📊 Month Heatmap</span>
@@ -3121,7 +3120,12 @@ function Dashboard({ theme, onToggleTheme }) {
                 ))}
               </div>
             </div>
+          </div>
+        )}
 
+        {/* ══ WEEKLY ══════════════════════════════════════════ */}
+        {tab==='weekly' && (
+          <div>
             <div style={{ marginBottom:16, fontSize:13, color:'var(--muted)' }}>
               Week {today.week+1} — ✓ toggle · × remove from day · ↩ restore · + add · 🖨️ print
             </div>

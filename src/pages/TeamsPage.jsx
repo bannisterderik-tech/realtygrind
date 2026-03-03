@@ -93,6 +93,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [panelNoteForm,   setPanelNoteForm]   = useState(null)   // { text, type } | null
   const [panelNoteSaving, setPanelNoteSaving] = useState(false)
   const [teamListings,    setTeamListings]    = useState([])     // active listings for all team members
+  const [tvMode,          setTvMode]          = useState(false)   // fullscreen TV leaderboard
 
   // Depend only on team_id — prevents re-fetching every time the profile object
   // is recreated (e.g. on token refresh) while nothing meaningful has changed.
@@ -1490,10 +1491,21 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                   })()}
 
                   {/* Tab bar */}
-                  <div className="tabs" style={{ marginBottom:16 }}>
+                  <div className="tabs" style={{ marginBottom:16, display:'flex', alignItems:'center' }}>
                     <button className={`tab-item${teamsTab==='roster'?' on':''}`} onClick={()=>setTeamsTab('roster')}>👥 Roster</button>
                     {isAdminOrOwner && (
                       <button className={`tab-item${teamsTab==='admin'?' on':''}`} onClick={()=>setTeamsTab('admin')}>📊 Admin</button>
+                    )}
+                    {teamsTab==='roster' && members.length > 0 && (
+                      <button onClick={()=>setTvMode(true)} style={{
+                        marginLeft:'auto', background:'none', border:'1px solid var(--b2)', borderRadius:8,
+                        padding:'5px 12px', fontSize:11, cursor:'pointer', color:'var(--muted)',
+                        fontFamily:'Poppins,sans-serif', fontWeight:600, display:'flex', alignItems:'center', gap:5,
+                        transition:'all .15s',
+                      }} onMouseEnter={e=>{e.target.style.background='var(--gold2)';e.target.style.color='#fff';e.target.style.borderColor='var(--gold2)'}}
+                        onMouseLeave={e=>{e.target.style.background='none';e.target.style.color='var(--muted)';e.target.style.borderColor='var(--b2)'}}>
+                        📺 TV Mode
+                      </button>
                     )}
                   </div>
 
@@ -1660,7 +1672,29 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                         {/* Create form (owner only) */}
                         {isOwner && challengeForm && (
                           <div className="card" style={{ padding:20, marginBottom:16, border:'1px solid rgba(217,119,6,.3)', background:'var(--gold3)' }}>
-                            <div className="serif" style={{ fontSize:15, color:'var(--text)', marginBottom:14 }}>New Challenge</div>
+                            <div className="serif" style={{ fontSize:15, color:'var(--text)', marginBottom:8 }}>New Challenge</div>
+                            {/* Quick-start templates */}
+                            <div style={{ marginBottom:14 }}>
+                              <div className="label" style={{ marginBottom:6, fontSize:10 }}>Quick Start Templates</div>
+                              <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                                {[
+                                  { icon:'📞', title:'Prospecting Blitz', metric:'prospecting', bonusXp:'500' },
+                                  { icon:'📅', title:'Appointment Sprint', metric:'appointments', bonusXp:'400' },
+                                  { icon:'🔑', title:'Showing Challenge', metric:'showings', bonusXp:'400' },
+                                  { icon:'🏠', title:'Listing Contest', metric:'listings', bonusXp:'750' },
+                                  { icon:'🎉', title:'Close More', metric:'closed', bonusXp:'1000' },
+                                  { icon:'⚡', title:'XP Race', metric:'xp', bonusXp:'300' },
+                                ].map(t=>(
+                                  <button key={t.title} onClick={()=>setChallengeForm({ title:t.title, metric:t.metric, bonusXp:t.bonusXp })} style={{
+                                    background:challengeForm.title===t.title?'var(--gold2)':'var(--surface)', border:'1px solid var(--b2)',
+                                    borderRadius:8, padding:'6px 12px', fontSize:11, cursor:'pointer',
+                                    color:challengeForm.title===t.title?'#fff':'var(--text2)', fontWeight:600,
+                                    display:'flex', alignItems:'center', gap:4, transition:'all .15s',
+                                    fontFamily:'Poppins,sans-serif',
+                                  }}>{t.icon} {t.title}</button>
+                                ))}
+                              </div>
+                            </div>
                             <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                               <div>
                                 <div className="label" style={{ marginBottom:5 }}>Challenge Title</div>
@@ -2883,6 +2917,94 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                 {confirmModal.label || 'Confirm'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── TV Leaderboard Mode ────────────────────────────── */}
+      {tvMode && (
+        <div style={{
+          position:'fixed', inset:0, zIndex:99999, background:'#0a0a0a',
+          display:'flex', flexDirection:'column', overflow:'auto',
+        }}>
+          {/* TV Header */}
+          <div style={{ padding:'28px 40px 16px', display:'flex', alignItems:'center', justifyContent:'space-between',
+            borderBottom:'2px solid #222', flexShrink:0 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+              <span style={{ fontSize:28 }}>🏡</span>
+              <div>
+                <div style={{ fontSize:26, fontWeight:700, color:'#fff', fontFamily:"'Fraunces',serif", letterSpacing:'-.02em' }}>
+                  {teamData?.name || 'Team'} Leaderboard
+                </div>
+                <div style={{ fontSize:13, color:'#666', fontFamily:"'JetBrains Mono',monospace" }}>
+                  {new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})}
+                </div>
+              </div>
+            </div>
+            <button onClick={()=>setTvMode(false)} style={{
+              background:'#222', border:'none', borderRadius:8, padding:'8px 20px',
+              color:'#888', fontSize:13, cursor:'pointer', fontWeight:600,
+            }}>✕ Exit</button>
+          </div>
+          {/* TV Members */}
+          <div style={{ flex:1, padding:'24px 40px', display:'flex', flexDirection:'column', gap:8 }}>
+            {members.map((m,i)=>{
+              const rank = getRank(m.xp||0)
+              const stats = memberStats[m.id]||{}
+              const isMe = m.id===user.id
+              const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':null
+              return (
+                <div key={m.id} style={{
+                  display:'flex', alignItems:'center', gap:20, padding:'16px 24px',
+                  borderRadius:14, border:`1px solid ${i<3?rank.color+'44':'#222'}`,
+                  background:i===0?'rgba(217,119,6,.08)':i<3?'rgba(255,255,255,.03)':'transparent',
+                  transition:'all .3s',
+                }}>
+                  <div style={{ width:44, fontSize:medal?32:20, textAlign:'center', color:'#666', fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>
+                    {medal || (i+1)}
+                  </div>
+                  <div style={{ width:50, height:50, borderRadius:'50%',
+                    background:`linear-gradient(135deg, ${rank.color}, ${rank.color}88)`,
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    fontSize:22, fontWeight:700, color:'#fff', flexShrink:0,
+                    boxShadow:`0 4px 16px ${rank.color}44` }}>
+                    {(m.full_name||'A').charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:20, fontWeight:700, color:'#fff', display:'flex', alignItems:'center', gap:10 }}>
+                      {m.full_name||'Agent'}
+                      {isMe && <span style={{ fontSize:10, padding:'2px 8px', borderRadius:4, background:'rgba(217,119,6,.2)', color:'#d97706' }}>YOU</span>}
+                    </div>
+                    <div style={{ fontSize:13, color:'#666' }}>{rank.icon} {rank.name}</div>
+                  </div>
+                  <div style={{ display:'flex', gap:20, alignItems:'center', flexShrink:0 }}>
+                    {(m.streak||0)>0 && (
+                      <div style={{ textAlign:'center' }}>
+                        <div style={{ fontSize:22, fontWeight:700, color:'#f97316' }}>🔥 {m.streak}</div>
+                        <div style={{ fontSize:10, color:'#666' }}>streak</div>
+                      </div>
+                    )}
+                    {stats.closed>0 && (
+                      <div style={{ textAlign:'center' }}>
+                        <div style={{ fontSize:22, fontWeight:700, color:'#10b981' }}>{stats.closed}</div>
+                        <div style={{ fontSize:10, color:'#666' }}>closed</div>
+                      </div>
+                    )}
+                    <div style={{ textAlign:'right', minWidth:90 }}>
+                      <div style={{ fontSize:32, fontWeight:700, color:rank.color, fontFamily:"'Fraunces',serif", lineHeight:1 }}>
+                        {(m.xp||0).toLocaleString()}
+                      </div>
+                      <div style={{ fontSize:11, color:'#666', fontFamily:"'JetBrains Mono',monospace" }}>XP</div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {/* TV Footer */}
+          <div style={{ padding:'12px 40px 16px', borderTop:'1px solid #222', textAlign:'center',
+            fontSize:11, color:'#444', fontFamily:"'JetBrains Mono',monospace", letterSpacing:2, flexShrink:0 }}>
+            REALTYGRIND · LEADERBOARD · CLOSE MORE EVERY DAY
           </div>
         </div>
       )}

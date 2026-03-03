@@ -1225,6 +1225,9 @@ function Dashboard({ theme, onToggleTheme }) {
   const [standup,       setStandup]       = useState({ q1:'', q2:'', q3:'' })
   const [standupDone,   setStandupDone]   = useState(false)
   const [standupSaving, setStandupSaving] = useState(false)
+  const [pipelineView, setPipelineView] = useState('list')   // 'list' | 'board'
+  const [showGci, setShowGci] = useState(false)
+  const [clientUpdateListing, setClientUpdateListing] = useState(null)
   const todayDate = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD in local timezone
 
   // Depend on user.id only — prevents re-running when a new user object is created
@@ -1948,6 +1951,60 @@ function Dashboard({ theme, onToggleTheme }) {
   }, [habits, counters, builtInEffective, viewBuiltInActive, viewWeek, viewDayIdx, listings, buyerReps, closedDeals, sessionPipeline])
   const { totalHabitChecks, monthPct, viewChecks: todayChecks, viewPct: todayPct, totalProspecting, totalAppts, totalShowings, totalListings, totalBuyerReps, closedVol, closedComm, viewHabitXp: todayHabitXp, sessionPipelineXp, viewXp: todayXp } = dashStats
 
+  // ── GCI Dashboard stats ──────────────────────────────────────────────────
+  const gciStats = useMemo(() => {
+    if (!closedDeals.length) return { bySource: [], avgDeal: 0, annualPace: 0 }
+    const sourceMap = {}
+    closedDeals.forEach(d => {
+      const src = d.closedFrom || 'Direct'
+      const comm = resolveCommission(d.commission, d.price)
+      sourceMap[src] = (sourceMap[src] || 0) + comm
+    })
+    const bySource = Object.entries(sourceMap).map(([name, amount]) => ({ name, amount })).sort((a, b) => b.amount - a.amount)
+    const avgDeal = closedComm / closedDeals.length
+    const annualPace = closedComm * 12
+    return { bySource, avgDeal, annualPace }
+  }, [closedDeals, closedComm])
+
+  // ── Personal Records ─────────────────────────────────────────────────────
+  const personalRecords = useMemo(() => {
+    let bestDayXp = 0, bestWeekXp = 0, perfectDays = 0, activeDays = 0
+    for (let wi = 0; wi < WEEKS; wi++) {
+      let weekXp = 0
+      for (let di = 0; di < 7; di++) {
+        let dayXp = 0, dayDone = 0, dayActive = 0
+        builtInEffective.forEach(h => {
+          dayActive++
+          if (habits[h.id]?.[wi]?.[di]) {
+            dayDone++
+            const ckey = `${h.id}-${wi}-${di}`
+            const cnt = counters[ckey] || 0
+            dayXp += h.xp + (cnt > 0 ? Math.max(0, cnt - 1) * (h.xpEach || 0) : 0)
+          }
+        })
+        if (dayDone > 0) activeDays++
+        if (dayActive > 0 && dayDone === dayActive) perfectDays++
+        bestDayXp = Math.max(bestDayXp, dayXp)
+        weekXp += dayXp
+      }
+      bestWeekXp = Math.max(bestWeekXp, weekXp)
+    }
+    return { bestDayXp, bestWeekXp, perfectDays, activeDays }
+  }, [habits, counters, builtInEffective])
+
+  // ── Week Heatmap data ────────────────────────────────────────────────────
+  const weekHeatmap = useMemo(() => {
+    return Array.from({ length: WEEKS }, (_, wi) =>
+      Array.from({ length: 7 }, (_, di) => {
+        const ds = dateStrForDay(wi, di)
+        const skipped = (habitPrefs.skipped || {})[ds] || []
+        const active = builtInEffective.filter(h => !skipped.includes(String(h.id)))
+        const done = active.filter(h => habits[h.id]?.[wi]?.[di]).length
+        return active.length > 0 ? Math.round(done / active.length * 100) : -1
+      })
+    )
+  }, [habits, builtInEffective, habitPrefs.skipped])
+
   const dateStr   = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})
   const quote = QUOTES[new Date().getDay()]
   const timeGreeting = (() => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening' })()
@@ -2646,6 +2703,41 @@ function Dashboard({ theme, onToggleTheme }) {
                   </div>
                 )}
               </div>
+
+              {/* ── Personal Records Card ────────────────────── */}
+              {(personalRecords.activeDays > 0 || closedDeals.length > 0) && (
+                <div className="card" style={{ padding:16, background:'linear-gradient(160deg, rgba(139,92,246,.08) 0%, var(--surface) 100%)', border:'1px solid rgba(139,92,246,.15)', borderTop:'2.5px solid #8b5cf6' }}>
+                  <div className="label" style={{ marginBottom:10, color:'#8b5cf6', textAlign:'center', letterSpacing:.8 }}>🏅 Personal Records</div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                    {personalRecords.bestDayXp > 0 && (
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 8px', borderRadius:7, background:'rgba(139,92,246,.06)' }}>
+                        <span style={{ fontSize:11, color:'var(--text2)' }}>Best Day</span>
+                        <span className="mono" style={{ fontSize:13, fontWeight:700, color:'#8b5cf6' }}>+{personalRecords.bestDayXp.toLocaleString()} XP</span>
+                      </div>
+                    )}
+                    {personalRecords.bestWeekXp > 0 && (
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 8px', borderRadius:7, background:'rgba(139,92,246,.06)' }}>
+                        <span style={{ fontSize:11, color:'var(--text2)' }}>Best Week</span>
+                        <span className="mono" style={{ fontSize:13, fontWeight:700, color:'#8b5cf6' }}>+{personalRecords.bestWeekXp.toLocaleString()} XP</span>
+                      </div>
+                    )}
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 8px', borderRadius:7, background:'rgba(139,92,246,.06)' }}>
+                      <span style={{ fontSize:11, color:'var(--text2)' }}>Perfect Days</span>
+                      <span className="mono" style={{ fontSize:13, fontWeight:700, color:personalRecords.perfectDays>0?'#10b981':'var(--muted)' }}>{personalRecords.perfectDays}/{WEEKS*7}</span>
+                    </div>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 8px', borderRadius:7, background:'rgba(139,92,246,.06)' }}>
+                      <span style={{ fontSize:11, color:'var(--text2)' }}>Active Days</span>
+                      <span className="mono" style={{ fontSize:13, fontWeight:700, color:'#8b5cf6' }}>{personalRecords.activeDays}/{WEEKS*7}</span>
+                    </div>
+                    {closedDeals.length > 0 && (
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 8px', borderRadius:7, background:'rgba(16,185,129,.06)' }}>
+                        <span style={{ fontSize:11, color:'var(--text2)' }}>Month GCI</span>
+                        <span className="mono" style={{ fontSize:13, fontWeight:700, color:'#10b981' }}>{fmtMoney(closedComm)||'$0'}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           </>
@@ -2654,6 +2746,47 @@ function Dashboard({ theme, onToggleTheme }) {
         {/* ══ WEEKLY ══════════════════════════════════════════ */}
         {tab==='weekly' && (
           <div>
+            {/* ── Month Heatmap ────────────────────────────── */}
+            <div className="card" style={{ padding:16, marginBottom:18 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                <span className="label" style={{ letterSpacing:.8 }}>📊 Month Heatmap</span>
+                <span style={{ fontSize:10, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace" }}>
+                  {personalRecords.perfectDays} perfect · {personalRecords.activeDays} active
+                </span>
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'28px repeat(7,1fr)', gap:3, alignItems:'center' }}>
+                <div/>
+                {DAYS.map(d=><div key={d} style={{ textAlign:'center', fontSize:9, color:'var(--dim)', fontWeight:600 }}>{d}</div>)}
+                {weekHeatmap.map((week, wi) => (
+                  <React.Fragment key={wi}>
+                    <div style={{ fontSize:9, color:'var(--dim)', fontWeight:600, textAlign:'right', paddingRight:4 }}>W{wi+1}</div>
+                    {week.map((pct, di) => {
+                      const isT = wi === today.week && di === today.day
+                      const bg = pct < 0 ? 'var(--b1)' : pct === 0 ? 'rgba(220,38,38,.12)' : pct < 50 ? 'rgba(251,191,36,.2)' : pct < 100 ? 'rgba(16,185,129,.2)' : 'rgba(16,185,129,.45)'
+                      return (
+                        <div key={di} title={pct>=0?`${pct}% complete`:'No data'} style={{
+                          aspectRatio:'1', borderRadius:4, background:bg,
+                          border:isT?'2px solid var(--gold)':'1px solid transparent',
+                          display:'flex', alignItems:'center', justifyContent:'center',
+                          fontSize:8, color:pct>=100?'#fff':pct>=50?'#10b981':'var(--dim)', fontWeight:700,
+                        }}>
+                          {pct >= 0 ? (pct===100?'★':pct>0?pct:'') : ''}
+                        </div>
+                      )
+                    })}
+                  </React.Fragment>
+                ))}
+              </div>
+              <div style={{ display:'flex', gap:12, justifyContent:'center', marginTop:10 }}>
+                {[{c:'rgba(220,38,38,.12)',l:'0%'},{c:'rgba(251,191,36,.2)',l:'1-49%'},{c:'rgba(16,185,129,.2)',l:'50-99%'},{c:'rgba(16,185,129,.45)',l:'100%'}].map(({c,l})=>(
+                  <div key={l} style={{ display:'flex', alignItems:'center', gap:4 }}>
+                    <div style={{ width:10, height:10, borderRadius:2, background:c }}/>
+                    <span style={{ fontSize:9, color:'var(--dim)' }}>{l}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div style={{ marginBottom:16, fontSize:13, color:'var(--muted)' }}>
               Week {today.week+1} — ✓ toggle · × remove from day · ↩ restore · + add · 🖨️ print
             </div>
@@ -2978,8 +3111,13 @@ function Dashboard({ theme, onToggleTheme }) {
                       <span style={{ fontSize:10, color:'var(--dim)', fontStyle:'italic' }}>—</span>
                     )}
                   </div>
-                  {/* Delete button — own grid column */}
-                  <button className="btn-del" style={{ flexShrink:0 }} onClick={()=>removeListing(l)}>✕</button>
+                  {/* Client Update + Delete */}
+                  <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+                    <button title="Generate client update" onClick={()=>setClientUpdateListing(l)} style={{
+                      background:'none', border:'none', cursor:'pointer', padding:2, fontSize:14, opacity:.5,
+                      transition:'opacity .15s' }} onMouseEnter={e=>e.target.style.opacity=1} onMouseLeave={e=>e.target.style.opacity=.5}>📋</button>
+                    <button className="btn-del" style={{ flexShrink:0 }} onClick={()=>removeListing(l)}>✕</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -3250,39 +3388,155 @@ function Dashboard({ theme, onToggleTheme }) {
         {/* ══ PIPELINE ════════════════════════════════════════ */}
         <div style={{ marginTop:36 }}>
           <div className="section-divider"/>
-          <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:16 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:16, flexWrap:'wrap' }}>
             <span style={{ fontSize:20 }}>📊</span>
             <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>Transaction Pipeline</span>
-            <span style={{ fontSize:11, color:'var(--muted)', paddingLeft:4 }}>
+            <span style={{ fontSize:11, color:'var(--muted)', paddingLeft:4 }} className="mob-hide">
               Historical counts preserved · Commission is per-deal
             </span>
+            <div style={{ marginLeft:'auto', display:'flex', gap:0, border:'1px solid var(--b2)', borderRadius:8, overflow:'hidden' }}>
+              {[{v:'list',l:'☰ List'},{v:'board',l:'▦ Board'}].map(v=>(
+                <button key={v.v} onClick={()=>setPipelineView(v.v)} style={{
+                  padding:'5px 12px', fontSize:11, fontWeight:pipelineView===v.v?700:500, border:'none', cursor:'pointer',
+                  background:pipelineView===v.v?'var(--gold2)':'var(--surface)', color:pipelineView===v.v?'#fff':'var(--muted)',
+                  transition:'all .15s', fontFamily:'Poppins,sans-serif',
+                }}>{v.l}</button>
+              ))}
+            </div>
           </div>
 
-          <PipelineSection title="Offers Made" icon="📤" accentColor="#0ea5e9" xpLabel={PIPELINE_XP.offer_made}
-            rows={offersMade} setRows={setOffersMade} userId={user.id}
-            onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersMade)}
-            onAdd={handleOfferMadeAdd}
-            onRemove={()=>deductPipelineXp('offer_made')}
-            statusOpts={[{v:'active',l:'Active'},{v:'pending',l:'Move to Pending'},{v:'closed',l:'Mark Closed'}]}/>
+          {pipelineView === 'list' ? (
+            <>
+              <PipelineSection title="Offers Made" icon="📤" accentColor="#0ea5e9" xpLabel={PIPELINE_XP.offer_made}
+                rows={offersMade} setRows={setOffersMade} userId={user.id}
+                onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersMade)}
+                onAdd={handleOfferMadeAdd}
+                onRemove={()=>deductPipelineXp('offer_made')}
+                statusOpts={[{v:'active',l:'Active'},{v:'pending',l:'Move to Pending'},{v:'closed',l:'Mark Closed'}]}/>
 
-          <PipelineSection title="Offers Received" icon="📥" accentColor="#8b5cf6" xpLabel={PIPELINE_XP.offer_received}
-            rows={offersReceived} setRows={setOffersReceived} userId={user.id}
-            onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersReceived)}
-            onAdd={handleOfferReceivedAdd}
-            onRemove={()=>deductPipelineXp('offer_received')}
-            statusOpts={[{v:'active',l:'Active'},{v:'pending',l:'Move to Pending'},{v:'closed',l:'Mark Closed'}]}/>
+              <PipelineSection title="Offers Received" icon="📥" accentColor="#8b5cf6" xpLabel={PIPELINE_XP.offer_received}
+                rows={offersReceived} setRows={setOffersReceived} userId={user.id}
+                onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersReceived)}
+                onAdd={handleOfferReceivedAdd}
+                onRemove={()=>deductPipelineXp('offer_received')}
+                statusOpts={[{v:'active',l:'Active'},{v:'pending',l:'Move to Pending'},{v:'closed',l:'Mark Closed'}]}/>
 
-          <PipelineSection title="Went Pending" icon="⏳" accentColor="#f59e0b" xpLabel={PIPELINE_XP.went_pending}
-            rows={pendingDeals} setRows={setPendingDeals} userId={user.id}
-            onStatusChange={(r,s)=>handlePendingStatus(r,s)}
-            onRemove={()=>deductPipelineXp('went_pending')}
-            statusOpts={[{v:'active',l:'Active'},{v:'closed',l:'Mark Closed'}]}/>
+              <PipelineSection title="Went Pending" icon="⏳" accentColor="#f59e0b" xpLabel={PIPELINE_XP.went_pending}
+                rows={pendingDeals} setRows={setPendingDeals} userId={user.id}
+                onStatusChange={(r,s)=>handlePendingStatus(r,s)}
+                onRemove={()=>deductPipelineXp('went_pending')}
+                statusOpts={[{v:'active',l:'Active'},{v:'closed',l:'Mark Closed'}]}/>
 
-          <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
-            rows={closedDeals} setRows={setClosedDeals} userId={user.id}
-            onRemove={()=>deductPipelineXp('closed')}
-            showSource={true}/>
+              <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
+                rows={closedDeals} setRows={setClosedDeals} userId={user.id}
+                onRemove={()=>deductPipelineXp('closed')}
+                showSource={true}/>
+            </>
+          ) : (
+            /* ── Kanban Board View ──────────────────────────── */
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, minHeight:200 }}>
+              {[
+                { title:'Offers Made', icon:'📤', color:'#0ea5e9', rows:offersMade },
+                { title:'Offers Rec\'d', icon:'📥', color:'#8b5cf6', rows:offersReceived },
+                { title:'Pending', icon:'⏳', color:'#f59e0b', rows:pendingDeals },
+                { title:'Closed', icon:'🎉', color:'#10b981', rows:closedDeals },
+              ].map(col => (
+                <div key={col.title} style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:12, overflow:'hidden' }}>
+                  <div style={{ padding:'10px 12px', background:`${col.color}11`, borderBottom:`2px solid ${col.color}33`, display:'flex', alignItems:'center', gap:6 }}>
+                    <span style={{ fontSize:14 }}>{col.icon}</span>
+                    <span style={{ fontSize:12, fontWeight:700, color:'var(--text)' }}>{col.title}</span>
+                    <span className="mono" style={{ marginLeft:'auto', fontSize:11, color:col.color, fontWeight:700 }}>{col.rows.length}</span>
+                  </div>
+                  <div style={{ padding:8, display:'flex', flexDirection:'column', gap:6, maxHeight:400, overflowY:'auto' }}>
+                    {col.rows.length === 0 && (
+                      <div style={{ padding:'20px 8px', textAlign:'center', fontSize:11, color:'var(--dim)' }}>No entries</div>
+                    )}
+                    {col.rows.map(r => {
+                      const comm = resolveCommission(r.commission, r.price)
+                      return (
+                        <div key={r.id} style={{ padding:'10px 12px', borderRadius:8, background:'var(--bg)', border:'1px solid var(--b1)', transition:'box-shadow .15s' }}>
+                          <div style={{ fontSize:12, fontWeight:600, color:'var(--text)', marginBottom:4, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                            {r.address || 'Untitled'}
+                          </div>
+                          <div style={{ display:'flex', gap:8, fontSize:10, color:'var(--muted)' }}>
+                            {r.price && <span>{fmtMoney(r.price)||r.price}</span>}
+                            {comm > 0 && <span style={{ color:col.color, fontWeight:700 }}>{fmtMoney(comm)}</span>}
+                          </div>
+                          {r.closedFrom && <div style={{ marginTop:4, fontSize:9, color:'var(--dim)' }}>via {r.closedFrom}</div>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
+
+        {/* ══ GCI DASHBOARD ═══════════════════════════════════ */}
+        {closedDeals.length > 0 && (
+          <div style={{ marginTop:36 }}>
+            <div className="section-divider"/>
+            <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:16, cursor:'pointer' }}
+              onClick={()=>setShowGci(p=>!p)}>
+              <span style={{ fontSize:20 }}>💰</span>
+              <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>GCI Dashboard</span>
+              <span style={{ fontSize:11, color:'var(--muted)', paddingLeft:4 }}>{MONTH_YEAR}</span>
+              <span style={{ marginLeft:'auto', fontSize:14, color:'var(--muted)', transition:'transform .2s', transform:showGci?'rotate(180deg)':'rotate(0)' }}>▾</span>
+            </div>
+            {showGci && (
+              <div>
+                {/* GCI stat cards */}
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:10, marginBottom:18 }}>
+                  <div className="card" style={{ padding:16, textAlign:'center', borderTop:'2.5px solid #10b981' }}>
+                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:6 }}>TOTAL GCI</div>
+                    <div className="serif" style={{ fontSize:28, color:'#10b981', fontWeight:700, letterSpacing:'-.02em' }}>{fmtMoney(closedComm)||'$0'}</div>
+                  </div>
+                  <div className="card" style={{ padding:16, textAlign:'center', borderTop:'2.5px solid var(--gold)' }}>
+                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:6 }}>AVG / DEAL</div>
+                    <div className="serif" style={{ fontSize:28, color:'var(--gold2)', fontWeight:700, letterSpacing:'-.02em' }}>{fmtMoney(gciStats.avgDeal)||'$0'}</div>
+                  </div>
+                  <div className="card" style={{ padding:16, textAlign:'center', borderTop:'2.5px solid var(--blue)' }}>
+                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:6 }}>DEALS CLOSED</div>
+                    <div className="serif" style={{ fontSize:28, color:'var(--blue)', fontWeight:700 }}>{closedDeals.length}</div>
+                  </div>
+                  <div className="card" style={{ padding:16, textAlign:'center', borderTop:'2.5px solid #8b5cf6' }}>
+                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:6 }}>ANNUAL PACE</div>
+                    <div className="serif" style={{ fontSize:28, color:'#8b5cf6', fontWeight:700, letterSpacing:'-.02em' }}>{fmtMoney(gciStats.annualPace)||'$0'}</div>
+                  </div>
+                </div>
+                {/* GCI by source breakdown */}
+                {gciStats.bySource.length > 0 && (
+                  <div className="card" style={{ padding:18 }}>
+                    <div className="label" style={{ marginBottom:12 }}>Commission by Source</div>
+                    {gciStats.bySource.map(s => {
+                      const pct = closedComm > 0 ? Math.round(s.amount / closedComm * 100) : 0
+                      const colors = { Listing:'#10b981', Offers:'#0ea5e9', Pending:'#f59e0b', Direct:'#8b5cf6' }
+                      const c = colors[s.name] || '#6b7280'
+                      return (
+                        <div key={s.name} style={{ marginBottom:10 }}>
+                          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+                            <span style={{ fontSize:12, color:'var(--text2)', fontWeight:600 }}>{s.name}</span>
+                            <span className="mono" style={{ fontSize:12, color:c, fontWeight:700 }}>{fmtMoney(s.amount)} ({pct}%)</span>
+                          </div>
+                          <div className="progress-track">
+                            <div className="progress-fill" style={{ width:`${pct}%`, background:c }}/>
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {closedVol > 0 && (
+                      <div style={{ marginTop:12, paddingTop:10, borderTop:'1px solid var(--b1)', display:'flex', justifyContent:'space-between', fontSize:11, color:'var(--muted)' }}>
+                        <span>Total Volume</span>
+                        <span className="mono" style={{ fontWeight:700, color:'var(--text)' }}>{fmtMoney(closedVol)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={{ height:48 }}/>
         <div style={{ textAlign:'center', fontSize:10, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace",
@@ -3375,6 +3629,58 @@ function Dashboard({ theme, onToggleTheme }) {
           onClose={() => setShowBuyersUpdate(false)}
         />
       )}
+
+      {/* ── Client Update Modal ──────────────────────────── */}
+      {clientUpdateListing && (() => {
+        const cl = clientUpdateListing
+        const comm = resolveCommission(cl.commission, cl.price)
+        const agentName = profile?.full_name || 'Your Agent'
+        return (
+          <div style={{ position:'fixed', inset:0, zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.55)' }}
+            onClick={()=>setClientUpdateListing(null)}>
+            <div onClick={e=>e.stopPropagation()} style={{ background:'#fff', borderRadius:16, width:520, maxWidth:'92vw', maxHeight:'90vh', overflow:'auto', boxShadow:'0 25px 60px rgba(0,0,0,.3)' }}>
+              <div style={{ padding:'28px 32px', borderBottom:'1px solid #e5e7eb' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <div>
+                    <div style={{ fontSize:10, letterSpacing:1.2, color:'#9ca3af', fontWeight:600, marginBottom:4 }}>CLIENT UPDATE</div>
+                    <div style={{ fontSize:20, fontWeight:700, color:'#111', fontFamily:"'Fraunces',serif" }}>{cl.address}</div>
+                  </div>
+                  <span className={`status-pill sp-${cl.status||'active'}`} style={{ fontSize:11 }}>
+                    {cl.status==='pending'?'⏳ Pending':cl.status==='closed'?'✓ Closed':'● Active'}
+                  </span>
+                </div>
+              </div>
+              <div style={{ padding:'24px 32px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
+                <div>
+                  <div style={{ fontSize:10, color:'#9ca3af', letterSpacing:.8, marginBottom:4 }}>LIST PRICE</div>
+                  <div style={{ fontSize:22, fontWeight:700, color:'#111' }}>{fmtMoney(cl.price)||'—'}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize:10, color:'#9ca3af', letterSpacing:.8, marginBottom:4 }}>STATUS</div>
+                  <div style={{ fontSize:22, fontWeight:700, color:cl.status==='closed'?'#10b981':cl.status==='pending'?'#f59e0b':'#8b5cf6' }}>
+                    {cl.status==='closed'?'Closed':cl.status==='pending'?'Pending':'Active'}
+                  </div>
+                </div>
+              </div>
+              <div style={{ padding:'16px 32px 28px', display:'flex', justifyContent:'space-between', alignItems:'center', borderTop:'1px solid #f3f4f6' }}>
+                <div style={{ fontSize:11, color:'#6b7280' }}>
+                  Prepared by <strong style={{ color:'#111' }}>{agentName}</strong> · {new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}
+                </div>
+                <div style={{ display:'flex', gap:8 }}>
+                  <button onClick={()=>window.print()} style={{
+                    background:'#111', color:'#fff', border:'none', borderRadius:8, padding:'8px 18px',
+                    fontSize:12, fontWeight:700, cursor:'pointer'
+                  }}>🖨️ Print</button>
+                  <button onClick={()=>setClientUpdateListing(null)} style={{
+                    background:'#f3f4f6', color:'#6b7280', border:'none', borderRadius:8, padding:'8px 18px',
+                    fontSize:12, fontWeight:600, cursor:'pointer'
+                  }}>Close</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Error toast */}
       {toast && (

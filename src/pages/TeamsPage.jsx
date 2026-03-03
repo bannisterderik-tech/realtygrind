@@ -64,13 +64,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [memberStats,setMemberStats]= useState({})
   const [challengeForm, setChallengeForm] = useState(null) // null | { title, metric, bonusXp }
   const [challengeSaving, setChallengeSaving] = useState(false)
-  const [teamsTab,       setTeamsTab]       = useState('roster') // 'roster' | 'admin'
+  const [teamsTab,       setTeamsTab]       = useState('roster') // 'roster' | 'groups' | 'settings'
   const [groupForm,      setGroupForm]      = useState(null)     // null | { name, leaderId, memberIds, editingId }
   const [groupSaving,    setGroupSaving]    = useState(false)
   const [groupView,      setGroupView]      = useState(null)     // null | groupId — full group dashboard
   const [groupChallengeForm,   setGroupChallengeForm]   = useState(null)  // null | { title, metric, bonusXp }
   const [groupChallengeSaving, setGroupChallengeSaving] = useState(false)
-  const [adminSubTab,    setAdminSubTab]    = useState('groups') // 'groups'|'settings'
   const [replyForms,     setReplyForms]     = useState({})            // { [noteId | userId_date]: string }
   const [replySaving,    setReplySaving]    = useState(null)          // id being saved, or null
   const [viewingMember,        setViewingMember]        = useState(null)  // member object | null
@@ -1310,172 +1309,15 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                     </div>
                   )}
 
-                  {/* ── Invite by Email (owner only) ─────────────────────── */}
-                  {isTeamOwner && (
-                    <div className="card" style={{
-                      padding:'18px 20px', marginBottom:16,
-                      borderLeft:'3px solid var(--gold2)',
-                      background:'linear-gradient(135deg, rgba(217,119,6,.06) 0%, var(--surface) 55%)',
-                    }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
-                        <span style={{ fontSize:16 }}>✉️</span>
-                        <span className="serif" style={{ fontSize:15, color:'var(--text)', fontWeight:600 }}>Invite Members by Email</span>
-                        <span style={{ fontSize:11, color:'var(--muted)', marginLeft:'auto' }}>They'll receive a setup link</span>
-                      </div>
-                      <div style={{ display:'flex', gap:8, marginBottom: inviteMsg ? 10 : 0 }}>
-                        <input className="field-input" type="text" value={inviteEmail}
-                          onChange={e=>{ setInviteEmail(e.target.value); setInviteMsg(null) }}
-                          onKeyDown={e=>e.key==='Enter'&&sendInvite()}
-                          placeholder="agent@brokerage.com" style={{ flex:1 }}/>
-                        <button type="button" className="btn-primary" onClick={sendInvite}
-                          disabled={inviteSending || !inviteEmail.trim()}
-                          style={{ fontSize:13, padding:'9px 20px', whiteSpace:'nowrap' }}>
-                          {inviteSending ? 'Sending…' : 'Send Invite'}
-                        </button>
-                      </div>
-                      {inviteMsg && (
-                        <div style={{ fontSize:12, marginBottom: pendingInvites.length ? 12 : 0,
-                          color: inviteMsg.type==='ok' ? 'var(--green)' : 'var(--red)' }}>
-                          {inviteMsg.type==='ok' ? '✓ ' : '✗ '}{inviteMsg.text}
-                        </div>
-                      )}
-                      {pendingInvites.length > 0 && (
-                        <div>
-                          <div style={{ fontSize:10, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px',
-                            textTransform:'uppercase', marginBottom:6, borderTop:'1px solid var(--b2)', paddingTop:10 }}>
-                            Pending Invites
-                          </div>
-                          {pendingInvites.map(inv => (
-                            <div key={inv.email} style={{ display:'flex', alignItems:'center', gap:8,
-                              padding:'6px 0', borderBottom:'1px solid var(--b2)' }}>
-                              <div style={{ flex:1, fontSize:12, color:'var(--text)' }}>{inv.email}</div>
-                              <div style={{ fontSize:11, color:'var(--muted)' }}>{relativeTime(inv.invitedAt)}</div>
-                              <button type="button" onClick={()=>removeInvite(inv.email)} style={{ background:'none', border:'none',
-                                cursor:'pointer', color:'var(--muted)', fontSize:15, padding:'0 4px', lineHeight:1 }}
-                                title="Remove invite">✕</button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* My Groups section — shows ALL groups the user belongs to */}
-                  {(()=>{
-                    const myGroups = allGroups.filter(g => g.memberIds.includes(user?.id) || g.leaderId===user?.id)
-                    if (myGroups.length === 0 && !isTeamOwner) return (
-                      <div style={{ border:'1.5px dashed var(--b2)', borderRadius:10, padding:'18px 20px',
-                        fontSize:13, color:'var(--muted)', textAlign:'center', marginBottom:16 }}>
-                        🫂 Not in a group yet. Ask your team owner to add you.
-                      </div>
-                    )
-                    if (myGroups.length === 0) return null
-                    return (
-                      <>
-                        {myGroups.map(myGroup => {
-                          const isLeader  = myGroup.leaderId === user?.id
-                          const groupMates = members.filter(m => (myGroup.memberIds.includes(m.id) || myGroup.leaderId===m.id) && m.id!==user?.id)
-                          const me = members.find(m => m.id===user?.id)
-                          return (
-                            <div key={myGroup.id} className="card" style={{ padding:20, marginBottom:16,
-                              border:'1px solid rgba(139,92,246,.3)',
-                              background:'linear-gradient(135deg, rgba(139,92,246,.05) 0%, var(--surface) 70%)' }}>
-                              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14, flexWrap:'wrap' }}>
-                                <span style={{ fontSize:18 }}>🫂</span>
-                                <span className="serif" style={{ fontSize:18, color:'var(--text)' }}>{myGroup.name}</span>
-                                {isLeader && <span style={{ fontSize:10, padding:'2px 8px', borderRadius:10, background:'rgba(139,92,246,.12)', color:'#8b5cf6', fontWeight:700 }}>LEADER</span>}
-                                <span style={{ fontSize:11, padding:'2px 8px', borderRadius:10, background:'rgba(139,92,246,.08)', color:'#8b5cf6', fontWeight:600 }}>{myGroup.memberIds.length} members</span>
-                                {(isLeader || isTeamOwner) && (
-                                  <button className="btn-outline" style={{ marginLeft:'auto', fontSize:11, padding:'5px 12px' }}
-                                    onClick={()=>{ setGroupView(myGroup.id); setGroupChallengeForm(null) }}>
-                                    View Dashboard →
-                                  </button>
-                                )}
-                              </div>
-                              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:12 }}>
-                                {me && (()=>{
-                                  const myRank  = getRank(me.xp||0)
-                                  const myStats = memberStats[me.id]||{}
-                                  return (
-                                    <div className="card" style={{ padding:14, border:'1px solid rgba(217,119,6,.3)', background:'var(--gold3)' }}>
-                                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                                        <div style={{ width:34, height:34, borderRadius:'50%',
-                                          background:`linear-gradient(135deg,${myRank.color},${myRank.color}99)`,
-                                          display:'flex', alignItems:'center', justifyContent:'center',
-                                          fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
-                                          {(me.full_name||'A').charAt(0).toUpperCase()}
-                                        </div>
-                                        <div style={{ flex:1, minWidth:0 }}>
-                                          <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{me.full_name||'Agent'}</div>
-                                          <div style={{ fontSize:10, color:'var(--muted)' }}>{myRank.name} · 🔥 {me.streak||0}</div>
-                                        </div>
-                                        <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>YOU</span>
-                                      </div>
-                                      <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
-                                        <div style={{ textAlign:'center' }}>
-                                          <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>TODAY</div>
-                                          <Ring pct={myStats.todayPct||0} size={52} color={myRank.color}/>
-                                        </div>
-                                        <div style={{ textAlign:'center' }}>
-                                          <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>MONTH</div>
-                                          <Ring pct={myStats.monthlyPct||0} size={52} color='#0ea5e9'/>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )
-                                })()}
-                                {groupMates.map(mate=>{
-                                  const mateRank  = getRank(mate.xp||0)
-                                  const mateStats = memberStats[mate.id]||{}
-                                  const isLeaderMate = myGroup.leaderId === mate.id
-                                  return (
-                                    <div key={mate.id} className="card" style={{ padding:14,
-                                      cursor: isLeader ? 'pointer' : 'default',
-                                      border: isLeaderMate ? '1px solid rgba(139,92,246,.3)' : '1px solid var(--b2)' }}
-                                      onClick={isLeader && !memberDetailLoading && !viewingMember ? ()=>fetchMemberDetail(mate) : undefined}>
-                                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                                        <div style={{ width:34, height:34, borderRadius:'50%',
-                                          background:`linear-gradient(135deg,${mateRank.color},${mateRank.color}99)`,
-                                          display:'flex', alignItems:'center', justifyContent:'center',
-                                          fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
-                                          {(mate.full_name||'A').charAt(0).toUpperCase()}
-                                        </div>
-                                        <div style={{ flex:1, minWidth:0 }}>
-                                          <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{mate.full_name||'Agent'}</div>
-                                          <div style={{ fontSize:10, color:'var(--muted)' }}>{mateRank.name} · 🔥 {mate.streak||0}</div>
-                                        </div>
-                                        {isLeaderMate && <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background:'rgba(139,92,246,.1)', color:'#8b5cf6', fontWeight:700 }}>LEAD</span>}
-                                      </div>
-                                      <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
-                                        <div style={{ textAlign:'center' }}>
-                                          <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>TODAY</div>
-                                          <Ring pct={mateStats.todayPct||0} size={52} color={mateRank.color}/>
-                                        </div>
-                                        <div style={{ textAlign:'center' }}>
-                                          <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>MONTH</div>
-                                          <Ring pct={mateStats.monthlyPct||0} size={52} color='#0ea5e9'/>
-                                        </div>
-                                      </div>
-                                      {isLeader && <div style={{ marginTop:8, fontSize:10, color:'var(--dim)', textAlign:'center' }}>Click to view details</div>}
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </>
-                    )
-                  })()}
-
-                  {/* Tab bar */}
-                  <div className="tabs" style={{ marginBottom:16, display:'flex', alignItems:'center' }}>
-                    <button className={`tab-item${teamsTab==='roster'?' on':''}`} onClick={()=>setTeamsTab('roster')}>👥 Roster</button>
-                    {isAdminOrOwner && (
-                      <button className={`tab-item${teamsTab==='groups'?' on':''}`} onClick={()=>setTeamsTab('groups')}>🫂 Groups</button>
-                    )}
+                  {/* ── Page Tabs (prominent, at top) ── */}
+                  <div className="tabs" style={{ marginBottom:24, display:'flex', alignItems:'center', gap:2 }}>
+                    <button className={`tab-item${teamsTab==='roster'?' on':''}`} onClick={()=>setTeamsTab('roster')}
+                      style={{ fontSize:15, padding:'12px 22px', fontWeight:600 }}>👥 Roster</button>
+                    <button className={`tab-item${teamsTab==='groups'?' on':''}`} onClick={()=>setTeamsTab('groups')}
+                      style={{ fontSize:15, padding:'12px 22px', fontWeight:600 }}>🫂 Groups</button>
                     {isTeamOwner && (
-                      <button className={`tab-item${teamsTab==='admin'?' on':''}`} onClick={()=>setTeamsTab('admin')}>⚙️ Admin</button>
+                      <button className={`tab-item${teamsTab==='settings'?' on':''}`} onClick={()=>setTeamsTab('settings')}
+                        style={{ fontSize:15, padding:'12px 22px', fontWeight:600 }}>⚙️ Settings</button>
                     )}
                     {teamsTab==='roster' && members.length > 0 && (
                       <button onClick={()=>setTvMode(true)} style={{
@@ -1790,12 +1632,122 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                   </>
                   )} {/* end roster tab */}
 
-                  {/* Groups tab — owner full access; admins read-only */}
-                  {teamsTab==='groups' && isAdminOrOwner && (
+                  {/* ════════ GROUPS TAB ════════ */}
+                  {teamsTab==='groups' && (
                         <div>
+                          {/* My Groups — visible to everyone */}
+                          {(()=>{
+                            const myGroups = allGroups.filter(g => g.memberIds.includes(user?.id) || g.leaderId===user?.id)
+                            if (myGroups.length === 0 && !isAdminOrOwner) return (
+                              <div style={{ border:'1.5px dashed var(--b2)', borderRadius:10, padding:'18px 20px',
+                                fontSize:13, color:'var(--muted)', textAlign:'center', marginBottom:24 }}>
+                                🫂 You're not in any group yet. Ask your team owner to add you.
+                              </div>
+                            )
+                            if (myGroups.length === 0) return null
+                            return (
+                              <div style={{ marginBottom:28 }}>
+                                {myGroups.map(myGroup => {
+                                  const isLeader  = myGroup.leaderId === user?.id
+                                  const groupMates = members.filter(m => (myGroup.memberIds.includes(m.id) || myGroup.leaderId===m.id) && m.id!==user?.id)
+                                  const me = members.find(m => m.id===user?.id)
+                                  return (
+                                    <div key={myGroup.id} className="card" style={{ padding:20, marginBottom:12,
+                                      border:'1px solid rgba(139,92,246,.3)',
+                                      background:'linear-gradient(135deg, rgba(139,92,246,.05) 0%, var(--surface) 70%)' }}>
+                                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14, flexWrap:'wrap' }}>
+                                        <span style={{ fontSize:18 }}>🫂</span>
+                                        <span className="serif" style={{ fontSize:18, color:'var(--text)' }}>{myGroup.name}</span>
+                                        {isLeader && <span style={{ fontSize:10, padding:'2px 8px', borderRadius:10, background:'rgba(139,92,246,.12)', color:'#8b5cf6', fontWeight:700 }}>LEADER</span>}
+                                        <span style={{ fontSize:11, padding:'2px 8px', borderRadius:10, background:'rgba(139,92,246,.08)', color:'#8b5cf6', fontWeight:600 }}>{myGroup.memberIds.length} members</span>
+                                        {(isLeader || isTeamOwner) && (
+                                          <button className="btn-outline" style={{ marginLeft:'auto', fontSize:11, padding:'5px 12px' }}
+                                            onClick={()=>{ setGroupView(myGroup.id); setGroupChallengeForm(null) }}>
+                                            View Dashboard →
+                                          </button>
+                                        )}
+                                      </div>
+                                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:12 }}>
+                                        {me && (()=>{
+                                          const myRank  = getRank(me.xp||0)
+                                          const myStats = memberStats[me.id]||{}
+                                          return (
+                                            <div className="card" style={{ padding:14, border:'1px solid rgba(217,119,6,.3)', background:'var(--gold3)' }}>
+                                              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                                                <div style={{ width:34, height:34, borderRadius:'50%',
+                                                  background:`linear-gradient(135deg,${myRank.color},${myRank.color}99)`,
+                                                  display:'flex', alignItems:'center', justifyContent:'center',
+                                                  fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
+                                                  {(me.full_name||'A').charAt(0).toUpperCase()}
+                                                </div>
+                                                <div style={{ flex:1, minWidth:0 }}>
+                                                  <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{me.full_name||'Agent'}</div>
+                                                  <div style={{ fontSize:10, color:'var(--muted)' }}>{myRank.name} · 🔥 {me.streak||0}</div>
+                                                </div>
+                                                <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>YOU</span>
+                                              </div>
+                                              <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
+                                                <div style={{ textAlign:'center' }}>
+                                                  <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>TODAY</div>
+                                                  <Ring pct={myStats.todayPct||0} size={52} color={myRank.color}/>
+                                                </div>
+                                                <div style={{ textAlign:'center' }}>
+                                                  <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>MONTH</div>
+                                                  <Ring pct={myStats.monthlyPct||0} size={52} color='#0ea5e9'/>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          )
+                                        })()}
+                                        {groupMates.map(mate=>{
+                                          const mateRank  = getRank(mate.xp||0)
+                                          const mateStats = memberStats[mate.id]||{}
+                                          const isLeaderMate = myGroup.leaderId === mate.id
+                                          return (
+                                            <div key={mate.id} className="card" style={{ padding:14,
+                                              cursor: isLeader ? 'pointer' : 'default',
+                                              border: isLeaderMate ? '1px solid rgba(139,92,246,.3)' : '1px solid var(--b2)' }}
+                                              onClick={isLeader && !memberDetailLoading && !viewingMember ? ()=>fetchMemberDetail(mate) : undefined}>
+                                              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                                                <div style={{ width:34, height:34, borderRadius:'50%',
+                                                  background:`linear-gradient(135deg,${mateRank.color},${mateRank.color}99)`,
+                                                  display:'flex', alignItems:'center', justifyContent:'center',
+                                                  fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
+                                                  {(mate.full_name||'A').charAt(0).toUpperCase()}
+                                                </div>
+                                                <div style={{ flex:1, minWidth:0 }}>
+                                                  <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{mate.full_name||'Agent'}</div>
+                                                  <div style={{ fontSize:10, color:'var(--muted)' }}>{mateRank.name} · 🔥 {mate.streak||0}</div>
+                                                </div>
+                                                {isLeaderMate && <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background:'rgba(139,92,246,.1)', color:'#8b5cf6', fontWeight:700 }}>LEAD</span>}
+                                              </div>
+                                              <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
+                                                <div style={{ textAlign:'center' }}>
+                                                  <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>TODAY</div>
+                                                  <Ring pct={mateStats.todayPct||0} size={52} color={mateRank.color}/>
+                                                </div>
+                                                <div style={{ textAlign:'center' }}>
+                                                  <div style={{ fontSize:9, color:'var(--muted)', marginBottom:4 }}>MONTH</div>
+                                                  <Ring pct={mateStats.monthlyPct||0} size={52} color='#0ea5e9'/>
+                                                </div>
+                                              </div>
+                                              {isLeader && <div style={{ marginTop:8, fontSize:10, color:'var(--dim)', textAlign:'center' }}>Click to view details</div>}
+                                            </div>
+                                          )
+                                        })}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )
+                          })()}
+
+                          {/* Group Management (admin/owner) */}
+                          {isAdminOrOwner && (<>
                           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
                             <div>
-                              <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:2 }}>🫂 Accountability Groups</div>
+                              <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:2 }}>🫂 Manage Groups</div>
                               <div style={{ fontSize:12, color:'var(--muted)' }}>Assign a leader to each group — leaders can coach and view their members' activity.</div>
                             </div>
                             {isTeamOwner && !groupForm && (
@@ -1915,13 +1867,61 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               </div>
                             )
                           })}
+                          </>)}
                         </div>
-                      )}
                   )} {/* end groups tab */}
 
-                  {/* Admin tab (owner only) */}
-                  {teamsTab==='admin' && isTeamOwner && (
+                  {/* ════════ SETTINGS TAB (owner only) ════════ */}
+                  {teamsTab==='settings' && isTeamOwner && (
                         <div>
+                          {/* ── Invite by Email ── */}
+                          <div className="card" style={{
+                            padding:'18px 20px', marginBottom:24,
+                            borderLeft:'3px solid var(--gold2)',
+                            background:'linear-gradient(135deg, rgba(217,119,6,.06) 0%, var(--surface) 55%)',
+                          }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+                              <span style={{ fontSize:16 }}>✉️</span>
+                              <span className="serif" style={{ fontSize:15, color:'var(--text)', fontWeight:600 }}>Invite Members by Email</span>
+                              <span style={{ fontSize:11, color:'var(--muted)', marginLeft:'auto' }}>They'll receive a setup link</span>
+                            </div>
+                            <div style={{ display:'flex', gap:8, marginBottom: inviteMsg ? 10 : 0 }}>
+                              <input className="field-input" type="text" value={inviteEmail}
+                                onChange={e=>{ setInviteEmail(e.target.value); setInviteMsg(null) }}
+                                onKeyDown={e=>e.key==='Enter'&&sendInvite()}
+                                placeholder="agent@brokerage.com" style={{ flex:1 }}/>
+                              <button type="button" className="btn-primary" onClick={sendInvite}
+                                disabled={inviteSending || !inviteEmail.trim()}
+                                style={{ fontSize:13, padding:'9px 20px', whiteSpace:'nowrap' }}>
+                                {inviteSending ? 'Sending…' : 'Send Invite'}
+                              </button>
+                            </div>
+                            {inviteMsg && (
+                              <div style={{ fontSize:12, marginBottom: pendingInvites.length ? 12 : 0,
+                                color: inviteMsg.type==='ok' ? 'var(--green)' : 'var(--red)' }}>
+                                {inviteMsg.type==='ok' ? '✓ ' : '✗ '}{inviteMsg.text}
+                              </div>
+                            )}
+                            {pendingInvites.length > 0 && (
+                              <div>
+                                <div style={{ fontSize:10, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px',
+                                  textTransform:'uppercase', marginBottom:6, borderTop:'1px solid var(--b2)', paddingTop:10 }}>
+                                  Pending Invites
+                                </div>
+                                {pendingInvites.map(inv => (
+                                  <div key={inv.email} style={{ display:'flex', alignItems:'center', gap:8,
+                                    padding:'6px 0', borderBottom:'1px solid var(--b2)' }}>
+                                    <div style={{ flex:1, fontSize:12, color:'var(--text)' }}>{inv.email}</div>
+                                    <div style={{ fontSize:11, color:'var(--muted)' }}>{relativeTime(inv.invitedAt)}</div>
+                                    <button type="button" onClick={()=>removeInvite(inv.email)} style={{ background:'none', border:'none',
+                                      cursor:'pointer', color:'var(--muted)', fontSize:15, padding:'0 4px', lineHeight:1 }}
+                                      title="Remove invite">✕</button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
                           {/* Team Admins */}
                           <div style={{ marginBottom:32 }}>
                             <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:6 }}>👑 Team Admins</div>
@@ -2094,7 +2094,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                             </div>
                           </div>
                         </div>
-                  )} {/* end admin tab */}
+                  )} {/* end settings tab */}
 
                   </>} {/* end !groupView normal view */}
 

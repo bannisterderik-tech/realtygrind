@@ -7,6 +7,21 @@
 -- ══════════════════════════════════════════════════════════════════════════════
 
 -- ┌──────────────────────────────────────────────────────────────────────────┐
+-- │ 0. HELPER: get_my_team_id() — SECURITY DEFINER to avoid recursive RLS │
+-- │    Used by teammate-read policies so subqueries on `profiles` don't   │
+-- │    trigger profiles' own RLS policies (which would cause 500 errors). │
+-- └──────────────────────────────────────────────────────────────────────────┘
+
+CREATE OR REPLACE FUNCTION get_my_team_id()
+RETURNS UUID
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+AS $$
+  SELECT team_id FROM profiles WHERE id = auth.uid();
+$$;
+
+-- ┌──────────────────────────────────────────────────────────────────────────┐
 -- │ 1. ENABLE RLS ON ALL USER-FACING TABLES                                │
 -- │    RLS must be enabled BEFORE policies take effect.                     │
 -- │    Without RLS, the anon key grants unrestricted read/write.            │
@@ -44,7 +59,7 @@ CREATE POLICY "profiles_select_teammates"
   ON profiles FOR SELECT
   USING (
     team_id IS NOT NULL
-    AND team_id = (SELECT team_id FROM profiles WHERE id = auth.uid())
+    AND team_id = get_my_team_id()
   );
 
 -- ┌──────────────────────────────────────────────────────────────────────────┐
@@ -76,12 +91,7 @@ CREATE POLICY "listings_delete_own"
 DROP POLICY IF EXISTS "listings_select_teammates" ON listings;
 CREATE POLICY "listings_select_teammates"
   ON listings FOR SELECT
-  USING (
-    user_id IN (
-      SELECT id FROM profiles
-      WHERE team_id = (SELECT team_id FROM profiles WHERE id = auth.uid())
-    )
-  );
+  USING (user_id IN (SELECT id FROM profiles WHERE team_id = get_my_team_id()));
 
 -- ┌──────────────────────────────────────────────────────────────────────────┐
 -- │ 4. TRANSACTIONS — users own their transactions; teammates can read     │
@@ -111,12 +121,7 @@ CREATE POLICY "transactions_delete_own"
 DROP POLICY IF EXISTS "transactions_select_teammates" ON transactions;
 CREATE POLICY "transactions_select_teammates"
   ON transactions FOR SELECT
-  USING (
-    user_id IN (
-      SELECT id FROM profiles
-      WHERE team_id = (SELECT team_id FROM profiles WHERE id = auth.uid())
-    )
-  );
+  USING (user_id IN (SELECT id FROM profiles WHERE team_id = get_my_team_id()));
 
 -- ┌──────────────────────────────────────────────────────────────────────────┐
 -- │ 5. HABIT_COMPLETIONS — own data only; teammates can read               │
@@ -146,12 +151,7 @@ CREATE POLICY "habits_delete_own"
 DROP POLICY IF EXISTS "habits_select_teammates" ON habit_completions;
 CREATE POLICY "habits_select_teammates"
   ON habit_completions FOR SELECT
-  USING (
-    user_id IN (
-      SELECT id FROM profiles
-      WHERE team_id = (SELECT team_id FROM profiles WHERE id = auth.uid())
-    )
-  );
+  USING (user_id IN (SELECT id FROM profiles WHERE team_id = get_my_team_id()));
 
 -- ┌──────────────────────────────────────────────────────────────────────────┐
 -- │ 6. CUSTOM_TASKS — own data only                                        │
@@ -185,9 +185,7 @@ CREATE POLICY "custom_tasks_delete_own"
 DROP POLICY IF EXISTS "teams_select_member" ON teams;
 CREATE POLICY "teams_select_member"
   ON teams FOR SELECT
-  USING (
-    id = (SELECT team_id FROM profiles WHERE id = auth.uid())
-  );
+  USING (id = get_my_team_id());
 
 DROP POLICY IF EXISTS "teams_insert_owner" ON teams;
 CREATE POLICY "teams_insert_owner"
@@ -215,9 +213,7 @@ CREATE POLICY "teams_select_by_invite_code"
 DROP POLICY IF EXISTS "team_members_select" ON team_members;
 CREATE POLICY "team_members_select"
   ON team_members FOR SELECT
-  USING (
-    team_id = (SELECT team_id FROM profiles WHERE id = auth.uid())
-  );
+  USING (team_id = get_my_team_id());
 
 DROP POLICY IF EXISTS "team_members_insert" ON team_members;
 CREATE POLICY "team_members_insert"

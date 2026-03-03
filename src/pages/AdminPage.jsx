@@ -3,9 +3,16 @@ import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import { CSS, StatCard, Loader, fmtMoney } from '../design'
 
-const PLAN_COLORS = { solo: '#94a3b8', team: '#d97706', brokerage: '#8b5cf6', free: '#706b62' }
+const PLAN_COLORS = { solo: '#94a3b8', team: '#d97706', brokerage: '#8b5cf6', team_member: '#6366f1', free: '#706b62' }
 const PLAN_PRICES = { solo: 29, team: 199, brokerage: 499 }
-const PLAN_LABELS = { solo: 'Solo', team: 'Team', brokerage: 'Brokerage', free: 'Free' }
+const PLAN_LABELS = { solo: 'Solo', team: 'Team', brokerage: 'Brokerage', team_member: 'Team Member', free: 'Free' }
+
+// Determine effective plan: team members without their own paid plan → 'team_member'
+function effectivePlan(u) {
+  const plan = u.plan || 'free'
+  if (plan === 'free' && u.team_id) return 'team_member'
+  return plan
+}
 const BILLING_COLORS = { active: '#10b981', trialing: '#3b82f6', past_due: '#f59e0b', cancelled: '#ef4444', free: '#706b62' }
 
 function billingPill(status) {
@@ -65,13 +72,13 @@ export default function AdminPage({ onNavigate }) {
       const now = new Date()
       const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
-      // Compute aggregate stats (same logic as edge function)
-      const byPlan = { solo: 0, team: 0, brokerage: 0, free: 0 }
+      // Compute aggregate stats
+      const byPlan = { solo: 0, team: 0, brokerage: 0, team_member: 0, free: 0 }
       const byBilling = { active: 0, trialing: 0, past_due: 0, cancelled: 0, free: 0 }
       let mrrEstimate = 0, aiCreditsTotal = 0, aiCreditsThisMonth = 0
 
       for (const p of allProfiles) {
-        const planKey = p.plan || 'free'
+        const planKey = effectivePlan(p)
         byPlan[planKey] = (byPlan[planKey] || 0) + 1
         const billingKey = p.billing_status || 'free'
         byBilling[billingKey] = (byBilling[billingKey] || 0) + 1
@@ -117,7 +124,7 @@ export default function AdminPage({ onNavigate }) {
       const matchSearch = !term
         || (u.full_name || '').toLowerCase().includes(term)
         || (u.email || '').toLowerCase().includes(term)
-      const matchPlan = planFilter === 'all' || (u.plan || 'free') === planFilter
+      const matchPlan = planFilter === 'all' || effectivePlan(u) === planFilter
       const matchBilling = billingFilter === 'all' || (u.billing_status || 'free') === billingFilter
       return matchSearch && matchPlan && matchBilling
     })
@@ -202,7 +209,7 @@ export default function AdminPage({ onNavigate }) {
                   <div className="stat-grid" style={{ marginBottom: 24 }}>
                     <StatCard icon="👥" label="Total Users" value={stats.total_users || 0} color="#3b82f6" />
                     <StatCard icon="💳" label="Paying" value={stats.paying_users || 0} color="#10b981"
-                      sub={`${stats.total_users ? Math.round((stats.paying_users || 0) / stats.total_users * 100) : 0}% conversion`} />
+                      sub={`${(() => { const base = (stats.total_users || 0) - (stats.by_plan?.team_member || 0); return base > 0 ? Math.round((stats.paying_users || 0) / base * 100) : 0 })()}% conversion`} />
                     <StatCard icon="💰" label="Est. MRR" value={fmtMoney(stats.mrr_estimate || 0)} color="#d97706" />
                     <StatCard icon="🔮" label="Trialing" value={stats.trial_count || 0} color="#3b82f6"
                       sub="potential converts" />
@@ -214,7 +221,7 @@ export default function AdminPage({ onNavigate }) {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16, marginBottom: 16 }}>
                     <div className="card" style={{ padding: 20 }}>
                       <div className="label" style={{ marginBottom: 14 }}>Users by Plan</div>
-                      {['brokerage', 'team', 'solo', 'free'].map(p => {
+                      {['brokerage', 'team', 'solo', 'team_member', 'free'].map(p => {
                         const count = stats.by_plan?.[p] || 0
                         const pct = stats.total_users ? Math.round(count / stats.total_users * 100) : 0
                         return (
@@ -277,6 +284,7 @@ export default function AdminPage({ onNavigate }) {
                       <option value="solo">Solo</option>
                       <option value="team">Team</option>
                       <option value="brokerage">Brokerage</option>
+                      <option value="team_member">Team Member</option>
                       <option value="free">Free</option>
                     </select>
                     <select className="field-input" style={{ minWidth: 120, padding: '8px 10px', fontSize: 13 }}
@@ -302,16 +310,19 @@ export default function AdminPage({ onNavigate }) {
                         <div>No users match your filters</div>
                       </div>
                     )}
-                    {filteredUsers.map(u => (
+                    {filteredUsers.map(u => {
+                      const ep = effectivePlan(u)
+                      const epColor = PLAN_COLORS[ep] || PLAN_COLORS.free
+                      return (
                       <div key={u.id} className="card" style={{
                         padding: '14px 18px',
                         display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
-                        borderLeft: `3px solid ${PLAN_COLORS[u.plan] || PLAN_COLORS.free}`,
+                        borderLeft: `3px solid ${epColor}`,
                       }}>
                         {/* Avatar */}
                         <div style={{
                           width: 36, height: 36, borderRadius: 99,
-                          background: `linear-gradient(135deg, ${PLAN_COLORS[u.plan] || '#706b62'}, ${PLAN_COLORS[u.plan] || '#706b62'}88)`,
+                          background: `linear-gradient(135deg, ${epColor}, ${epColor}88)`,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           color: '#fff', fontWeight: 700, fontSize: 14, flexShrink: 0,
                         }}>
@@ -335,11 +346,11 @@ export default function AdminPage({ onNavigate }) {
                         <span style={{
                           fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em',
                           padding: '3px 8px', borderRadius: 5,
-                          background: (PLAN_COLORS[u.plan] || PLAN_COLORS.free) + '18',
-                          color: PLAN_COLORS[u.plan] || PLAN_COLORS.free,
-                          border: `1px solid ${(PLAN_COLORS[u.plan] || PLAN_COLORS.free)}33`,
+                          background: epColor + '18',
+                          color: epColor,
+                          border: `1px solid ${epColor}33`,
                         }}>
-                          {u.plan || 'free'}
+                          {PLAN_LABELS[ep] || ep}
                         </span>
 
                         {/* Billing pill */}
@@ -372,7 +383,7 @@ export default function AdminPage({ onNavigate }) {
                           </div>
                         </div>
                       </div>
-                    ))}
+                    )})}
                   </div>
                 </div>
               )}

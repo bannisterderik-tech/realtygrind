@@ -10,7 +10,7 @@ import APODPage from './pages/APODPage'
 import BillingPage from './pages/BillingPage'
 import AIAssistantPage from './pages/AIAssistantPage'
 import AIChatWidget from './components/AIChatWidget'
-import { CSS, Ring, StatCard, Wordmark, Loader, ThemeToggle, getRank, fmtMoney, resolveCommission, RANKS, CAT } from './design'
+import { CSS, Ring, StatCard, Wordmark, Loader, ThemeToggle, getRank, fmtMoney, resolveCommission, RANKS, CAT, formatPrice, stripPrice, daysOnMarket, LEAD_SOURCES, LEAD_SOURCE_COLORS } from './design'
 import { HABITS } from './habits'
 import { getPlanBadge } from './lib/plans'
 
@@ -490,7 +490,7 @@ function ListingsWeeklyModal({ listings, offersReceived, pendingDeals, closedDea
                     </span>
                     {l.price && (
                       <span style={{ fontSize:11, color:'var(--gold2)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}>
-                        {l.price}
+                        {formatPrice(l.price)||l.price}
                       </span>
                     )}
                   </div>
@@ -571,7 +571,7 @@ function ListingsWeeklyModal({ listings, offersReceived, pendingDeals, closedDea
                       {l.status==='closed'?'Closed': l.status==='pending'?'Pending':'Active'}
                     </span>
                     <span style={{ fontSize:13, fontWeight:700, color:'#111' }}>{l.address || '—'}</span>
-                    {l.price && <span style={{ fontSize:11, fontFamily:'monospace', color:'#555' }}>{l.price}</span>}
+                    {l.price && <span style={{ fontSize:11, fontFamily:'monospace', color:'#555' }}>{formatPrice(l.price)||l.price}</span>}
                     {l.commission && <span style={{ fontSize:11, fontFamily:'monospace', color:'#555' }}>· {l.commission}</span>}
                   </div>
                   {/* Per-listing notes */}
@@ -892,7 +892,6 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
     setRows(prev => [...prev, tmp])
     setAddr(''); setPrice(''); setComm('')
     if (onAdd) {
-      // onAdd persists to DB and returns the saved row with a real ID
       const saved = await onAdd(tmp)
       if (saved?.id) setRows(prev => prev.map(r => r.id === tmp.id ? saved : r))
     }
@@ -933,18 +932,13 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
   const totalVol  = useMemo(() => rows.reduce((a,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0), [rows])
   const totalComm = useMemo(() => rows.reduce((a,r) => a + resolveCommission(r.commission, r.price), 0), [rows])
 
-  // Action buttons replace the dropdown — filter out 'active' (current state) to show only forward actions
   const actionOpts = (statusOpts||[]).filter(o => o.v !== 'active')
-
-  const cols = showSource
-    ? '1fr 110px 150px 90px 30px'
-    : '1fr 110px 150px 70px 1fr 30px'
 
   return (
     <div className="card" style={{ padding:22, marginBottom:12, borderLeft:`3px solid ${accentColor}55`,
       background:`linear-gradient(135deg, ${accentColor}05 0%, var(--surface) 40%)` }}>
       {/* Header */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16, flexWrap:'wrap', gap:10 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14, flexWrap:'wrap', gap:10 }}>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
           <div style={{ width:38, height:38, borderRadius:10, background:`${accentColor}16`, border:`1px solid ${accentColor}30`,
             display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>
@@ -984,105 +978,106 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
         )}
       </div>
 
-      <div className="resp-table"><div className="resp-table-inner">
-      {/* Column labels */}
-      <div style={{ display:'grid', gridTemplateColumns:cols, gap:8, padding:'3px 13px', marginBottom:5, border:'1px solid transparent' }}>
-        <span className="label">ADDRESS</span>
-        <span className="label">PRICE</span>
-        <span className="label">COMMISSION</span>
-        {showSource
-          ? <><span className="label">SOURCE</span><span/></>
-          : <><span className="label">STATUS</span><span className="label">ACTIONS</span><span/></>
-        }
-      </div>
-
+      {/* Deal cards */}
+      <div className="deal-card-grid">
       {rows.length === 0 && (
         <div style={{ textAlign:'center', padding:'20px 0', color:'var(--dim)', fontSize:12 }}>
           No entries yet{!showSource && ' — add one below'}
         </div>
       )}
 
-      <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom: showSource ? 0 : 10 }}>
-        {rows.map(r => (
-          <div key={r.id} className="pipe-row" style={{ gridTemplateColumns:cols }}>
-            <input className="pipe-input" value={r.address||''} onChange={e=>update(r.id,'address',e.target.value)}
-              onBlur={e=>persist(r.id,'address',e.target.value)} placeholder="Property address…"/>
-            <input className="pipe-input" value={r.price||''} onChange={e=>update(r.id,'price',e.target.value)}
-              onBlur={e=>persist(r.id,'price',e.target.value)}
-              placeholder="$0" style={{ color:accentColor, fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
-            {(() => {
-              const isP = String(r.commission||'').trim().endsWith('%')
-              return (
-                <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
-                  <div style={{ position:'relative' }}>
-                    <input className="pipe-input"
-                      value={isP ? String(r.commission||'').replace(/%$/,'') : (r.commission||'')}
-                      onChange={e => update(r.id, 'commission', isP ? e.target.value + '%' : e.target.value)}
-                      onBlur={e => persist(r.id, 'commission', isP ? e.target.value + '%' : e.target.value)}
-                      placeholder={isP ? '3' : '$0'}
-                      style={{ color: isP ? 'var(--muted)' : 'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
-                    {isP && <span style={{ position:'absolute', right:4, top:'50%', transform:'translateY(-50%)', fontSize:11, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", pointerEvents:'none' }}>%</span>}
-                  </div>
-                  <div style={{ display:'flex', alignItems:'center', gap:4, minHeight:16 }}>
-                    {isP && r.price && resolveCommission(r.commission, r.price) > 0 && (
-                      <span style={{ fontSize:13, color:'var(--green)', fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>
-                        = {fmtMoney(resolveCommission(r.commission, r.price))}
-                      </span>
-                    )}
-                    <button onClick={()=>toggleCommType(r.id)} style={{
-                      background:'none', border:'none', cursor:'pointer', padding:0, marginLeft:'auto',
-                      fontSize:9, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace",
-                      textDecoration:'underline', textUnderlineOffset:2,
-                    }}>{isP ? 'Flat fee' : 'Use %'}</button>
-                  </div>
+      {rows.map(r => {
+        const isP = String(r.commission||'').trim().endsWith('%')
+        const commAmt = resolveCommission(r.commission, r.price)
+        const priceNum = parseFloat(String(r.price||'').replace(/[^0-9.]/g,''))
+        const dom = daysOnMarket(r.createdAt)
+        return (
+          <div key={r.id} style={{ padding:'12px 14px', borderRadius:10, background:'var(--bg)', border:'1px solid var(--b1)', transition:'box-shadow .15s' }}>
+            {/* Top row: address + price */}
+            <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8, marginBottom:6 }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <input style={{ fontFamily:"'Fraunces',serif", fontSize:14, fontWeight:600, color:'var(--text)', background:'none', border:'none', width:'100%', minWidth:0, outline:'none', letterSpacing:'-.01em', padding:0 }}
+                  value={r.address||''} onChange={e=>update(r.id,'address',e.target.value)}
+                  onBlur={e=>persist(r.id,'address',e.target.value)} placeholder="Property address…"/>
+              </div>
+              <span className="price-display" style={{ fontSize: priceNum > 0 ? 17 : 13, color:accentColor, flexShrink:0 }}>
+                {priceNum > 0 ? formatPrice(r.price) : '—'}
+              </span>
+            </div>
+
+            {/* Meta row: commission + DOM + source */}
+            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:8 }}>
+              {r.commission && (
+                <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                  <span style={{ fontSize:10, color:'var(--dim)' }}>Comm:</span>
+                  <span style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color:'var(--muted)' }}>
+                    {isP ? r.commission : formatPrice(r.commission)}
+                  </span>
+                  {isP && commAmt > 0 && (
+                    <span className="comm-resolved" style={{ fontSize:12, color:'var(--green)' }}>
+                      = {fmtMoney(commAmt)}
+                    </span>
+                  )}
                 </div>
-              )
-            })()}
-            {showSource ? (
-              <><span style={{ fontSize:11, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", padding:'0 2px' }}>{r.closedFrom||'Manual'}</span>
-              <button className="btn-del" onClick={()=>remove(r)}>✕</button></>
-            ) : (
-              <>
-                <div style={{ display:'flex', alignItems:'center' }}>
-                  <span className="status-pill sp-active" style={{ fontSize:9 }}>● ACT</span>
-                </div>
-                <div style={{ display:'flex', gap:4, alignItems:'center', flexWrap:'nowrap' }}>
+              )}
+              {dom !== null && (
+                <span className="dom-badge" style={{
+                  background: dom > 90 ? 'rgba(239,68,68,.12)' : dom > 30 ? 'rgba(245,158,11,.12)' : 'rgba(16,185,129,.1)',
+                  color: dom > 90 ? '#ef4444' : dom > 30 ? '#d97706' : '#059669',
+                  border: `1px solid ${dom > 90 ? 'rgba(239,68,68,.25)' : dom > 30 ? 'rgba(245,158,11,.25)' : 'rgba(16,185,129,.2)'}`,
+                }}>
+                  {dom}d
+                </span>
+              )}
+              {showSource && r.closedFrom && (
+                <span className="lead-tag" style={{ background:'rgba(107,114,128,.1)', color:'#6b7280', border:'1px solid rgba(107,114,128,.2)' }}>
+                  via {r.closedFrom}
+                </span>
+              )}
+            </div>
+
+            {/* Actions row */}
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:6 }}>
+              {showSource ? (
+                <span style={{ fontSize:10, color:'var(--dim)', fontStyle:'italic' }}>Closed</span>
+              ) : (
+                <div className="deal-actions">
                   {actionOpts.map(o => (
                     <button key={o.v}
                       className={`act-btn ${o.v==='pending' ? 'act-btn-amber' : 'act-btn-green'}`}
                       onClick={()=>onStatusChange(r, o.v)}>
-                      {o.v==='pending' ? '→ Pending' : '✓ Closed'}
+                      {o.v==='pending' ? '→ Pend' : '✓ Close'}
                     </button>
                   ))}
                 </div>
-                <button className="btn-del" onClick={()=>remove(r)}>✕</button>
-              </>
-            )}
+              )}
+              <button className="btn-del" onClick={()=>remove(r)}>✕</button>
+            </div>
           </div>
-        ))}
+        )
+      })}
       </div>
 
       {/* Add row */}
       {!showSource && (
-        <div style={{ display:'grid', gridTemplateColumns:cols, gap:8, borderTop:'1px solid var(--b1)', paddingTop:12, alignItems:'center' }}>
+        <div style={{ display:'flex', gap:8, borderTop:'1px solid var(--b1)', paddingTop:12, marginTop:10, flexWrap:'wrap', alignItems:'center' }}>
           <input className="field-input" value={addr} onChange={e=>setAddr(e.target.value)}
             onKeyDown={e=>e.key==='Enter'&&add()} placeholder="New address…"
-            style={{ padding:'8px 12px' }}/>
+            style={{ padding:'8px 12px', flex:'2 1 160px', minWidth:0 }}/>
           <input className="field-input" value={price} onChange={e=>setPrice(e.target.value)}
             onKeyDown={e=>e.key==='Enter'&&add()} placeholder="Price"
-            style={{ padding:'8px 12px', color:accentColor, fontFamily:"'JetBrains Mono',monospace" }}/>
+            style={{ padding:'8px 12px', flex:'1 1 90px', minWidth:70, color:accentColor, fontFamily:"'JetBrains Mono',monospace" }}/>
           <input className="field-input" value={comm} onChange={e=>setComm(e.target.value)}
             onKeyDown={e=>e.key==='Enter'&&add()} placeholder="3 (%)"
-            style={{ padding:'8px 12px', color:'var(--green)', fontFamily:"'JetBrains Mono',monospace" }}/>
-          <button onClick={add} style={{
-            gridColumn:'span 3',
-            background: accentColor, border:'none', color:'#fff', borderRadius:8,
-            padding:'8px 14px', fontSize:12, fontWeight:700, cursor:'pointer', lineHeight:1,
+            style={{ padding:'8px 12px', flex:'1 1 70px', minWidth:60, color:'var(--green)', fontFamily:"'JetBrains Mono',monospace" }}/>
+          <button onClick={add} disabled={!addr.trim()} style={{
+            flex:'0 0 auto',
+            background: addr.trim() ? accentColor : 'var(--b2)', border:'none', color: addr.trim() ? '#fff' : 'var(--dim)', borderRadius:8,
+            padding:'8px 16px', fontSize:12, fontWeight:700, cursor: addr.trim() ? 'pointer' : 'default', lineHeight:1,
             display:'flex', alignItems:'center', justifyContent:'center', gap:4, transition:'all .15s',
           }}>+ Add</button>
         </div>
       )}
-      </div></div>{/* /resp-table-inner /resp-table */}
     </div>
   )
 }
@@ -1181,6 +1176,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [newAddr,   setNewAddr]   = useState('')
   const [newPrice,  setNewPrice]  = useState('')
   const [newComm,   setNewComm]   = useState('')
+  const [newLeadSource, setNewLeadSource] = useState('')
 
   // Buyer Rep Agreements
   const [buyerReps,     setBuyerReps]    = useState([])
@@ -1277,16 +1273,17 @@ function Dashboard({ theme, onToggleTheme }) {
       const allL = listRes.data
       setListings(allL.filter(l => (l.unit_count ?? 1) !== 0).map(l => ({
         id:l.id, address:l.address, status:l.status||'active',
-        price:l.price||'', commission:l.commission||'', monthYear:l.month_year||''
+        price:l.price||'', commission:l.commission||'', monthYear:l.month_year||'',
+        createdAt:l.created_at||null, leadSource:l.lead_source||'', notes:l.notes||[]
       })))
       setBuyerReps(allL.filter(l => l.unit_count === 0).map(r => ({
         id:r.id, clientName:r.address||'', status:r.status||'active', monthYear:r.month_year||'',
-        buyerDetails:r.buyer_details||{}
+        buyerDetails:r.buyer_details||{}, createdAt:r.created_at||null
       })))
     }
 
     if (txRes.data) {
-      const m = t => ({ id:t.id, address:t.address, price:t.price||'', commission:t.commission||'', status:t.status||'active', closedFrom:t.closed_from||'' })
+      const m = t => ({ id:t.id, address:t.address, price:t.price||'', commission:t.commission||'', status:t.status||'active', closedFrom:t.closed_from||'', createdAt:t.created_at||null, leadSource:t.lead_source||'', notes:t.notes||[] })
       setOffersMade(    txRes.data.filter(t=>t.type==='offer_made').map(m))
       setOffersReceived(txRes.data.filter(t=>t.type==='offer_received').map(m))
       setPendingDeals(  txRes.data.filter(t=>t.type==='pending').map(m))
@@ -1743,10 +1740,11 @@ function Dashboard({ theme, onToggleTheme }) {
     const {data} = await supabase.from('listings').insert({
       user_id:user.id, address:newAddr.trim(), unit_count:1,
       price:newPrice.trim(), commission:commVal,
-      status:'active', month_year:MONTH_YEAR
+      status:'active', month_year:MONTH_YEAR,
+      lead_source:newLeadSource||null
     }).select().single()
-    if (data) setListings(prev=>[...prev,{id:data.id,address:data.address,status:'active',price:data.price||'',commission:data.commission||'',monthYear:data.month_year||MONTH_YEAR}])
-    setNewAddr(''); setNewPrice(''); setNewComm('')
+    if (data) setListings(prev=>[...prev,{id:data.id,address:data.address,status:'active',price:data.price||'',commission:data.commission||'',monthYear:data.month_year||MONTH_YEAR,createdAt:data.created_at||null,leadSource:data.lead_source||'',notes:[]}])
+    setNewAddr(''); setNewPrice(''); setNewComm(''); setNewLeadSource('')
   }
 
   async function removeListing(listing) {
@@ -1760,9 +1758,11 @@ function Dashboard({ theme, onToggleTheme }) {
   function updateListingLocal(id, field, val) {
     setListings(prev=>prev.map(l=>l.id===id?{...l,[field]:val}:l))
   }
+  const listingFieldMap = { leadSource:'lead_source', monthYear:'month_year' }
   async function updateListing(id, field, val) {
     setListings(prev=>prev.map(l=>l.id===id?{...l,[field]:val}:l))
-    const r = await safeDb(supabase.from('listings').update({[field]:val}).eq('id',id).eq('user_id',user.id))
+    const dbField = listingFieldMap[field] || field
+    const r = await safeDb(supabase.from('listings').update({[dbField]:val}).eq('id',id).eq('user_id',user.id))
     if (!r.ok) showToast('Failed to save listing change')
   }
   function toggleListingCommType(id) {
@@ -2983,15 +2983,15 @@ function Dashboard({ theme, onToggleTheme }) {
           <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14, gap:12, flexWrap:'wrap' }}>
             <div>
               <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:4 }}>
-                <span style={{ fontSize:20 }}>🏡</span>
-                <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>Listings Tracker</span>
-                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, fontSize:18, color:'var(--purple)', lineHeight:1 }}>{listings.length}</span>
+                <div style={{ width:36, height:36, borderRadius:10, background:'rgba(139,92,246,.1)', border:'1px solid rgba(139,92,246,.25)',
+                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:17, flexShrink:0 }}>🏡</div>
+                <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>Listings</span>
+                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, fontSize:20, color:'var(--purple)', lineHeight:1 }}>{listings.length}</span>
               </div>
               <div className="section-sub" style={{ marginBottom:0 }}>
-                Listings persist across months until closed · <strong>Pending</strong> creates a pipeline entry · <strong>Closed</strong> completes the deal
+                Listings persist across months · <strong>Pending</strong> creates a pipeline entry · <strong>Closed</strong> completes the deal
               </div>
             </div>
-            {/* Weekly update print button */}
             <button onClick={() => setShowWeeklyUpdate(true)} style={{
               background:'rgba(139,92,246,.12)', color:'var(--purple)',
               border:'1px solid rgba(139,92,246,.35)', borderRadius:9,
@@ -3004,99 +3004,134 @@ function Dashboard({ theme, onToggleTheme }) {
             </button>
           </div>
 
-          <div className="card" style={{ padding:20 }}>
-            <div className="resp-table"><div className="resp-table-inner" style={{ minWidth:680 }}>
-            {/* Column headers */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 150px 90px 1fr 30px', gap:8, padding:'3px 13px', marginBottom:6, border:'1px solid transparent' }}>
-              <span className="label">Address</span>
-              <span className="label">List Price</span>
-              <span className="label">Commission</span>
-              <span className="label">Status</span>
-              <span className="label">Actions</span>
-              <span/>
-            </div>
-
+          {/* Listing cards */}
+          <div className="deal-card-grid">
             {listings.length===0 && (
-              <div style={{ textAlign:'center', padding:'22px 0', color:'var(--dim)', fontSize:12 }}>
-                No listings this month — add one below
+              <div className="card" style={{ textAlign:'center', padding:'28px 20px', color:'var(--dim)', fontSize:13 }}>
+                No listings yet — add one below
               </div>
             )}
 
-            <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:12 }}>
-              {listings.map(l => (
-                <div key={l.id} className="pipe-row" style={{ gridTemplateColumns:'1fr 105px 150px 90px 1fr 30px' }}>
-                  {/* Address + optional cross-month badge */}
-                  <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
-                    <input className="pipe-input" value={l.address||''}
-                      onChange={e=>updateListingLocal(l.id,'address',e.target.value)}
-                      onBlur={e=>updateListing(l.id,'address',e.target.value)} placeholder="Address…"
-                      style={{ flex:1, minWidth:0 }}/>
-                    {l.monthYear && l.monthYear !== MONTH_YEAR && (
-                      <span title={`Listed in ${fmtMonth(l.monthYear)}`} style={{
-                        flexShrink:0, fontSize:9, padding:'2px 6px', borderRadius:4,
-                        background:'var(--bg2)', color:'var(--dim)',
-                        fontFamily:"'JetBrains Mono',monospace", fontWeight:600, letterSpacing:.3,
-                        border:'1px solid var(--b2)', whiteSpace:'nowrap',
+            {listings.map(l => {
+              const isP = String(l.commission||'').trim().endsWith('%')
+              const comm = resolveCommission(l.commission, l.price)
+              const dom = daysOnMarket(l.createdAt)
+              const priceNum = parseFloat(String(l.price||'').replace(/[^0-9.]/g,''))
+              return (
+              <div key={l.id} className="deal-card">
+                {/* Row 1: Address + Lead Source + Status */}
+                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8, marginBottom:8 }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div className="deal-title">
+                      <input value={l.address||''}
+                        onChange={e=>updateListingLocal(l.id,'address',e.target.value)}
+                        onBlur={e=>updateListing(l.id,'address',e.target.value)} placeholder="Property address…"/>
+                    </div>
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
+                    {l.leadSource && (
+                      <span className="lead-tag" style={{ background:(LEAD_SOURCE_COLORS[l.leadSource]||'#6b7280')+'18', color:LEAD_SOURCE_COLORS[l.leadSource]||'#6b7280', border:`1px solid ${(LEAD_SOURCE_COLORS[l.leadSource]||'#6b7280')}30` }}>
+                        {l.leadSource}
+                      </span>
+                    )}
+                    <span className={`status-pill-lg sp-${l.status||'active'}`} style={{
+                      background: l.status==='closed' ? 'rgba(16,185,129,.12)' : l.status==='pending' ? 'rgba(245,158,11,.12)' : 'rgba(139,92,246,.1)',
+                      color: l.status==='closed' ? 'var(--green)' : l.status==='pending' ? '#d97706' : 'var(--purple)',
+                      border: `1px solid ${l.status==='closed' ? 'rgba(16,185,129,.3)' : l.status==='pending' ? 'rgba(245,158,11,.3)' : 'rgba(139,92,246,.25)'}`,
+                    }}>
+                      {l.status==='pending' ? '⏳ PENDING' : l.status==='closed' ? '✓ CLOSED' : '● ACTIVE'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Row 2: Price + DOM + Commission */}
+                <div className="deal-meta" style={{ marginBottom:10 }}>
+                  <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
+                    <span className="price-display" style={{ fontSize:priceNum > 0 ? 22 : 15, color:'var(--gold2)' }}>
+                      {priceNum > 0 ? formatPrice(l.price) : '—'}
+                    </span>
+                    {dom !== null && (
+                      <span className="dom-badge" style={{
+                        background: dom > 90 ? 'rgba(239,68,68,.12)' : dom > 30 ? 'rgba(245,158,11,.12)' : 'rgba(16,185,129,.1)',
+                        color: dom > 90 ? '#ef4444' : dom > 30 ? '#d97706' : '#059669',
+                        border: `1px solid ${dom > 90 ? 'rgba(239,68,68,.25)' : dom > 30 ? 'rgba(245,158,11,.25)' : 'rgba(16,185,129,.2)'}`,
                       }}>
-                        {fmtMonth(l.monthYear)}
+                        {dom}d
                       </span>
                     )}
                   </div>
-
-                  {/* List Price */}
-                  <input className="pipe-input" value={l.price||''}
-                    onChange={e=>updateListingLocal(l.id,'price',e.target.value)}
-                    onBlur={e=>updateListing(l.id,'price',e.target.value)}
-                    placeholder="$0"
-                    style={{ color:'var(--gold2)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
-
-                  {/* Commission — % by default, "Flat fee" to switch */}
-                  {(() => {
-                    const isP = String(l.commission||'').trim().endsWith('%')
-                    return (
-                      <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
-                        <div style={{ position:'relative' }}>
-                          <input className="pipe-input"
-                            value={isP ? String(l.commission||'').replace(/%$/,'') : (l.commission||'')}
-                            onChange={e => {
-                              updateListingLocal(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)
-                            }}
-                            onBlur={e => {
-                              updateListing(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)
-                            }}
-                            placeholder={isP ? '3' : '$0'}
-                            style={{ color: isP ? 'var(--muted)' : 'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
-                          {isP && <span style={{ position:'absolute', right:4, top:'50%', transform:'translateY(-50%)', fontSize:11, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", pointerEvents:'none' }}>%</span>}
-                        </div>
-                        <div style={{ display:'flex', alignItems:'center', gap:4, minHeight:16 }}>
-                          {isP && l.price && resolveCommission(l.commission, l.price) > 0 && (
-                            <span style={{ fontSize:13, color:'var(--green)', fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>
-                              = {fmtMoney(resolveCommission(l.commission, l.price))}
-                            </span>
-                          )}
-                          <button onClick={()=>toggleListingCommType(l.id)} style={{
-                            background:'none', border:'none', cursor:'pointer', padding:0, marginLeft:'auto',
-                            fontSize:9, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace",
-                            textDecoration:'underline', textUnderlineOffset:2,
-                          }}>{isP ? 'Flat fee' : 'Use %'}</button>
-                        </div>
-                      </div>
-                    )
-                  })()}
-
-                  {/* Status */}
-                  <div style={{ display:'flex', alignItems:'center' }}>
-                    <span className={`status-pill sp-${l.status||'active'}`}>
-                      {l.status==='pending' ? '⏳ PEN' : l.status==='closed' ? '✓ CLO' : '● ACT'}
+                  {(l.commission) && (
+                    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                      <span style={{ fontSize:11, color:'var(--dim)' }}>Comm:</span>
+                      <span style={{ fontSize:11, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}>
+                        {isP ? l.commission : formatPrice(l.commission)}
+                      </span>
+                      {isP && comm > 0 && (
+                        <span className="comm-resolved" style={{ fontSize:13, color:'var(--green)' }}>
+                          = {fmtMoney(comm)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {l.monthYear && l.monthYear !== MONTH_YEAR && (
+                    <span title={`Listed in ${fmtMonth(l.monthYear)}`} style={{
+                      fontSize:9, padding:'2px 6px', borderRadius:4,
+                      background:'var(--bg2)', color:'var(--dim)',
+                      fontFamily:"'JetBrains Mono',monospace", fontWeight:600, letterSpacing:.3,
+                      border:'1px solid var(--b2)', whiteSpace:'nowrap',
+                    }}>
+                      {fmtMonth(l.monthYear)}
                     </span>
+                  )}
+                </div>
+
+                {/* Row 3: Inline edits (price + commission) */}
+                <div style={{ display:'flex', gap:8, marginBottom:10, flexWrap:'wrap' }}>
+                  <div style={{ flex:'1 1 120px', minWidth:100 }}>
+                    <div className="label" style={{ marginBottom:2, fontSize:9 }}>PRICE</div>
+                    <input className="field-input" value={l.price||''}
+                      onChange={e=>updateListingLocal(l.id,'price',e.target.value)}
+                      onBlur={e=>updateListing(l.id,'price',e.target.value)}
+                      placeholder="450000"
+                      style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box', color:'var(--gold2)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
                   </div>
-                  {/* Actions */}
-                  <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'nowrap' }}>
+                  <div style={{ flex:'1 1 120px', minWidth:100 }}>
+                    <div className="label" style={{ marginBottom:2, fontSize:9 }}>COMMISSION</div>
+                    <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                      <div style={{ position:'relative', flex:1 }}>
+                        <input className="field-input"
+                          value={isP ? String(l.commission||'').replace(/%$/,'') : (l.commission||'')}
+                          onChange={e => updateListingLocal(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)}
+                          onBlur={e => updateListing(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)}
+                          placeholder={isP ? '3' : '5000'}
+                          style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box', color: isP ? 'var(--muted)' : 'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
+                        {isP && <span style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', fontSize:11, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", pointerEvents:'none' }}>%</span>}
+                      </div>
+                      <button onClick={()=>toggleListingCommType(l.id)} style={{
+                        background:'var(--bg2)', border:'1px solid var(--b2)', borderRadius:5, cursor:'pointer', padding:'4px 8px',
+                        fontSize:9, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600, whiteSpace:'nowrap',
+                      }}>{isP ? '$ Flat' : '% Rate'}</button>
+                    </div>
+                  </div>
+                  <div style={{ flex:'0 1 120px', minWidth:100 }}>
+                    <div className="label" style={{ marginBottom:2, fontSize:9 }}>LEAD SOURCE</div>
+                    <select className="field-input" value={l.leadSource||''}
+                      onChange={e=>updateListing(l.id,'leadSource',e.target.value)}
+                      style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}>
+                      <option value="">—</option>
+                      {LEAD_SOURCES.map(s=><option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Row 4: Actions */}
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, borderTop:'1px solid var(--b1)', paddingTop:10 }}>
+                  <div className="deal-actions">
                     {l.status !== 'closed' ? (
                       <>
                         <button className="act-btn act-btn-blue" onClick={()=>handleListingOfferReceived(l)}
                           title="Log an offer received on this listing">
-                          Offer Rec'd
+                          📥 Offer Rec'd
                         </button>
                         {(l.status==='active' || !l.status) && (
                           <button className="act-btn act-btn-amber" onClick={()=>handleListingStatus(l,'pending')}>
@@ -3108,10 +3143,9 @@ function Dashboard({ theme, onToggleTheme }) {
                         </button>
                       </>
                     ) : (
-                      <span style={{ fontSize:10, color:'var(--dim)', fontStyle:'italic' }}>—</span>
+                      <span style={{ fontSize:10, color:'var(--dim)', fontStyle:'italic' }}>Deal completed</span>
                     )}
                   </div>
-                  {/* Client Update + Delete */}
                   <div style={{ display:'flex', gap:4, alignItems:'center' }}>
                     <button title="Generate client update" onClick={()=>setClientUpdateListing(l)} style={{
                       background:'none', border:'none', cursor:'pointer', padding:2, fontSize:14, opacity:.5,
@@ -3119,30 +3153,38 @@ function Dashboard({ theme, onToggleTheme }) {
                     <button className="btn-del" style={{ flexShrink:0 }} onClick={()=>removeListing(l)}>✕</button>
                   </div>
                 </div>
-              ))}
-            </div>
+              </div>
+              )
+            })}
 
-            {/* Add new listing */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 105px 150px 90px 1fr 30px', gap:8,
-              borderTop:'1px solid var(--b1)', paddingTop:12, alignItems:'center' }}>
-              <input className="field-input" value={newAddr} onChange={e=>setNewAddr(e.target.value)}
-                onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="New listing address…"
-                style={{ padding:'8px 12px' }}/>
-              <input className="field-input" value={newPrice} onChange={e=>setNewPrice(e.target.value)}
-                onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="$0"
-                style={{ padding:'8px 10px', color:'var(--gold2)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
-              <input className="field-input" value={newComm} onChange={e=>setNewComm(e.target.value)}
-                onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="3 (%)"
-                style={{ padding:'8px 10px', color:'var(--green)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
-              <button onClick={addListing} style={{
-                gridColumn:'span 3',
-                background:'var(--purple)', border:'none', color:'#fff', borderRadius:9,
-                padding:'9px 14px', fontSize:13, fontWeight:700, cursor:'pointer', lineHeight:1,
+            {/* Add new listing card */}
+            <div className="deal-card" style={{ borderStyle:'dashed', background:'var(--bg)' }}>
+              <div style={{ fontSize:12, fontWeight:600, color:'var(--muted)', marginBottom:10 }}>+ New Listing</div>
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:10 }}>
+                <input className="field-input" value={newAddr} onChange={e=>setNewAddr(e.target.value)}
+                  onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="Property address…"
+                  style={{ padding:'8px 12px', flex:'2 1 200px', minWidth:0 }}/>
+                <input className="field-input" value={newPrice} onChange={e=>setNewPrice(e.target.value)}
+                  onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="Price"
+                  style={{ padding:'8px 10px', flex:'1 1 100px', minWidth:80, color:'var(--gold2)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
+                <input className="field-input" value={newComm} onChange={e=>setNewComm(e.target.value)}
+                  onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="3 (%)"
+                  style={{ padding:'8px 10px', flex:'1 1 80px', minWidth:70, color:'var(--green)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
+                <select className="field-input" value={newLeadSource} onChange={e=>setNewLeadSource(e.target.value)}
+                  style={{ padding:'8px 10px', flex:'1 1 100px', minWidth:90, fontSize:12 }}>
+                  <option value="">Source…</option>
+                  {LEAD_SOURCES.map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <button onClick={addListing} disabled={!newAddr.trim()} style={{
+                width:'100%',
+                background: newAddr.trim() ? 'var(--purple)' : 'var(--b2)', border:'none',
+                color: newAddr.trim() ? '#fff' : 'var(--dim)', borderRadius:9,
+                padding:'10px 14px', fontSize:13, fontWeight:700, cursor: newAddr.trim() ? 'pointer' : 'default', lineHeight:1,
                 display:'flex', alignItems:'center', justifyContent:'center', gap:5,
-                transition:'background .15s', whiteSpace:'nowrap',
+                transition:'background .15s, color .15s',
               }}>+ Add Listing</button>
             </div>
-            </div></div>{/* /resp-table-inner /resp-table */}
           </div>
         </div>
 
@@ -3152,15 +3194,15 @@ function Dashboard({ theme, onToggleTheme }) {
           <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14, gap:12, flexWrap:'wrap' }}>
             <div>
               <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:4 }}>
-                <span style={{ fontSize:20 }}>🤝</span>
-                <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>Buyer Rep Agreements</span>
-                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, fontSize:18, color:'var(--blue)', lineHeight:1 }}>{buyerReps.length}</span>
+                <div style={{ width:36, height:36, borderRadius:10, background:'rgba(14,165,233,.1)', border:'1px solid rgba(14,165,233,.25)',
+                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:17, flexShrink:0 }}>🤝</div>
+                <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>Buyer Reps</span>
+                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, fontSize:20, color:'var(--blue)', lineHeight:1 }}>{buyerReps.length}</span>
               </div>
               <div className="section-sub" style={{ marginBottom:0 }}>
-                Buyer reps persist across months · <strong>Offer Made</strong> logs to pipeline &amp; awards XP · <strong>Close Rep</strong> marks the agreement done
+                Buyer reps persist across months · <strong>Offer Made</strong> logs to pipeline &amp; awards XP · <strong>Close Rep</strong> marks done
               </div>
             </div>
-            {/* Buyers weekly update button */}
             <button onClick={() => setShowBuyersUpdate(true)} style={{
               background:'rgba(14,165,233,.1)', color:'var(--blue)',
               border:'1px solid rgba(14,165,233,.3)', borderRadius:9,
@@ -3173,215 +3215,243 @@ function Dashboard({ theme, onToggleTheme }) {
             </button>
           </div>
 
-          <div className="card" style={{ padding:20 }}>
-            <div className="resp-table"><div className="resp-table-inner" style={{ minWidth:450 }}>
-            {/* Column headers */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 80px 1fr 30px', gap:8, padding:'3px 13px', marginBottom:6, border:'1px solid transparent' }}>
-              <span className="label">Client Name</span>
-              <span className="label">Status</span>
-              <span className="label">Actions</span>
-              <span/>
-            </div>
-
+          {/* Buyer Rep cards */}
+          <div className="deal-card-grid">
             {buyerReps.length === 0 && (
-              <div style={{ textAlign:'center', padding:'22px 0', color:'var(--dim)', fontSize:12 }}>
-                No buyer rep agreements — add one below
+              <div className="card" style={{ textAlign:'center', padding:'28px 20px', color:'var(--dim)', fontSize:13 }}>
+                No buyer rep agreements yet — add one below
               </div>
             )}
 
-            <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:12 }}>
-              {buyerReps.map(rep => {
-                const bd = rep.buyerDetails || {}
-                const isExpanded = expandedRep === rep.id
-                return (
-                <div key={rep.id}>
-                  <div className="pipe-row" style={{ gridTemplateColumns:'1fr 80px 1fr 30px' }}>
-                    {/* Client name + expand toggle + optional month badge */}
-                    <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
-                      <button onClick={() => setExpandedRep(isExpanded ? null : rep.id)} style={{
-                        background:'none', border:'none', cursor:'pointer', padding:'2px 4px', fontSize:12,
-                        color:'var(--dim)', transition:'transform .2s', transform: isExpanded ? 'rotate(90deg)' : 'none',
-                        flexShrink:0, lineHeight:1
-                      }} title="Toggle details">&#9654;</button>
-                      <input className="pipe-input" value={rep.clientName||''}
+            {buyerReps.map(rep => {
+              const bd = rep.buyerDetails || {}
+              const isExpanded = expandedRep === rep.id
+              const hasDetails = bd.preApproval || bd.timeline || bd.locationPrefs || bd.mustHaves
+              return (
+              <div key={rep.id} className="deal-card" style={{ borderLeft:`3px solid ${rep.status==='closed' ? 'rgba(16,185,129,.4)' : 'rgba(14,165,233,.35)'}` }}>
+                {/* Row 1: Client name + status */}
+                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8, marginBottom:6 }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div className="deal-title" style={{ display:'flex', alignItems:'center', gap:6 }}>
+                      <span style={{ fontSize:15, flexShrink:0 }}>👤</span>
+                      <input value={rep.clientName||''}
                         onChange={e => updateBuyerRepLocal(rep.id, e.target.value)}
                         onBlur={e => persistBuyerRep(rep.id, e.target.value)}
-                        placeholder="Client name…" style={{ flex:1, minWidth:0 }}/>
-                      {rep.monthYear && rep.monthYear !== MONTH_YEAR && (
-                        <span title={`Added in ${fmtMonth(rep.monthYear)}`} style={{
-                          flexShrink:0, fontSize:9, padding:'2px 6px', borderRadius:4,
-                          background:'var(--bg2)', color:'var(--dim)',
-                          fontFamily:"'JetBrains Mono',monospace", fontWeight:600, letterSpacing:.3,
-                          border:'1px solid var(--b2)', whiteSpace:'nowrap',
-                        }}>
-                          {fmtMonth(rep.monthYear)}
-                        </span>
-                      )}
+                        placeholder="Client name…"/>
                     </div>
-
-                    {/* Status */}
-                    <div style={{ display:'flex', alignItems:'center' }}>
-                      <span className={`status-pill sp-${rep.status||'active'}`}>
-                        {rep.status === 'closed' ? '✓ CLO' : '● ACT'}
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
+                    {rep.monthYear && rep.monthYear !== MONTH_YEAR && (
+                      <span title={`Added in ${fmtMonth(rep.monthYear)}`} style={{
+                        fontSize:9, padding:'2px 6px', borderRadius:4,
+                        background:'var(--bg2)', color:'var(--dim)',
+                        fontFamily:"'JetBrains Mono',monospace", fontWeight:600, letterSpacing:.3,
+                        border:'1px solid var(--b2)', whiteSpace:'nowrap',
+                      }}>
+                        {fmtMonth(rep.monthYear)}
                       </span>
-                    </div>
-                    {/* Actions */}
-                    <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'nowrap' }}>
-                      {rep.status !== 'closed' ? (
-                        <>
-                          <button className="act-btn act-btn-blue"
-                            onClick={() => setOfferModal({ repId:rep.id, repName:rep.clientName||'Buyer' })}>
-                            📤 Offer Made
-                          </button>
-                          <button className="act-btn act-btn-amber" onClick={() => closeBuyerRep(rep)}>
-                            ✓ Close Rep
-                          </button>
-                        </>
-                      ) : (
-                        <span style={{ fontSize:10, color:'var(--dim)', fontStyle:'italic' }}>—</span>
-                      )}
-                    </div>
-                    {/* Delete */}
+                    )}
+                    <span className="status-pill-lg" style={{
+                      background: rep.status==='closed' ? 'rgba(16,185,129,.12)' : 'rgba(14,165,233,.1)',
+                      color: rep.status==='closed' ? 'var(--green)' : 'var(--blue)',
+                      border: `1px solid ${rep.status==='closed' ? 'rgba(16,185,129,.3)' : 'rgba(14,165,233,.25)'}`,
+                    }}>
+                      {rep.status === 'closed' ? '✓ CLOSED' : '● ACTIVE'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Row 2: Quick stats (from buyerDetails) */}
+                {hasDetails && (
+                  <div className="deal-meta" style={{ marginBottom:8 }}>
+                    {bd.preApproval && (
+                      <span style={{ fontSize:11, color:'var(--muted)', display:'flex', alignItems:'center', gap:3 }}>
+                        <span style={{ fontSize:9, color:'var(--dim)' }}>Pre-approved:</span>
+                        <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color:'var(--blue)' }}>{formatPrice(bd.preApproval) || bd.preApproval}</span>
+                      </span>
+                    )}
+                    {bd.timeline && (
+                      <span style={{ fontSize:11, color:'var(--muted)', display:'flex', alignItems:'center', gap:3 }}>
+                        <span style={{ fontSize:9, color:'var(--dim)' }}>Timeline:</span>
+                        <span style={{ fontWeight:600 }}>{bd.timeline}</span>
+                      </span>
+                    )}
+                    {bd.locationPrefs && (
+                      <span style={{ fontSize:11, color:'var(--muted)', display:'flex', alignItems:'center', gap:3 }}>
+                        <span style={{ fontSize:10 }}>📍</span>
+                        <span style={{ maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{bd.locationPrefs}</span>
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Row 3: Actions + expand */}
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, borderTop:'1px solid var(--b1)', paddingTop:8 }}>
+                  <div className="deal-actions">
+                    {rep.status !== 'closed' ? (
+                      <>
+                        <button className="act-btn act-btn-blue"
+                          onClick={() => setOfferModal({ repId:rep.id, repName:rep.clientName||'Buyer' })}>
+                          📤 Offer Made
+                        </button>
+                        <button className="act-btn act-btn-amber" onClick={() => closeBuyerRep(rep)}>
+                          ✓ Close Rep
+                        </button>
+                      </>
+                    ) : (
+                      <span style={{ fontSize:10, color:'var(--dim)', fontStyle:'italic' }}>Agreement closed</span>
+                    )}
+                  </div>
+                  <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+                    <button onClick={() => setExpandedRep(isExpanded ? null : rep.id)} style={{
+                      background: isExpanded ? 'var(--blue)' : 'var(--bg2)', border:`1px solid ${isExpanded ? 'var(--blue)' : 'var(--b2)'}`,
+                      borderRadius:6, cursor:'pointer', padding:'4px 10px', fontSize:10, fontWeight:600,
+                      color: isExpanded ? '#fff' : 'var(--muted)', transition:'all .15s',
+                      display:'flex', alignItems:'center', gap:4,
+                    }}>
+                      {isExpanded ? '▲ Hide' : '▼ Details'}
+                    </button>
                     <button className="btn-del" style={{ flexShrink:0 }} onClick={() => removeBuyerRep(rep)}>✕</button>
                   </div>
+                </div>
 
-                  {/* ── Expandable Buyer Details Panel ── */}
-                  {isExpanded && (
-                    <div style={{ padding:'14px 16px 16px', background:'var(--bg2)', borderRadius:8,
-                      margin:'4px 0 8px', animation:'slideDown .2s ease', border:'1px solid var(--b1)' }}>
+                {/* ── Expandable Buyer Details Panel ── */}
+                {isExpanded && (
+                  <div style={{ padding:'14px 16px 16px', background:'var(--bg2)', borderRadius:8,
+                    marginTop:10, animation:'slideDown .2s ease', border:'1px solid var(--b1)' }}>
 
-                      {/* Financial */}
-                      <div style={{ marginBottom:14 }}>
-                        <div className="label" style={{ marginBottom:6, fontSize:10, letterSpacing:'.08em', textTransform:'uppercase', color:'var(--blue)', fontWeight:700 }}>
-                          Financial
-                        </div>
-                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:8 }}>
-                          <div>
-                            <div className="label" style={{ marginBottom:2 }}>Pre-Approval Amount</div>
-                            <input className="field-input" value={bd.preApproval||''} placeholder="$450,000"
-                              onChange={e => updateBuyerRepDetail(rep.id, 'preApproval', e.target.value)}
-                              style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}/>
-                          </div>
-                          <div>
-                            <div className="label" style={{ marginBottom:2 }}>Payment Range</div>
-                            <input className="field-input" value={bd.paymentRange||''} placeholder="$2,800/mo"
-                              onChange={e => updateBuyerRepDetail(rep.id, 'paymentRange', e.target.value)}
-                              style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}/>
-                          </div>
-                          <div>
-                            <div className="label" style={{ marginBottom:2 }}>Down Payment</div>
-                            <input className="field-input" value={bd.downPayment||''} placeholder="$90,000"
-                              onChange={e => updateBuyerRepDetail(rep.id, 'downPayment', e.target.value)}
-                              style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}/>
-                          </div>
-                        </div>
+                    {/* Financial */}
+                    <div style={{ marginBottom:14 }}>
+                      <div className="label" style={{ marginBottom:6, fontSize:10, letterSpacing:'.08em', textTransform:'uppercase', color:'var(--blue)', fontWeight:700 }}>
+                        Financial
                       </div>
-
-                      {/* Agreement Dates */}
-                      <div style={{ marginBottom:14 }}>
-                        <div className="label" style={{ marginBottom:6, fontSize:10, letterSpacing:'.08em', textTransform:'uppercase', color:'var(--gold2)', fontWeight:700 }}>
-                          Agreement
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:8 }}>
+                        <div>
+                          <div className="label" style={{ marginBottom:2 }}>Pre-Approval Amount</div>
+                          <input className="field-input" value={bd.preApproval||''} placeholder="$450,000"
+                            onChange={e => updateBuyerRepDetail(rep.id, 'preApproval', e.target.value)}
+                            style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}/>
                         </div>
-                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:8 }}>
-                          <div>
-                            <div className="label" style={{ marginBottom:2 }}>Date Signed</div>
-                            <input className="field-input" type="date" value={bd.dateSigned||''}
-                              onChange={e => updateBuyerRepDetail(rep.id, 'dateSigned', e.target.value)}
-                              style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}/>
-                          </div>
-                          <div>
-                            <div className="label" style={{ marginBottom:2 }}>Date Expires</div>
-                            <input className="field-input" type="date" value={bd.dateExpires||''}
-                              onChange={e => updateBuyerRepDetail(rep.id, 'dateExpires', e.target.value)}
-                              style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}/>
-                          </div>
-                          <div>
-                            <div className="label" style={{ marginBottom:2 }}>Last Call</div>
-                            <input className="field-input" type="date" value={bd.lastCallDate||''}
-                              onChange={e => updateBuyerRepDetail(rep.id, 'lastCallDate', e.target.value)}
-                              style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}/>
-                          </div>
+                        <div>
+                          <div className="label" style={{ marginBottom:2 }}>Payment Range</div>
+                          <input className="field-input" value={bd.paymentRange||''} placeholder="$2,800/mo"
+                            onChange={e => updateBuyerRepDetail(rep.id, 'paymentRange', e.target.value)}
+                            style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}/>
                         </div>
-                      </div>
-
-                      {/* Search Criteria */}
-                      <div style={{ marginBottom:14 }}>
-                        <div className="label" style={{ marginBottom:6, fontSize:10, letterSpacing:'.08em', textTransform:'uppercase', color:'var(--green)', fontWeight:700 }}>
-                          Search Criteria
+                        <div>
+                          <div className="label" style={{ marginBottom:2 }}>Down Payment</div>
+                          <input className="field-input" value={bd.downPayment||''} placeholder="$90,000"
+                            onChange={e => updateBuyerRepDetail(rep.id, 'downPayment', e.target.value)}
+                            style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}/>
                         </div>
-                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))', gap:8 }}>
-                          <div>
-                            <div className="label" style={{ marginBottom:2 }}>Location Preferences</div>
-                            <textarea className="field-input" value={bd.locationPrefs||''} placeholder="North Austin, Round Rock, Cedar Park…"
-                              onChange={e => updateBuyerRepDetail(rep.id, 'locationPrefs', e.target.value)}
-                              style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box', minHeight:38, resize:'vertical', fontFamily:'inherit' }}/>
-                          </div>
-                          <div>
-                            <div className="label" style={{ marginBottom:2 }}>Must-Haves</div>
-                            <textarea className="field-input" value={bd.mustHaves||''} placeholder="3+ bed, 2+ bath, garage, good schools…"
-                              onChange={e => updateBuyerRepDetail(rep.id, 'mustHaves', e.target.value)}
-                              style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box', minHeight:38, resize:'vertical', fontFamily:'inherit' }}/>
-                          </div>
-                          <div>
-                            <div className="label" style={{ marginBottom:2 }}>Nice-to-Haves</div>
-                            <textarea className="field-input" value={bd.niceToHaves||''} placeholder="Pool, open floor plan, cul-de-sac…"
-                              onChange={e => updateBuyerRepDetail(rep.id, 'niceToHaves', e.target.value)}
-                              style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box', minHeight:38, resize:'vertical', fontFamily:'inherit' }}/>
-                          </div>
-                          <div>
-                            <div className="label" style={{ marginBottom:2 }}>Timeline</div>
-                            <select className="field-input" value={bd.timeline||''}
-                              onChange={e => updateBuyerRepDetail(rep.id, 'timeline', e.target.value)}
-                              style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}>
-                              <option value="">Select…</option>
-                              <option value="Urgent">Urgent</option>
-                              <option value="1-3 months">1-3 months</option>
-                              <option value="3-6 months">3-6 months</option>
-                              <option value="6+ months">6+ months</option>
-                              <option value="Flexible">Flexible</option>
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Save button */}
-                      <div style={{ display:'flex', justifyContent:'flex-end', paddingTop:10, borderTop:'1px solid var(--b1)' }}>
-                        <button onClick={() => saveBuyerRepDetails(rep.id)}
-                          disabled={savingRepId === rep.id}
-                          style={{
-                            background: rep._dirty ? 'var(--blue)' : 'var(--b2)',
-                            color: rep._dirty ? '#fff' : 'var(--dim)',
-                            border:'none', borderRadius:7, padding:'8px 20px', fontSize:12,
-                            fontWeight:700, cursor: rep._dirty ? 'pointer' : 'default',
-                            transition:'background .15s, color .15s',
-                            display:'flex', alignItems:'center', gap:6,
-                          }}>
-                          {savingRepId === rep.id ? 'Saving...' : rep._dirty ? 'Save Details' : 'Saved'}
-                        </button>
                       </div>
                     </div>
-                  )}
-                </div>
-                )
-              })}
-            </div>
 
-            {/* Add new buyer rep */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 240px 30px', gap:8,
-              borderTop:'1px solid var(--b1)', paddingTop:12, alignItems:'center' }}>
-              <input className="field-input" value={newRepClient}
-                onChange={e => setNewRepClient(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && addBuyerRep()}
-                placeholder="New buyer client name…" style={{ padding:'8px 12px' }}/>
-              <button onClick={addBuyerRep} style={{
-                gridColumn:'span 2',
-                background:'var(--blue)', border:'none', color:'#fff', borderRadius:9,
-                padding:'9px 14px', fontSize:13, fontWeight:700, cursor:'pointer', lineHeight:1,
-                display:'flex', alignItems:'center', justifyContent:'center', gap:5,
-                transition:'background .15s', whiteSpace:'nowrap',
-              }}>+ Add Buyer Rep</button>
+                    {/* Agreement Dates */}
+                    <div style={{ marginBottom:14 }}>
+                      <div className="label" style={{ marginBottom:6, fontSize:10, letterSpacing:'.08em', textTransform:'uppercase', color:'var(--gold2)', fontWeight:700 }}>
+                        Agreement
+                      </div>
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:8 }}>
+                        <div>
+                          <div className="label" style={{ marginBottom:2 }}>Date Signed</div>
+                          <input className="field-input" type="date" value={bd.dateSigned||''}
+                            onChange={e => updateBuyerRepDetail(rep.id, 'dateSigned', e.target.value)}
+                            style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}/>
+                        </div>
+                        <div>
+                          <div className="label" style={{ marginBottom:2 }}>Date Expires</div>
+                          <input className="field-input" type="date" value={bd.dateExpires||''}
+                            onChange={e => updateBuyerRepDetail(rep.id, 'dateExpires', e.target.value)}
+                            style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}/>
+                        </div>
+                        <div>
+                          <div className="label" style={{ marginBottom:2 }}>Last Call</div>
+                          <input className="field-input" type="date" value={bd.lastCallDate||''}
+                            onChange={e => updateBuyerRepDetail(rep.id, 'lastCallDate', e.target.value)}
+                            style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}/>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Search Criteria */}
+                    <div style={{ marginBottom:14 }}>
+                      <div className="label" style={{ marginBottom:6, fontSize:10, letterSpacing:'.08em', textTransform:'uppercase', color:'var(--green)', fontWeight:700 }}>
+                        Search Criteria
+                      </div>
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))', gap:8 }}>
+                        <div>
+                          <div className="label" style={{ marginBottom:2 }}>Location Preferences</div>
+                          <textarea className="field-input" value={bd.locationPrefs||''} placeholder="North Austin, Round Rock, Cedar Park…"
+                            onChange={e => updateBuyerRepDetail(rep.id, 'locationPrefs', e.target.value)}
+                            style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box', minHeight:38, resize:'vertical', fontFamily:'inherit' }}/>
+                        </div>
+                        <div>
+                          <div className="label" style={{ marginBottom:2 }}>Must-Haves</div>
+                          <textarea className="field-input" value={bd.mustHaves||''} placeholder="3+ bed, 2+ bath, garage, good schools…"
+                            onChange={e => updateBuyerRepDetail(rep.id, 'mustHaves', e.target.value)}
+                            style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box', minHeight:38, resize:'vertical', fontFamily:'inherit' }}/>
+                        </div>
+                        <div>
+                          <div className="label" style={{ marginBottom:2 }}>Nice-to-Haves</div>
+                          <textarea className="field-input" value={bd.niceToHaves||''} placeholder="Pool, open floor plan, cul-de-sac…"
+                            onChange={e => updateBuyerRepDetail(rep.id, 'niceToHaves', e.target.value)}
+                            style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box', minHeight:38, resize:'vertical', fontFamily:'inherit' }}/>
+                        </div>
+                        <div>
+                          <div className="label" style={{ marginBottom:2 }}>Timeline</div>
+                          <select className="field-input" value={bd.timeline||''}
+                            onChange={e => updateBuyerRepDetail(rep.id, 'timeline', e.target.value)}
+                            style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}>
+                            <option value="">Select…</option>
+                            <option value="Urgent">Urgent</option>
+                            <option value="1-3 months">1-3 months</option>
+                            <option value="3-6 months">3-6 months</option>
+                            <option value="6+ months">6+ months</option>
+                            <option value="Flexible">Flexible</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Save button */}
+                    <div style={{ display:'flex', justifyContent:'flex-end', paddingTop:10, borderTop:'1px solid var(--b1)' }}>
+                      <button onClick={() => saveBuyerRepDetails(rep.id)}
+                        disabled={savingRepId === rep.id}
+                        style={{
+                          background: rep._dirty ? 'var(--blue)' : 'var(--b2)',
+                          color: rep._dirty ? '#fff' : 'var(--dim)',
+                          border:'none', borderRadius:7, padding:'8px 20px', fontSize:12,
+                          fontWeight:700, cursor: rep._dirty ? 'pointer' : 'default',
+                          transition:'background .15s, color .15s',
+                          display:'flex', alignItems:'center', gap:6,
+                        }}>
+                        {savingRepId === rep.id ? 'Saving...' : rep._dirty ? 'Save Details' : 'Saved'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              )
+            })}
+
+            {/* Add new buyer rep card */}
+            <div className="deal-card" style={{ borderStyle:'dashed', background:'var(--bg)' }}>
+              <div style={{ fontSize:12, fontWeight:600, color:'var(--muted)', marginBottom:10 }}>+ New Buyer Rep</div>
+              <div style={{ display:'flex', gap:8 }}>
+                <input className="field-input" value={newRepClient}
+                  onChange={e => setNewRepClient(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addBuyerRep()}
+                  placeholder="Client name…" style={{ padding:'8px 12px', flex:1 }}/>
+                <button onClick={addBuyerRep} disabled={!newRepClient.trim()} style={{
+                  background: newRepClient.trim() ? 'var(--blue)' : 'var(--b2)', border:'none',
+                  color: newRepClient.trim() ? '#fff' : 'var(--dim)', borderRadius:9,
+                  padding:'9px 18px', fontSize:13, fontWeight:700, cursor: newRepClient.trim() ? 'pointer' : 'default', lineHeight:1,
+                  display:'flex', alignItems:'center', justifyContent:'center', gap:5,
+                  transition:'background .15s, color .15s', whiteSpace:'nowrap',
+                }}>+ Add Buyer Rep</button>
+              </div>
             </div>
-            </div></div>{/* /resp-table-inner /resp-table */}
           </div>
         </div>
 
@@ -3453,14 +3523,15 @@ function Dashboard({ theme, onToggleTheme }) {
                     )}
                     {col.rows.map(r => {
                       const comm = resolveCommission(r.commission, r.price)
+                      const pn = parseFloat(String(r.price||'').replace(/[^0-9.]/g,''))
                       return (
                         <div key={r.id} style={{ padding:'10px 12px', borderRadius:8, background:'var(--bg)', border:'1px solid var(--b1)', transition:'box-shadow .15s' }}>
-                          <div style={{ fontSize:12, fontWeight:600, color:'var(--text)', marginBottom:4, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                          <div style={{ fontFamily:"'Fraunces',serif", fontSize:12, fontWeight:600, color:'var(--text)', marginBottom:4, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
                             {r.address || 'Untitled'}
                           </div>
-                          <div style={{ display:'flex', gap:8, fontSize:10, color:'var(--muted)' }}>
-                            {r.price && <span>{fmtMoney(r.price)||r.price}</span>}
-                            {comm > 0 && <span style={{ color:col.color, fontWeight:700 }}>{fmtMoney(comm)}</span>}
+                          <div style={{ display:'flex', gap:8, fontSize:10, color:'var(--muted)', alignItems:'center' }}>
+                            {pn > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color:col.color }}>{formatPrice(r.price)}</span>}
+                            {comm > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", color:'var(--green)', fontWeight:700 }}>{fmtMoney(comm)}</span>}
                           </div>
                           {r.closedFrom && <div style={{ marginTop:4, fontSize:9, color:'var(--dim)' }}>via {r.closedFrom}</div>}
                         </div>
@@ -3653,7 +3724,7 @@ function Dashboard({ theme, onToggleTheme }) {
               <div style={{ padding:'24px 32px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
                 <div>
                   <div style={{ fontSize:10, color:'#9ca3af', letterSpacing:.8, marginBottom:4 }}>LIST PRICE</div>
-                  <div style={{ fontSize:22, fontWeight:700, color:'#111' }}>{fmtMoney(cl.price)||'—'}</div>
+                  <div style={{ fontSize:22, fontWeight:700, color:'#111' }}>{formatPrice(cl.price)||'—'}</div>
                 </div>
                 <div>
                   <div style={{ fontSize:10, color:'#9ca3af', letterSpacing:.8, marginBottom:4 }}>STATUS</div>

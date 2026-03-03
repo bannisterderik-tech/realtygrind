@@ -34,6 +34,36 @@ export function resolveCommission(commStr, priceStr) {
   return isNaN(n) ? 0 : n
 }
 
+// Format price for display: 450000 → "$450,000"
+export function formatPrice(v) {
+  const n = parseFloat(String(v||'').replace(/[^0-9.]/g,''))
+  if (!n && n!==0) return ''
+  if (n === 0) return '$0'
+  return '$'+n.toLocaleString('en-US',{maximumFractionDigits:0})
+}
+// Strip formatting for editing: "$450,000" → "450000"
+export function stripPrice(v) { return String(v||'').replace(/[^0-9.]/g,'') }
+
+// Days on market from created_at
+export function daysOnMarket(createdAt) {
+  if (!createdAt) return null
+  const d = Math.floor((Date.now()-new Date(createdAt).getTime())/(86400000))
+  return d >= 0 ? d : null
+}
+
+// Lead source options
+export const LEAD_SOURCES = [
+  'Sphere','FSBO','Expired','Online Lead','Open House',
+  'Referral','Sign Call','Door Knock','Cold Call','Other'
+]
+
+// Lead source colors
+export const LEAD_SOURCE_COLORS = {
+  Sphere:'#8b5cf6', FSBO:'#f59e0b', Expired:'#ef4444', 'Online Lead':'#0ea5e9',
+  'Open House':'#10b981', Referral:'#ec4899', 'Sign Call':'#14b8a6',
+  'Door Knock':'#f97316', 'Cold Call':'#6366f1', Other:'#6b7280',
+}
+
 export const CAT = {
   leads:     { color:'#0ea5e9', light:'rgba(14,165,233,.12)',  border:'rgba(14,165,233,.22)'  },
   listings:  { color:'#10b981', light:'rgba(16,185,129,.12)',  border:'rgba(16,185,129,.22)'  },
@@ -550,6 +580,30 @@ body,.page { background: var(--bg); color: var(--text); }
     font-size: 12px !important;
   }
 }
+
+/* ── Deal cards ────────────────────────── */
+.deal-card { padding:16px 18px; border-radius:var(--r2); border:1px solid var(--b2);
+  background:var(--surface); transition:border-color .15s, box-shadow .15s; }
+.deal-card:hover { border-color:var(--b3); box-shadow:0 2px 12px rgba(0,0,0,.04); }
+.deal-card-grid { display:flex; flex-direction:column; gap:10px; }
+.dom-badge { display:inline-flex; align-items:center; gap:3px; font-size:10px;
+  padding:2px 8px; border-radius:5px; font-weight:600; font-family:'JetBrains Mono',monospace; }
+.lead-tag { display:inline-flex; align-items:center; gap:3px; font-size:10px;
+  padding:2px 8px; border-radius:5px; font-weight:600; white-space:nowrap; }
+.status-pill-lg { display:inline-flex; align-items:center; gap:4px; font-size:11px;
+  padding:4px 12px; border-radius:7px; font-weight:700; letter-spacing:.3px; }
+.notes-indicator { display:inline-flex; align-items:center; gap:3px; font-size:10px;
+  color:var(--muted); cursor:pointer; padding:2px 6px; border-radius:4px; background:none; border:none;
+  transition:background .15s; font-family:'JetBrains Mono',monospace; }
+.notes-indicator:hover { background:var(--b1); }
+.price-display { font-family:'Fraunces',serif; font-weight:700; letter-spacing:-.02em; line-height:1; }
+.comm-resolved { font-family:'JetBrains Mono',monospace; font-weight:700; }
+.deal-meta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.deal-actions { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.deal-title { font-family:'Fraunces',serif; font-size:15px; font-weight:600; color:var(--text); letter-spacing:-.01em; line-height:1.3; }
+.deal-title input { font-family:'Fraunces',serif; font-size:15px; font-weight:600; color:var(--text); background:none; border:none; width:100%; min-width:0; outline:none; letter-spacing:-.01em; }
+.deal-title input::placeholder { color:var(--dim); font-weight:400; }
+.deal-title input:focus { border-bottom:1.5px solid var(--gold2); }
 `
 
 // ─── React components ──────────────────────────────────────────────────────────

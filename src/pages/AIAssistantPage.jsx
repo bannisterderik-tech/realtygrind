@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import { CSS, Loader } from '../design'
-import { isActiveBilling, isTeamMember } from '../lib/plans'
+import { isActiveBilling, isTeamMember, isPlatformAdmin } from '../lib/plans'
 
 const QUICK_ACTIONS = [
   { label: 'Analyze My Listings', prompt: 'Analyze my current active listings and suggest strategies to reduce days on market and maximize sale price for each one.' },
@@ -233,7 +233,7 @@ export default function AIAssistantPage({ onNavigate, theme, onToggleTheme }) {
   }
 
   // Gate checks
-  const hasBilling = isActiveBilling(profile?.billing_status) || isTeamMember(profile, user?.id)
+  const hasBilling = isPlatformAdmin(profile) || isActiveBilling(profile?.billing_status) || isTeamMember(profile, user?.id)
   const isDisabledByTeam = profile?.teams?.team_prefs?.ai_tools?.assistant_enabled === false
 
   if (loadingCredits) {

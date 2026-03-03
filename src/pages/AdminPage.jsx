@@ -3,12 +3,13 @@ import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import { CSS, StatCard, Loader, fmtMoney } from '../design'
 
-const PLAN_COLORS = { solo: '#94a3b8', team: '#d97706', brokerage: '#8b5cf6', team_member: '#6366f1', free: '#706b62' }
+const PLAN_COLORS = { admin: '#8b5cf6', solo: '#94a3b8', team: '#d97706', brokerage: '#8b5cf6', team_member: '#6366f1', free: '#706b62' }
 const PLAN_PRICES = { solo: 29, team: 199, brokerage: 499 }
-const PLAN_LABELS = { solo: 'Solo', team: 'Team', brokerage: 'Brokerage', team_member: 'Team Member', free: 'Free' }
+const PLAN_LABELS = { admin: 'Admin', solo: 'Solo', team: 'Team', brokerage: 'Brokerage', team_member: 'Team Member', free: 'Free' }
 
-// Determine effective plan: team members without their own paid plan → 'team_member'
+// Determine effective plan: admins → 'admin', team members → 'team_member'
 function effectivePlan(u) {
+  if (u.app_role === 'admin') return 'admin'
   const plan = u.plan || 'free'
   if (plan === 'free' && u.team_id) return 'team_member'
   return plan
@@ -69,15 +70,18 @@ export default function AdminPage({ onNavigate }) {
       for (const t of (teams || [])) teamMap[t.id] = t.name || 'Unnamed Team'
 
       const allProfiles = profiles || []
+      // Separate admins from regular users — admins don't count in stats
+      const adminProfiles = allProfiles.filter(p => p.app_role === 'admin')
+      const regularProfiles = allProfiles.filter(p => p.app_role !== 'admin')
       const now = new Date()
       const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
-      // Compute aggregate stats
+      // Compute aggregate stats (only regular users)
       const byPlan = { solo: 0, team: 0, brokerage: 0, team_member: 0, free: 0 }
       const byBilling = { active: 0, trialing: 0, past_due: 0, cancelled: 0, free: 0 }
       let mrrEstimate = 0, aiCreditsTotal = 0, aiCreditsThisMonth = 0
 
-      for (const p of allProfiles) {
+      for (const p of regularProfiles) {
         const planKey = effectivePlan(p)
         byPlan[planKey] = (byPlan[planKey] || 0) + 1
         const billingKey = p.billing_status || 'free'
@@ -88,10 +92,11 @@ export default function AdminPage({ onNavigate }) {
         if (p.ai_credits_reset === month) aiCreditsThisMonth += p.ai_credits_used || 0
       }
 
-      const teamIds = new Set(allProfiles.map(p => p.team_id).filter(Boolean))
+      const teamIds = new Set(regularProfiles.map(p => p.team_id).filter(Boolean))
 
       const stats = {
-        total_users: allProfiles.length,
+        total_users: regularProfiles.length,
+        admin_count: adminProfiles.length,
         by_plan: byPlan,
         by_billing: byBilling,
         paying_users: (byBilling.active || 0) + (byBilling.trialing || 0),
@@ -102,6 +107,7 @@ export default function AdminPage({ onNavigate }) {
         total_teams: teamIds.size,
       }
 
+      // All users still appear in the user list, but admins are marked
       const users = allProfiles.map(p => ({
         ...p,
         team_name: p.team_id ? (teamMap[p.team_id] || null) : null,

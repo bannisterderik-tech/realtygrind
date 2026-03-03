@@ -82,10 +82,15 @@ Deno.serve(async (req) => {
 
     if (!profile) return json({ error: 'Profile not found' }, 404)
 
+    // Platform admins bypass all plan/billing/credit gates
+    const isAdmin = profile.app_role === 'admin'
+
     // Determine effective plan tier
     const isTeamMember = !!(profile.team_id && profile.teams?.created_by !== user.id)
     let effectivePlan: string
-    if (isTeamMember) {
+    if (isAdmin) {
+      effectivePlan = 'brokerage' // admins get top-tier access
+    } else if (isTeamMember) {
       // Look up the team owner's actual plan instead of inferring from max_members
       const { data: ownerProfile } = await admin
         .from('profiles')
@@ -100,7 +105,7 @@ Deno.serve(async (req) => {
     // ── 3. Plan gate ────────────────────────────────────────────────────────
     const billing = profile.billing_status
     const hasBilling = billing === 'active' || billing === 'trialing'
-    if (!hasBilling && !isTeamMember) {
+    if (!isAdmin && !hasBilling && !isTeamMember) {
       return json({ error: 'subscription_required', message: 'Subscribe to a plan to use AI Assistant.' }, 403)
     }
 
@@ -110,7 +115,7 @@ Deno.serve(async (req) => {
     }
 
     // ── 5. Credit gate ──────────────────────────────────────────────────────
-    const limit = CREDIT_LIMITS[effectivePlan] ?? 0
+    const limit = isAdmin ? -1 : (CREDIT_LIMITS[effectivePlan] ?? 0)
     const month = currentMonth()
 
     // Reset credits if month rolled over
@@ -139,8 +144,8 @@ Deno.serve(async (req) => {
       return json({ credits_used: creditsUsed, credits_limit: limit, plan: effectivePlan })
     }
 
-    // Check credit limit
-    if (creditsUsed >= limit) {
+    // Check credit limit (limit === -1 means unlimited for admins)
+    if (limit !== -1 && creditsUsed >= limit) {
       return json({
         error: 'credits_exhausted',
         plan: effectivePlan,

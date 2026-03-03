@@ -28,8 +28,14 @@ export function isActiveBilling(status) {
   return status === 'active' || status === 'trialing'
 }
 
+// Platform admins have full access to all features regardless of plan
+export function isPlatformAdmin(profile) {
+  return profile?.app_role === 'admin'
+}
+
 export function canUseTeams(profile) {
   if (!profile) return false
+  if (isPlatformAdmin(profile)) return true
   const plan = getPlan(profile.plan)
   if (!plan) return false
   return isActiveBilling(profile.billing_status) && plan.maxMembers > 0
@@ -49,6 +55,10 @@ export function getAICreditLimit(plan) {
 }
 
 export function getPlanBadge(profile, userId) {
+  // Platform admin — special badge, no plan needed
+  if (isPlatformAdmin(profile)) {
+    return { label:'Admin', color:'#8b5cf6' }
+  }
   // Team member (non-owner) — show they're covered
   if (userId && isTeamMember(profile, userId)) {
     return { label:'Team Member', color:'#d97706' }

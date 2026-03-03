@@ -1788,15 +1788,22 @@ function Dashboard({ theme, onToggleTheme }) {
       const insertObj = { user_id:user.id, address:newAddr.trim(), unit_count:1,
         price:newPrice.trim(), commission:commVal, status:'active', month_year:MONTH_YEAR }
       if (newLeadSource) insertObj.lead_source = newLeadSource
-      const {data, error} = await supabase.from('listings').insert(insertObj).select().single()
+      let {data, error} = await supabase.from('listings').insert(insertObj).select().single()
+      // If lead_source column doesn't exist yet, retry without it
+      if (error && newLeadSource && error.message?.includes('lead_source')) {
+        delete insertObj.lead_source
+        const retry = await supabase.from('listings').insert(insertObj).select().single()
+        data = retry.data; error = retry.error
+      }
       if (error) throw error
       if (data) {
         setListings(prev=>[...prev,{id:data.id,address:data.address,status:'active',price:data.price||'',commission:data.commission||'',monthYear:data.month_year||MONTH_YEAR,createdAt:data.created_at||null,leadSource:data.lead_source||'',notes:[]}])
         setNewAddr(''); setNewPrice(''); setNewComm(''); setNewLeadSource('')
+        setAddListingExpanded(false)
       }
     } catch (err) {
       console.error('addListing error:', err)
-      showToast('Failed to add listing — please try again')
+      showToast('Failed to add listing: ' + (err.message || 'unknown error'))
     }
   }
 
@@ -3185,14 +3192,19 @@ function Dashboard({ theme, onToggleTheme }) {
 
           {/* Add listing bar */}
           <div style={{ marginTop:14 }}>
-            <div className={`add-bar${addListingExpanded ? '' : ''}`}>
+            <div className="add-bar" onClick={() => document.getElementById('add-listing-input')?.focus()}>
               <span style={{ fontSize:16, color:'var(--dim)', flexShrink:0 }}>+</span>
-              <input value={newAddr} onChange={e=>setNewAddr(e.target.value)}
+              <input id="add-listing-input" value={newAddr} onChange={e=>setNewAddr(e.target.value)}
                 onFocus={()=>setAddListingExpanded(true)}
                 onKeyDown={e=>e.key==='Enter'&&addListing()}
                 placeholder="Add a new listing address…"/>
+              {newAddr.trim() && (
+                <button onClick={e=>{e.stopPropagation();addListing()}} className="btn-gold" style={{ flexShrink:0, padding:'6px 14px', whiteSpace:'nowrap' }}>
+                  + Add
+                </button>
+              )}
             </div>
-            {addListingExpanded && (
+            {addListingExpanded && newAddr.trim() && (
               <div className="add-bar-fields">
                 <input className="field-input" value={newPrice} onChange={e=>setNewPrice(e.target.value)}
                   onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="List price"
@@ -3205,12 +3217,8 @@ function Dashboard({ theme, onToggleTheme }) {
                   <option value="">Lead source…</option>
                   {LEAD_SOURCES.map(s=><option key={s} value={s}>{s}</option>)}
                 </select>
-                <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                  <button className="btn-gold" onClick={addListing} disabled={!newAddr.trim()}
-                    style={{ whiteSpace:'nowrap', padding:'8px 16px' }}>+ Add</button>
-                  <button onClick={()=>{setAddListingExpanded(false);setNewAddr('');setNewPrice('');setNewComm('');setNewLeadSource('')}}
-                    style={{ background:'none', border:'none', color:'var(--dim)', cursor:'pointer', fontSize:12, fontWeight:600 }}>Cancel</button>
-                </div>
+                <button onClick={()=>{setAddListingExpanded(false);setNewAddr('');setNewPrice('');setNewComm('');setNewLeadSource('')}}
+                  style={{ background:'none', border:'none', color:'var(--dim)', cursor:'pointer', fontSize:12, fontWeight:600, whiteSpace:'nowrap' }}>Cancel</button>
               </div>
             )}
           </div>

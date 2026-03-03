@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { CSS, Loader, Wordmark, ThemeToggle, Ring, getRank, CAT, StatCard, fmtMoney } from '../design'
+import { CSS, Loader, Wordmark, ThemeToggle, Ring, getRank, CAT, StatCard, fmtMoney, resolveCommission } from '../design'
 import { HABITS } from '../habits'
 import { canUseTeams, getMaxMembers, getPlan, isActiveBilling } from '../lib/plans'
 import { ALL_APPS } from './DirectoryPage'
@@ -1140,7 +1140,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                                 {groupListings.map(l => {
                                   const pA = v => { const n=parseFloat(String(v||'').replace(/[^0-9.]/g,'')); return isNaN(n)?0:n }
-                                  const price = pA(l.price); const comm = pA(l.commission)
+                                  const price = pA(l.price); const comm = resolveCommission(l.commission, l.price)
                                   const isMe  = l.user_id === user?.id
                                   const sc    = l.status === 'pending' ? '#6366f1' : '#10b981'
                                   return (
@@ -1596,7 +1596,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                     const activeListings = teamListings.filter(l=>l.status!=='pending')
                     const pendingListings = teamListings.filter(l=>l.status==='pending')
                     const totalVolume = teamListings.reduce((s,l)=>s+parseNum(l.price),0)
-                    const totalCommission = teamListings.reduce((s,l)=>s+parseNum(l.commission),0)
+                    const totalCommission = teamListings.reduce((s,l)=>s+resolveCommission(l.commission, l.price),0)
                     // Agent breakdown
                     const agentMap = {}
                     teamListings.forEach(l=>{
@@ -1604,7 +1604,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       if (!agentMap[aid]) agentMap[aid] = { name:l.agentName, count:0, volume:0, commission:0 }
                       agentMap[aid].count++
                       agentMap[aid].volume += parseNum(l.price)
-                      agentMap[aid].commission += parseNum(l.commission)
+                      agentMap[aid].commission += resolveCommission(l.commission, l.price)
                     })
                     const agentBreakdown = Object.entries(agentMap)
                       .map(([id,v])=>({id,...v}))
@@ -1683,7 +1683,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                     <div style={{ fontSize:12, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', marginBottom:10 }}>All Listings</div>
                     <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                       {teamListings.map(l => {
-                        const price = parseNum(l.price); const comm = parseNum(l.commission)
+                        const price = parseNum(l.price); const comm = resolveCommission(l.commission, l.price)
                         const isMe  = l.user_id === user?.id
                         const isPending = l.status === 'pending'
                         const sc = isPending ? '#6366f1' : '#10b981'

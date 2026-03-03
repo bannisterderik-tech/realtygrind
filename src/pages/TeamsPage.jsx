@@ -1591,67 +1591,146 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                   )} {/* end challenges tab */}
 
                   {/* ════════ LISTINGS TAB ════════ */}
-                  {teamsTab==='listings' && (
+                  {teamsTab==='listings' && (()=>{
+                    const parseNum = v => { const n=parseFloat(String(v||'').replace(/[^0-9.]/g,'')); return isNaN(n)?0:n }
+                    const activeListings = teamListings.filter(l=>l.status!=='pending')
+                    const pendingListings = teamListings.filter(l=>l.status==='pending')
+                    const totalVolume = teamListings.reduce((s,l)=>s+parseNum(l.price),0)
+                    const totalCommission = teamListings.reduce((s,l)=>s+parseNum(l.commission),0)
+                    // Agent breakdown
+                    const agentMap = {}
+                    teamListings.forEach(l=>{
+                      const aid = l.user_id
+                      if (!agentMap[aid]) agentMap[aid] = { name:l.agentName, count:0, volume:0, commission:0 }
+                      agentMap[aid].count++
+                      agentMap[aid].volume += parseNum(l.price)
+                      agentMap[aid].commission += parseNum(l.commission)
+                    })
+                    const agentBreakdown = Object.entries(agentMap)
+                      .map(([id,v])=>({id,...v}))
+                      .sort((a,b)=>b.count-a.count)
+                    return (
                   <>
                   <div>
-                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-                      <div className="serif" style={{ fontSize:20, color:'var(--text)' }}>🏠 Team Listings</div>
-                      {teamListings.length > 0 && (
-                        <span style={{ fontSize:11, padding:'3px 10px', borderRadius:20, fontWeight:600,
-                          background:'rgba(16,185,129,.1)', color:'var(--green)', border:'1px solid rgba(16,185,129,.2)' }}>
-                          {teamListings.length} active
-                        </span>
-                      )}
+                    {/* Header */}
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+                      <div className="serif" style={{ fontSize:22, color:'var(--text)' }}>🏠 Team Listings</div>
                     </div>
-                    {teamListings.length === 0 && (
-                      <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic', padding:'16px 0' }}>
-                        No active listings right now.
+
+                    {teamListings.length === 0 ? (
+                      <div style={{ border:'1.5px dashed var(--b2)', borderRadius:12, padding:'32px 20px',
+                        fontSize:14, color:'var(--muted)', textAlign:'center' }}>
+                        🏠 No active listings right now.
+                      </div>
+                    ) : (<>
+                    {/* Summary stat cards */}
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:12, marginBottom:24 }}>
+                      <div className="card" style={{ padding:'16px 18px', borderLeft:'3px solid #10b981' }}>
+                        <div style={{ fontSize:10, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', marginBottom:6 }}>Active</div>
+                        <div className="serif" style={{ fontSize:28, color:'#10b981', fontWeight:700, lineHeight:1 }}>{activeListings.length}</div>
+                      </div>
+                      <div className="card" style={{ padding:'16px 18px', borderLeft:'3px solid #6366f1' }}>
+                        <div style={{ fontSize:10, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', marginBottom:6 }}>Pending</div>
+                        <div className="serif" style={{ fontSize:28, color:'#6366f1', fontWeight:700, lineHeight:1 }}>{pendingListings.length}</div>
+                      </div>
+                      <div className="card" style={{ padding:'16px 18px', borderLeft:'3px solid var(--text)' }}>
+                        <div style={{ fontSize:10, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', marginBottom:6 }}>Total Volume</div>
+                        <div className="mono" style={{ fontSize:20, color:'var(--text)', fontWeight:700, lineHeight:1 }}>{fmtMoney(totalVolume)}</div>
+                      </div>
+                      <div className="card" style={{ padding:'16px 18px', borderLeft:'3px solid var(--green)' }}>
+                        <div style={{ fontSize:10, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', marginBottom:6 }}>Total Commission</div>
+                        <div className="mono" style={{ fontSize:20, color:'var(--green)', fontWeight:700, lineHeight:1 }}>{fmtMoney(totalCommission)}</div>
+                      </div>
+                    </div>
+
+                    {/* Agent breakdown */}
+                    {agentBreakdown.length > 1 && (
+                      <div style={{ marginBottom:24 }}>
+                        <div style={{ fontSize:12, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', marginBottom:10 }}>By Agent</div>
+                        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                          {agentBreakdown.map(a=>{
+                            const maxCount = agentBreakdown[0].count
+                            const isMe = a.id === user?.id
+                            return (
+                              <div key={a.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 14px',
+                                borderRadius:8, background: isMe ? 'var(--gold3)' : 'var(--bg2)',
+                                border: isMe ? '1px solid rgba(217,119,6,.25)' : '1px solid var(--b1)' }}>
+                                <div style={{ flex:1, minWidth:0 }}>
+                                  <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
+                                    <span style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{a.name}</span>
+                                    {isMe && <span style={{ fontSize:8, padding:'1px 5px', borderRadius:3, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>YOU</span>}
+                                    <span className="mono" style={{ fontSize:11, color:'var(--muted)', marginLeft:'auto' }}>
+                                      {a.count} listing{a.count!==1?'s':''}
+                                    </span>
+                                  </div>
+                                  <div style={{ height:5, background:'var(--b1)', borderRadius:99, overflow:'hidden' }}>
+                                    <div style={{ height:'100%', width:`${Math.max(Math.round(a.count/maxCount*100),8)}%`,
+                                      background: isMe ? 'var(--gold)' : '#10b981', borderRadius:99, transition:'width .4s' }}/>
+                                  </div>
+                                </div>
+                                <div style={{ textAlign:'right', flexShrink:0 }}>
+                                  <div className="mono" style={{ fontSize:12, color:'var(--text)', fontWeight:600 }}>{fmtMoney(a.volume)}</div>
+                                  {a.commission>0 && <div className="mono" style={{ fontSize:10, color:'var(--green)' }}>{fmtMoney(a.commission)} comm</div>}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
                       </div>
                     )}
-                    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+
+                    {/* Listing cards */}
+                    <div style={{ fontSize:12, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', marginBottom:10 }}>All Listings</div>
+                    <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                       {teamListings.map(l => {
-                        const pA = v => { const n=parseFloat(String(v||'').replace(/[^0-9.]/g,'')); return isNaN(n)?0:n }
-                        const price = pA(l.price); const comm = pA(l.commission)
+                        const price = parseNum(l.price); const comm = parseNum(l.commission)
                         const isMe  = l.user_id === user?.id
-                        const sc    = l.status === 'pending' ? '#6366f1' : '#10b981'
+                        const isPending = l.status === 'pending'
+                        const sc = isPending ? '#6366f1' : '#10b981'
                         return (
-                          <div key={l.id} style={{ padding:'12px 16px', borderRadius:10,
+                          <div key={l.id} className="card" style={{ padding:'14px 18px',
                             border:`1px solid ${isMe ? 'rgba(217,119,6,.3)' : 'var(--b2)'}`,
                             background: isMe ? 'var(--gold3)' : 'var(--surface)' }}>
-                            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:(price>0||comm>0)?6:0 }}>
-                              <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700,
-                                background:`${sc}15`, color:sc, border:`1px solid ${sc}30`,
-                                textTransform:'uppercase', letterSpacing:'.5px', flexShrink:0 }}>
-                                {l.status || 'Active'}
-                              </span>
-                              {l.address && (
-                                <span style={{ fontSize:13, color:'var(--text)', fontWeight:500, flex:1, minWidth:0,
-                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{l.address}</span>
-                              )}
-                              <span style={{ fontSize:11, flexShrink:0, whiteSpace:'nowrap',
-                                color: isMe ? 'var(--gold)' : 'var(--dim)', fontWeight: isMe ? 700 : 400 }}>
-                                {isMe ? '⭐ You' : l.agentName}
-                              </span>
-                            </div>
-                            {(price>0 || comm>0) && (
-                              <div style={{ display:'flex', gap:20 }}>
-                                {price>0 && <div>
-                                  <div style={{ fontSize:9, color:'var(--dim)', fontWeight:700, letterSpacing:'.5px' }}>LIST PRICE</div>
-                                  <div style={{ fontSize:13, color:'var(--text)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}>{fmtMoney(price)}</div>
-                                </div>}
-                                {comm>0 && <div>
-                                  <div style={{ fontSize:9, color:'var(--dim)', fontWeight:700, letterSpacing:'.5px' }}>COMMISSION</div>
-                                  <div style={{ fontSize:13, color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}>{fmtMoney(comm)}</div>
-                                </div>}
+                            <div style={{ display:'flex', alignItems:'flex-start', gap:12 }}>
+                              {/* Status dot */}
+                              <div style={{ width:8, height:8, borderRadius:'50%', background:sc, flexShrink:0, marginTop:6 }}/>
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, flexWrap:'wrap' }}>
+                                  <span style={{ fontSize:14, color:'var(--text)', fontWeight:600,
+                                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1, minWidth:0 }}>
+                                    {l.address || 'Untitled Listing'}
+                                  </span>
+                                  <span style={{ fontSize:9, padding:'2px 8px', borderRadius:4, fontWeight:700,
+                                    background:`${sc}15`, color:sc, border:`1px solid ${sc}30`,
+                                    textTransform:'uppercase', letterSpacing:'.5px', flexShrink:0 }}>
+                                    {l.status || 'Active'}
+                                  </span>
+                                </div>
+                                <div style={{ display:'flex', alignItems:'center', gap:16, flexWrap:'wrap' }}>
+                                  <span style={{ fontSize:11, color: isMe ? 'var(--gold)' : 'var(--muted)', fontWeight: isMe ? 700 : 500 }}>
+                                    {isMe ? '⭐ You' : l.agentName}
+                                  </span>
+                                  {price>0 && (
+                                    <span className="mono" style={{ fontSize:13, color:'var(--text)', fontWeight:700 }}>
+                                      {fmtMoney(price)}
+                                    </span>
+                                  )}
+                                  {comm>0 && (
+                                    <span className="mono" style={{ fontSize:12, color:'var(--green)', fontWeight:600 }}>
+                                      {fmtMoney(comm)} comm
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                            )}
+                            </div>
                           </div>
                         )
                       })}
                     </div>
+                    </>)}
                   </div>
                   </>
-                  )} {/* end listings tab */}
+                  )})()}{/* end listings tab */}
 
                   {/* ════════ GROUPS TAB ════════ */}
                   {teamsTab==='groups' && (

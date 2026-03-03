@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback, createContext, useContext, Component, memo } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback, createContext, useContext, Component, memo } from 'react'
 import { AuthProvider, useAuth } from './lib/AuthContext'
 import { supabase } from './lib/supabase'
 import AuthPage from './pages/AuthPage'
@@ -1986,14 +1986,22 @@ function Dashboard({ theme, onToggleTheme }) {
 
   // ── Checklist handlers ────────────────────────────────────────────────────
   function updateChecklist(dealId, updater) {
-    // Compute updated checklist from current state (avoid relying on setState callback for DB write)
-    const deal = pendingDeals.find(r => r.id === dealId)
-    if (!deal) return
-    const updated = typeof updater === 'function' ? updater(deal.checklist||[]) : updater
-    setPendingDeals(prev => prev.map(r => r.id === dealId ? { ...r, checklist: updated } : r))
-    if (dealId && !String(dealId).startsWith('tmp-')) {
-      safeDb(supabase.from('transactions').update({ checklist: updated }).eq('id', dealId).eq('user_id', user.id))
-    }
+    // Use setState callback to guarantee we read the latest state (avoids stale closure bugs)
+    setPendingDeals(prev => {
+      const next = prev.map(r => {
+        if (r.id !== dealId) return r
+        const updated = typeof updater === 'function' ? updater(r.checklist||[]) : updater
+        return { ...r, checklist: updated }
+      })
+      // Persist to DB from inside the callback where state is guaranteed current
+      const deal = next.find(r => r.id === dealId)
+      if (deal && dealId && !String(dealId).startsWith('tmp-')) {
+        supabase.from('transactions').update({ checklist: deal.checklist })
+          .eq('id', dealId).eq('user_id', user.id)
+          .then(({ error }) => { if (error) console.error('Checklist save error:', error.message) })
+      }
+      return next
+    })
   }
   function toggleChecklistItem(dealId, itemId) {
     updateChecklist(dealId, cl => cl.map(i => i.id === itemId

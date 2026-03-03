@@ -280,6 +280,17 @@ body,.page { background: var(--bg); color: var(--text); }
 .act-btn-green:hover { background: rgba(5,150,105,.18); border-color: rgba(5,150,105,.5); }
 .act-btn-blue  { background: rgba(14,165,233,.08); color: var(--blue); border-color: rgba(14,165,233,.28); }
 .act-btn-blue:hover  { background: rgba(14,165,233,.18); border-color: rgba(14,165,233,.5); }
+.act-btn-red   { background: rgba(239,68,68,.08); color: var(--red); border-color: rgba(239,68,68,.28); }
+.act-btn-red:hover   { background: rgba(239,68,68,.15); border-color: rgba(239,68,68,.5); }
+.act-btn-purple { background: rgba(139,92,246,.08); color: var(--purple); border-color: rgba(139,92,246,.28); }
+.act-btn-purple:hover { background: rgba(139,92,246,.18); border-color: rgba(139,92,246,.5); }
+
+/* ── Modal overlay ── */
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000;
+  display:flex; align-items:center; justify-content:center; padding:20px;
+  animation:fadeIn .15s ease; }
+.modal-card { background:var(--surface); border:1px solid var(--b2); border-radius:14px;
+  padding:28px; max-width:440px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,.3); }
 
 /* ── Nav ── */
 .topnav {

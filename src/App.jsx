@@ -128,6 +128,14 @@ function fmtMonth(my) {
   return `${MONTHS[parseInt(m)-1]} '${y.slice(2)}`
 }
 
+// Format a date string (YYYY-MM-DD) to short display: "Mar 1"
+function fmtShortDate(dateStr) {
+  if (!dateStr) return ''
+  const d = new Date(dateStr + 'T00:00:00')
+  if (isNaN(d.getTime())) return dateStr
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}`
+}
+
 function getToday()  { const d=new Date(); return { week:Math.min(Math.floor((d.getDate()-1)/7),3), day:d.getDay() } }
 
 // Returns "YYYY-MM-DD" for a given (week_index, day_index) in the current month
@@ -1041,6 +1049,18 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
                   <span>via {r.closedFrom}</span>
                 </>
               )}
+              {showSource && r.dealSide && (
+                <>
+                  <span className="sep"/>
+                  <span style={{ textTransform:'capitalize', color: r.dealSide === 'seller' ? 'var(--purple)' : 'var(--blue)', fontWeight:600 }}>{r.dealSide}</span>
+                </>
+              )}
+              {showSource && r.originalLeadSource && (
+                <>
+                  <span className="sep"/>
+                  <span>{r.originalLeadSource}</span>
+                </>
+              )}
             </div>
 
             {/* Actions */}
@@ -1049,13 +1069,19 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
                 <span style={{ fontSize:11, color:'var(--dim)', fontStyle:'italic' }}>Closed</span>
               ) : (
                 <>
-                  {actionOpts.map(o => (
+                  {actionOpts.map(o => {
+                    const btnClass = o.variant === 'red' ? 'act-btn-red'
+                      : o.v === 'pending' ? 'act-btn-amber'
+                      : o.v === 'countered' ? 'act-btn-purple'
+                      : 'act-btn-green'
+                    return (
                     <button key={o.v}
-                      className={`act-btn ${o.v==='pending' ? 'act-btn-amber' : 'act-btn-green'}`}
+                      className={`act-btn ${btnClass}`}
                       onClick={()=>onStatusChange(r, o.v)}>
-                      {o.v==='pending' ? '→ Pend' : '✓ Close'}
+                      {o.l}
                     </button>
-                  ))}
+                    )
+                  })}
                 </>
               )}
               <div style={{ marginLeft:'auto', display:'flex', gap:4, alignItems:'center' }}>
@@ -1224,9 +1250,12 @@ function Dashboard({ theme, onToggleTheme }) {
   const [newPrice,  setNewPrice]  = useState('')
   const [newComm,   setNewComm]   = useState('')
   const [newLeadSource, setNewLeadSource] = useState('')
+  const [newListDate, setNewListDate] = useState('')
+  const [newExpiresDate, setNewExpiresDate] = useState('')
   const [editingListing, setEditingListing] = useState(null) // listing id in edit mode
   const [editingRep, setEditingRep] = useState(null) // buyer rep id in edit mode
   const [addListingExpanded, setAddListingExpanded] = useState(false)
+  const [offerReceivedModal, setOfferReceivedModal] = useState(null) // null | { listing, offerPrice, offerNotes }
 
   // Buyer Rep Agreements
   const [buyerReps,     setBuyerReps]    = useState([])
@@ -1326,7 +1355,8 @@ function Dashboard({ theme, onToggleTheme }) {
       setListings(allL.filter(l => (l.unit_count ?? 1) !== 0).map(l => ({
         id:l.id, address:l.address, status:l.status||'active',
         price:l.price||'', commission:l.commission||'', monthYear:l.month_year||'',
-        createdAt:l.created_at||null, leadSource:l.lead_source||'', notes:l.notes||[]
+        createdAt:l.created_at||null, leadSource:l.lead_source||'', notes:l.notes||[],
+        listDate:l.list_date||'', expiresDate:l.expires_date||''
       })))
       setBuyerReps(allL.filter(l => l.unit_count === 0).map(r => ({
         id:r.id, clientName:r.address||'', status:r.status||'active', monthYear:r.month_year||'',
@@ -1335,7 +1365,7 @@ function Dashboard({ theme, onToggleTheme }) {
     }
 
     if (txRes.data) {
-      const m = t => ({ id:t.id, address:t.address, price:t.price||'', commission:t.commission||'', status:t.status||'active', closedFrom:t.closed_from||'', createdAt:t.created_at||null, leadSource:t.lead_source||'', notes:t.notes||[] })
+      const m = t => ({ id:t.id, address:t.address, price:t.price||'', commission:t.commission||'', status:t.status||'active', closedFrom:t.closed_from||'', createdAt:t.created_at||null, leadSource:t.lead_source||'', notes:t.notes||[], dealSide:t.deal_side||'', originalLeadSource:t.original_lead_source||'' })
       setOffersMade(    txRes.data.filter(t=>t.type==='offer_made').map(m))
       setOffersReceived(txRes.data.filter(t=>t.type==='offer_received').map(m))
       setPendingDeals(  txRes.data.filter(t=>t.type==='pending').map(m))
@@ -1395,12 +1425,13 @@ function Dashboard({ theme, onToggleTheme }) {
 
   // ESC key closes any open modal — use refs to avoid re-attaching listener on every modal change
   const modalsRef = useRef({})
-  modalsRef.current = { offerModal, addTaskModal, showPrint, plannerPrint, showWeeklyUpdate, showBuyersUpdate, aiWidgetOpen }
+  modalsRef.current = { offerModal, offerReceivedModal, addTaskModal, showPrint, plannerPrint, showWeeklyUpdate, showBuyersUpdate, aiWidgetOpen }
   useEffect(() => {
     const onKey = e => {
       if (e.key !== 'Escape') return
       const m = modalsRef.current
       if (m.aiWidgetOpen)      setAiWidgetOpen(false)
+      else if (m.offerReceivedModal) setOfferReceivedModal(null)
       else if (m.offerModal)        setOfferModal(null)
       else if (m.addTaskModal) setAddTaskModal(false)
       else if (m.showPrint)    setShowPrint(false)
@@ -1737,12 +1768,15 @@ function Dashboard({ theme, onToggleTheme }) {
   }
 
   // ── Pipeline helpers ───────────────────────────────────────────────────────
-  async function dbInsert(type, item, closedFrom='') {
-    const {data, error} = await supabase.from('transactions').insert({
+  async function dbInsert(type, item, closedFrom='', dealSide=null, originalLeadSource=null) {
+    const insertObj = {
       user_id:user.id, type, address:item.address||'', price:item.price||'',
       commission:item.commission||'', status:type==='closed'?'closed':'active',
       closed_from:closedFrom||item.closedFrom||null, month_year:MONTH_YEAR
-    }).select().single()
+    }
+    if (dealSide) insertObj.deal_side = dealSide
+    if (originalLeadSource) insertObj.original_lead_source = originalLeadSource
+    const {data, error} = await supabase.from('transactions').insert(insertObj).select().single()
     if (error) { console.error('dbInsert error:', error.message); return null }
     return data
   }
@@ -1754,30 +1788,52 @@ function Dashboard({ theme, onToggleTheme }) {
   }
 
   async function handleOfferStatus(row, newStatus, srcSetter) {
+    // Infer deal side from context (offers made = buyer side, offers received = seller side)
+    const inferredSide = srcSetter === setOffersReceived ? 'seller' : 'buyer'
     if (newStatus === 'pending') {
-      // NON-DESTRUCTIVE: keep entry in its current section, also create a Went Pending record
-      const data = await dbInsert('pending', row, 'Offers')
-      if (data) setPendingDeals(prev=>[...prev,{...row,id:data.id,status:'active',closedFrom:'Offers'}])
+      // DESTRUCTIVE: remove from source section, create Went Pending record
+      const data = await dbInsert('pending', row, 'Offers', row.dealSide || inferredSide, row.originalLeadSource || row.leadSource || null)
+      if (data) {
+        setPendingDeals(prev=>[...prev,{...row,id:data.id,status:'active',closedFrom:'Offers',dealSide:row.dealSide||inferredSide,originalLeadSource:row.originalLeadSource||row.leadSource||''}])
+        srcSetter(prev => prev.filter(r => r.id !== row.id))
+        await dbDelete(row.id)
+      }
       setWentPendingCount(prev => prev + 1)
       await awardPipelineXp('went_pending', '#f59e0b')
     } else if (newStatus === 'closed') {
-      // NON-DESTRUCTIVE: keep entry in its current section, also create a Closed record
-      const data = await dbInsert('closed', row, 'Offers')
+      // DESTRUCTIVE: remove from source section, create Closed record
+      const data = await dbInsert('closed', row, 'Offers', row.dealSide || inferredSide, row.originalLeadSource || row.leadSource || null)
       if (data) {
-        setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:'Offers'}])
+        setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:'Offers',dealSide:row.dealSide||inferredSide,originalLeadSource:row.originalLeadSource||row.leadSource||''}])
+        srcSetter(prev => prev.filter(r => r.id !== row.id))
+        await dbDelete(row.id)
         const comm = resolveCommission(row.commission, row.price)
         setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
       }
       await awardPipelineXp('closed', '#10b981')
+    } else if (newStatus === 'declined') {
+      // Decline offer: remove from section entirely
+      srcSetter(prev => prev.filter(r => r.id !== row.id))
+      await dbDelete(row.id)
+    } else if (newStatus === 'countered') {
+      // Counter: prompt for new price, update in place
+      const newPrice = window.prompt('Enter counter-offer price:', row.price || '')
+      if (newPrice === null) return // cancelled
+      srcSetter(prev => prev.map(r => r.id === row.id ? {...r, price: newPrice} : r))
+      if (row.id && !String(row.id).startsWith('tmp-')) {
+        await safeDb(supabase.from('transactions').update({ price: newPrice }).eq('id', row.id).eq('user_id', user.id))
+      }
     }
   }
 
   async function handlePendingStatus(row, newStatus) {
     if (newStatus === 'closed') {
-      // NON-DESTRUCTIVE: keep entry in Went Pending, also create a Closed record
-      const data = await dbInsert('closed', row, row.closedFrom||'Pending')
+      // DESTRUCTIVE: remove from Went Pending, create Closed record
+      const data = await dbInsert('closed', row, row.closedFrom||'Pending', row.dealSide||null, row.originalLeadSource||row.leadSource||null)
       if (data) {
-        setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:row.closedFrom||'Pending'}])
+        setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:row.closedFrom||'Pending',dealSide:row.dealSide||'',originalLeadSource:row.originalLeadSource||row.leadSource||''}])
+        setPendingDeals(prev => prev.filter(r => r.id !== row.id))
+        await dbDelete(row.id)
         const comm = resolveCommission(row.commission, row.price)
         setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
       }
@@ -1794,17 +1850,19 @@ function Dashboard({ theme, onToggleTheme }) {
       const insertObj = { user_id:user.id, address:newAddr.trim(), unit_count:1,
         price:newPrice.trim(), commission:commVal, status:'active', month_year:MONTH_YEAR }
       if (newLeadSource) insertObj.lead_source = newLeadSource
+      if (newListDate) insertObj.list_date = newListDate
+      if (newExpiresDate) insertObj.expires_date = newExpiresDate
       let {data, error} = await supabase.from('listings').insert(insertObj).select().single()
-      // If lead_source column doesn't exist yet, retry without it
-      if (error && newLeadSource && error.message?.includes('lead_source')) {
-        delete insertObj.lead_source
+      // If lead_source/date columns don't exist yet, retry without them
+      if (error && error.message?.includes('lead_source')) {
+        delete insertObj.lead_source; delete insertObj.list_date; delete insertObj.expires_date
         const retry = await supabase.from('listings').insert(insertObj).select().single()
         data = retry.data; error = retry.error
       }
       if (error) throw error
       if (data) {
-        setListings(prev=>[...prev,{id:data.id,address:data.address,status:'active',price:data.price||'',commission:data.commission||'',monthYear:data.month_year||MONTH_YEAR,createdAt:data.created_at||null,leadSource:data.lead_source||'',notes:[]}])
-        setNewAddr(''); setNewPrice(''); setNewComm(''); setNewLeadSource('')
+        setListings(prev=>[...prev,{id:data.id,address:data.address,status:'active',price:data.price||'',commission:data.commission||'',monthYear:data.month_year||MONTH_YEAR,createdAt:data.created_at||null,leadSource:data.lead_source||'',notes:[],listDate:data.list_date||'',expiresDate:data.expires_date||''}])
+        setNewAddr(''); setNewPrice(''); setNewComm(''); setNewLeadSource(''); setNewListDate(''); setNewExpiresDate('')
         setAddListingExpanded(false)
       }
     } catch (err) {
@@ -1824,7 +1882,7 @@ function Dashboard({ theme, onToggleTheme }) {
   function updateListingLocal(id, field, val) {
     setListings(prev=>prev.map(l=>l.id===id?{...l,[field]:val}:l))
   }
-  const listingFieldMap = { leadSource:'lead_source', monthYear:'month_year' }
+  const listingFieldMap = { leadSource:'lead_source', monthYear:'month_year', listDate:'list_date', expiresDate:'expires_date' }
   async function updateListing(id, field, val) {
     setListings(prev=>prev.map(l=>l.id===id?{...l,[field]:val}:l))
     const dbField = listingFieldMap[field] || field
@@ -1849,29 +1907,40 @@ function Dashboard({ theme, onToggleTheme }) {
     }
   }
 
-  // Create an Offer Received pipeline entry from a listing (offer came in on your listing)
-  async function handleListingOfferReceived(listing) {
-    const data = await dbInsert('offer_received', {address:listing.address, price:listing.price||'', commission:listing.commission||''})
-    if (data) setOffersReceived(prev=>[...prev,{id:data.id,address:listing.address,price:listing.price||'',commission:listing.commission||'',status:'active',closedFrom:''}])
+  // Open the Offer Received modal for a listing (offer came in on your listing)
+  function handleListingOfferReceived(listing) {
+    setOfferReceivedModal({ listing, offerPrice: listing.price || '', offerNotes: '' })
+  }
+
+  // Submit the Offer Received modal data
+  async function submitListingOfferReceived() {
+    if (!offerReceivedModal) return
+    const { listing, offerPrice, offerNotes } = offerReceivedModal
+    const data = await dbInsert('offer_received', {address:listing.address, price:offerPrice||listing.price||'', commission:listing.commission||''}, 'Listing', 'seller', listing.leadSource||null)
+    if (data) {
+      setOffersReceived(prev=>[...prev,{id:data.id,address:listing.address,price:offerPrice||listing.price||'',commission:listing.commission||'',status:'active',closedFrom:'Listing',dealSide:'seller',originalLeadSource:listing.leadSource||''}])
+    }
+    setOfferReceivedModal(null)
     await awardPipelineXp('offer_received', '#8b5cf6')
   }
 
   async function handleListingStatus(listing, newStatus) {
     const lPrice = listing.price||''
     const lComm  = listing.commission||''
+    const lSource = listing.leadSource||null
     if (newStatus === 'pending') {
-      // NON-DESTRUCTIVE: listing stays, status pill changes, Went Pending entry created
+      // Listing stays with status change, Went Pending entry created
       await updateListing(listing.id, 'status', 'pending')
-      const data = await dbInsert('pending', {address:listing.address, price:lPrice, commission:lComm}, 'Listing')
-      if (data) setPendingDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'active',closedFrom:'Listing'}])
+      const data = await dbInsert('pending', {address:listing.address, price:lPrice, commission:lComm}, 'Listing', 'seller', lSource)
+      if (data) setPendingDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'active',closedFrom:'Listing',dealSide:'seller',originalLeadSource:lSource||''}])
       setWentPendingCount(prev => prev + 1)
       await awardPipelineXp('went_pending', '#f59e0b')
     } else if (newStatus === 'closed') {
-      // NON-DESTRUCTIVE: listing stays with 'closed' status, Closed entry created
+      // Listing stays with 'closed' status, Closed entry created
       await updateListing(listing.id, 'status', 'closed')
-      const data = await dbInsert('closed', {address:listing.address, price:lPrice, commission:lComm}, 'Listing')
+      const data = await dbInsert('closed', {address:listing.address, price:lPrice, commission:lComm}, 'Listing', 'seller', lSource)
       if (data) {
-        setClosedDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'closed',closedFrom:'Listing'}])
+        setClosedDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'closed',closedFrom:'Listing',dealSide:'seller',originalLeadSource:lSource||''}])
         const comm = resolveCommission(lComm, lPrice)
         setCelebration({ address:listing.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (lComm||''), newComm:comm })
       }
@@ -1944,11 +2013,11 @@ function Dashboard({ theme, onToggleTheme }) {
 
   async function submitBuyerRepOffer(addr, price, comm) {
     if (!offerModal || !addr) return
-    const data = await dbInsert('offer_made', {address:addr, price, commission:comm})
+    const data = await dbInsert('offer_made', {address:addr, price, commission:comm}, '', 'buyer', null)
     if (data) {
       setOffersMade(prev => [...prev, {
         id:data.id, address:data.address, price:data.price||'',
-        commission:data.commission||'', status:'active', closedFrom:''
+        commission:data.commission||'', status:'active', closedFrom:'', dealSide:'buyer', originalLeadSource:''
       }])
       await awardPipelineXp('offer_made', '#0ea5e9')
     }
@@ -3094,6 +3163,8 @@ function Dashboard({ theme, onToggleTheme }) {
               const isEditing = editingListing === l.id
               const metaParts = []
               if (l.commission) metaParts.push(isP && comm > 0 ? `${l.commission} = ${fmtMoney(comm)}` : (isP ? l.commission : formatPrice(l.commission)))
+              if (l.listDate) metaParts.push(`Listed ${fmtShortDate(l.listDate)}`)
+              if (l.expiresDate) metaParts.push(`Exp ${fmtShortDate(l.expiresDate)}`)
               if (dom !== null) metaParts.push(`${dom}d on market`)
               if (l.leadSource) metaParts.push(l.leadSource)
               if (l.monthYear && l.monthYear !== MONTH_YEAR) metaParts.push(fmtMonth(l.monthYear))
@@ -3135,38 +3206,55 @@ function Dashboard({ theme, onToggleTheme }) {
 
                 {/* Edit fields (progressive disclosure) */}
                 {isEditing && (
-                  <div className="listing-edit-row">
-                    <div>
-                      <span className="label">Price</span>
-                      <input className="field-input" value={l.price||''}
-                        onChange={e=>updateListingLocal(l.id,'price',e.target.value)}
-                        onBlur={e=>updateListing(l.id,'price',e.target.value)}
-                        placeholder="450000"
-                        style={{ padding:'8px 12px', marginTop:4, width:'100%', boxSizing:'border-box', color:'var(--gold2)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
-                    </div>
-                    <div>
-                      <span className="label">Commission</span>
-                      <div style={{ display:'flex', gap:4, marginTop:4 }}>
-                        <input className="field-input"
-                          value={isP ? String(l.commission||'').replace(/%$/,'') : (l.commission||'')}
-                          onChange={e => updateListingLocal(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)}
-                          onBlur={e => updateListing(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)}
-                          placeholder={isP ? '3' : '5000'}
-                          style={{ padding:'8px 12px', flex:1, minWidth:0, color: isP ? 'var(--muted)' : 'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
-                        <button onClick={()=>toggleListingCommType(l.id)} style={{
-                          background:'var(--bg2)', border:'1px solid var(--b2)', borderRadius:6, cursor:'pointer', padding:'6px 10px',
-                          fontSize:10, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600, whiteSpace:'nowrap',
-                        }}>{isP ? '$ Flat' : '% Rate'}</button>
+                  <div style={{ marginTop:14, paddingTop:14, borderTop:'1px solid var(--b1)', animation:'slideDown .2s ease' }}>
+                    <div className="listing-edit-row">
+                      <div>
+                        <span className="label">Price</span>
+                        <input className="field-input" value={l.price||''}
+                          onChange={e=>updateListingLocal(l.id,'price',e.target.value)}
+                          onBlur={e=>updateListing(l.id,'price',e.target.value)}
+                          placeholder="450000"
+                          style={{ padding:'8px 12px', marginTop:4, width:'100%', boxSizing:'border-box', color:'var(--gold2)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
+                      </div>
+                      <div>
+                        <span className="label">Commission</span>
+                        <div style={{ display:'flex', gap:4, marginTop:4 }}>
+                          <input className="field-input"
+                            value={isP ? String(l.commission||'').replace(/%$/,'') : (l.commission||'')}
+                            onChange={e => updateListingLocal(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)}
+                            onBlur={e => updateListing(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)}
+                            placeholder={isP ? '3' : '5000'}
+                            style={{ padding:'8px 12px', flex:1, minWidth:0, color: isP ? 'var(--muted)' : 'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
+                          <button onClick={()=>toggleListingCommType(l.id)} style={{
+                            background:'var(--bg2)', border:'1px solid var(--b2)', borderRadius:6, cursor:'pointer', padding:'6px 10px',
+                            fontSize:10, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600, whiteSpace:'nowrap',
+                          }}>{isP ? '$ Flat' : '% Rate'}</button>
+                        </div>
+                      </div>
+                      <div>
+                        <span className="label">Lead Source</span>
+                        <select className="field-input" value={l.leadSource||''}
+                          onChange={e=>updateListing(l.id,'leadSource',e.target.value)}
+                          style={{ padding:'8px 12px', marginTop:4, width:'100%', boxSizing:'border-box' }}>
+                          <option value="">None</option>
+                          {LEAD_SOURCES.map(s=><option key={s} value={s}>{s}</option>)}
+                        </select>
                       </div>
                     </div>
-                    <div>
-                      <span className="label">Lead Source</span>
-                      <select className="field-input" value={l.leadSource||''}
-                        onChange={e=>updateListing(l.id,'leadSource',e.target.value)}
-                        style={{ padding:'8px 12px', marginTop:4, width:'100%', boxSizing:'border-box' }}>
-                        <option value="">None</option>
-                        {LEAD_SOURCES.map(s=><option key={s} value={s}>{s}</option>)}
-                      </select>
+                    <div className="listing-edit-row" style={{ marginTop:10, borderTop:'none', paddingTop:0 }}>
+                      <div>
+                        <span className="label">List Date</span>
+                        <input className="field-input" type="date" value={l.listDate||''}
+                          onChange={e=>updateListing(l.id,'listDate',e.target.value)}
+                          style={{ padding:'8px 12px', marginTop:4, width:'100%', boxSizing:'border-box' }}/>
+                      </div>
+                      <div>
+                        <span className="label">Expiration Date</span>
+                        <input className="field-input" type="date" value={l.expiresDate||''}
+                          onChange={e=>updateListing(l.id,'expiresDate',e.target.value)}
+                          style={{ padding:'8px 12px', marginTop:4, width:'100%', boxSizing:'border-box' }}/>
+                      </div>
+                      <div/>
                     </div>
                   </div>
                 )}
@@ -3211,21 +3299,37 @@ function Dashboard({ theme, onToggleTheme }) {
               )}
             </div>
             {addListingExpanded && newAddr.trim() && (
-              <div className="add-bar-fields">
-                <input className="field-input" value={newPrice} onChange={e=>setNewPrice(e.target.value)}
-                  onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="List price"
-                  style={{ padding:'8px 12px', color:'var(--gold2)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
-                <input className="field-input" value={newComm} onChange={e=>setNewComm(e.target.value)}
-                  onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="Commission (3%)"
-                  style={{ padding:'8px 12px', color:'var(--green)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
-                <select className="field-input" value={newLeadSource} onChange={e=>setNewLeadSource(e.target.value)}
-                  style={{ padding:'8px 12px' }}>
-                  <option value="">Lead source…</option>
-                  {LEAD_SOURCES.map(s=><option key={s} value={s}>{s}</option>)}
-                </select>
-                <button onClick={()=>{setAddListingExpanded(false);setNewAddr('');setNewPrice('');setNewComm('');setNewLeadSource('')}}
-                  style={{ background:'none', border:'none', color:'var(--dim)', cursor:'pointer', fontSize:12, fontWeight:600, whiteSpace:'nowrap' }}>Cancel</button>
-              </div>
+              <>
+                <div className="add-bar-fields" style={{ borderRadius:0 }}>
+                  <input className="field-input" value={newPrice} onChange={e=>setNewPrice(e.target.value)}
+                    onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="List price"
+                    style={{ padding:'8px 12px', color:'var(--gold2)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
+                  <input className="field-input" value={newComm} onChange={e=>setNewComm(e.target.value)}
+                    onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="Commission (3%)"
+                    style={{ padding:'8px 12px', color:'var(--green)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
+                  <select className="field-input" value={newLeadSource} onChange={e=>setNewLeadSource(e.target.value)}
+                    style={{ padding:'8px 12px' }}>
+                    <option value="">Lead source…</option>
+                    {LEAD_SOURCES.map(s=><option key={s} value={s}>{s}</option>)}
+                  </select>
+                  <button onClick={()=>{setAddListingExpanded(false);setNewAddr('');setNewPrice('');setNewComm('');setNewLeadSource('');setNewListDate('');setNewExpiresDate('')}}
+                    style={{ background:'none', border:'none', color:'var(--dim)', cursor:'pointer', fontSize:12, fontWeight:600, whiteSpace:'nowrap' }}>Cancel</button>
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, padding:'10px 20px',
+                  background:'var(--surface)', border:'1.5px solid var(--b3)', borderTop:'none',
+                  borderRadius:'0 0 var(--r) var(--r)' }}>
+                  <div>
+                    <span className="label" style={{ fontSize:10 }}>List Date</span>
+                    <input className="field-input" type="date" value={newListDate} onChange={e=>setNewListDate(e.target.value)}
+                      style={{ padding:'6px 10px', marginTop:3, width:'100%', boxSizing:'border-box', fontSize:12 }}/>
+                  </div>
+                  <div>
+                    <span className="label" style={{ fontSize:10 }}>Expiration</span>
+                    <input className="field-input" type="date" value={newExpiresDate} onChange={e=>setNewExpiresDate(e.target.value)}
+                      style={{ padding:'6px 10px', marginTop:3, width:'100%', boxSizing:'border-box', fontSize:12 }}/>
+                  </div>
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -3302,20 +3406,31 @@ function Dashboard({ theme, onToggleTheme }) {
                   )}
                 </div>
 
-                {/* Metadata line — pre-approval, timeline, location, month */}
+                {/* Metadata line — pre-approval, dates, timeline, location, month */}
                 <div className="deal-meta-line">
                   {bd.preApproval && (
                     <>
                       <span>Pre-approved: <span style={{ color:'var(--blue)', fontWeight:600 }}>{formatPrice(bd.preApproval) || bd.preApproval}</span></span>
                     </>
                   )}
-                  {bd.preApproval && bd.timeline && <span className="sep"/>}
+                  {bd.preApproval && (bd.dateSigned || bd.dateExpires || bd.timeline) && <span className="sep"/>}
+                  {bd.dateSigned && (
+                    <span style={{ color:'var(--green)', fontWeight:600 }}>Signed {fmtShortDate(bd.dateSigned)}</span>
+                  )}
+                  {bd.dateSigned && bd.dateExpires && <span className="sep"/>}
+                  {bd.dateExpires && (
+                    <span style={{ color: new Date(bd.dateExpires+'T00:00:00') < new Date() ? 'var(--red)' : 'var(--gold2)', fontWeight:600 }}>
+                      Exp {fmtShortDate(bd.dateExpires)}
+                    </span>
+                  )}
+                  {(bd.dateSigned || bd.dateExpires) && bd.timeline && <span className="sep"/>}
+                  {!bd.dateSigned && !bd.dateExpires && bd.preApproval && bd.timeline && <span className="sep"/>}
                   {bd.timeline && <span>{bd.timeline}</span>}
-                  {(bd.preApproval || bd.timeline) && bd.locationPrefs && <span className="sep"/>}
+                  {(bd.preApproval || bd.dateSigned || bd.dateExpires || bd.timeline) && bd.locationPrefs && <span className="sep"/>}
                   {bd.locationPrefs && (
                     <span style={{ maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>📍 {bd.locationPrefs}</span>
                   )}
-                  {hasMetaInfo && rep.monthYear && rep.monthYear !== MONTH_YEAR && <span className="sep"/>}
+                  {(hasMetaInfo || bd.dateSigned || bd.dateExpires) && rep.monthYear && rep.monthYear !== MONTH_YEAR && <span className="sep"/>}
                   {rep.monthYear && rep.monthYear !== MONTH_YEAR && (
                     <span>{fmtMonth(rep.monthYear)}</span>
                   )}
@@ -3522,7 +3637,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersReceived)}
                 onAdd={handleOfferReceivedAdd}
                 onRemove={()=>deductPipelineXp('offer_received')}
-                statusOpts={[{v:'active',l:'Active'},{v:'pending',l:'Move to Pending'},{v:'closed',l:'Mark Closed'}]}/>
+                statusOpts={[{v:'pending',l:'✓ Accepted'},{v:'countered',l:'↩ Counter'},{v:'declined',l:'✕ Decline',variant:'red'},{v:'closed',l:'Mark Closed'}]}/>
 
               <PipelineSection title="Went Pending" icon="⏳" accentColor="#f59e0b" xpLabel={PIPELINE_XP.went_pending}
                 rows={pendingDeals} setRows={setPendingDeals} userId={user.id}
@@ -3566,7 +3681,14 @@ function Dashboard({ theme, onToggleTheme }) {
                             {pn > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color:col.color }}>{formatPrice(r.price)}</span>}
                             {comm > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", color:'var(--green)', fontWeight:700 }}>{fmtMoney(comm)}</span>}
                           </div>
-                          {r.closedFrom && <div style={{ marginTop:4, fontSize:9, color:'var(--dim)' }}>via {r.closedFrom}</div>}
+                          {(r.closedFrom || r.dealSide) && (
+                            <div style={{ marginTop:4, fontSize:9, color:'var(--dim)' }}>
+                              {r.closedFrom && <>via {r.closedFrom}</>}
+                              {r.closedFrom && r.dealSide && ' · '}
+                              {r.dealSide && <span style={{ textTransform:'capitalize', color: r.dealSide==='seller'?'#8b5cf6':'#0ea5e9' }}>{r.dealSide}</span>}
+                              {r.originalLeadSource && <> · {r.originalLeadSource}</>}
+                            </div>
+                          )}
                         </div>
                       )
                     })}
@@ -3653,7 +3775,49 @@ function Dashboard({ theme, onToggleTheme }) {
       </ErrorBoundary>
       )}
 
-      {/* ── Offer Modal ─────────────────────────────────── */}
+      {/* ── Offer Received Modal (from Listing) ─────────── */}
+      {offerReceivedModal && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setOfferReceivedModal(null) }}>
+          <div className="modal-card">
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ fontSize:18 }}>📨</span>
+                <span style={{ fontFamily:"'Fraunces',serif", fontSize:18, fontWeight:700, color:'var(--text)' }}>Offer Received</span>
+              </div>
+              <button onClick={() => setOfferReceivedModal(null)} style={{ background:'none', border:'none', color:'var(--dim)', cursor:'pointer', fontSize:18, padding:4 }}>✕</button>
+            </div>
+            <div style={{ marginBottom:16 }}>
+              <div style={{ fontSize:14, fontWeight:600, color:'var(--text)', marginBottom:4 }}>{offerReceivedModal.listing.address || 'Untitled listing'}</div>
+              {offerReceivedModal.listing.price && (
+                <div style={{ fontSize:12, color:'var(--muted)' }}>List Price: <span style={{ color:'var(--gold2)', fontWeight:600 }}>{formatPrice(offerReceivedModal.listing.price)}</span></div>
+              )}
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+              <div>
+                <div className="label" style={{ marginBottom:4 }}>Offer Price</div>
+                <input className="field-input" type="text" value={offerReceivedModal.offerPrice}
+                  onChange={e => setOfferReceivedModal(prev => ({...prev, offerPrice: e.target.value}))}
+                  onKeyDown={e => e.key === 'Enter' && submitListingOfferReceived()}
+                  placeholder="$425,000" autoFocus
+                  style={{ padding:'10px 14px', fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color:'var(--gold2)' }}/>
+              </div>
+              <div>
+                <div className="label" style={{ marginBottom:4 }}>Notes (optional)</div>
+                <textarea className="field-input" value={offerReceivedModal.offerNotes}
+                  onChange={e => setOfferReceivedModal(prev => ({...prev, offerNotes: e.target.value}))}
+                  placeholder="Buyer agent, contingencies, etc…"
+                  style={{ padding:'10px 14px', fontSize:13, minHeight:60, resize:'vertical', fontFamily:'inherit' }}/>
+              </div>
+            </div>
+            <div style={{ display:'flex', justifyContent:'flex-end', gap:10, marginTop:20 }}>
+              <button onClick={() => setOfferReceivedModal(null)} className="btn-ghost">Cancel</button>
+              <button onClick={submitListingOfferReceived} className="btn-gold" style={{ padding:'10px 20px' }}>Submit Offer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Offer Modal (from Buyer Rep) ─────────────────── */}
       {offerModal && (
         <OfferModal
           repName={offerModal.repName}

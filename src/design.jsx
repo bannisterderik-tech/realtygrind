@@ -531,6 +531,8 @@ body,.page { background: var(--bg); color: var(--text); }
   /* Larger tap targets */
   .chk     { width: 26px !important; height: 26px !important; }
   .btn-del { width: 34px !important; height: 34px !important; }
+  /* Prevent iOS auto-zoom on input focus (requires ≥ 16px) */
+  .field-input, input, textarea, select { font-size: 16px !important; }
 }
 
 /* ── Small phones ≤ 480px ───────────────────────────────── */
@@ -539,6 +541,22 @@ body,.page { background: var(--bg); color: var(--text); }
   .stat-grid  { grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .tab-item   { font-size: 11px; padding: 7px 10px; }
   .stat-card  { padding: 11px 12px; }
+}
+
+/* ── TV Mode responsive ────────────────────────────────── */
+.tv-main-grid { display: grid; grid-template-columns: 1fr 380px; gap: 20px; align-items: start; }
+.tv-header-pad { padding: 20px 36px 14px; }
+.tv-body-pad { padding: 20px 36px 24px; }
+.tv-footer-pad { padding: 10px 36px 12px; }
+.tv-leaderboard-stats { display: flex; gap: 16px; align-items: center; flex-shrink: 0; }
+@media (max-width: 800px) {
+  .tv-main-grid { grid-template-columns: 1fr; }
+  .tv-header-pad { padding: 16px 16px 12px; }
+  .tv-body-pad { padding: 16px 16px 20px; }
+  .tv-footer-pad { padding: 8px 16px 10px; }
+}
+@media (max-width: 480px) {
+  .tv-leaderboard-stats { flex-wrap: wrap; gap: 10px; }
 }
 
 /* ── Print Daily Sheet ──────────────────────────────── */

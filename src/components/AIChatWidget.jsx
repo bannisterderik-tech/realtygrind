@@ -587,7 +587,8 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
           to { transform: rotate(360deg) }
         }
         @media (max-width: 500px) {
-          /* override fixed panel to go near-full-width on small screens */
+          /* AI chat widget — full-width on mobile, prevent iOS zoom on textarea */
+          textarea.field-input { font-size: 16px !important; }
         }
       `}</style>
     </>

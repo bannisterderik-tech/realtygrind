@@ -3007,7 +3007,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
           display:'flex', flexDirection:'column', overflow:'auto',
         }}>
           {/* TV Header */}
-          <div style={{ padding:'20px 36px 14px', display:'flex', alignItems:'center', justifyContent:'space-between',
+          <div className="tv-header-pad" style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
             borderBottom:'1px solid var(--b2)', boxShadow:'0 1px 0 var(--b1)', flexShrink:0 }}>
             <div style={{ display:'flex', alignItems:'center', gap:14 }}>
               <span style={{ fontSize:26 }}>🏡</span>
@@ -3030,7 +3030,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
             </div>
           </div>
 
-          <div style={{ flex:1, padding:'20px 36px 24px', overflow:'auto' }}>
+          <div className="tv-body-pad" style={{ flex:1, overflow:'auto' }}>
             {/* ── Top stats row ── */}
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:12, marginBottom:24 }}>
               {[
@@ -3056,7 +3056,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
             </div>
 
             {/* ── Main grid: Leaderboard + Right column ── */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 380px', gap:20, alignItems:'start' }}>
+            <div className="tv-main-grid">
 
               {/* LEFT: Leaderboard */}
               <div>
@@ -3092,7 +3092,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                           <div style={{ fontSize:16, fontWeight:700, color:'var(--text)' }}>{m.full_name||'Agent'}</div>
                           <div style={{ fontSize:11, color:'var(--muted)' }}>{rank.icon} {rank.name} {(m.streak||0)>0?`· 🔥 ${m.streak}`:''}</div>
                         </div>
-                        <div style={{ display:'flex', gap:16, alignItems:'center', flexShrink:0 }}>
+                        <div className="tv-leaderboard-stats">
                           {HABITS_FOR_DISPLAY.slice(0,3).map(h=>{
                             const v = stats.habits?.[h.id]||0
                             if (!v) return null
@@ -3239,7 +3239,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
           {/* TV Footer */}
           <div style={{ flexShrink:0 }}>
             <div style={{ height:1, background:'linear-gradient(90deg, transparent, var(--b2) 25%, var(--b2) 75%, transparent)' }}/>
-            <div style={{ padding:'10px 36px 12px', textAlign:'center',
+            <div className="tv-footer-pad" style={{ textAlign:'center',
               fontSize:10, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", letterSpacing:2 }}>
               REALTYGRIND · TEAM DASHBOARD · CLOSE MORE EVERY DAY
             </div>

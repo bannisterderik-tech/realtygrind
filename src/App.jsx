@@ -912,10 +912,11 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
 
   async function persist(id, field, value) {
     if (!id || String(id).startsWith('tmp-')) return
-    await safeDb(supabase.from('transactions').update({ [field]: value }).eq('id', id).eq('user_id', userId))
+    const r = await safeDb(supabase.from('transactions').update({ [field]: value }).eq('id', id).eq('user_id', userId))
+    if (!r.ok) console.warn('Pipeline persist failed:', r.msg)
   }
 
-  function toggleCommType(id) {
+  async function toggleCommType(id) {
     let newComm = ''
     setRows(prev => prev.map(r => {
       if (r.id !== id) return r
@@ -925,7 +926,8 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
       return { ...r, commission: newComm }
     }))
     if (!String(id).startsWith('tmp-')) {
-      safeDb(supabase.from('transactions').update({ commission: newComm }).eq('id', id).eq('user_id', userId))
+      const r = await safeDb(supabase.from('transactions').update({ commission: newComm }).eq('id', id).eq('user_id', userId))
+      if (!r.ok) console.warn('Pipeline toggleCommType failed:', r.msg)
     }
   }
 
@@ -1240,6 +1242,8 @@ function Dashboard({ theme, onToggleTheme }) {
     setToast({ msg })
     toastTimer.current = setTimeout(() => setToast(null), 4000)
   }
+  // Clean up toast timer on unmount to prevent setState-after-unmount
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current) }, [])
 
   // Pipeline
   const [offersMade,       setOffersMade]       = useState([])
@@ -1412,6 +1416,7 @@ function Dashboard({ theme, onToggleTheme }) {
   useEffect(() => { window.scrollTo(0, 0) }, [page])
 
   // Redirect ai-assistant page navigation to floating widget
+  // Safe: 'dashboard' !== 'ai-assistant' so the second render is a no-op
   useEffect(() => {
     if (page === 'ai-assistant') {
       setPage('dashboard')
@@ -1424,7 +1429,8 @@ function Dashboard({ theme, onToggleTheme }) {
     if (!dbLoading && user?.user_metadata?.team_id && !profile?.habit_prefs?.password_set) {
       setNeedsPassword(true)
     }
-  }, [dbLoading])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbLoading, user?.user_metadata?.team_id, profile?.habit_prefs?.password_set])
 
   async function handleSetPassword() {
     setPwError('')

@@ -41,9 +41,9 @@ export function AuthProvider({ children }) {
         return
       }
 
-      // ── TOKEN_REFRESHED — user data unchanged, just update token ref ──
+      // ── TOKEN_REFRESHED — user data unchanged, skip if same user ──
       if (event === 'TOKEN_REFRESHED') {
-        setUser(session.user)
+        setUser(prev => prev?.id === session.user.id ? prev : session.user)
         return
       }
 

@@ -1,6 +1,19 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { CSS } from '../design'
+
+// Map Supabase auth errors to safe, user-friendly messages
+function friendlyAuthError(msg) {
+  if (!msg) return 'Something went wrong. Please try again.'
+  const m = msg.toLowerCase()
+  if (m.includes('invalid login credentials')) return 'Incorrect email or password.'
+  if (m.includes('email not confirmed')) return 'Please confirm your email before signing in.'
+  if (m.includes('user already registered')) return 'An account with this email already exists. Try signing in.'
+  if (m.includes('password') && m.includes('at least')) return 'Password must be at least 6 characters.'
+  if (m.includes('rate limit') || m.includes('too many')) return 'Too many attempts. Please wait a moment and try again.'
+  if (m.includes('network') || m.includes('fetch')) return 'Network error. Please check your connection and try again.'
+  return 'Something went wrong. Please try again.'
+}
 
 export default function AuthPage({ theme, onToggleTheme, onBack }) {
   const [mode,    setMode]    = useState('login')
@@ -10,6 +23,8 @@ export default function AuthPage({ theme, onToggleTheme, onBack }) {
   const [err,     setErr]     = useState('')
   const [ok,      setOk]      = useState('')
   const [loading, setLoading] = useState(false)
+  const mountedRef = useRef(true)
+  useEffect(() => () => { mountedRef.current = false }, [])
 
   async function submit(e) {
     e.preventDefault()
@@ -18,17 +33,19 @@ export default function AuthPage({ theme, onToggleTheme, onBack }) {
       if (!supabase) { setErr('Service unavailable. Please try again later.'); return }
       if (mode==='signup') {
         const {error} = await supabase.auth.signUp({email, password:pw, options:{data:{full_name:name}}})
-        if (error) setErr(error.message)
+        if (!mountedRef.current) return
+        if (error) setErr(friendlyAuthError(error.message))
         else setOk('Account created! Check your email to confirm.')
       } else {
         const {error} = await supabase.auth.signInWithPassword({email, password:pw})
-        if (error) setErr(error.message)
+        if (!mountedRef.current) return
+        if (error) setErr(friendlyAuthError(error.message))
       }
     } catch (err) {
-      setErr('Something went wrong. Please try again.')
+      if (mountedRef.current) setErr('Something went wrong. Please try again.')
       console.error('Auth error:', err)
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
   }
 
@@ -120,11 +137,11 @@ export default function AuthPage({ theme, onToggleTheme, onBack }) {
               )}
               <div>
                 <div className="label" style={{ marginBottom:6 }}>Email Address</div>
-                <input className="field-input" type="email" placeholder="you@brokerage.com" value={email} onChange={e=>setEmail(e.target.value)} required/>
+                <input className="field-input" type="email" placeholder="you@brokerage.com" value={email} onChange={e=>setEmail(e.target.value)} required autoComplete="email"/>
               </div>
               <div>
                 <div className="label" style={{ marginBottom:6 }}>Password</div>
-                <input className="field-input" type="password" placeholder="••••••••" value={pw} onChange={e=>setPw(e.target.value)} required minLength={6}/>
+                <input className="field-input" type="password" placeholder="••••••••" value={pw} onChange={e=>setPw(e.target.value)} required minLength={6} autoComplete={mode==='signup'?'new-password':'current-password'}/>
               </div>
 
               {err && (

@@ -21,6 +21,7 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
   const hasStripeCustomer = !!profile?.stripe_customer_id
 
   async function openPortal() {
+    if (portalLoading || checkoutLoading) return
     if (!hasStripeCustomer) {
       setError('Billing portal is not available — your plan was activated manually. Contact support@realtygrind.com to manage your subscription.')
       return
@@ -53,6 +54,7 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
   }
 
   async function handleSubscribe(planId) {
+    if (checkoutLoading || portalLoading) return
     if (isMember) {
       setError("You're covered by your team's plan. Contact your team owner to manage billing.")
       return
@@ -270,7 +272,7 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
                           </button>
                         ) : (
                           <button className="btn-gold" onClick={() => handleSubscribe(plan.id)}
-                            disabled={checkoutLoading === plan.id}
+                            disabled={!!checkoutLoading || portalLoading}
                             style={{ width:'100%', fontSize:13, padding:'10px 0', background:plan.color,
                               border:'none', color:'#fff', borderRadius:8, fontWeight:700, cursor:'pointer' }}>
                             {checkoutLoading === plan.id ? 'Redirecting...' : plan.cta}

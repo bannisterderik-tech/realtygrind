@@ -99,8 +99,9 @@ Deno.serve(async (req) => {
     const key = `${planId}_${isAnnual ? 'annual' : 'monthly'}`
     const priceId = PRICE_MAP[key]
     if (!priceId) {
+      console.error(`Missing price config for key: ${key}. Set the STRIPE_PRICE_* secrets.`)
       return new Response(
-        JSON.stringify({ error: `Unknown plan key: ${key}. Set the STRIPE_PRICE_* secrets in Supabase.` }),
+        JSON.stringify({ error: 'This plan is not available right now. Please try again later or contact support.' }),
         { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } }
       )
     }

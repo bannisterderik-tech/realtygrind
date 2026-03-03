@@ -8,12 +8,17 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
-const ALLOWED_ORIGINS = [
+const PROD_ORIGINS = [
   'https://realtygrind.vercel.app',
   'https://realtygrind.com',
+]
+const DEV_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:4173',
 ]
+const ALLOWED_ORIGINS = Deno.env.get('ENVIRONMENT') === 'production'
+  ? PROD_ORIGINS
+  : [...PROD_ORIGINS, ...DEV_ORIGINS]
 
 function getCorsHeaders(req: Request) {
   const origin = req.headers.get('Origin') || ''
@@ -150,7 +155,14 @@ Deno.serve(async (req) => {
     }
 
     // ── 6. Parse request body ───────────────────────────────────────────────
-    const { messages } = await req.json()
+    const ct = req.headers.get('content-type') || ''
+    if (!ct.includes('application/json')) {
+      return json({ error: 'Content-Type must be application/json' }, 400)
+    }
+
+    let reqBody: Record<string, unknown>
+    try { reqBody = await req.json() } catch { return json({ error: 'Invalid JSON body' }, 400) }
+    const { messages } = reqBody as { messages: unknown }
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return json({ error: 'messages array is required' }, 400)
     }
@@ -471,9 +483,7 @@ GUIDELINES:
     if (!claudeResponse.ok) {
       const errBody = await claudeResponse.text()
       console.error('Claude API error:', claudeResponse.status, errBody)
-      let detail = ''
-      try { detail = JSON.parse(errBody)?.error?.message || errBody.slice(0, 200) } catch { detail = errBody.slice(0, 200) }
-      return json({ error: `Claude API error (${claudeResponse.status}): ${detail}` }, 502)
+      return json({ error: 'AI service is temporarily unavailable. Please try again in a moment.' }, 502)
     }
 
     // ── 10. Increment credit AFTER successful Claude response ───────────────
@@ -499,6 +509,6 @@ GUIDELINES:
     })
   } catch (err) {
     console.error('ai-assistant error:', err?.message || err, err?.stack || '')
-    return json({ error: `An unexpected error occurred. Please try again. [${err?.message || 'unknown'}]` }, 500)
+    return json({ error: 'An unexpected error occurred. Please try again.' }, 500)
   }
 })

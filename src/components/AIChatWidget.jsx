@@ -58,7 +58,10 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
   const textareaRef = useRef(null)
   const messagesRef = useRef(messages)
   const panelRef    = useRef(null)
+  const isOpenRef   = useRef(isOpen)
+  const sendingRef  = useRef(false) // double-submit guard
   useEffect(() => { messagesRef.current = messages }, [messages])
+  useEffect(() => { isOpenRef.current = isOpen }, [isOpen])
 
   // Auto-scroll
   useEffect(() => {
@@ -67,8 +70,8 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
     }
   }, [messages, streaming, isOpen])
 
-  // Fetch credits on mount
-  useEffect(() => { fetchCredits() }, [])
+  // Fetch credits when user is available
+  useEffect(() => { if (user?.id) fetchCredits() }, [user?.id])
 
   // Clear new-reply indicator when opening
   useEffect(() => { if (isOpen) setHasNewReply(false) }, [isOpen])
@@ -108,7 +111,8 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
   }
 
   const sendMessage = useCallback(async (text) => {
-    if (!text?.trim() || streaming) return
+    if (!text?.trim() || sendingRef.current) return
+    sendingRef.current = true
     const userMsg = { role: 'user', content: text.trim() }
     const newMessages = [...messagesRef.current, userMsg]
     setMessages(newMessages)
@@ -167,36 +171,40 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
 
       setMessages([...newMessages, { role: 'assistant', content: '' }])
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
 
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const data = line.slice(6).trim()
-          if (data === '[DONE]') continue
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            const data = line.slice(6).trim()
+            if (data === '[DONE]') continue
 
-          try {
-            const parsed = JSON.parse(data)
-            if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
-              assistantText += parsed.delta.text
-              const now = Date.now()
-              if (now - lastUpdate >= THROTTLE_MS) {
-                setMessages([...newMessages, { role: 'assistant', content: assistantText }])
-                lastUpdate = now
+            try {
+              const parsed = JSON.parse(data)
+              if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+                assistantText += parsed.delta.text
+                const now = Date.now()
+                if (now - lastUpdate >= THROTTLE_MS) {
+                  setMessages([...newMessages, { role: 'assistant', content: assistantText }])
+                  lastUpdate = now
+                }
               }
-            }
-          } catch { /* skip non-JSON SSE lines */ }
+            } catch { /* skip non-JSON SSE lines */ }
+          }
         }
+      } finally {
+        reader.releaseLock()
       }
 
       if (assistantText) {
         setMessages([...newMessages, { role: 'assistant', content: assistantText }])
-        if (!isOpen) setHasNewReply(true)
+        if (!isOpenRef.current) setHasNewReply(true)
       }
       setCreditsUsed(prev => prev + 1)
     } catch (err) {
@@ -207,8 +215,9 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
     } finally {
       setStreaming(false)
       abortRef.current = null
+      sendingRef.current = false
     }
-  }, [streaming, isOpen])
+  }, [])
 
   function stopStreaming() {
     if (abortRef.current) abortRef.current.abort()
@@ -223,12 +232,15 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
   }
 
   const [copiedIdx, setCopiedIdx] = useState(null)
+  const copyTimerRef = useRef(null)
   function copyMessage(text, idx) {
     navigator.clipboard.writeText(text).then(() => {
       setCopiedIdx(idx)
-      setTimeout(() => setCopiedIdx(null), 1500)
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = setTimeout(() => setCopiedIdx(null), 1500)
     })
   }
+  useEffect(() => () => { if (copyTimerRef.current) clearTimeout(copyTimerRef.current) }, [])
 
   function handleKeyDown(e) {
     if (e.key === 'Enter' && !e.shiftKey) {

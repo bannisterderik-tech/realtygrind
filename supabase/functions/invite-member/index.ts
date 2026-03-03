@@ -1,11 +1,16 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
-const ALLOWED_ORIGINS = [
+const PROD_ORIGINS = [
   'https://realtygrind.vercel.app',
   'https://realtygrind.com',
+]
+const DEV_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:4173',
 ]
+const ALLOWED_ORIGINS = Deno.env.get('ENVIRONMENT') === 'production'
+  ? PROD_ORIGINS
+  : [...PROD_ORIGINS, ...DEV_ORIGINS]
 
 function getCorsHeaders(req: Request) {
   const origin = req.headers.get('Origin') || ''
@@ -129,7 +134,15 @@ Deno.serve(async (req: Request) => {
     )
 
     if (inviteErr) {
-      return new Response(JSON.stringify({ error: inviteErr.message }), {
+      console.error('invite-member inviteErr:', inviteErr.message)
+      // Map known Supabase Auth errors to safe user-facing messages
+      const msg = inviteErr.message || ''
+      const safeMsg = msg.includes('already registered')
+        ? 'This email is already registered. They can join your team from their dashboard.'
+        : msg.includes('rate limit')
+        ? 'Too many invites sent. Please wait a moment and try again.'
+        : 'Could not send invite. Please check the email and try again.'
+      return new Response(JSON.stringify({ error: safeMsg }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }

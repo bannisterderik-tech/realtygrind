@@ -92,7 +92,7 @@ export const useTheme = () => useContext(ThemeCtx)
 const PIPELINE_XP = { offer_made:75, offer_received:75, went_pending:150, closed:300 }
 const DAYS        = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 const FULL_DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
-const WEEKS       = 4
+const WEEKS       = 5   // max week-chunks a month can span (days 1-7 = wk0 … days 29-35 = wk4)
 // NOTE: MONTH_YEAR is intentionally computed inside the App component (see below)
 // so it never goes stale if the user keeps the tab open across a month boundary.
 const MONTHS      = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -137,7 +137,7 @@ function fmtShortDate(dateStr) {
   return `${MONTHS[d.getMonth()]} ${d.getDate()}`
 }
 
-function getToday()  { const d=new Date(); return { week:Math.min(Math.floor((d.getDate()-1)/7),3), day:d.getDay() } }
+function getToday()  { const d=new Date(); return { week:Math.min(Math.floor((d.getDate()-1)/7),WEEKS-1), day:d.getDay() } }
 
 // Returns "YYYY-MM-DD" for a given (week_index, day_index) in the current month
 function dateStrForDay(weekIdx, dayIdx) {
@@ -1312,7 +1312,7 @@ function Dashboard({ theme, onToggleTheme }) {
     }
     return d
   }, [viewDayOffset])
-  const viewWeek    = Math.min(Math.floor((viewDate.getDate() - 1) / 7), 3)
+  const viewWeek    = Math.min(Math.floor((viewDate.getDate() - 1) / 7), WEEKS - 1)
   const viewDayIdx  = viewDate.getDay()
   const viewDateStr = `${viewDate.getFullYear()}-${String(viewDate.getMonth() + 1).padStart(2, '0')}-${String(viewDate.getDate()).padStart(2, '0')}`
   const isViewingToday = viewDayOffset === 0
@@ -2257,7 +2257,8 @@ function Dashboard({ theme, onToggleTheme }) {
 
   const dashStats = useMemo(() => {
     const totalHabitChecks = builtInEffective.reduce((a,h)=>a+habits[h.id].flat().filter(Boolean).length,0)
-    const totalPossible    = Math.max(builtInEffective.length,1)*WEEKS*7
+    const daysThisMonth    = new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate()
+    const totalPossible    = Math.max(builtInEffective.length,1)*daysThisMonth
     const monthPct         = Math.round(totalHabitChecks/totalPossible*100)
     const viewChecks       = viewBuiltInActive.filter(h=>habits[h.id][viewWeek]?.[viewDayIdx]).length
     const viewPct          = Math.round(viewChecks/Math.max(viewBuiltInActive.length,1)*100)
@@ -2300,10 +2301,12 @@ function Dashboard({ theme, onToggleTheme }) {
 
   // ── Personal Records ─────────────────────────────────────────────────────
   const personalRecords = useMemo(() => {
+    const dim = new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate()
     let bestDayXp = 0, bestWeekXp = 0, perfectDays = 0, activeDays = 0
     for (let wi = 0; wi < WEEKS; wi++) {
       let weekXp = 0
       for (let di = 0; di < 7; di++) {
+        if (!dateStrForDay(wi, di)) continue  // skip non-existent days (e.g. day 30 in Feb)
         let dayXp = 0, dayDone = 0, dayActive = 0
         builtInEffective.forEach(h => {
           dayActive++
@@ -2321,7 +2324,7 @@ function Dashboard({ theme, onToggleTheme }) {
       }
       bestWeekXp = Math.max(bestWeekXp, weekXp)
     }
-    return { bestDayXp, bestWeekXp, perfectDays, activeDays }
+    return { bestDayXp, bestWeekXp, perfectDays, activeDays, daysInMonth: dim }
   }, [habits, counters, builtInEffective])
 
   // ── Week Heatmap data ────────────────────────────────────────────────────
@@ -2329,6 +2332,7 @@ function Dashboard({ theme, onToggleTheme }) {
     return Array.from({ length: WEEKS }, (_, wi) =>
       Array.from({ length: 7 }, (_, di) => {
         const ds = dateStrForDay(wi, di)
+        if (!ds) return -1  // day doesn't exist in this month
         const skipped = (habitPrefs.skipped || {})[ds] || []
         const active = builtInEffective.filter(h => !skipped.includes(String(h.id)))
         const done = active.filter(h => habits[h.id]?.[wi]?.[di]).length
@@ -3058,11 +3062,11 @@ function Dashboard({ theme, onToggleTheme }) {
                     )}
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 8px', borderRadius:7, background:'rgba(139,92,246,.06)' }}>
                       <span style={{ fontSize:11, color:'var(--text2)' }}>Perfect Days</span>
-                      <span className="mono" style={{ fontSize:13, fontWeight:700, color:personalRecords.perfectDays>0?'#10b981':'var(--muted)' }}>{personalRecords.perfectDays}/{WEEKS*7}</span>
+                      <span className="mono" style={{ fontSize:13, fontWeight:700, color:personalRecords.perfectDays>0?'#10b981':'var(--muted)' }}>{personalRecords.perfectDays}/{personalRecords.daysInMonth}</span>
                     </div>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 8px', borderRadius:7, background:'rgba(139,92,246,.06)' }}>
                       <span style={{ fontSize:11, color:'var(--text2)' }}>Active Days</span>
-                      <span className="mono" style={{ fontSize:13, fontWeight:700, color:'#8b5cf6' }}>{personalRecords.activeDays}/{WEEKS*7}</span>
+                      <span className="mono" style={{ fontSize:13, fontWeight:700, color:'#8b5cf6' }}>{personalRecords.activeDays}/{personalRecords.daysInMonth}</span>
                     </div>
                     {closedDeals.length > 0 && (
                       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 8px', borderRadius:7, background:'rgba(16,185,129,.06)' }}>

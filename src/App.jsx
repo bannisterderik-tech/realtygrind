@@ -270,9 +270,9 @@ function PrintDailyModal({ habits, counters, today, todayDate, effectiveToday, c
     { label:'Prospecting Calls',            val: prospectCount },
     { label:'Appointments Booked',          val: apptCount },
     { label:'Buyer Rep Agreements Signed',  val: braSignedCount },
-    { label:'Offers Made',                  val: offersMade.length },
-    { label:'Offers Received',              val: offersReceived.length },
-    { label:'Offers Pending',               val: pendingDeals.length },
+    { label:'Offers Made',                  val: offersMadeCount },
+    { label:'Offers Received',              val: offersReceivedCount },
+    { label:'Offers Pending',               val: wentPendingCount },
     { label:'Closed Deals',                 val: closedDeals.length },
   ]
   return (
@@ -1110,11 +1110,17 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
                 </div>
                 <div>
                   <div className="label" style={{ marginBottom:3 }}>Commission</div>
-                  <input className="field-input" value={r.commission||''} placeholder="3%"
-                    onChange={e=>update(r.id,'commission',e.target.value)}
-                    onBlur={e=>persist(r.id,'commission',e.target.value)}
-                    style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box',
-                      fontFamily:"'JetBrains Mono',monospace", color:'var(--green)' }}/>
+                  <div style={{ display:'flex', gap:4 }}>
+                    <input className="field-input" value={isP ? String(r.commission||'').replace(/%$/,'') : (r.commission||'')} placeholder={isP ? '3' : '5000'}
+                      onChange={e=>update(r.id,'commission', isP ? e.target.value+'%' : e.target.value)}
+                      onBlur={e=>persist(r.id,'commission', isP ? e.target.value+'%' : e.target.value)}
+                      style={{ padding:'6px 10px', fontSize:12, flex:1, minWidth:0, boxSizing:'border-box',
+                        fontFamily:"'JetBrains Mono',monospace", color: isP ? 'var(--muted)' : 'var(--green)', fontWeight:600 }}/>
+                    <button onClick={()=>toggleCommType(r.id)} style={{
+                      background:'var(--bg2)', border:'1px solid var(--b2)', borderRadius:6, cursor:'pointer', padding:'4px 8px',
+                      fontSize:9, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600, whiteSpace:'nowrap',
+                    }}>{isP ? '$ Flat' : '% Rate'}</button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1280,7 +1286,9 @@ function Dashboard({ theme, onToggleTheme }) {
   const [offersReceived,   setOffersReceived]   = useState([])
   const [pendingDeals,     setPendingDeals]     = useState([])
   const [closedDeals,      setClosedDeals]      = useState([])
-  const [wentPendingCount, setWentPendingCount] = useState(0) // historical — never decrements
+  const [wentPendingCount, setWentPendingCount] = useState(0) // historical — includes archived
+  const [offersMadeCount, setOffersMadeCount] = useState(0) // historical — includes archived
+  const [offersReceivedCount, setOffersReceivedCount] = useState(0) // historical — includes archived
 
   const [showCommSummary, setShowCommSummary] = useState(false)
   const [showPrint,        setShowPrint]        = useState(false)
@@ -1368,11 +1376,14 @@ function Dashboard({ theme, onToggleTheme }) {
 
     if (txRes.data) {
       const m = t => ({ id:t.id, address:t.address, price:t.price||'', commission:t.commission||'', status:t.status||'active', closedFrom:t.closed_from||'', createdAt:t.created_at||null, leadSource:t.lead_source||'', notes:t.notes||[], dealSide:t.deal_side||'', originalLeadSource:t.original_lead_source||'' })
-      setOffersMade(    txRes.data.filter(t=>t.type==='offer_made').map(m))
-      setOffersReceived(txRes.data.filter(t=>t.type==='offer_received').map(m))
-      setPendingDeals(  txRes.data.filter(t=>t.type==='pending').map(m))
+      const active = t => t.status !== 'archived' // filter out archived items from display
+      setOffersMade(    txRes.data.filter(t=>t.type==='offer_made' && active(t)).map(m))
+      setOffersReceived(txRes.data.filter(t=>t.type==='offer_received' && active(t)).map(m))
+      setPendingDeals(  txRes.data.filter(t=>t.type==='pending' && active(t)).map(m))
       setClosedDeals(   txRes.data.filter(t=>t.type==='closed').map(m))
-      // Historical count — all records ever marked pending, regardless of current state
+      // Historical counts — include archived rows so stats survive forward moves
+      setOffersMadeCount(txRes.data.filter(t=>t.type==='offer_made').length)
+      setOffersReceivedCount(txRes.data.filter(t=>t.type==='offer_received').length)
       setWentPendingCount(txRes.data.filter(t=>t.type==='pending').length)
     }
 
@@ -1509,12 +1520,15 @@ function Dashboard({ theme, onToggleTheme }) {
     if (!r.ok) showToast('Failed to save XP — please refresh')
     setSessionPipeline(prev => ({...prev, [type]: Math.max(0, prev[type]-1)}))
     if (type === 'went_pending') setWentPendingCount(prev => Math.max(0, prev - 1))
+    if (type === 'offer_made') setOffersMadeCount(prev => Math.max(0, prev - 1))
+    if (type === 'offer_received') setOffersReceivedCount(prev => Math.max(0, prev - 1))
   }
 
   // Persist a new Offer Made to DB, award XP, return saved row with real ID
   async function handleOfferMadeAdd(tmpRow) {
     const data = await dbInsert('offer_made', tmpRow)
     if (!data) return null
+    setOffersMadeCount(prev => prev + 1)
     await awardPipelineXp('offer_made', '#0ea5e9')
     return { id:data.id, address:data.address||tmpRow.address, price:data.price||'', commission:data.commission||'', status:'active', closedFrom:'' }
   }
@@ -1523,6 +1537,7 @@ function Dashboard({ theme, onToggleTheme }) {
   async function handleOfferReceivedAdd(tmpRow) {
     const data = await dbInsert('offer_received', tmpRow)
     if (!data) return null
+    setOffersReceivedCount(prev => prev + 1)
     await awardPipelineXp('offer_received', '#8b5cf6')
     return { id:data.id, address:data.address||tmpRow.address, price:data.price||'', commission:data.commission||'', status:'active', closedFrom:'' }
   }
@@ -1795,33 +1810,40 @@ function Dashboard({ theme, onToggleTheme }) {
       if (error) console.error('dbDelete error:', error.message)
     }
   }
+  // Archive instead of delete — preserves historical counts for stat cards
+  async function dbArchive(id) {
+    if (id && !String(id).startsWith('tmp-')) {
+      const {error} = await supabase.from('transactions').update({status:'archived'}).eq('id',id).eq('user_id',user.id)
+      if (error) console.error('dbArchive error:', error.message)
+    }
+  }
 
   async function handleOfferStatus(row, newStatus, srcSetter) {
     // Infer deal side from context (offers made = buyer side, offers received = seller side)
     const inferredSide = srcSetter === setOffersReceived ? 'seller' : 'buyer'
     if (newStatus === 'pending') {
-      // DESTRUCTIVE: remove from source section, create Went Pending record
+      // Move forward: archive source (preserves stat count), create Went Pending record
       const data = await dbInsert('pending', row, 'Offers', row.dealSide || inferredSide, row.originalLeadSource || row.leadSource || null)
       if (data) {
         setPendingDeals(prev=>[...prev,{...row,id:data.id,status:'active',closedFrom:'Offers',dealSide:row.dealSide||inferredSide,originalLeadSource:row.originalLeadSource||row.leadSource||''}])
         srcSetter(prev => prev.filter(r => r.id !== row.id))
-        await dbDelete(row.id)
+        await dbArchive(row.id)
       }
       setWentPendingCount(prev => prev + 1)
       await awardPipelineXp('went_pending', '#f59e0b')
     } else if (newStatus === 'closed') {
-      // DESTRUCTIVE: remove from source section, create Closed record
+      // Move forward: archive source, create Closed record
       const data = await dbInsert('closed', row, 'Offers', row.dealSide || inferredSide, row.originalLeadSource || row.leadSource || null)
       if (data) {
         setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:'Offers',dealSide:row.dealSide||inferredSide,originalLeadSource:row.originalLeadSource||row.leadSource||''}])
         srcSetter(prev => prev.filter(r => r.id !== row.id))
-        await dbDelete(row.id)
+        await dbArchive(row.id)
         const comm = resolveCommission(row.commission, row.price)
         setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
       }
       await awardPipelineXp('closed', '#10b981')
     } else if (newStatus === 'declined') {
-      // Decline offer: remove from section entirely
+      // Decline offer: fully delete (not a forward move)
       srcSetter(prev => prev.filter(r => r.id !== row.id))
       await dbDelete(row.id)
     } else if (newStatus === 'countered') {
@@ -1837,12 +1859,12 @@ function Dashboard({ theme, onToggleTheme }) {
 
   async function handlePendingStatus(row, newStatus) {
     if (newStatus === 'closed') {
-      // DESTRUCTIVE: remove from Went Pending, create Closed record
+      // Move forward: archive pending, create Closed record (preserves went-pending count)
       const data = await dbInsert('closed', row, row.closedFrom||'Pending', row.dealSide||null, row.originalLeadSource||row.leadSource||null)
       if (data) {
         setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:row.closedFrom||'Pending',dealSide:row.dealSide||'',originalLeadSource:row.originalLeadSource||row.leadSource||''}])
         setPendingDeals(prev => prev.filter(r => r.id !== row.id))
-        await dbDelete(row.id)
+        await dbArchive(row.id)
         const comm = resolveCommission(row.commission, row.price)
         setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
       }
@@ -1892,11 +1914,16 @@ function Dashboard({ theme, onToggleTheme }) {
     setListings(prev=>prev.map(l=>l.id===id?{...l,[field]:val}:l))
   }
   const listingFieldMap = { leadSource:'lead_source', monthYear:'month_year', listDate:'list_date', expiresDate:'expires_date' }
+  const NEW_LISTING_COLS = new Set(['list_date','expires_date']) // columns from migration — may not exist yet
   async function updateListing(id, field, val) {
     setListings(prev=>prev.map(l=>l.id===id?{...l,[field]:val}:l))
     const dbField = listingFieldMap[field] || field
     const r = await safeDb(supabase.from('listings').update({[dbField]:val}).eq('id',id).eq('user_id',user.id))
-    if (!r.ok) showToast('Failed to save listing change')
+    if (!r.ok) {
+      // If the column doesn't exist yet (migration not applied), silently skip
+      if (NEW_LISTING_COLS.has(dbField)) { console.warn(`Column ${dbField} not found — run migration to enable.`); return }
+      showToast('Failed to save listing change')
+    }
   }
   function toggleListingCommType(id) {
     setListings(prev => prev.map(l => {
@@ -1928,6 +1955,7 @@ function Dashboard({ theme, onToggleTheme }) {
     const data = await dbInsert('offer_received', {address:listing.address, price:offerPrice||listing.price||'', commission:listing.commission||''}, 'Listing', 'seller', listing.leadSource||null)
     if (data) {
       setOffersReceived(prev=>[...prev,{id:data.id,address:listing.address,price:offerPrice||listing.price||'',commission:listing.commission||'',status:'active',closedFrom:'Listing',dealSide:'seller',originalLeadSource:listing.leadSource||''}])
+      setOffersReceivedCount(prev => prev + 1)
     }
     setOfferReceivedModal(null)
     await awardPipelineXp('offer_received', '#8b5cf6')
@@ -2028,6 +2056,7 @@ function Dashboard({ theme, onToggleTheme }) {
         id:data.id, address:data.address, price:data.price||'',
         commission:data.commission||'', status:'active', closedFrom:'', dealSide:'buyer', originalLeadSource:''
       }])
+      setOffersMadeCount(prev => prev + 1)
       await awardPipelineXp('offer_made', '#0ea5e9')
     }
     setOfferModal(null)
@@ -2453,8 +2482,8 @@ function Dashboard({ theme, onToggleTheme }) {
             accent={goals?.showing && totalShowings>=goals.showing ? '#3b82f6' : undefined}/>
           <StatCard icon="🏡" label="Listed"        value={totalListings}         color="var(--purple)"/>
           <StatCard icon="🤝" label="Buyer Reps"   value={totalBuyerReps}        color="var(--blue)"/>
-          <StatCard icon="📤" label="Offers Made"   value={offersMade.length}     color="var(--blue)"/>
-          <StatCard icon="📥" label="Offers Rec'd"  value={offersReceived.length} color="var(--purple)"/>
+          <StatCard icon="📤" label="Offers Made"   value={offersMadeCount}       color="var(--blue)"/>
+          <StatCard icon="📥" label="Offers Rec'd"  value={offersReceivedCount}   color="var(--purple)"/>
           <StatCard icon="⏳" label="Went Pending"  value={wentPendingCount}      color="var(--gold2)"/>
           <StatCard icon="🎉" label="Closed"         value={closedDeals.length}    color="var(--green)"
             sub={goals?.closed ? `${closedDeals.length}/${goals.closed} goal${closedVol>0?' · '+fmtMoney(closedVol):''}` : closedVol>0?fmtMoney(closedVol):null}

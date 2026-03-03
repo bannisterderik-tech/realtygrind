@@ -10,7 +10,6 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const PROD_ORIGINS = [
   'https://realtygrind.vercel.app',
-  'https://realtygrind.com',
 ]
 const DEV_ORIGINS = [
   'http://localhost:5173',

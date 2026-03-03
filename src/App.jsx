@@ -10,6 +10,7 @@ import APODPage from './pages/APODPage'
 import BillingPage from './pages/BillingPage'
 import AIAssistantPage from './pages/AIAssistantPage'
 import CoachingPage from './pages/CoachingPage'
+import AdminPage from './pages/AdminPage'
 import AIChatWidget from './components/AIChatWidget'
 import { CSS, Ring, StatCard, Wordmark, Loader, ThemeToggle, getRank, fmtMoney, resolveCommission, RANKS, CAT, formatPrice, stripPrice, daysOnMarket, LEAD_SOURCES, LEAD_SOURCE_COLORS } from './design'
 import { HABITS } from './habits'
@@ -2445,6 +2446,10 @@ function Dashboard({ theme, onToggleTheme }) {
 
           <button className={`nav-btn mob-hide${(page==='directory'||page==='apod'||page==='ai-assistant')?' active':''}`} onClick={()=>setPage('directory')}>🔗 Tools</button>
 
+          {profile?.app_role === 'admin' && (
+            <button className={`nav-btn mob-hide${page==='admin'?' active':''}`} onClick={()=>setPage('admin')} style={{ fontSize:11, letterSpacing:'.03em' }}>⚙️ Admin</button>
+          )}
+
           {/* Rank + Streak chips — hidden on mobile */}
           <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
           <div className="mob-hide" style={{ background:'rgba(255,255,255,.06)', border:`1px solid ${rank.color}38`,
@@ -2505,6 +2510,7 @@ function Dashboard({ theme, onToggleTheme }) {
             { p:'directory', icon:'🔗', label:'Tools' },
             { p:'billing',   icon:'💳', label:'Billing' },
             { p:'profile',   icon:'👤', label:'Profile' },
+            ...(profile?.app_role === 'admin' ? [{ p:'admin', icon:'⚙️', label:'Admin' }] : []),
           ].map(({p, icon, label})=>(
             <button key={p} onClick={()=>{ setPage(p); setMenuOpen(false) }} style={{
               display:'flex', alignItems:'center', gap:12,
@@ -2568,6 +2574,7 @@ function Dashboard({ theme, onToggleTheme }) {
                                              onTaskDeleted={syncTaskDeleted} onTaskRestored={syncTaskRestored}/></ErrorBoundary>}
       {page==='directory' && <ErrorBoundary key="directory" onReset={()=>setPage('dashboard')}><DirectoryPage onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
       {page==='apod'      && <ErrorBoundary key="apod" onReset={()=>setPage('dashboard')}><APODPage      onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      {page==='admin'     && <ErrorBoundary key="admin" onReset={()=>setPage('dashboard')}><AdminPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
       {/* AI Assistant now handled by floating widget — see useEffect redirect below */}
 
       {page==='dashboard' && (

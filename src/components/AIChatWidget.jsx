@@ -3,6 +3,23 @@ import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import { isActiveBilling, isTeamMember, isPlatformAdmin } from '../lib/plans'
 
+// Get a fresh access token (refreshes if expired)
+async function getFreshToken() {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (session?.access_token) {
+    // Check if token expires within 60s — refresh proactively
+    const expiresAt = session.expires_at ?? 0
+    if (expiresAt - Math.floor(Date.now() / 1000) < 60) {
+      const { data } = await supabase.auth.refreshSession()
+      return data.session?.access_token || null
+    }
+    return session.access_token
+  }
+  // No session — try refresh
+  const { data } = await supabase.auth.refreshSession()
+  return data.session?.access_token || null
+}
+
 const QUICK_ACTIONS = [
   { label: 'Analyze My Listings', prompt: 'Analyze my current active listings and suggest strategies to reduce days on market and maximize sale price for each one.' },
   { label: 'Review My Pipeline', prompt: 'Review my current pipeline — offers made, pending deals, and recent closings. What should I focus on next?' },
@@ -79,22 +96,22 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
   async function fetchCredits() {
     if (!supabase) return
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
+      const token = await getFreshToken()
+      if (!token) return
       const resp = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-assistant`,
         {
           method: 'GET',
           headers: {
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${session.access_token}`,
+            'Authorization': `Bearer ${token}`,
           },
         }
       )
       const data = await resp.json()
       if (resp.ok) {
         setCreditsUsed(data.credits_used || 0)
-        setCreditsLimit(data.credits_limit === -1 ? 500 : (data.credits_limit || 0))
+        setCreditsLimit(data.credits_limit === -1 ? -1 : (data.credits_limit || 0))
         setEffectivePlan(data.plan || '')
         setGateError(null)
       } else {
@@ -126,8 +143,8 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
     abortRef.current = controller
 
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error('Not authenticated')
+      const token = await getFreshToken()
+      if (!token) throw new Error('Not authenticated')
 
       const resp = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-assistant`,
@@ -136,7 +153,7 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
           headers: {
             'Content-Type': 'application/json',
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${session.access_token}`,
+            'Authorization': `Bearer ${token}`,
           },
           body: JSON.stringify({
             messages: newMessages.map(m => ({ role: m.role, content: m.content })),
@@ -259,8 +276,9 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
   const isDisabledByTeam = profile?.teams?.team_prefs?.ai_tools?.assistant_enabled === false
 
   // Credit display
-  const creditText = `${creditsUsed}/${creditsLimit}`
-  const creditPct = creditsLimit > 0 ? (creditsUsed / creditsLimit) * 100 : 100
+  const isUnlimited = creditsLimit === -1
+  const creditText = isUnlimited ? `${creditsUsed} used · ∞` : `${creditsUsed}/${creditsLimit}`
+  const creditPct = isUnlimited ? 0 : (creditsLimit > 0 ? (creditsUsed / creditsLimit) * 100 : 100)
   const nextPlan = effectivePlan === 'solo' ? 'Team' : effectivePlan === 'team' ? 'Brokerage' : null
 
   const canChat = hasBilling && !isDisabledByTeam && gateError !== 'subscription_required' && gateError !== 'disabled_by_team'

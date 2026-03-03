@@ -290,9 +290,9 @@ Deno.serve(async (req) => {
     // For team owners/admins: fetch team member summaries
     let teamMemberContext = ''
     const isTeamOwner = profile.team_id && profile.teams?.created_by === user.id
-    const isAdmin = isTeamOwner || (teamPrefs.admins || []).includes(user.id)
+    const isTeamAdmin = isTeamOwner || (teamPrefs.admins || []).includes(user.id)
 
-    if (isAdmin && profile.team_id) {
+    if (isTeamAdmin && profile.team_id) {
       const { data: teamMembers } = await admin
         .from('profiles')
         .select('id, full_name, xp, streak, goals, habit_prefs')
@@ -369,7 +369,7 @@ Deno.serve(async (req) => {
 
       // Coaching notes about other agents (owners/admins only — privacy)
       const coachingNoteLines: string[] = []
-      if (isAdmin) {
+      if (isTeamAdmin) {
         for (const m of (teamMembers || [])) {
           const agentNotes = allCoachingNotes.filter((n: any) => n.agentId === m.id).slice(-5)
           if (agentNotes.length > 0) {
@@ -406,7 +406,7 @@ Deno.serve(async (req) => {
       goals.monthly_closings ? `MONTHLY GOAL: ${goals.monthly_closings} closings` : null,
       goals.annual_volume ? `ANNUAL VOLUME GOAL: $${parsePrice(goals.annual_volume).toLocaleString()}` : null,
       // Team context
-      profile.team_id ? `\nTEAM: ${profile.teams?.name || 'Team'} (${isTeamOwner ? 'Owner' : isAdmin ? 'Admin' : 'Member'})` : null,
+      profile.team_id ? `\nTEAM: ${profile.teams?.name || 'Team'} (${isTeamOwner ? 'Owner' : isTeamAdmin ? 'Admin' : 'Member'})` : null,
       // Daily standup
       standupToday ? `\nTODAY'S STANDUP:\n- Yesterday: ${standupToday.q1 || 'N/A'}\n- Today's priority: ${standupToday.q2 || 'N/A'}${standupToday.q3 ? `\n- Blockers: ${standupToday.q3}` : ''}` : null,
       // Coaching notes about this agent

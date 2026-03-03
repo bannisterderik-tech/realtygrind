@@ -9,6 +9,7 @@ import DirectoryPage from './pages/DirectoryPage'
 import APODPage from './pages/APODPage'
 import BillingPage from './pages/BillingPage'
 import AIAssistantPage from './pages/AIAssistantPage'
+import CoachingPage from './pages/CoachingPage'
 import AIChatWidget from './components/AIChatWidget'
 import { CSS, Ring, StatCard, Wordmark, Loader, ThemeToggle, getRank, fmtMoney, resolveCommission, RANKS, CAT, formatPrice, stripPrice, daysOnMarket, LEAD_SOURCES, LEAD_SOURCE_COLORS } from './design'
 import { HABITS } from './habits'
@@ -2248,6 +2249,7 @@ function Dashboard({ theme, onToggleTheme }) {
           {/* Board + Teams — hidden on mobile */}
           <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
           <button className={`nav-btn mob-hide${page==='teams'?' active':''}`} onClick={()=>setPage('teams')}>👥 Teams</button>
+          <button className={`nav-btn mob-hide${page==='coaching'?' active':''}`} onClick={()=>setPage('coaching')}>📝 Coaching</button>
 
           <button className={`nav-btn mob-hide${(page==='directory'||page==='apod'||page==='ai-assistant')?' active':''}`} onClick={()=>setPage('directory')}>🔗 Tools</button>
 
@@ -2307,6 +2309,7 @@ function Dashboard({ theme, onToggleTheme }) {
           {[
             { p:'dashboard', icon:'🏠', label:'Home' },
             { p:'teams',     icon:'👥', label:'Teams' },
+            { p:'coaching',  icon:'📝', label:'Coaching' },
             { p:'directory', icon:'🔗', label:'Tools' },
             { p:'billing',   icon:'💳', label:'Billing' },
             { p:'profile',   icon:'👤', label:'Profile' },
@@ -2367,6 +2370,7 @@ function Dashboard({ theme, onToggleTheme }) {
       )}
 
       {page==='teams'     && <ErrorBoundary key="teams" onReset={()=>setPage('dashboard')}><TeamsPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      {page==='coaching'  && <ErrorBoundary key="coaching" onReset={()=>setPage('dashboard')}><CoachingPage  onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
       {page==='billing'   && <ErrorBoundary key="billing" onReset={()=>setPage('dashboard')}><BillingPage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
       {page==='profile'   && <ErrorBoundary key="profile" onReset={()=>setPage('dashboard')}><ProfilePage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}
                                              onTaskDeleted={syncTaskDeleted} onTaskRestored={syncTaskRestored}/></ErrorBoundary>}

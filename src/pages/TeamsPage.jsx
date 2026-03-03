@@ -3002,29 +3002,30 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
         const tvTotalClosed = Object.values(memberStats).reduce((s,st)=>s+(st.closed||0),0)
         const tvTotalXp = members.reduce((s,m)=>s+(m.xp||0),0)
         return (
-        <div style={{
-          position:'fixed', inset:0, zIndex:99999, background:'#0a0a0a',
+        <div data-theme={theme} style={{
+          position:'fixed', inset:0, zIndex:99999, background:'var(--bg)',
           display:'flex', flexDirection:'column', overflow:'auto',
         }}>
           {/* TV Header */}
           <div style={{ padding:'20px 36px 14px', display:'flex', alignItems:'center', justifyContent:'space-between',
-            borderBottom:'1px solid #1a1a1a', flexShrink:0 }}>
+            borderBottom:'1px solid var(--b2)', boxShadow:'0 1px 0 var(--b1)', flexShrink:0 }}>
             <div style={{ display:'flex', alignItems:'center', gap:14 }}>
               <span style={{ fontSize:26 }}>🏡</span>
               <div>
-                <div style={{ fontSize:24, fontWeight:700, color:'#fff', fontFamily:"'Fraunces',serif", letterSpacing:'-.02em' }}>
+                <div style={{ fontSize:24, fontWeight:700, color:'var(--text)', fontFamily:"'Fraunces',serif", letterSpacing:'-.02em' }}>
                   {teamData?.name || 'Team'} Dashboard
                 </div>
-                <div style={{ fontSize:12, color:'#555', fontFamily:"'JetBrains Mono',monospace" }}>
+                <div style={{ fontSize:12, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace" }}>
                   {new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})}
                 </div>
               </div>
             </div>
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-              <span style={{ fontSize:11, color:'#444', fontFamily:"'JetBrains Mono',monospace" }}>{members.length} agents</span>
+              <span style={{ fontSize:11, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace" }}>{members.length} agents</span>
+              <ThemeToggle theme={theme} onToggle={onToggleTheme}/>
               <button onClick={()=>setTvMode(false)} style={{
-                background:'#1a1a1a', border:'1px solid #333', borderRadius:8, padding:'7px 18px',
-                color:'#777', fontSize:12, cursor:'pointer', fontWeight:600,
+                background:'var(--surface)', border:'1px solid var(--b3)', borderRadius:8, padding:'7px 18px',
+                color:'var(--muted)', fontSize:12, cursor:'pointer', fontWeight:600,
               }}>✕ Exit</button>
             </div>
           </div>
@@ -3037,12 +3038,19 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                 { label:'DEALS CLOSED', value:tvTotalClosed, color:'#10b981', icon:'🎉' },
                 { label:'ACTIVE LISTINGS', value:tvActiveListing, color:'#10b981', icon:'🏠' },
                 { label:'PENDING', value:tvPendingListing, color:'#6366f1', icon:'📋' },
-                { label:'TOTAL VOLUME', value:fmtMoney(tvVolume), color:'#fff', icon:'💰' },
+                { label:'TOTAL VOLUME', value:fmtMoney(tvVolume), color:'var(--text)', icon:'💰' },
                 { label:'COMMISSION', value:fmtMoney(tvComm), color:'#10b981', icon:'💵' },
               ].map(s=>(
-                <div key={s.label} style={{ padding:'16px 18px', borderRadius:12, background:'#111', border:'1px solid #1a1a1a' }}>
-                  <div style={{ fontSize:10, color:'#555', fontWeight:700, letterSpacing:'.5px', marginBottom:6 }}>{s.icon} {s.label}</div>
-                  <div style={{ fontSize:22, fontWeight:700, color:s.color, fontFamily:"'Fraunces',serif", lineHeight:1 }}>{s.value}</div>
+                <div key={s.label} style={{
+                  padding:'18px 20px', borderRadius:14, background:'var(--surface)',
+                  border:`1px solid ${s.color.startsWith('var(') ? 'var(--b2)' : s.color+'22'}`,
+                  boxShadow: s.color.startsWith('var(') ? 'none' : `0 2px 12px ${s.color}11`,
+                  position:'relative', overflow:'hidden',
+                }}>
+                  <div style={{ position:'absolute', top:0, left:0, right:0, height:2,
+                    background: s.color.startsWith('var(') ? 'var(--b3)' : s.color, opacity:0.6 }}/>
+                  <div style={{ fontSize:10, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px', marginBottom:8, textTransform:'uppercase' }}>{s.icon} {s.label}</div>
+                  <div style={{ fontSize:26, fontWeight:700, color:s.color, fontFamily:"'Fraunces',serif", lineHeight:1 }}>{s.value}</div>
                 </div>
               ))}
             </div>
@@ -3052,7 +3060,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
 
               {/* LEFT: Leaderboard */}
               <div>
-                <div style={{ fontSize:11, color:'#555', fontWeight:700, letterSpacing:1, textTransform:'uppercase', marginBottom:10 }}>🏆 LEADERBOARD</div>
+                <div style={{ fontSize:11, color:'var(--muted)', fontWeight:700, letterSpacing:1.2, textTransform:'uppercase', marginBottom:14,
+                  display:'flex', alignItems:'center', gap:10 }}>
+                  <span>🏆 LEADERBOARD</span>
+                  <div style={{ flex:1, height:1, background:'var(--b2)' }}/>
+                </div>
                 <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                   {members.map((m,i)=>{
                     const rank = getRank(m.xp||0)
@@ -3061,10 +3073,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                     return (
                       <div key={m.id} style={{
                         display:'flex', alignItems:'center', gap:16, padding:'12px 18px',
-                        borderRadius:12, border:`1px solid ${i<3?rank.color+'33':'#1a1a1a'}`,
-                        background:i===0?'rgba(217,119,6,.06)':'#111',
+                        borderRadius:12, border:`1px solid ${i<3?rank.color+'33':'var(--b2)'}`,
+                        background:i===0?'var(--gold5)':'var(--surface)',
+                        borderLeft:i<3?`3px solid ${rank.color}`:'3px solid transparent',
+                        boxShadow:i===0?'var(--shadow)':'none',
                       }}>
-                        <div style={{ width:32, fontSize:medal?24:16, textAlign:'center', color:'#555', fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>
+                        <div style={{ width:32, fontSize:medal?24:16, textAlign:'center', color:'var(--muted)', fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>
                           {medal || (i+1)}
                         </div>
                         <div style={{ width:42, height:42, borderRadius:'50%',
@@ -3075,27 +3089,27 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                           {(m.full_name||'A').charAt(0).toUpperCase()}
                         </div>
                         <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:16, fontWeight:700, color:'#fff' }}>{m.full_name||'Agent'}</div>
-                          <div style={{ fontSize:11, color:'#555' }}>{rank.icon} {rank.name} {(m.streak||0)>0?`· 🔥 ${m.streak}`:''}</div>
+                          <div style={{ fontSize:16, fontWeight:700, color:'var(--text)' }}>{m.full_name||'Agent'}</div>
+                          <div style={{ fontSize:11, color:'var(--muted)' }}>{rank.icon} {rank.name} {(m.streak||0)>0?`· 🔥 ${m.streak}`:''}</div>
                         </div>
                         <div style={{ display:'flex', gap:16, alignItems:'center', flexShrink:0 }}>
                           {HABITS_FOR_DISPLAY.slice(0,3).map(h=>{
                             const v = stats.habits?.[h.id]||0
                             if (!v) return null
                             return <div key={h.id} style={{ textAlign:'center' }}>
-                              <div style={{ fontSize:16, fontWeight:700, color:'#eee' }}>{v}</div>
-                              <div style={{ fontSize:8, color:'#555', letterSpacing:'.3px' }}>{h.label.slice(0,5).toUpperCase()}</div>
+                              <div style={{ fontSize:16, fontWeight:700, color:'var(--text)' }}>{v}</div>
+                              <div style={{ fontSize:8, color:'var(--muted)', letterSpacing:'.3px' }}>{h.label.slice(0,5).toUpperCase()}</div>
                             </div>
                           })}
                           {stats.closed>0 && <div style={{ textAlign:'center' }}>
                             <div style={{ fontSize:16, fontWeight:700, color:'#10b981' }}>{stats.closed}</div>
-                            <div style={{ fontSize:8, color:'#555' }}>CLOSED</div>
+                            <div style={{ fontSize:8, color:'var(--muted)' }}>CLOSED</div>
                           </div>}
                           <div style={{ textAlign:'right', minWidth:70 }}>
-                            <div style={{ fontSize:24, fontWeight:700, color:rank.color, fontFamily:"'Fraunces',serif", lineHeight:1 }}>
+                            <div style={{ fontSize:i===0?28:24, fontWeight:700, color:rank.color, fontFamily:"'Fraunces',serif", lineHeight:1 }}>
                               {(m.xp||0).toLocaleString()}
                             </div>
-                            <div style={{ fontSize:9, color:'#555', fontFamily:"'JetBrains Mono',monospace" }}>XP</div>
+                            <div style={{ fontSize:9, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace" }}>XP</div>
                           </div>
                         </div>
                       </div>
@@ -3108,18 +3122,22 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
               <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
 
                 {/* Challenges */}
-                <div style={{ borderRadius:12, background:'#111', border:'1px solid #1a1a1a', padding:18 }}>
-                  <div style={{ fontSize:11, color:'#555', fontWeight:700, letterSpacing:1, textTransform:'uppercase', marginBottom:12 }}>🏆 ACTIVE CHALLENGES</div>
+                <div style={{ borderRadius:12, background:'var(--surface)', border:'1px solid var(--b2)', padding:18 }}>
+                  <div style={{ fontSize:11, color:'var(--muted)', fontWeight:700, letterSpacing:1.2, textTransform:'uppercase', marginBottom:12,
+                    display:'flex', alignItems:'center', gap:10 }}>
+                    <span>🏆 ACTIVE CHALLENGES</span>
+                    <div style={{ flex:1, height:1, background:'var(--b2)' }}/>
+                  </div>
                   {tvChallenges.length===0 ? (
-                    <div style={{ fontSize:12, color:'#444', fontStyle:'italic' }}>No active challenges</div>
+                    <div style={{ fontSize:12, color:'var(--dim)', fontStyle:'italic' }}>No active challenges</div>
                   ) : tvChallenges.map(c=>{
                     const metricLabel = CHALLENGE_METRICS.find(m=>m.value===c.metric)?.label||c.metric
                     const ranked = [...members].map(m=>({...m,val:getMemberMetricVal(m.id,c.metric)})).sort((a,b)=>b.val-a.val)
                     const topThree = ranked.slice(0,3)
                     return (
                       <div key={c.id} style={{ marginBottom:tvChallenges.indexOf(c)<tvChallenges.length-1?14:0 }}>
-                        <div style={{ fontSize:14, fontWeight:700, color:'#eee', marginBottom:2 }}>{c.title}</div>
-                        <div style={{ fontSize:10, color:'#555', marginBottom:8 }}>{metricLabel} · +{c.bonusXp||0} XP</div>
+                        <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', marginBottom:2 }}>{c.title}</div>
+                        <div style={{ fontSize:10, color:'var(--muted)', marginBottom:8 }}>{metricLabel} · +{c.bonusXp||0} XP</div>
                         {topThree.map((m,i)=>{
                           const maxV = Math.max(topThree[0]?.val||1,1)
                           return (
@@ -3127,28 +3145,32 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               <span style={{ fontSize:14, width:20, textAlign:'center' }}>{i===0?'🥇':i===1?'🥈':'🥉'}</span>
                               <div style={{ flex:1, minWidth:0 }}>
                                 <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:2 }}>
-                                  <span style={{ color:i===0?'#d97706':'#ccc', fontWeight:i===0?700:400 }}>{m.full_name||'Agent'}</span>
-                                  <span style={{ color:i===0?'#d97706':'#888', fontWeight:700 }}>{m.val}</span>
+                                  <span style={{ color:i===0?'#d97706':'var(--text2)', fontWeight:i===0?700:400 }}>{m.full_name||'Agent'}</span>
+                                  <span style={{ color:i===0?'#d97706':'var(--muted)', fontWeight:700 }}>{m.val}</span>
                                 </div>
-                                <div style={{ height:4, background:'#1a1a1a', borderRadius:99 }}>
+                                <div style={{ height:4, background:'var(--bg3)', borderRadius:99 }}>
                                   <div style={{ height:'100%', width:`${Math.max(Math.round(m.val/maxV*100),m.val>0?6:0)}%`,
-                                    background:i===0?'#d97706':i===1?'#666':'#444', borderRadius:99, transition:'width .4s' }}/>
+                                    background:i===0?'#d97706':i===1?'var(--b3)':'var(--dim)', borderRadius:99, transition:'width .4s' }}/>
                                 </div>
                               </div>
                             </div>
                           )
                         })}
-                        {ranked.length>3 && <div style={{ fontSize:10, color:'#444', marginTop:4 }}>+{ranked.length-3} more</div>}
+                        {ranked.length>3 && <div style={{ fontSize:10, color:'var(--dim)', marginTop:4 }}>+{ranked.length-3} more</div>}
                       </div>
                     )
                   })}
                 </div>
 
                 {/* Listings */}
-                <div style={{ borderRadius:12, background:'#111', border:'1px solid #1a1a1a', padding:18 }}>
-                  <div style={{ fontSize:11, color:'#555', fontWeight:700, letterSpacing:1, textTransform:'uppercase', marginBottom:12 }}>🏠 LISTINGS</div>
+                <div style={{ borderRadius:12, background:'var(--surface)', border:'1px solid var(--b2)', padding:18 }}>
+                  <div style={{ fontSize:11, color:'var(--muted)', fontWeight:700, letterSpacing:1.2, textTransform:'uppercase', marginBottom:12,
+                    display:'flex', alignItems:'center', gap:10 }}>
+                    <span>🏠 LISTINGS</span>
+                    <div style={{ flex:1, height:1, background:'var(--b2)' }}/>
+                  </div>
                   {teamListings.length===0 ? (
-                    <div style={{ fontSize:12, color:'#444', fontStyle:'italic' }}>No active listings</div>
+                    <div style={{ fontSize:12, color:'var(--dim)', fontStyle:'italic' }}>No active listings</div>
                   ) : (<>
                     <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:240, overflow:'auto' }}>
                       {teamListings.slice(0,8).map(l=>{
@@ -3156,29 +3178,33 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                         const isPending = l.status==='pending'
                         return (
                           <div key={l.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px',
-                            borderRadius:8, background:'#0d0d0d', border:'1px solid #1a1a1a' }}>
+                            borderRadius:8, background:'var(--bg2)', border:'1px solid var(--b2)' }}>
                             <div style={{ width:6, height:6, borderRadius:'50%', background:isPending?'#6366f1':'#10b981', flexShrink:0 }}/>
                             <div style={{ flex:1, minWidth:0 }}>
-                              <div style={{ fontSize:12, color:'#ddd', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                              <div style={{ fontSize:12, color:'var(--text2)', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                                 {l.address||'Untitled'}
                               </div>
-                              <div style={{ fontSize:10, color:'#555' }}>{l.agentName}</div>
+                              <div style={{ fontSize:10, color:'var(--muted)' }}>{l.agentName}</div>
                             </div>
-                            {price>0 && <div style={{ fontSize:12, color:'#eee', fontWeight:700, fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>
+                            {price>0 && <div style={{ fontSize:12, color:'var(--text)', fontWeight:700, fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>
                               {fmtMoney(price)}
                             </div>}
                           </div>
                         )
                       })}
                     </div>
-                    {teamListings.length>8 && <div style={{ fontSize:10, color:'#444', marginTop:6 }}>+{teamListings.length-8} more listings</div>}
+                    {teamListings.length>8 && <div style={{ fontSize:10, color:'var(--dim)', marginTop:6 }}>+{teamListings.length-8} more listings</div>}
                   </>)}
                 </div>
 
                 {/* Groups */}
                 {allGroups.length>0 && (
-                <div style={{ borderRadius:12, background:'#111', border:'1px solid #1a1a1a', padding:18 }}>
-                  <div style={{ fontSize:11, color:'#555', fontWeight:700, letterSpacing:1, textTransform:'uppercase', marginBottom:12 }}>🫂 GROUPS</div>
+                <div style={{ borderRadius:12, background:'var(--surface)', border:'1px solid var(--b2)', padding:18 }}>
+                  <div style={{ fontSize:11, color:'var(--muted)', fontWeight:700, letterSpacing:1.2, textTransform:'uppercase', marginBottom:12,
+                    display:'flex', alignItems:'center', gap:10 }}>
+                    <span>🫂 GROUPS</span>
+                    <div style={{ flex:1, height:1, background:'var(--b2)' }}/>
+                  </div>
                   <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                     {allGroups.map(grp=>{
                       const leader = members.find(m=>m.id===grp.leaderId)
@@ -3188,17 +3214,17 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       },0)
                       return (
                         <div key={grp.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px',
-                          borderRadius:8, background:'#0d0d0d', border:'1px solid #1a1a1a' }}>
+                          borderRadius:8, background:'var(--bg2)', border:'1px solid var(--b2)' }}>
                           <span style={{ fontSize:16 }}>🫂</span>
                           <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ fontSize:13, fontWeight:700, color:'#eee' }}>{grp.name}</div>
-                            <div style={{ fontSize:10, color:'#555' }}>
+                            <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{grp.name}</div>
+                            <div style={{ fontSize:10, color:'var(--muted)' }}>
                               {grp.memberIds.length} members{leader ? ` · 👑 ${leader.full_name||'Agent'}` : ''}
                             </div>
                           </div>
                           <div style={{ textAlign:'right', flexShrink:0 }}>
                             <div style={{ fontSize:16, fontWeight:700, color:'#8b5cf6', fontFamily:"'Fraunces',serif" }}>{grpXp.toLocaleString()}</div>
-                            <div style={{ fontSize:8, color:'#555' }}>GROUP XP</div>
+                            <div style={{ fontSize:8, color:'var(--muted)' }}>GROUP XP</div>
                           </div>
                         </div>
                       )
@@ -3211,9 +3237,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
           </div>
 
           {/* TV Footer */}
-          <div style={{ padding:'10px 36px 12px', borderTop:'1px solid #1a1a1a', textAlign:'center',
-            fontSize:10, color:'#333', fontFamily:"'JetBrains Mono',monospace", letterSpacing:2, flexShrink:0 }}>
-            REALTYGRIND · TEAM DASHBOARD · CLOSE MORE EVERY DAY
+          <div style={{ flexShrink:0 }}>
+            <div style={{ height:1, background:'linear-gradient(90deg, transparent, var(--b2) 25%, var(--b2) 75%, transparent)' }}/>
+            <div style={{ padding:'10px 36px 12px', textAlign:'center',
+              fontSize:10, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", letterSpacing:2 }}>
+              REALTYGRIND · TEAM DASHBOARD · CLOSE MORE EVERY DAY
+            </div>
           </div>
         </div>
       )})()}

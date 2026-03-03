@@ -44,9 +44,7 @@ export default function AdminPage({ onNavigate }) {
     setError('')
     try {
       if (!supabase) throw new Error('Service unavailable')
-      const { data: result, error: fnErr } = await supabase.functions.invoke('admin-dashboard', {
-        method: 'GET',
-      })
+      const { data: result, error: fnErr } = await supabase.functions.invoke('admin-dashboard')
       if (fnErr) {
         const msg = fnErr?.context?.error || fnErr.message || 'Failed to load admin data.'
         throw new Error(msg.includes('Failed to send') ? 'Could not reach admin service. Please try again.' : msg)

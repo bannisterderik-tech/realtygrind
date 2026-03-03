@@ -26,7 +26,7 @@ function getCorsHeaders(req: Request) {
   return {
     'Access-Control-Allow-Origin': allowed,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   }
 }
 
@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
   }
 
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
-  if (req.method !== 'GET') return json({ error: 'Method not allowed' }, 405)
+  if (req.method !== 'GET' && req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
   try {
     const supabaseUrl    = Deno.env.get('SUPABASE_URL')!

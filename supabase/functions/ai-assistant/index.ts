@@ -454,6 +454,24 @@ Deno.serve(async (req) => {
       }),
       buyerReps.length === 0 ? '- None' : null,
       `\nPIPELINE THIS MONTH: ${pipeline.offers_made} offers made, ${pipeline.offers_received} received, ${pipeline.pending} pending, ${pipeline.closed} closed (${pipeline.closed_volume > 0 ? `$${pipeline.closed_volume.toLocaleString()}` : '$0'} volume)`,
+      // Pending deals with checklist progress
+      (() => {
+        const pending = transactions.filter(t => t.type === 'pending' || t.type === 'went_pending')
+        if (pending.length === 0) return null
+        const lines = pending.map(t => {
+          const cl = Array.isArray(t.checklist) ? t.checklist : []
+          const done = cl.filter((i: any) => i.done).length
+          const total = cl.length
+          const remaining = cl.filter((i: any) => !i.done).map((i: any) => i.label)
+          const nextTask = remaining.length > 0 ? remaining[0] : 'All tasks complete'
+          const overdue = cl.filter((i: any) => !i.done && i.dueDate && new Date(i.dueDate) < new Date()).map((i: any) => i.label)
+          let line = `- ${t.address || 'Unknown'} | ${fmtPrice(t.price)} | Checklist: ${done}/${total}`
+          if (total > 0) line += ` | Next: ${nextTask}`
+          if (overdue.length > 0) line += ` | ⚠ OVERDUE: ${overdue.join(', ')}`
+          return line
+        })
+        return `\nPENDING DEALS (with checklist):\n${lines.join('\n')}`
+      })(),
       `\nACTIVITY THIS MONTH:`,
       ...Object.entries(habitCounts).map(([id, count]) => `- ${id}: ${count} completions`),
       Object.keys(habitCounts).length === 0 ? '- No tracked activity yet' : null,

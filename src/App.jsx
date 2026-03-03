@@ -268,6 +268,19 @@ function OfferModal({ repName, onSubmit, onClose }) {
   )
 }
 
+// ─── Default Transaction Checklist ────────────────────────────────────────────
+const DEFAULT_CHECKLIST = [
+  { id:'em',    label:'Earnest money deposited',         done:false },
+  { id:'ins',   label:'Home inspection scheduled',       done:false },
+  { id:'insc',  label:'Home inspection completed',       done:false },
+  { id:'appo',  label:'Appraisal ordered',               done:false },
+  { id:'appc',  label:'Appraisal completed',             done:false },
+  { id:'title', label:'Title search / commitment',       done:false },
+  { id:'loan',  label:'Loan approval / clear to close',  done:false },
+  { id:'walk',  label:'Final walkthrough',               done:false },
+  { id:'close', label:'Closing day',                     done:false },
+]
+
 // ─── Print Daily Modal ────────────────────────────────────────────────────────
 
 function PrintDailyModal({ habits, counters, today, todayDate, effectiveToday, customTasks, customDone, offersMade, offersReceived, pendingDeals, closedDeals, buyerReps, onClose, target }) {
@@ -903,7 +916,8 @@ function BuyersWeeklyModal({ buyerReps, offersMade, onClose }) {
 
 // ─── Pipeline section ─────────────────────────────────────────────────────────
 
-function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onStatusChange, showSource, statusOpts, onAdd, onRemove, userId }) {
+function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onStatusChange, showSource, statusOpts, onAdd, onRemove, userId,
+  expandedChecklist, setExpandedChecklist, onToggleChecklistItem, onAddChecklistItem, onRemoveChecklistItem, onUpdateChecklistDueDate }) {
   const [addr,  setAddr]  = useState('')
   const [price, setPrice] = useState('')
   const [comm,  setComm]  = useState('')
@@ -1059,6 +1073,13 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
                   fontWeight:600,
                 }}>{dom}d</span>
               )}
+              {r.checklist?.length > 0 && (() => {
+                const done = r.checklist.filter(i=>i.done).length
+                const total = r.checklist.length
+                const clr = done === total ? '#059669' : done > 0 ? '#d97706' : 'var(--dim)'
+                return <><span className="sep"/><span style={{ color:clr, fontWeight:600, cursor:'pointer' }}
+                  onClick={()=>setExpandedChecklist&&setExpandedChecklist(prev=>prev===r.id?null:r.id)}>📋 {done}/{total}</span></>
+              })()}
               {showSource && r.closedFrom && (
                 <>
                   <span className="sep"/>
@@ -1085,6 +1106,12 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
                 <span style={{ fontSize:11, color:'var(--dim)', fontStyle:'italic' }}>Closed</span>
               ) : (
                 <>
+                  {r.checklist?.length > 0 && setExpandedChecklist && (
+                    <button className={`act-btn ${expandedChecklist===r.id ? 'act-btn-amber' : 'act-btn-green'}`}
+                      onClick={()=>setExpandedChecklist(prev=>prev===r.id?null:r.id)}>
+                      {expandedChecklist===r.id ? '▲ Checklist' : '📋 Checklist'}
+                    </button>
+                  )}
                   {actionOpts.map(o => {
                     const btnClass = o.variant === 'red' ? 'act-btn-red'
                       : o.v === 'pending' ? 'act-btn-amber'
@@ -1139,6 +1166,61 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
                 </div>
               </div>
             )}
+
+            {/* ── Expandable Checklist Panel ── */}
+            {expandedChecklist === r.id && r.checklist?.length > 0 && (() => {
+              const cl = r.checklist
+              const done = cl.filter(i=>i.done).length
+              const total = cl.length
+              const pct = total > 0 ? Math.round((done/total)*100) : 0
+              return (
+                <div style={{ padding:'14px 16px 16px', background:'var(--bg2)', borderRadius:8,
+                  marginTop:10, animation:'slideDown .2s ease', border:'1px solid var(--b1)' }}>
+                  {/* Progress bar */}
+                  <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
+                    <div style={{ flex:1, height:6, borderRadius:3, background:'var(--b1)', overflow:'hidden' }}>
+                      <div style={{ width:`${pct}%`, height:'100%', borderRadius:3, transition:'width .3s ease',
+                        background: done===total ? '#059669' : '#d97706' }}/>
+                    </div>
+                    <span style={{ fontSize:11, fontWeight:700, fontFamily:"'JetBrains Mono',monospace",
+                      color: done===total ? '#059669' : 'var(--muted)' }}>{done}/{total}</span>
+                  </div>
+                  {/* Checklist items */}
+                  {cl.map(item => (
+                    <div key={item.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 0',
+                      borderBottom:'1px solid var(--b1)' }}>
+                      <button onClick={()=>onToggleChecklistItem&&onToggleChecklistItem(r.id,item.id)}
+                        style={{ background:'none', border:'none', cursor:'pointer', fontSize:15, padding:0, lineHeight:1, flexShrink:0 }}>
+                        {item.done ? '✅' : '☐'}
+                      </button>
+                      <span style={{ flex:1, fontSize:12, color: item.done ? 'var(--dim)' : 'var(--text)',
+                        textDecoration: item.done ? 'line-through' : 'none', fontFamily:'inherit' }}>
+                        {item.label}
+                      </span>
+                      {item.done && item.completedAt && (
+                        <span style={{ fontSize:9, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>
+                          {new Date(item.completedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'})}
+                        </span>
+                      )}
+                      <input type="date" value={item.dueDate||''} title="Due date"
+                        onChange={e=>onUpdateChecklistDueDate&&onUpdateChecklistDueDate(r.id,item.id,e.target.value)}
+                        style={{ background:'none', border:'1px solid var(--b1)', borderRadius:4, padding:'2px 4px',
+                          fontSize:9, color: item.dueDate ? 'var(--text)' : 'var(--dim)', fontFamily:"'JetBrains Mono',monospace",
+                          cursor:'pointer', width:95, flexShrink:0 }}/>
+                      <button onClick={()=>onRemoveChecklistItem&&onRemoveChecklistItem(r.id,item.id)}
+                        style={{ background:'none', border:'none', cursor:'pointer', color:'var(--dim)', fontSize:11,
+                          padding:'2px', opacity:.5 }} title="Remove">✕</button>
+                    </div>
+                  ))}
+                  {/* Add task */}
+                  <div style={{ marginTop:8 }}>
+                    <input className="field-input" placeholder="+ Add task…"
+                      onKeyDown={e => { if (e.key==='Enter' && e.target.value.trim()) { onAddChecklistItem&&onAddChecklistItem(r.id,e.target.value); e.target.value='' } }}
+                      style={{ padding:'6px 10px', fontSize:11, width:'100%', boxSizing:'border-box' }}/>
+                  </div>
+                </div>
+              )
+            })()}
           </div>
         )
       })}
@@ -1284,6 +1366,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [newRepClient,  setNewRepClient] = useState('')
   const [offerModal,    setOfferModal]   = useState(null) // null | { repId, repName }
   const [expandedRep,   setExpandedRep]  = useState(null) // buyer rep id or null
+  const [expandedChecklist, setExpandedChecklist] = useState(null) // pending deal id or null
 
   // Toast for error feedback
   const [toast, setToast] = useState(null) // { msg } or null
@@ -1390,7 +1473,7 @@ function Dashboard({ theme, onToggleTheme }) {
     }
 
     if (txRes.data) {
-      const m = t => ({ id:t.id, address:t.address, price:t.price||'', commission:t.commission||'', status:t.status||'active', closedFrom:t.closed_from||'', createdAt:t.created_at||null, leadSource:t.lead_source||'', notes:t.notes||[], dealSide:t.deal_side||'', originalLeadSource:t.original_lead_source||'' })
+      const m = t => ({ id:t.id, address:t.address, price:t.price||'', commission:t.commission||'', status:t.status||'active', closedFrom:t.closed_from||'', createdAt:t.created_at||null, leadSource:t.lead_source||'', notes:t.notes||[], dealSide:t.deal_side||'', originalLeadSource:t.original_lead_source||'', checklist:t.checklist||[] })
       const active = t => t.status !== 'archived' // filter out archived items from display
       setOffersMade(    txRes.data.filter(t=>t.type==='offer_made' && active(t)).map(m))
       setOffersReceived(txRes.data.filter(t=>t.type==='offer_received' && active(t)).map(m))
@@ -1840,7 +1923,9 @@ function Dashboard({ theme, onToggleTheme }) {
       // Move forward: archive source (preserves stat count), create Went Pending record
       const data = await dbInsert('pending', row, 'Offers', row.dealSide || inferredSide, row.originalLeadSource || row.leadSource || null)
       if (data) {
-        setPendingDeals(prev=>[...prev,{...row,id:data.id,status:'active',closedFrom:'Offers',dealSide:row.dealSide||inferredSide,originalLeadSource:row.originalLeadSource||row.leadSource||''}])
+        const cl = DEFAULT_CHECKLIST.map(i=>({...i}))
+        setPendingDeals(prev=>[...prev,{...row,id:data.id,status:'active',closedFrom:'Offers',dealSide:row.dealSide||inferredSide,originalLeadSource:row.originalLeadSource||row.leadSource||'',checklist:cl}])
+        safeDb(supabase.from('transactions').update({checklist:cl}).eq('id',data.id))
         srcSetter(prev => prev.filter(r => r.id !== row.id))
         await dbArchive(row.id)
       }
@@ -1885,6 +1970,34 @@ function Dashboard({ theme, onToggleTheme }) {
       }
       await awardPipelineXp('closed', '#10b981')
     }
+  }
+
+  // ── Checklist handlers ────────────────────────────────────────────────────
+  function updateChecklist(dealId, updater) {
+    let updated
+    setPendingDeals(prev => prev.map(r => {
+      if (r.id !== dealId) return r
+      updated = typeof updater === 'function' ? updater(r.checklist||[]) : updater
+      return { ...r, checklist: updated }
+    }))
+    if (updated && dealId && !String(dealId).startsWith('tmp-')) {
+      safeDb(supabase.from('transactions').update({ checklist: updated }).eq('id', dealId).eq('user_id', user.id))
+    }
+  }
+  function toggleChecklistItem(dealId, itemId) {
+    updateChecklist(dealId, cl => cl.map(i => i.id === itemId
+      ? { ...i, done: !i.done, completedAt: !i.done ? new Date().toISOString() : null }
+      : i))
+  }
+  function addChecklistItem(dealId, label) {
+    if (!label?.trim()) return
+    updateChecklist(dealId, cl => [...cl, { id: Date.now().toString(36), label: label.trim(), done: false }])
+  }
+  function removeChecklistItem(dealId, itemId) {
+    updateChecklist(dealId, cl => cl.filter(i => i.id !== itemId))
+  }
+  function updateChecklistDueDate(dealId, itemId, date) {
+    updateChecklist(dealId, cl => cl.map(i => i.id === itemId ? { ...i, dueDate: date || null } : i))
   }
 
   // ── Listings ───────────────────────────────────────────────────────────────
@@ -1984,7 +2097,11 @@ function Dashboard({ theme, onToggleTheme }) {
       // Listing stays with status change, Went Pending entry created
       await updateListing(listing.id, 'status', 'pending')
       const data = await dbInsert('pending', {address:listing.address, price:lPrice, commission:lComm}, 'Listing', 'seller', lSource)
-      if (data) setPendingDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'active',closedFrom:'Listing',dealSide:'seller',originalLeadSource:lSource||''}])
+      if (data) {
+        const cl = DEFAULT_CHECKLIST.map(i=>({...i}))
+        setPendingDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'active',closedFrom:'Listing',dealSide:'seller',originalLeadSource:lSource||'',checklist:cl}])
+        safeDb(supabase.from('transactions').update({checklist:cl}).eq('id',data.id))
+      }
       setWentPendingCount(prev => prev + 1)
       await awardPipelineXp('went_pending', '#f59e0b')
     } else if (newStatus === 'closed') {
@@ -3699,7 +3816,10 @@ function Dashboard({ theme, onToggleTheme }) {
                 rows={pendingDeals} setRows={setPendingDeals} userId={user.id}
                 onStatusChange={(r,s)=>handlePendingStatus(r,s)}
                 onRemove={()=>deductPipelineXp('went_pending')}
-                statusOpts={[{v:'active',l:'Active'},{v:'closed',l:'Mark Closed'}]}/>
+                statusOpts={[{v:'active',l:'Active'},{v:'closed',l:'Mark Closed'}]}
+                expandedChecklist={expandedChecklist} setExpandedChecklist={setExpandedChecklist}
+                onToggleChecklistItem={toggleChecklistItem} onAddChecklistItem={addChecklistItem}
+                onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
 
               <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
                 rows={closedDeals} setRows={setClosedDeals} userId={user.id}

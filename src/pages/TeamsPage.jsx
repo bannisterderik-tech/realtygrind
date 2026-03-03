@@ -1327,7 +1327,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       <button className={`tab-item${teamsTab==='settings'?' on':''}`} onClick={()=>setTeamsTab('settings')}
                         style={{ fontSize:14, padding:'10px 18px', fontWeight:600 }}>⚙️ Settings</button>
                     )}
-                    {teamsTab==='roster' && members.length > 0 && (
+                    {members.length > 0 && (
                       <button onClick={()=>setTvMode(true)} style={{
                         marginLeft:'auto', background:'none', border:'1px solid var(--b2)', borderRadius:8,
                         padding:'5px 12px', fontSize:11, cursor:'pointer', color:'var(--muted)',
@@ -2992,92 +2992,231 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       )}
 
       {/* ── TV Leaderboard Mode ────────────────────────────── */}
-      {tvMode && (
+      {tvMode && (()=>{
+        const parseNum = v => { const n=parseFloat(String(v||'').replace(/[^0-9.]/g,'')); return isNaN(n)?0:n }
+        const tvChallenges = (teamData?.team_prefs?.challenges||[]).filter(c=>c.status==='active')
+        const tvVolume = teamListings.reduce((s,l)=>s+parseNum(l.price),0)
+        const tvComm = teamListings.reduce((s,l)=>s+resolveCommission(l.commission,l.price),0)
+        const tvActiveListing = teamListings.filter(l=>l.status!=='pending').length
+        const tvPendingListing = teamListings.filter(l=>l.status==='pending').length
+        const tvTotalClosed = Object.values(memberStats).reduce((s,st)=>s+(st.closed||0),0)
+        const tvTotalXp = members.reduce((s,m)=>s+(m.xp||0),0)
+        return (
         <div style={{
           position:'fixed', inset:0, zIndex:99999, background:'#0a0a0a',
           display:'flex', flexDirection:'column', overflow:'auto',
         }}>
           {/* TV Header */}
-          <div style={{ padding:'28px 40px 16px', display:'flex', alignItems:'center', justifyContent:'space-between',
-            borderBottom:'2px solid #222', flexShrink:0 }}>
+          <div style={{ padding:'20px 36px 14px', display:'flex', alignItems:'center', justifyContent:'space-between',
+            borderBottom:'1px solid #1a1a1a', flexShrink:0 }}>
             <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-              <span style={{ fontSize:28 }}>🏡</span>
+              <span style={{ fontSize:26 }}>🏡</span>
               <div>
-                <div style={{ fontSize:26, fontWeight:700, color:'#fff', fontFamily:"'Fraunces',serif", letterSpacing:'-.02em' }}>
-                  {teamData?.name || 'Team'} Leaderboard
+                <div style={{ fontSize:24, fontWeight:700, color:'#fff', fontFamily:"'Fraunces',serif", letterSpacing:'-.02em' }}>
+                  {teamData?.name || 'Team'} Dashboard
                 </div>
-                <div style={{ fontSize:13, color:'#666', fontFamily:"'JetBrains Mono',monospace" }}>
+                <div style={{ fontSize:12, color:'#555', fontFamily:"'JetBrains Mono',monospace" }}>
                   {new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})}
                 </div>
               </div>
             </div>
-            <button onClick={()=>setTvMode(false)} style={{
-              background:'#222', border:'none', borderRadius:8, padding:'8px 20px',
-              color:'#888', fontSize:13, cursor:'pointer', fontWeight:600,
-            }}>✕ Exit</button>
+            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+              <span style={{ fontSize:11, color:'#444', fontFamily:"'JetBrains Mono',monospace" }}>{members.length} agents</span>
+              <button onClick={()=>setTvMode(false)} style={{
+                background:'#1a1a1a', border:'1px solid #333', borderRadius:8, padding:'7px 18px',
+                color:'#777', fontSize:12, cursor:'pointer', fontWeight:600,
+              }}>✕ Exit</button>
+            </div>
           </div>
-          {/* TV Members */}
-          <div style={{ flex:1, padding:'24px 40px', display:'flex', flexDirection:'column', gap:8 }}>
-            {members.map((m,i)=>{
-              const rank = getRank(m.xp||0)
-              const stats = memberStats[m.id]||{}
-              const isMe = m.id===user.id
-              const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':null
-              return (
-                <div key={m.id} style={{
-                  display:'flex', alignItems:'center', gap:20, padding:'16px 24px',
-                  borderRadius:14, border:`1px solid ${i<3?rank.color+'44':'#222'}`,
-                  background:i===0?'rgba(217,119,6,.08)':i<3?'rgba(255,255,255,.03)':'transparent',
-                  transition:'all .3s',
-                }}>
-                  <div style={{ width:44, fontSize:medal?32:20, textAlign:'center', color:'#666', fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>
-                    {medal || (i+1)}
-                  </div>
-                  <div style={{ width:50, height:50, borderRadius:'50%',
-                    background:`linear-gradient(135deg, ${rank.color}, ${rank.color}88)`,
-                    display:'flex', alignItems:'center', justifyContent:'center',
-                    fontSize:22, fontWeight:700, color:'#fff', flexShrink:0,
-                    boxShadow:`0 4px 16px ${rank.color}44` }}>
-                    {(m.full_name||'A').charAt(0).toUpperCase()}
-                  </div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:20, fontWeight:700, color:'#fff', display:'flex', alignItems:'center', gap:10 }}>
-                      {m.full_name||'Agent'}
-                      {isMe && <span style={{ fontSize:10, padding:'2px 8px', borderRadius:4, background:'rgba(217,119,6,.2)', color:'#d97706' }}>YOU</span>}
+
+          <div style={{ flex:1, padding:'20px 36px 24px', overflow:'auto' }}>
+            {/* ── Top stats row ── */}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:12, marginBottom:24 }}>
+              {[
+                { label:'TEAM XP', value:tvTotalXp.toLocaleString(), color:'#d97706', icon:'⚡' },
+                { label:'DEALS CLOSED', value:tvTotalClosed, color:'#10b981', icon:'🎉' },
+                { label:'ACTIVE LISTINGS', value:tvActiveListing, color:'#10b981', icon:'🏠' },
+                { label:'PENDING', value:tvPendingListing, color:'#6366f1', icon:'📋' },
+                { label:'TOTAL VOLUME', value:fmtMoney(tvVolume), color:'#fff', icon:'💰' },
+                { label:'COMMISSION', value:fmtMoney(tvComm), color:'#10b981', icon:'💵' },
+              ].map(s=>(
+                <div key={s.label} style={{ padding:'16px 18px', borderRadius:12, background:'#111', border:'1px solid #1a1a1a' }}>
+                  <div style={{ fontSize:10, color:'#555', fontWeight:700, letterSpacing:'.5px', marginBottom:6 }}>{s.icon} {s.label}</div>
+                  <div style={{ fontSize:22, fontWeight:700, color:s.color, fontFamily:"'Fraunces',serif", lineHeight:1 }}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* ── Main grid: Leaderboard + Right column ── */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 380px', gap:20, alignItems:'start' }}>
+
+              {/* LEFT: Leaderboard */}
+              <div>
+                <div style={{ fontSize:11, color:'#555', fontWeight:700, letterSpacing:1, textTransform:'uppercase', marginBottom:10 }}>🏆 LEADERBOARD</div>
+                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                  {members.map((m,i)=>{
+                    const rank = getRank(m.xp||0)
+                    const stats = memberStats[m.id]||{}
+                    const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':null
+                    return (
+                      <div key={m.id} style={{
+                        display:'flex', alignItems:'center', gap:16, padding:'12px 18px',
+                        borderRadius:12, border:`1px solid ${i<3?rank.color+'33':'#1a1a1a'}`,
+                        background:i===0?'rgba(217,119,6,.06)':'#111',
+                      }}>
+                        <div style={{ width:32, fontSize:medal?24:16, textAlign:'center', color:'#555', fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>
+                          {medal || (i+1)}
+                        </div>
+                        <div style={{ width:42, height:42, borderRadius:'50%',
+                          background:`linear-gradient(135deg, ${rank.color}, ${rank.color}88)`,
+                          display:'flex', alignItems:'center', justifyContent:'center',
+                          fontSize:18, fontWeight:700, color:'#fff', flexShrink:0,
+                          boxShadow:`0 2px 12px ${rank.color}33` }}>
+                          {(m.full_name||'A').charAt(0).toUpperCase()}
+                        </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:16, fontWeight:700, color:'#fff' }}>{m.full_name||'Agent'}</div>
+                          <div style={{ fontSize:11, color:'#555' }}>{rank.icon} {rank.name} {(m.streak||0)>0?`· 🔥 ${m.streak}`:''}</div>
+                        </div>
+                        <div style={{ display:'flex', gap:16, alignItems:'center', flexShrink:0 }}>
+                          {HABITS_FOR_DISPLAY.slice(0,3).map(h=>{
+                            const v = stats.habits?.[h.id]||0
+                            if (!v) return null
+                            return <div key={h.id} style={{ textAlign:'center' }}>
+                              <div style={{ fontSize:16, fontWeight:700, color:'#eee' }}>{v}</div>
+                              <div style={{ fontSize:8, color:'#555', letterSpacing:'.3px' }}>{h.label.slice(0,5).toUpperCase()}</div>
+                            </div>
+                          })}
+                          {stats.closed>0 && <div style={{ textAlign:'center' }}>
+                            <div style={{ fontSize:16, fontWeight:700, color:'#10b981' }}>{stats.closed}</div>
+                            <div style={{ fontSize:8, color:'#555' }}>CLOSED</div>
+                          </div>}
+                          <div style={{ textAlign:'right', minWidth:70 }}>
+                            <div style={{ fontSize:24, fontWeight:700, color:rank.color, fontFamily:"'Fraunces',serif", lineHeight:1 }}>
+                              {(m.xp||0).toLocaleString()}
+                            </div>
+                            <div style={{ fontSize:9, color:'#555', fontFamily:"'JetBrains Mono',monospace" }}>XP</div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* RIGHT: Challenges + Listings + Groups */}
+              <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+
+                {/* Challenges */}
+                <div style={{ borderRadius:12, background:'#111', border:'1px solid #1a1a1a', padding:18 }}>
+                  <div style={{ fontSize:11, color:'#555', fontWeight:700, letterSpacing:1, textTransform:'uppercase', marginBottom:12 }}>🏆 ACTIVE CHALLENGES</div>
+                  {tvChallenges.length===0 ? (
+                    <div style={{ fontSize:12, color:'#444', fontStyle:'italic' }}>No active challenges</div>
+                  ) : tvChallenges.map(c=>{
+                    const metricLabel = CHALLENGE_METRICS.find(m=>m.value===c.metric)?.label||c.metric
+                    const ranked = [...members].map(m=>({...m,val:getMemberMetricVal(m.id,c.metric)})).sort((a,b)=>b.val-a.val)
+                    const topThree = ranked.slice(0,3)
+                    return (
+                      <div key={c.id} style={{ marginBottom:tvChallenges.indexOf(c)<tvChallenges.length-1?14:0 }}>
+                        <div style={{ fontSize:14, fontWeight:700, color:'#eee', marginBottom:2 }}>{c.title}</div>
+                        <div style={{ fontSize:10, color:'#555', marginBottom:8 }}>{metricLabel} · +{c.bonusXp||0} XP</div>
+                        {topThree.map((m,i)=>{
+                          const maxV = Math.max(topThree[0]?.val||1,1)
+                          return (
+                            <div key={m.id} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:5 }}>
+                              <span style={{ fontSize:14, width:20, textAlign:'center' }}>{i===0?'🥇':i===1?'🥈':'🥉'}</span>
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:2 }}>
+                                  <span style={{ color:i===0?'#d97706':'#ccc', fontWeight:i===0?700:400 }}>{m.full_name||'Agent'}</span>
+                                  <span style={{ color:i===0?'#d97706':'#888', fontWeight:700 }}>{m.val}</span>
+                                </div>
+                                <div style={{ height:4, background:'#1a1a1a', borderRadius:99 }}>
+                                  <div style={{ height:'100%', width:`${Math.max(Math.round(m.val/maxV*100),m.val>0?6:0)}%`,
+                                    background:i===0?'#d97706':i===1?'#666':'#444', borderRadius:99, transition:'width .4s' }}/>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                        {ranked.length>3 && <div style={{ fontSize:10, color:'#444', marginTop:4 }}>+{ranked.length-3} more</div>}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Listings */}
+                <div style={{ borderRadius:12, background:'#111', border:'1px solid #1a1a1a', padding:18 }}>
+                  <div style={{ fontSize:11, color:'#555', fontWeight:700, letterSpacing:1, textTransform:'uppercase', marginBottom:12 }}>🏠 LISTINGS</div>
+                  {teamListings.length===0 ? (
+                    <div style={{ fontSize:12, color:'#444', fontStyle:'italic' }}>No active listings</div>
+                  ) : (<>
+                    <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:240, overflow:'auto' }}>
+                      {teamListings.slice(0,8).map(l=>{
+                        const price = parseNum(l.price)
+                        const isPending = l.status==='pending'
+                        return (
+                          <div key={l.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px',
+                            borderRadius:8, background:'#0d0d0d', border:'1px solid #1a1a1a' }}>
+                            <div style={{ width:6, height:6, borderRadius:'50%', background:isPending?'#6366f1':'#10b981', flexShrink:0 }}/>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ fontSize:12, color:'#ddd', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                                {l.address||'Untitled'}
+                              </div>
+                              <div style={{ fontSize:10, color:'#555' }}>{l.agentName}</div>
+                            </div>
+                            {price>0 && <div style={{ fontSize:12, color:'#eee', fontWeight:700, fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>
+                              {fmtMoney(price)}
+                            </div>}
+                          </div>
+                        )
+                      })}
                     </div>
-                    <div style={{ fontSize:13, color:'#666' }}>{rank.icon} {rank.name}</div>
-                  </div>
-                  <div style={{ display:'flex', gap:20, alignItems:'center', flexShrink:0 }}>
-                    {(m.streak||0)>0 && (
-                      <div style={{ textAlign:'center' }}>
-                        <div style={{ fontSize:22, fontWeight:700, color:'#f97316' }}>🔥 {m.streak}</div>
-                        <div style={{ fontSize:10, color:'#666' }}>streak</div>
-                      </div>
-                    )}
-                    {stats.closed>0 && (
-                      <div style={{ textAlign:'center' }}>
-                        <div style={{ fontSize:22, fontWeight:700, color:'#10b981' }}>{stats.closed}</div>
-                        <div style={{ fontSize:10, color:'#666' }}>closed</div>
-                      </div>
-                    )}
-                    <div style={{ textAlign:'right', minWidth:90 }}>
-                      <div style={{ fontSize:32, fontWeight:700, color:rank.color, fontFamily:"'Fraunces',serif", lineHeight:1 }}>
-                        {(m.xp||0).toLocaleString()}
-                      </div>
-                      <div style={{ fontSize:11, color:'#666', fontFamily:"'JetBrains Mono',monospace" }}>XP</div>
-                    </div>
+                    {teamListings.length>8 && <div style={{ fontSize:10, color:'#444', marginTop:6 }}>+{teamListings.length-8} more listings</div>}
+                  </>)}
+                </div>
+
+                {/* Groups */}
+                {allGroups.length>0 && (
+                <div style={{ borderRadius:12, background:'#111', border:'1px solid #1a1a1a', padding:18 }}>
+                  <div style={{ fontSize:11, color:'#555', fontWeight:700, letterSpacing:1, textTransform:'uppercase', marginBottom:12 }}>🫂 GROUPS</div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                    {allGroups.map(grp=>{
+                      const leader = members.find(m=>m.id===grp.leaderId)
+                      const grpXp = grp.memberIds.reduce((s,id)=>{
+                        const m = members.find(mm=>mm.id===id)
+                        return s+(m?.xp||0)
+                      },0)
+                      return (
+                        <div key={grp.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px',
+                          borderRadius:8, background:'#0d0d0d', border:'1px solid #1a1a1a' }}>
+                          <span style={{ fontSize:16 }}>🫂</span>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ fontSize:13, fontWeight:700, color:'#eee' }}>{grp.name}</div>
+                            <div style={{ fontSize:10, color:'#555' }}>
+                              {grp.memberIds.length} members{leader ? ` · 👑 ${leader.full_name||'Agent'}` : ''}
+                            </div>
+                          </div>
+                          <div style={{ textAlign:'right', flexShrink:0 }}>
+                            <div style={{ fontSize:16, fontWeight:700, color:'#8b5cf6', fontFamily:"'Fraunces',serif" }}>{grpXp.toLocaleString()}</div>
+                            <div style={{ fontSize:8, color:'#555' }}>GROUP XP</div>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
-              )
-            })}
+                )}
+              </div>
+            </div>
           </div>
+
           {/* TV Footer */}
-          <div style={{ padding:'12px 40px 16px', borderTop:'1px solid #222', textAlign:'center',
-            fontSize:11, color:'#444', fontFamily:"'JetBrains Mono',monospace", letterSpacing:2, flexShrink:0 }}>
-            REALTYGRIND · LEADERBOARD · CLOSE MORE EVERY DAY
+          <div style={{ padding:'10px 36px 12px', borderTop:'1px solid #1a1a1a', textAlign:'center',
+            fontSize:10, color:'#333', fontFamily:"'JetBrains Mono',monospace", letterSpacing:2, flexShrink:0 }}>
+            REALTYGRIND · TEAM DASHBOARD · CLOSE MORE EVERY DAY
           </div>
         </div>
-      )}
+      )})()}
     </>
   )
 }

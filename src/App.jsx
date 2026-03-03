@@ -1477,7 +1477,19 @@ function Dashboard({ theme, onToggleTheme }) {
       const active = t => t.status !== 'archived' // filter out archived items from display
       setOffersMade(    txRes.data.filter(t=>t.type==='offer_made' && active(t)).map(m))
       setOffersReceived(txRes.data.filter(t=>t.type==='offer_received' && active(t)).map(m))
-      setPendingDeals(  txRes.data.filter(t=>t.type==='pending' && active(t)).map(m))
+      // Backfill default checklist for existing pending deals that have none
+      const pendingRows = txRes.data.filter(t=>t.type==='pending' && active(t)).map(t => {
+        const row = m(t)
+        if (row.checklist.length === 0) {
+          row.checklist = DEFAULT_CHECKLIST.map(i=>({...i}))
+          // Persist backfill to DB (fire-and-forget)
+          if (row.id && !String(row.id).startsWith('tmp-')) {
+            safeDb(supabase.from('transactions').update({checklist:row.checklist}).eq('id',row.id))
+          }
+        }
+        return row
+      })
+      setPendingDeals(pendingRows)
       setClosedDeals(   txRes.data.filter(t=>t.type==='closed').map(m))
       // Historical counts — include archived rows so stats survive forward moves
       setOffersMadeCount(txRes.data.filter(t=>t.type==='offer_made').length)

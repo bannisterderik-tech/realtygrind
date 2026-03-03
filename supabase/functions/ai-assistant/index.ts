@@ -159,7 +159,7 @@ Deno.serve(async (req) => {
       return json({ error: 'Method not allowed' }, 405)
     }
 
-    // ── 6. Parse request body ───────────────────────────────────────────────
+    // ── 6. Parse and validate request body ──────────────────────────────────
     const ct = req.headers.get('content-type') || ''
     if (!ct.includes('application/json')) {
       return json({ error: 'Content-Type must be application/json' }, 400)
@@ -172,6 +172,13 @@ Deno.serve(async (req) => {
       return json({ error: 'messages array is required' }, 400)
     }
 
+    // Cap array size — only the last 20 are sent to Claude anyway (see slice below).
+    // Without this, an attacker could send 10k messages × 10k chars = 100 MB payload,
+    // exhausting the edge function's memory budget before validation even starts.
+    if (messages.length > 40) {
+      return json({ error: 'Too many messages. Please start a new conversation.' }, 400)
+    }
+
     // Validate message roles — only allow user/assistant to prevent injection
     const validRoles = new Set(['user', 'assistant'])
     for (const m of messages) {
@@ -180,6 +187,26 @@ Deno.serve(async (req) => {
       }
       if (typeof m.content !== 'string' || m.content.length > 10000) {
         return json({ error: 'Each message content must be a string under 10000 chars.' }, 400)
+      }
+    }
+
+    // ── 6b. Reserve credit optimistically (closes TOCTOU race window) ─────
+    // Increment AFTER validation but BEFORE the Claude call so concurrent
+    // requests can't both pass the credit check. If Claude fails, we roll
+    // back via decrement_ai_credit. Malformed requests exit above without
+    // consuming a credit.
+    let creditReserved = false
+    if (limit !== -1) {
+      try {
+        await admin.rpc('increment_ai_credits', { user_id_param: user.id, reset_month: month })
+        creditReserved = true
+      } catch {
+        // Fallback to read-then-write if RPC doesn't exist yet
+        await admin.from('profiles').update({
+          ai_credits_used: (profile.ai_credits_used || 0) + 1,
+          ai_credits_reset: month,
+        }).eq('id', user.id)
+        creditReserved = true
       }
     }
 
@@ -539,43 +566,58 @@ GUIDELINES:
 
     // ── 9. Call Claude API with streaming ────────────────────────────────────
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
-    if (!anthropicKey) return json({ error: 'ANTHROPIC_API_KEY not configured' }, 500)
+    if (!anthropicKey) {
+      if (creditReserved) { try { await admin.rpc('decrement_ai_credit', { user_id_param: user.id }) } catch { /* best-effort */ } }
+      return json({ error: 'ANTHROPIC_API_KEY not configured' }, 500)
+    }
 
-    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': anthropicKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2048,
-        system: systemPrompt,
-        messages: messages.slice(-20),
-        stream: true,
-      }),
-    })
+    // AbortController gives explicit timeout (55 s, under Supabase's default
+    // function limit) so we can roll back the reserved credit on network hang.
+    const fetchController = new AbortController()
+    const fetchTimeout = setTimeout(() => fetchController.abort(), 55000)
+
+    let claudeResponse: Response
+    try {
+      claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': anthropicKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 2048,
+          system: systemPrompt,
+          messages: messages.slice(-20),
+          stream: true,
+        }),
+        signal: fetchController.signal,
+      })
+    } catch (fetchErr) {
+      clearTimeout(fetchTimeout)
+      // Network error, DNS failure, or AbortController timeout — roll back credit
+      if (creditReserved) {
+        try { await admin.rpc('decrement_ai_credit', { user_id_param: user.id }) } catch { /* best-effort */ }
+      }
+      console.error('Claude API fetch error:', fetchErr)
+      return json({ error: 'AI service is temporarily unavailable. Please try again in a moment.' }, 502)
+    }
+    clearTimeout(fetchTimeout)
 
     if (!claudeResponse.ok) {
       const errBody = await claudeResponse.text()
       console.error('Claude API error:', claudeResponse.status, errBody)
+      // Roll back the reserved credit since Claude failed
+      if (creditReserved) {
+        try { await admin.rpc('decrement_ai_credit', { user_id_param: user.id }) } catch { /* best-effort */ }
+      }
       return json({ error: 'AI service is temporarily unavailable. Please try again in a moment.' }, 502)
     }
 
-    // ── 10. Increment credit AFTER successful Claude response ───────────────
-    // Use atomic SQL increment to prevent race conditions
-    try {
-      await admin.rpc('increment_ai_credits', { user_id_param: user.id, reset_month: month })
-    } catch {
-      // Fallback to read-then-write if RPC doesn't exist yet
-      await admin.from('profiles').update({
-        ai_credits_used: (profile.ai_credits_used || 0) + 1,
-        ai_credits_reset: month,
-      }).eq('id', user.id)
-    }
+    // Credit was already reserved in step 5b — no post-Claude increment needed.
 
-    // ── 11. Forward the stream directly ─────────────────────────────────────
+    // ── 10. Forward the stream directly ──────────────────────────────────────
     return new Response(claudeResponse.body, {
       headers: {
         ...CORS,
@@ -586,6 +628,8 @@ GUIDELINES:
     })
   } catch (err) {
     console.error('ai-assistant error:', err?.message || err, err?.stack || '')
+    // Note: creditReserved, admin, and user are block-scoped inside try — rollback
+    // is handled inline at each failure point (Claude 502, validation errors, etc.)
     return json({ error: 'An unexpected error occurred. Please try again.' }, 500)
   }
 })

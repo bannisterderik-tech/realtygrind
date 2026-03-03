@@ -76,6 +76,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   // Coaching notes (read from team_prefs, replies saved to own profile.goals)
   const [profileReplyForms,   setProfileReplyForms]   = useState({})
   const [profileReplySaving,  setProfileReplySaving]  = useState(null)
+  const fetchAnnualSeqRef = useRef(0)
 
   useEffect(()=>{ if (user?.id) fetchAnnual(year) },[year, user?.id])
   useEffect(()=>{ if(activeTab==='history' && !histFetched) fetchHistory() },[activeTab, histFetched])
@@ -225,6 +226,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   }
 
   async function fetchAnnual(yr) {
+    const seq = ++fetchAnnualSeqRef.current
     setAnnLoad(true)
     try {
     const mks = Array.from({length:12},(_,i)=>`${yr}-${String(i+1).padStart(2,'0')}`)
@@ -233,6 +235,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
       supabase.from('transactions').select('month_year,type,price,commission').eq('user_id',user.id).like('month_year',`${yr}-%`),
       supabase.from('listings').select('month_year,unit_count').eq('user_id',user.id).like('month_year',`${yr}-%`),
     ])
+    if (seq !== fetchAnnualSeqRef.current) return  // stale — newer fetch in progress
     const habs=h.data||[], txs=t.data||[], lists=l.data||[]
     const byMonth = mks.map((mk,i)=>{
       const mh=habs.filter(x=>x.month_year===mk)

@@ -10,6 +10,7 @@
 //   checkout.session.completed
 //   customer.subscription.updated
 //   customer.subscription.deleted
+//   invoice.payment_failed
 
 import Stripe from 'npm:stripe@14'
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -30,6 +31,21 @@ Deno.serve(async (req) => {
   const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
     apiVersion: '2024-04-10',
   })
+
+  // Reverse map: Stripe price_id → planId
+  // Used to derive the actual plan when metadata is stale (e.g. after Portal upgrades)
+  const PRICE_TO_PLAN: Record<string, string> = {}
+  for (const [envKey, plan] of [
+    ['STRIPE_PRICE_SOLO_MONTHLY', 'solo'],
+    ['STRIPE_PRICE_SOLO_ANNUAL', 'solo'],
+    ['STRIPE_PRICE_TEAM_MONTHLY', 'team'],
+    ['STRIPE_PRICE_TEAM_ANNUAL', 'team'],
+    ['STRIPE_PRICE_BROKERAGE_MONTHLY', 'brokerage'],
+    ['STRIPE_PRICE_BROKERAGE_ANNUAL', 'brokerage'],
+  ] as const) {
+    const id = Deno.env.get(envKey)
+    if (id) PRICE_TO_PLAN[id] = plan
+  }
 
   let event: Stripe.Event
   try {
@@ -124,8 +140,14 @@ Deno.serve(async (req) => {
     const status     = sub.status // preserve 'trialing' vs 'active' for UI display
 
     const updateData: Record<string, unknown> = { billing_status: status }
-    // Update plan if metadata present (handles upgrades/downgrades via Stripe Portal)
-    const planId = sub.metadata?.planId
+
+    // Derive plan from the subscription's ACTUAL price — not metadata.
+    // Metadata stays stale after Portal upgrades/downgrades (it was set at
+    // original checkout time and Stripe doesn't update it on price change).
+    const priceId = sub.items?.data?.[0]?.price?.id
+    const derivedPlan = priceId ? PRICE_TO_PLAN[priceId] : null
+    const metadataPlan = sub.metadata?.planId
+    const planId = derivedPlan || metadataPlan // price-derived is authoritative
     if (planId) updateData.plan = planId
 
     const { error } = await supabase
@@ -147,6 +169,23 @@ Deno.serve(async (req) => {
       .eq('stripe_customer_id', customerId)
 
     if (error) console.error('profiles update error (sub deleted):', error.message)
+  }
+
+  // ── invoice.payment_failed ──────────────────────────────────────────────
+  // Reduces latency between payment failure and UI showing past_due banner.
+  // Without this, we'd wait for the async subscription.updated event.
+  if (event.type === 'invoice.payment_failed') {
+    const invoice    = event.data.object as Stripe.Invoice
+    const customerId = invoice.customer as string
+
+    if (customerId) {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ billing_status: 'past_due' })
+        .eq('stripe_customer_id', customerId)
+
+      if (error) console.error('profiles update error (payment_failed):', error.message)
+    }
   }
 
   return new Response(JSON.stringify({ received: true }), {

@@ -136,10 +136,27 @@ Deno.serve(async (req) => {
       apiVersion: '2024-04-10',
     })
 
+    // Reuse existing Stripe customer to prevent orphan duplicates on resubscribe.
+    // If a user cancels and resubscribes, customer_email would create a NEW Stripe
+    // Customer object — the old one is orphaned and Portal history is lost.
+    const adminSupa = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    )
+    const { data: profile } = await adminSupa
+      .from('profiles')
+      .select('stripe_customer_id')
+      .eq('id', userId)
+      .single()
+
+    const existingCustomer = profile?.stripe_customer_id
+
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
-      ...(customerEmail ? { customer_email: customerEmail } : {}),
+      ...(existingCustomer
+        ? { customer: existingCustomer }
+        : customerEmail ? { customer_email: customerEmail } : {}),
       ...(userId ? { client_reference_id: userId } : {}),
       success_url: `${getSafeReturnUrl(returnUrl)}?checkout=success&plan=${encodeURIComponent(planId)}`,
       cancel_url:  `${getSafeReturnUrl(returnUrl)}?checkout=cancelled`,

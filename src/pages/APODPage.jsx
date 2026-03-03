@@ -422,11 +422,16 @@ export default function APODPage({ onNavigate, theme, onToggleTheme }) {
     if (window.XLSX) { setXlsxReady(true); return }
     const s = document.createElement('script')
     s.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js'
+    s.integrity = 'sha384-OUW9euuUyxyHcAhTqbhI+Iyb8LMssXt/cpz0yXhs9UWG2/R/uaWdakx/4cfww7Vb'
+    s.crossOrigin = 'anonymous'
     s.onload = () => setXlsxReady(true)
     s.onerror = () => console.warn('xlsx-js-style CDN failed to load')
     document.head.appendChild(s)
     return () => { if (s.parentNode) s.parentNode.removeChild(s) }
   }, [])
+
+  // Clean up toast timer on unmount to prevent setState-after-unmount
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current) }, [])
 
   function showToast(msg) {
     setToastMsg(msg)

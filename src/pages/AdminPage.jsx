@@ -363,8 +363,8 @@ export default function AdminPage({ onNavigate }) {
                     <StatCard icon="💳" label="Paying" value={stats.paying_users || 0} color="#10b981"
                       sub={`${(() => { const base = (stats.total_users || 0) - (stats.by_plan?.team_member || 0); return base > 0 ? Math.round((stats.paying_users || 0) / base * 100) : 0 })()}% conversion`} />
                     <StatCard icon="💰" label="Est. MRR" value={fmtMoney(stats.mrr_estimate || 0)} color="#d97706" />
-                    <StatCard icon="🔮" label="Trialing" value={stats.trial_count || 0} color="#3b82f6"
-                      sub="potential converts" />
+                    <StatCard icon="🔮" label="Free Trial" value={stats.trial_count || 0} color="#3b82f6"
+                      sub={`of ${stats.total_users || 0} total users`} />
                     <StatCard icon="🤖" label="AI Credits (mo)" value={(stats.ai_credits_this_month || 0).toLocaleString()} color="#8b5cf6" />
                     <StatCard icon="🏢" label="Teams" value={stats.total_teams || 0} color="#6366f1" />
                   </div>

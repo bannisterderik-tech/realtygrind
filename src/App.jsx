@@ -1,16 +1,19 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback, createContext, useContext, Component, memo } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback, createContext, useContext, Component, memo, Suspense, lazy } from 'react'
 import { AuthProvider, useAuth } from './lib/AuthContext'
 import { supabase } from './lib/supabase'
-import AuthPage from './pages/AuthPage'
-import LandingPage from './pages/LandingPage'
-import TeamsPage from './pages/TeamsPage'
-import ProfilePage from './pages/ProfilePage'
-import DirectoryPage from './pages/DirectoryPage'
-import APODPage from './pages/APODPage'
-import BillingPage from './pages/BillingPage'
-import AIAssistantPage from './pages/AIAssistantPage'
-import CoachingPage from './pages/CoachingPage'
-import AdminPage from './pages/AdminPage'
+// ── Route-level code splitting ──────────────────────────────────────────────
+// Each page is loaded on-demand via React.lazy, splitting the single 846 KB
+// chunk into ~10 smaller chunks. Only the pages the user visits are fetched.
+const AuthPage        = lazy(() => import('./pages/AuthPage'))
+const LandingPage     = lazy(() => import('./pages/LandingPage'))
+const TeamsPage       = lazy(() => import('./pages/TeamsPage'))
+const ProfilePage     = lazy(() => import('./pages/ProfilePage'))
+const DirectoryPage   = lazy(() => import('./pages/DirectoryPage'))
+const APODPage        = lazy(() => import('./pages/APODPage'))
+const BillingPage     = lazy(() => import('./pages/BillingPage'))
+const AIAssistantPage = lazy(() => import('./pages/AIAssistantPage'))
+const CoachingPage    = lazy(() => import('./pages/CoachingPage'))
+const AdminPage       = lazy(() => import('./pages/AdminPage'))
 import AIChatWidget from './components/AIChatWidget'
 import { CSS, Ring, StatCard, Wordmark, Loader, ThemeToggle, getRank, fmtMoney, resolveCommission, RANKS, CAT, formatPrice, stripPrice, daysOnMarket, LEAD_SOURCES, LEAD_SOURCE_COLORS } from './design'
 import { HABITS } from './habits'
@@ -1325,6 +1328,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [page, setPage] = useState('dashboard')
   const [tab,  setTab]  = useState('today')
   const [dbLoading, setDbLoading] = useState(true)
+  const [dbError,   setDbError]   = useState(null)
   const [aiWidgetOpen, setAiWidgetOpen] = useState(false)
 
   // Force password setup for invited users
@@ -1423,6 +1427,7 @@ function Dashboard({ theme, onToggleTheme }) {
   async function loadAll() {
     if (!user) return
     setDbLoading(true)
+    setDbError(null)
     let habRes, listRes, txRes, profRes, ctRes
     try {
       ;[habRes, listRes, txRes, profRes, ctRes] = await Promise.all([
@@ -1514,6 +1519,7 @@ function Dashboard({ theme, onToggleTheme }) {
     }
     } catch (err) {
       console.error('Dashboard loadAll error:', err)
+      setDbError('Could not load your data. Check your connection and try again.')
     } finally {
       setDbLoading(false)
     }
@@ -2567,6 +2573,7 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
       )}
 
+      <Suspense fallback={<Loader/>}>
       {page==='teams'     && <ErrorBoundary key="teams" onReset={()=>setPage('dashboard')}><TeamsPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
       {page==='coaching'  && <ErrorBoundary key="coaching" onReset={()=>setPage('dashboard')}><CoachingPage  onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
       {page==='billing'   && <ErrorBoundary key="billing" onReset={()=>setPage('dashboard')}><BillingPage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
@@ -2575,12 +2582,26 @@ function Dashboard({ theme, onToggleTheme }) {
       {page==='directory' && <ErrorBoundary key="directory" onReset={()=>setPage('dashboard')}><DirectoryPage onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
       {page==='apod'      && <ErrorBoundary key="apod" onReset={()=>setPage('dashboard')}><APODPage      onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
       {page==='admin'     && <ErrorBoundary key="admin" onReset={()=>setPage('dashboard')}><AdminPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      </Suspense>
       {/* AI Assistant now handled by floating widget — see useEffect redirect below */}
 
       {page==='dashboard' && (
       <ErrorBoundary key="dashboard" onReset={()=>window.location.reload()}>
       {dbLoading ? <Loader/> : (
       <div className="page-inner">
+
+        {/* ── Network Error Banner (loadAll catch) ── */}
+        {dbError && (
+          <div className="card" style={{ padding:'16px 22px', marginBottom:18, borderLeft:'3px solid #dc2626',
+            background:'rgba(220,38,38,.06)', display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
+            <span style={{ fontSize:20 }}>&#9888;&#65039;</span>
+            <div style={{ flex:1, minWidth:200 }}>
+              <div style={{ fontWeight:700, color:'#dc2626', fontSize:14 }}>Connection Error</div>
+              <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>{dbError}</div>
+            </div>
+            <button className="btn-gold" onClick={loadAll} style={{ fontSize:13, padding:'8px 18px' }}>Retry</button>
+          </div>
+        )}
 
         {/* ── Hero Header ─────────────────────────────────────── */}
         <div className="card" style={{
@@ -4239,13 +4260,15 @@ function Dashboard({ theme, onToggleTheme }) {
 
 
       {/* ── Floating AI Chat Widget ── */}
-      <AIChatWidget
-        isOpen={aiWidgetOpen}
-        onToggle={() => setAiWidgetOpen(o => !o)}
-        onClose={() => setAiWidgetOpen(false)}
-        onNavigate={setPage}
-        theme={theme}
-      />
+      <ErrorBoundary key="ai-widget" onReset={() => setAiWidgetOpen(false)}>
+        <AIChatWidget
+          isOpen={aiWidgetOpen}
+          onToggle={() => setAiWidgetOpen(o => !o)}
+          onClose={() => setAiWidgetOpen(false)}
+          onNavigate={setPage}
+          theme={theme}
+        />
+      </ErrorBoundary>
     </div>
   )
 }
@@ -4362,12 +4385,14 @@ function AppInner() {
         </div>
       )}
       <ErrorBoundary key={showAuth ? 'auth' : 'landing'} onReset={()=>setShowAuth(false)}>
+        <Suspense fallback={<Loader/>}>
         {showAuth
           ? <AuthPage theme={theme} onToggleTheme={toggleTheme} onBack={()=>setShowAuth(false)}/>
           : <LandingPage theme={theme} onToggleTheme={toggleTheme}
               onGetStarted={()=>setShowAuth(true)}
               onSubscribe={handleSubscribe}/>
         }
+        </Suspense>
       </ErrorBoundary>
     </div>
   )

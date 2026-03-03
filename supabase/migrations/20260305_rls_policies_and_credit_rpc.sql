@@ -27,17 +27,20 @@ ALTER TABLE IF EXISTS processed_events  ENABLE ROW LEVEL SECURITY;
 -- └──────────────────────────────────────────────────────────────────────────┘
 
 -- Own profile: full access
-CREATE POLICY IF NOT EXISTS "profiles_select_own"
+DROP POLICY IF EXISTS "profiles_select_own" ON profiles;
+CREATE POLICY "profiles_select_own"
   ON profiles FOR SELECT
   USING (auth.uid() = id);
 
-CREATE POLICY IF NOT EXISTS "profiles_update_own"
+DROP POLICY IF EXISTS "profiles_update_own" ON profiles;
+CREATE POLICY "profiles_update_own"
   ON profiles FOR UPDATE
   USING (auth.uid() = id)
   WITH CHECK (auth.uid() = id);
 
 -- Teammates: read-only access for team roster/leaderboard
-CREATE POLICY IF NOT EXISTS "profiles_select_teammates"
+DROP POLICY IF EXISTS "profiles_select_teammates" ON profiles;
+CREATE POLICY "profiles_select_teammates"
   ON profiles FOR SELECT
   USING (
     team_id IS NOT NULL
@@ -48,25 +51,30 @@ CREATE POLICY IF NOT EXISTS "profiles_select_teammates"
 -- │ 3. LISTINGS — users own their listings; teammates can read             │
 -- └──────────────────────────────────────────────────────────────────────────┘
 
-CREATE POLICY IF NOT EXISTS "listings_select_own"
+DROP POLICY IF EXISTS "listings_select_own" ON listings;
+CREATE POLICY "listings_select_own"
   ON listings FOR SELECT
   USING (auth.uid() = user_id);
 
-CREATE POLICY IF NOT EXISTS "listings_insert_own"
+DROP POLICY IF EXISTS "listings_insert_own" ON listings;
+CREATE POLICY "listings_insert_own"
   ON listings FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY IF NOT EXISTS "listings_update_own"
+DROP POLICY IF EXISTS "listings_update_own" ON listings;
+CREATE POLICY "listings_update_own"
   ON listings FOR UPDATE
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY IF NOT EXISTS "listings_delete_own"
+DROP POLICY IF EXISTS "listings_delete_own" ON listings;
+CREATE POLICY "listings_delete_own"
   ON listings FOR DELETE
   USING (auth.uid() = user_id);
 
 -- Teammates can read listings (for team listings board)
-CREATE POLICY IF NOT EXISTS "listings_select_teammates"
+DROP POLICY IF EXISTS "listings_select_teammates" ON listings;
+CREATE POLICY "listings_select_teammates"
   ON listings FOR SELECT
   USING (
     user_id IN (
@@ -79,24 +87,29 @@ CREATE POLICY IF NOT EXISTS "listings_select_teammates"
 -- │ 4. TRANSACTIONS — users own their transactions; teammates can read     │
 -- └──────────────────────────────────────────────────────────────────────────┘
 
-CREATE POLICY IF NOT EXISTS "transactions_select_own"
+DROP POLICY IF EXISTS "transactions_select_own" ON transactions;
+CREATE POLICY "transactions_select_own"
   ON transactions FOR SELECT
   USING (auth.uid() = user_id);
 
-CREATE POLICY IF NOT EXISTS "transactions_insert_own"
+DROP POLICY IF EXISTS "transactions_insert_own" ON transactions;
+CREATE POLICY "transactions_insert_own"
   ON transactions FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY IF NOT EXISTS "transactions_update_own"
+DROP POLICY IF EXISTS "transactions_update_own" ON transactions;
+CREATE POLICY "transactions_update_own"
   ON transactions FOR UPDATE
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY IF NOT EXISTS "transactions_delete_own"
+DROP POLICY IF EXISTS "transactions_delete_own" ON transactions;
+CREATE POLICY "transactions_delete_own"
   ON transactions FOR DELETE
   USING (auth.uid() = user_id);
 
-CREATE POLICY IF NOT EXISTS "transactions_select_teammates"
+DROP POLICY IF EXISTS "transactions_select_teammates" ON transactions;
+CREATE POLICY "transactions_select_teammates"
   ON transactions FOR SELECT
   USING (
     user_id IN (
@@ -109,24 +122,29 @@ CREATE POLICY IF NOT EXISTS "transactions_select_teammates"
 -- │ 5. HABIT_COMPLETIONS — own data only; teammates can read               │
 -- └──────────────────────────────────────────────────────────────────────────┘
 
-CREATE POLICY IF NOT EXISTS "habits_select_own"
+DROP POLICY IF EXISTS "habits_select_own" ON habit_completions;
+CREATE POLICY "habits_select_own"
   ON habit_completions FOR SELECT
   USING (auth.uid() = user_id);
 
-CREATE POLICY IF NOT EXISTS "habits_insert_own"
+DROP POLICY IF EXISTS "habits_insert_own" ON habit_completions;
+CREATE POLICY "habits_insert_own"
   ON habit_completions FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY IF NOT EXISTS "habits_update_own"
+DROP POLICY IF EXISTS "habits_update_own" ON habit_completions;
+CREATE POLICY "habits_update_own"
   ON habit_completions FOR UPDATE
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY IF NOT EXISTS "habits_delete_own"
+DROP POLICY IF EXISTS "habits_delete_own" ON habit_completions;
+CREATE POLICY "habits_delete_own"
   ON habit_completions FOR DELETE
   USING (auth.uid() = user_id);
 
-CREATE POLICY IF NOT EXISTS "habits_select_teammates"
+DROP POLICY IF EXISTS "habits_select_teammates" ON habit_completions;
+CREATE POLICY "habits_select_teammates"
   ON habit_completions FOR SELECT
   USING (
     user_id IN (
@@ -139,20 +157,24 @@ CREATE POLICY IF NOT EXISTS "habits_select_teammates"
 -- │ 6. CUSTOM_TASKS — own data only                                        │
 -- └──────────────────────────────────────────────────────────────────────────┘
 
-CREATE POLICY IF NOT EXISTS "custom_tasks_select_own"
+DROP POLICY IF EXISTS "custom_tasks_select_own" ON custom_tasks;
+CREATE POLICY "custom_tasks_select_own"
   ON custom_tasks FOR SELECT
   USING (auth.uid() = user_id);
 
-CREATE POLICY IF NOT EXISTS "custom_tasks_insert_own"
+DROP POLICY IF EXISTS "custom_tasks_insert_own" ON custom_tasks;
+CREATE POLICY "custom_tasks_insert_own"
   ON custom_tasks FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY IF NOT EXISTS "custom_tasks_update_own"
+DROP POLICY IF EXISTS "custom_tasks_update_own" ON custom_tasks;
+CREATE POLICY "custom_tasks_update_own"
   ON custom_tasks FOR UPDATE
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY IF NOT EXISTS "custom_tasks_delete_own"
+DROP POLICY IF EXISTS "custom_tasks_delete_own" ON custom_tasks;
+CREATE POLICY "custom_tasks_delete_own"
   ON custom_tasks FOR DELETE
   USING (auth.uid() = user_id);
 
@@ -160,40 +182,45 @@ CREATE POLICY IF NOT EXISTS "custom_tasks_delete_own"
 -- │ 7. TEAMS — owner has full access; members can read their team          │
 -- └──────────────────────────────────────────────────────────────────────────┘
 
-CREATE POLICY IF NOT EXISTS "teams_select_member"
+DROP POLICY IF EXISTS "teams_select_member" ON teams;
+CREATE POLICY "teams_select_member"
   ON teams FOR SELECT
   USING (
     id = (SELECT team_id FROM profiles WHERE id = auth.uid())
   );
 
-CREATE POLICY IF NOT EXISTS "teams_insert_owner"
+DROP POLICY IF EXISTS "teams_insert_owner" ON teams;
+CREATE POLICY "teams_insert_owner"
   ON teams FOR INSERT
   WITH CHECK (auth.uid() = created_by);
 
-CREATE POLICY IF NOT EXISTS "teams_update_owner"
+DROP POLICY IF EXISTS "teams_update_owner" ON teams;
+CREATE POLICY "teams_update_owner"
   ON teams FOR UPDATE
   USING (auth.uid() = created_by)
   WITH CHECK (auth.uid() = created_by);
 
--- Also allow team members to read teams they're joining via invite code
-CREATE POLICY IF NOT EXISTS "teams_select_by_invite_code"
+-- Also allow reading teams for join-by-code flow
+-- Note: columns exposed (name, invite_code) are not sensitive.
+-- For stricter control, use a security-definer function instead.
+DROP POLICY IF EXISTS "teams_select_by_invite_code" ON teams;
+CREATE POLICY "teams_select_by_invite_code"
   ON teams FOR SELECT
   USING (true);
-  -- Note: this allows reading team rows for join-by-code. The columns exposed
-  -- (name, invite_code) are not sensitive. For stricter control, use a
-  -- security-definer function instead.
 
 -- ┌──────────────────────────────────────────────────────────────────────────┐
 -- │ 8. TEAM_MEMBERS — members can see their team; owner can manage         │
 -- └──────────────────────────────────────────────────────────────────────────┘
 
-CREATE POLICY IF NOT EXISTS "team_members_select"
+DROP POLICY IF EXISTS "team_members_select" ON team_members;
+CREATE POLICY "team_members_select"
   ON team_members FOR SELECT
   USING (
     team_id = (SELECT team_id FROM profiles WHERE id = auth.uid())
   );
 
-CREATE POLICY IF NOT EXISTS "team_members_insert"
+DROP POLICY IF EXISTS "team_members_insert" ON team_members;
+CREATE POLICY "team_members_insert"
   ON team_members FOR INSERT
   WITH CHECK (
     -- Owner can add members, OR user is joining their own row
@@ -201,7 +228,8 @@ CREATE POLICY IF NOT EXISTS "team_members_insert"
     OR team_id IN (SELECT id FROM teams WHERE created_by = auth.uid())
   );
 
-CREATE POLICY IF NOT EXISTS "team_members_delete"
+DROP POLICY IF EXISTS "team_members_delete" ON team_members;
+CREATE POLICY "team_members_delete"
   ON team_members FOR DELETE
   USING (
     -- Owner can remove members, OR user is leaving
@@ -209,7 +237,8 @@ CREATE POLICY IF NOT EXISTS "team_members_delete"
     OR team_id IN (SELECT id FROM teams WHERE created_by = auth.uid())
   );
 
-CREATE POLICY IF NOT EXISTS "team_members_update"
+DROP POLICY IF EXISTS "team_members_update" ON team_members;
+CREATE POLICY "team_members_update"
   ON team_members FOR UPDATE
   USING (
     team_id IN (SELECT id FROM teams WHERE created_by = auth.uid())

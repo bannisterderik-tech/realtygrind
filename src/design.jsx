@@ -269,8 +269,8 @@ body,.page { background: var(--bg); color: var(--text); }
 
 /* ── Inline action buttons ── */
 .act-btn {
-  display: inline-flex; align-items: center; gap: 3px; padding: 4px 10px;
-  border-radius: 7px; font-size: 11px; font-weight: 600; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 4px; padding: 6px 14px;
+  border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;
   border: 1.5px solid; transition: background .18s, border-color .18s; white-space: nowrap; flex-shrink: 0;
   font-family: 'Poppins', sans-serif; line-height: 1.2;
 }
@@ -581,29 +581,61 @@ body,.page { background: var(--bg); color: var(--text); }
   }
 }
 
-/* ── Deal cards ────────────────────────── */
-.deal-card { padding:16px 18px; border-radius:var(--r2); border:1px solid var(--b2);
-  background:var(--surface); transition:border-color .15s, box-shadow .15s; }
-.deal-card:hover { border-color:var(--b3); box-shadow:0 2px 12px rgba(0,0,0,.04); }
-.deal-card-grid { display:flex; flex-direction:column; gap:10px; }
+/* ── Deal cards (professional SaaS style) ────────────────────────── */
+.deal-card { padding:22px 24px; border-radius:var(--r); border:1px solid var(--b2);
+  background:var(--surface); transition:border-color .2s, box-shadow .2s; position:relative; }
+.deal-card:hover { border-color:var(--b3); box-shadow:var(--shadow3); }
+.deal-card-grid { display:grid; gap:14px; }
+.deal-title { font-size:15px; font-weight:700; color:var(--text); letter-spacing:-.01em; line-height:1.3; }
+.deal-title input { font-size:15px; font-weight:700; color:var(--text); background:none; border:none;
+  width:100%; min-width:0; outline:none; letter-spacing:-.01em; font-family:inherit; }
+.deal-title input::placeholder { color:var(--dim); font-weight:400; }
+.deal-title input:focus { border-bottom:1.5px solid var(--gold2); }
+.deal-price { font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:700;
+  color:var(--gold2); margin-top:6px; line-height:1; }
+.deal-meta-line { display:flex; align-items:center; gap:10px; font-size:12px; color:var(--muted);
+  font-family:'JetBrains Mono',monospace; margin-top:8px; flex-wrap:wrap; }
+.deal-meta-line .sep { width:3px; height:3px; border-radius:50%; background:var(--dim); flex-shrink:0; }
+.deal-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:16px;
+  padding-top:14px; border-top:1px solid var(--b1); }
+.deal-status { position:absolute; top:18px; right:20px; }
+
+/* Status pills */
+.status-pill-lg { display:inline-flex; align-items:center; gap:4px; font-size:10px;
+  padding:4px 10px; border-radius:6px; font-weight:700; letter-spacing:.4px; text-transform:uppercase; }
+
+/* Edit row (progressive disclosure) */
+.listing-edit-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;
+  margin-top:14px; padding-top:14px; border-top:1px solid var(--b1); animation:slideDown .2s ease; }
+@media(max-width:600px){ .listing-edit-row { grid-template-columns:1fr; } }
+
+/* Edit/More buttons */
+.edit-toggle { background:none; border:1px solid transparent; color:var(--dim); border-radius:6px;
+  width:30px; height:30px; display:flex; align-items:center; justify-content:center; cursor:pointer;
+  font-size:14px; transition:all .15s; flex-shrink:0; }
+.edit-toggle:hover { background:var(--bg2); color:var(--text); border-color:var(--b2); }
+
+/* Add bar */
+.add-bar { display:flex; align-items:center; gap:10px; padding:14px 20px;
+  background:var(--bg); border:1.5px dashed var(--b2); border-radius:var(--r);
+  transition:border-color .18s, background .18s, box-shadow .18s; }
+.add-bar:focus-within { border-color:var(--b3); border-style:solid; background:var(--surface);
+  box-shadow:0 0 0 3px rgba(180,89,9,.08); }
+.add-bar input { background:transparent; border:none; color:var(--text); font-size:14px;
+  flex:1; min-width:0; outline:none; font-family:inherit; }
+.add-bar input::placeholder { color:var(--dim); }
+.add-bar-fields { display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:10px; padding:14px 20px;
+  background:var(--surface); border:1.5px solid var(--b3); border-top:none;
+  border-radius:0 0 var(--r) var(--r); animation:slideDown .2s ease; }
+@media(max-width:600px){ .add-bar-fields { grid-template-columns:1fr 1fr; } }
+
+/* Legacy compat */
+.price-display { font-family:'JetBrains Mono',monospace; font-weight:700; letter-spacing:-.02em; line-height:1; }
+.comm-resolved { font-family:'JetBrains Mono',monospace; font-weight:700; }
 .dom-badge { display:inline-flex; align-items:center; gap:3px; font-size:10px;
   padding:2px 8px; border-radius:5px; font-weight:600; font-family:'JetBrains Mono',monospace; }
 .lead-tag { display:inline-flex; align-items:center; gap:3px; font-size:10px;
   padding:2px 8px; border-radius:5px; font-weight:600; white-space:nowrap; }
-.status-pill-lg { display:inline-flex; align-items:center; gap:4px; font-size:11px;
-  padding:4px 12px; border-radius:7px; font-weight:700; letter-spacing:.3px; }
-.notes-indicator { display:inline-flex; align-items:center; gap:3px; font-size:10px;
-  color:var(--muted); cursor:pointer; padding:2px 6px; border-radius:4px; background:none; border:none;
-  transition:background .15s; font-family:'JetBrains Mono',monospace; }
-.notes-indicator:hover { background:var(--b1); }
-.price-display { font-family:'Fraunces',serif; font-weight:700; letter-spacing:-.02em; line-height:1; }
-.comm-resolved { font-family:'JetBrains Mono',monospace; font-weight:700; }
-.deal-meta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-.deal-actions { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
-.deal-title { font-family:'Fraunces',serif; font-size:15px; font-weight:600; color:var(--text); letter-spacing:-.01em; line-height:1.3; }
-.deal-title input { font-family:'Fraunces',serif; font-size:15px; font-weight:600; color:var(--text); background:none; border:none; width:100%; min-width:0; outline:none; letter-spacing:-.01em; }
-.deal-title input::placeholder { color:var(--dim); font-weight:400; }
-.deal-title input:focus { border-bottom:1.5px solid var(--gold2); }
 `
 
 // ─── React components ──────────────────────────────────────────────────────────

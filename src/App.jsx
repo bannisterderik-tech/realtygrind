@@ -934,6 +934,9 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
 
   const actionOpts = (statusOpts||[]).filter(o => o.v !== 'active')
 
+  const [editingPipe, setEditingPipe] = useState(null)
+  const [addExpanded, setAddExpanded] = useState(false)
+
   return (
     <div className="card" style={{ padding:22, marginBottom:12, borderLeft:`3px solid ${accentColor}55`,
       background:`linear-gradient(135deg, ${accentColor}05 0%, var(--surface) 40%)` }}>
@@ -981,7 +984,7 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
       {/* Deal cards */}
       <div className="deal-card-grid">
       {rows.length === 0 && (
-        <div style={{ textAlign:'center', padding:'20px 0', color:'var(--dim)', fontSize:12 }}>
+        <div className="deal-card" style={{ textAlign:'center', padding:'20px', color:'var(--dim)', fontSize:12 }}>
           No entries yet{!showSource && ' — add one below'}
         </div>
       )}
@@ -991,57 +994,59 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
         const commAmt = resolveCommission(r.commission, r.price)
         const priceNum = parseFloat(String(r.price||'').replace(/[^0-9.]/g,''))
         const dom = daysOnMarket(r.createdAt)
+        const isEditingRow = editingPipe === r.id
         return (
-          <div key={r.id} style={{ padding:'12px 14px', borderRadius:10, background:'var(--bg)', border:'1px solid var(--b1)', transition:'box-shadow .15s' }}>
-            {/* Top row: address + price */}
-            <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8, marginBottom:6 }}>
-              <div style={{ flex:1, minWidth:0 }}>
-                <input style={{ fontFamily:"'Fraunces',serif", fontSize:14, fontWeight:600, color:'var(--text)', background:'none', border:'none', width:'100%', minWidth:0, outline:'none', letterSpacing:'-.01em', padding:0 }}
-                  value={r.address||''} onChange={e=>update(r.id,'address',e.target.value)}
-                  onBlur={e=>persist(r.id,'address',e.target.value)} placeholder="Property address…"/>
-              </div>
-              <span className="price-display" style={{ fontSize: priceNum > 0 ? 17 : 13, color:accentColor, flexShrink:0 }}>
-                {priceNum > 0 ? formatPrice(r.price) : '—'}
-              </span>
-            </div>
+          <div key={r.id} className="deal-card" style={{ padding:'14px 18px' }}>
+            {/* Address — display or edit */}
+            {isEditingRow ? (
+              <input className="deal-title" value={r.address||''}
+                autoFocus
+                onChange={e=>update(r.id,'address',e.target.value)}
+                onBlur={e=>{ persist(r.id,'address',e.target.value); setEditingPipe(null) }}
+                onKeyDown={e => e.key === 'Enter' && e.target.blur()}
+                placeholder="Property address…"
+                style={{ background:'none', border:'none', outline:'none', width:'100%', minWidth:0, padding:0,
+                  fontFamily:"'Fraunces',serif", borderBottom:'1.5px solid ' + accentColor }}/>
+            ) : (
+              <span className="deal-title">{r.address || 'No address'}</span>
+            )}
 
-            {/* Meta row: commission + DOM + source */}
-            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:8 }}>
+            {/* Price line */}
+            {priceNum > 0 && (
+              <div className="deal-price" style={{ color:accentColor, fontSize:17, marginTop:4 }}>
+                {formatPrice(r.price)}
+              </div>
+            )}
+
+            {/* Meta line: commission · DOM · source */}
+            <div className="deal-meta-line">
               {r.commission && (
-                <div style={{ display:'flex', alignItems:'center', gap:4 }}>
-                  <span style={{ fontSize:10, color:'var(--dim)' }}>Comm:</span>
-                  <span style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color:'var(--muted)' }}>
-                    {isP ? r.commission : formatPrice(r.commission)}
-                  </span>
-                  {isP && commAmt > 0 && (
-                    <span className="comm-resolved" style={{ fontSize:12, color:'var(--green)' }}>
-                      = {fmtMoney(commAmt)}
-                    </span>
-                  )}
-                </div>
-              )}
-              {dom !== null && (
-                <span className="dom-badge" style={{
-                  background: dom > 90 ? 'rgba(239,68,68,.12)' : dom > 30 ? 'rgba(245,158,11,.12)' : 'rgba(16,185,129,.1)',
-                  color: dom > 90 ? '#ef4444' : dom > 30 ? '#d97706' : '#059669',
-                  border: `1px solid ${dom > 90 ? 'rgba(239,68,68,.25)' : dom > 30 ? 'rgba(245,158,11,.25)' : 'rgba(16,185,129,.2)'}`,
-                }}>
-                  {dom}d
+                <span>
+                  {isP ? r.commission : formatPrice(r.commission)}
+                  {isP && commAmt > 0 && <span style={{ color:'var(--green)', fontWeight:600 }}> = {fmtMoney(commAmt)}</span>}
                 </span>
+              )}
+              {r.commission && dom !== null && <span className="sep"/>}
+              {dom !== null && (
+                <span style={{
+                  color: dom > 90 ? '#ef4444' : dom > 30 ? '#d97706' : '#059669',
+                  fontWeight:600,
+                }}>{dom}d</span>
               )}
               {showSource && r.closedFrom && (
-                <span className="lead-tag" style={{ background:'rgba(107,114,128,.1)', color:'#6b7280', border:'1px solid rgba(107,114,128,.2)' }}>
-                  via {r.closedFrom}
-                </span>
+                <>
+                  <span className="sep"/>
+                  <span>via {r.closedFrom}</span>
+                </>
               )}
             </div>
 
-            {/* Actions row */}
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:6 }}>
+            {/* Actions */}
+            <div className="deal-actions">
               {showSource ? (
-                <span style={{ fontSize:10, color:'var(--dim)', fontStyle:'italic' }}>Closed</span>
+                <span style={{ fontSize:11, color:'var(--dim)', fontStyle:'italic' }}>Closed</span>
               ) : (
-                <div className="deal-actions">
+                <>
                   {actionOpts.map(o => (
                     <button key={o.v}
                       className={`act-btn ${o.v==='pending' ? 'act-btn-amber' : 'act-btn-green'}`}
@@ -1049,34 +1054,74 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
                       {o.v==='pending' ? '→ Pend' : '✓ Close'}
                     </button>
                   ))}
-                </div>
+                </>
               )}
-              <button className="btn-del" onClick={()=>remove(r)}>✕</button>
+              <div style={{ marginLeft:'auto', display:'flex', gap:4, alignItems:'center' }}>
+                {!showSource && (
+                  <button className="edit-toggle" title="Edit" onClick={()=>setEditingPipe(isEditingRow ? null : r.id)}
+                    style={ isEditingRow ? { background:'var(--bg2)', color:'var(--text)', borderColor:'var(--b2)' } : {}}>
+                    ✏️
+                  </button>
+                )}
+                <button className="edit-toggle" title="Remove" onClick={()=>remove(r)}
+                  style={{ color:'var(--red)', fontSize:12 }}>✕</button>
+              </div>
             </div>
+
+            {/* Inline edit fields — shown when editing */}
+            {isEditingRow && (
+              <div className="listing-edit-row">
+                <div>
+                  <div className="label" style={{ marginBottom:3 }}>Price</div>
+                  <input className="field-input" value={r.price||''} placeholder="$450,000"
+                    onChange={e=>update(r.id,'price',e.target.value)}
+                    onBlur={e=>persist(r.id,'price',e.target.value)}
+                    style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box',
+                      fontFamily:"'JetBrains Mono',monospace", color:accentColor }}/>
+                </div>
+                <div>
+                  <div className="label" style={{ marginBottom:3 }}>Commission</div>
+                  <input className="field-input" value={r.commission||''} placeholder="3%"
+                    onChange={e=>update(r.id,'commission',e.target.value)}
+                    onBlur={e=>persist(r.id,'commission',e.target.value)}
+                    style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box',
+                      fontFamily:"'JetBrains Mono',monospace", color:'var(--green)' }}/>
+                </div>
+              </div>
+            )}
           </div>
         )
       })}
       </div>
 
-      {/* Add row */}
+      {/* Add bar */}
       {!showSource && (
-        <div style={{ display:'flex', gap:8, borderTop:'1px solid var(--b1)', paddingTop:12, marginTop:10, flexWrap:'wrap', alignItems:'center' }}>
-          <input className="field-input" value={addr} onChange={e=>setAddr(e.target.value)}
-            onKeyDown={e=>e.key==='Enter'&&add()} placeholder="New address…"
-            style={{ padding:'8px 12px', flex:'2 1 160px', minWidth:0 }}/>
-          <input className="field-input" value={price} onChange={e=>setPrice(e.target.value)}
-            onKeyDown={e=>e.key==='Enter'&&add()} placeholder="Price"
-            style={{ padding:'8px 12px', flex:'1 1 90px', minWidth:70, color:accentColor, fontFamily:"'JetBrains Mono',monospace" }}/>
-          <input className="field-input" value={comm} onChange={e=>setComm(e.target.value)}
-            onKeyDown={e=>e.key==='Enter'&&add()} placeholder="3 (%)"
-            style={{ padding:'8px 12px', flex:'1 1 70px', minWidth:60, color:'var(--green)', fontFamily:"'JetBrains Mono',monospace" }}/>
-          <button onClick={add} disabled={!addr.trim()} style={{
-            flex:'0 0 auto',
-            background: addr.trim() ? accentColor : 'var(--b2)', border:'none', color: addr.trim() ? '#fff' : 'var(--dim)', borderRadius:8,
-            padding:'8px 16px', fontSize:12, fontWeight:700, cursor: addr.trim() ? 'pointer' : 'default', lineHeight:1,
-            display:'flex', alignItems:'center', justifyContent:'center', gap:4, transition:'all .15s',
-          }}>+ Add</button>
-        </div>
+        <>
+          <div className="add-bar" style={{ marginTop:14 }}>
+            <span style={{ color:'var(--dim)', fontSize:16, flexShrink:0 }}>+</span>
+            <input value={addr} onChange={e=>{ setAddr(e.target.value); if(e.target.value.trim() && !addExpanded) setAddExpanded(true) }}
+              onKeyDown={e=>e.key==='Enter'&&add()} onFocus={()=>setAddExpanded(true)}
+              placeholder={`Add to ${title.toLowerCase()}…`}
+              style={ addExpanded ? { borderRadius:'var(--r) var(--r) 0 0' } : {} }/>
+            {addr.trim() && (
+              <button onClick={add} style={{
+                background:accentColor, border:'none', color:'#fff', borderRadius:8,
+                padding:'6px 14px', fontSize:12, fontWeight:700, cursor:'pointer', lineHeight:1,
+                display:'flex', alignItems:'center', gap:4, transition:'all .15s', flexShrink:0,
+              }}>+ Add</button>
+            )}
+          </div>
+          {addExpanded && addr.trim() && (
+            <div className="add-bar-fields" style={{ gridTemplateColumns:'1fr 1fr' }}>
+              <input className="field-input" value={price} onChange={e=>setPrice(e.target.value)}
+                onKeyDown={e=>e.key==='Enter'&&add()} placeholder="Price"
+                style={{ padding:'6px 10px', fontSize:12, color:accentColor, fontFamily:"'JetBrains Mono',monospace" }}/>
+              <input className="field-input" value={comm} onChange={e=>setComm(e.target.value)}
+                onKeyDown={e=>e.key==='Enter'&&add()} placeholder="Commission (3%)"
+                style={{ padding:'6px 10px', fontSize:12, color:'var(--green)', fontFamily:"'JetBrains Mono',monospace" }}/>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
@@ -1177,6 +1222,9 @@ function Dashboard({ theme, onToggleTheme }) {
   const [newPrice,  setNewPrice]  = useState('')
   const [newComm,   setNewComm]   = useState('')
   const [newLeadSource, setNewLeadSource] = useState('')
+  const [editingListing, setEditingListing] = useState(null) // listing id in edit mode
+  const [editingRep, setEditingRep] = useState(null) // buyer rep id in edit mode
+  const [addListingExpanded, setAddListingExpanded] = useState(false)
 
   // Buyer Rep Agreements
   const [buyerReps,     setBuyerReps]    = useState([])
@@ -1734,17 +1782,22 @@ function Dashboard({ theme, onToggleTheme }) {
   // ── Listings ───────────────────────────────────────────────────────────────
   async function addListing() {
     if (!newAddr.trim()) return
-    // Default commission to percentage mode — append % if user entered a value without it
     const rawComm = newComm.trim()
     const commVal = rawComm && !rawComm.endsWith('%') ? rawComm + '%' : rawComm
-    const {data} = await supabase.from('listings').insert({
-      user_id:user.id, address:newAddr.trim(), unit_count:1,
-      price:newPrice.trim(), commission:commVal,
-      status:'active', month_year:MONTH_YEAR,
-      lead_source:newLeadSource||null
-    }).select().single()
-    if (data) setListings(prev=>[...prev,{id:data.id,address:data.address,status:'active',price:data.price||'',commission:data.commission||'',monthYear:data.month_year||MONTH_YEAR,createdAt:data.created_at||null,leadSource:data.lead_source||'',notes:[]}])
-    setNewAddr(''); setNewPrice(''); setNewComm(''); setNewLeadSource('')
+    try {
+      const insertObj = { user_id:user.id, address:newAddr.trim(), unit_count:1,
+        price:newPrice.trim(), commission:commVal, status:'active', month_year:MONTH_YEAR }
+      if (newLeadSource) insertObj.lead_source = newLeadSource
+      const {data, error} = await supabase.from('listings').insert(insertObj).select().single()
+      if (error) throw error
+      if (data) {
+        setListings(prev=>[...prev,{id:data.id,address:data.address,status:'active',price:data.price||'',commission:data.commission||'',monthYear:data.month_year||MONTH_YEAR,createdAt:data.created_at||null,leadSource:data.lead_source||'',notes:[]}])
+        setNewAddr(''); setNewPrice(''); setNewComm(''); setNewLeadSource('')
+      }
+    } catch (err) {
+      console.error('addListing error:', err)
+      showToast('Failed to add listing — please try again')
+    }
   }
 
   async function removeListing(listing) {
@@ -1816,12 +1869,20 @@ function Dashboard({ theme, onToggleTheme }) {
   // ── Buyer Rep Agreements ───────────────────────────────────────────────────
   async function addBuyerRep() {
     if (!newRepClient.trim()) return
-    const {data} = await supabase.from('listings').insert({
-      user_id:user.id, address:newRepClient.trim(), unit_count:0,
-      price:'', commission:'', status:'active', month_year:MONTH_YEAR
-    }).select().single()
-    if (data) setBuyerReps(prev => [...prev, { id:data.id, clientName:data.address, status:'active', monthYear:data.month_year||MONTH_YEAR, buyerDetails:{} }])
-    setNewRepClient('')
+    try {
+      const {data, error} = await supabase.from('listings').insert({
+        user_id:user.id, address:newRepClient.trim(), unit_count:0,
+        price:'', commission:'', status:'active', month_year:MONTH_YEAR
+      }).select().single()
+      if (error) throw error
+      if (data) {
+        setBuyerReps(prev => [...prev, { id:data.id, clientName:data.address, status:'active', monthYear:data.month_year||MONTH_YEAR, buyerDetails:{}, createdAt:data.created_at||null }])
+        setNewRepClient('')
+      }
+    } catch (err) {
+      console.error('addBuyerRep error:', err)
+      showToast('Failed to add buyer rep — please try again')
+    }
   }
 
   async function removeBuyerRep(rep) {
@@ -3004,10 +3065,10 @@ function Dashboard({ theme, onToggleTheme }) {
             </button>
           </div>
 
-          {/* Listing cards */}
+          {/* Listing cards — display-first design */}
           <div className="deal-card-grid">
             {listings.length===0 && (
-              <div className="card" style={{ textAlign:'center', padding:'28px 20px', color:'var(--dim)', fontSize:13 }}>
+              <div className="card" style={{ textAlign:'center', padding:'32px 20px', color:'var(--dim)', fontSize:13 }}>
                 No listings yet — add one below
               </div>
             )}
@@ -3017,174 +3078,141 @@ function Dashboard({ theme, onToggleTheme }) {
               const comm = resolveCommission(l.commission, l.price)
               const dom = daysOnMarket(l.createdAt)
               const priceNum = parseFloat(String(l.price||'').replace(/[^0-9.]/g,''))
+              const isEditing = editingListing === l.id
+              const metaParts = []
+              if (l.commission) metaParts.push(isP && comm > 0 ? `${l.commission} = ${fmtMoney(comm)}` : (isP ? l.commission : formatPrice(l.commission)))
+              if (dom !== null) metaParts.push(`${dom}d on market`)
+              if (l.leadSource) metaParts.push(l.leadSource)
+              if (l.monthYear && l.monthYear !== MONTH_YEAR) metaParts.push(fmtMonth(l.monthYear))
               return (
               <div key={l.id} className="deal-card">
-                {/* Row 1: Address + Lead Source + Status */}
-                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8, marginBottom:8 }}>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div className="deal-title">
-                      <input value={l.address||''}
-                        onChange={e=>updateListingLocal(l.id,'address',e.target.value)}
-                        onBlur={e=>updateListing(l.id,'address',e.target.value)} placeholder="Property address…"/>
-                    </div>
-                  </div>
-                  <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
-                    {l.leadSource && (
-                      <span className="lead-tag" style={{ background:(LEAD_SOURCE_COLORS[l.leadSource]||'#6b7280')+'18', color:LEAD_SOURCE_COLORS[l.leadSource]||'#6b7280', border:`1px solid ${(LEAD_SOURCE_COLORS[l.leadSource]||'#6b7280')}30` }}>
-                        {l.leadSource}
-                      </span>
-                    )}
-                    <span className={`status-pill-lg sp-${l.status||'active'}`} style={{
-                      background: l.status==='closed' ? 'rgba(16,185,129,.12)' : l.status==='pending' ? 'rgba(245,158,11,.12)' : 'rgba(139,92,246,.1)',
-                      color: l.status==='closed' ? 'var(--green)' : l.status==='pending' ? '#d97706' : 'var(--purple)',
-                      border: `1px solid ${l.status==='closed' ? 'rgba(16,185,129,.3)' : l.status==='pending' ? 'rgba(245,158,11,.3)' : 'rgba(139,92,246,.25)'}`,
-                    }}>
-                      {l.status==='pending' ? '⏳ PENDING' : l.status==='closed' ? '✓ CLOSED' : '● ACTIVE'}
-                    </span>
-                  </div>
+                {/* Status — top right */}
+                <div className="deal-status">
+                  <span className="status-pill-lg" style={{
+                    background: l.status==='closed' ? 'rgba(16,185,129,.1)' : l.status==='pending' ? 'rgba(245,158,11,.1)' : 'rgba(139,92,246,.08)',
+                    color: l.status==='closed' ? 'var(--green)' : l.status==='pending' ? '#d97706' : 'var(--purple)',
+                    border: `1px solid ${l.status==='closed' ? 'rgba(16,185,129,.25)' : l.status==='pending' ? 'rgba(245,158,11,.25)' : 'rgba(139,92,246,.2)'}`,
+                  }}>
+                    {l.status==='pending' ? 'PENDING' : l.status==='closed' ? 'CLOSED' : 'ACTIVE'}
+                  </span>
                 </div>
 
-                {/* Row 2: Price + DOM + Commission */}
-                <div className="deal-meta" style={{ marginBottom:10 }}>
-                  <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
-                    <span className="price-display" style={{ fontSize:priceNum > 0 ? 22 : 15, color:'var(--gold2)' }}>
-                      {priceNum > 0 ? formatPrice(l.price) : '—'}
-                    </span>
-                    {dom !== null && (
-                      <span className="dom-badge" style={{
-                        background: dom > 90 ? 'rgba(239,68,68,.12)' : dom > 30 ? 'rgba(245,158,11,.12)' : 'rgba(16,185,129,.1)',
-                        color: dom > 90 ? '#ef4444' : dom > 30 ? '#d97706' : '#059669',
-                        border: `1px solid ${dom > 90 ? 'rgba(239,68,68,.25)' : dom > 30 ? 'rgba(245,158,11,.25)' : 'rgba(16,185,129,.2)'}`,
-                      }}>
-                        {dom}d
-                      </span>
-                    )}
+                {/* Address */}
+                {isEditing ? (
+                  <div className="deal-title">
+                    <input value={l.address||''}
+                      onChange={e=>updateListingLocal(l.id,'address',e.target.value)}
+                      onBlur={e=>updateListing(l.id,'address',e.target.value)} placeholder="Property address…"/>
                   </div>
-                  {(l.commission) && (
-                    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                      <span style={{ fontSize:11, color:'var(--dim)' }}>Comm:</span>
-                      <span style={{ fontSize:11, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}>
-                        {isP ? l.commission : formatPrice(l.commission)}
-                      </span>
-                      {isP && comm > 0 && (
-                        <span className="comm-resolved" style={{ fontSize:13, color:'var(--green)' }}>
-                          = {fmtMoney(comm)}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  {l.monthYear && l.monthYear !== MONTH_YEAR && (
-                    <span title={`Listed in ${fmtMonth(l.monthYear)}`} style={{
-                      fontSize:9, padding:'2px 6px', borderRadius:4,
-                      background:'var(--bg2)', color:'var(--dim)',
-                      fontFamily:"'JetBrains Mono',monospace", fontWeight:600, letterSpacing:.3,
-                      border:'1px solid var(--b2)', whiteSpace:'nowrap',
-                    }}>
-                      {fmtMonth(l.monthYear)}
-                    </span>
-                  )}
-                </div>
+                ) : (
+                  <div className="deal-title" style={{ paddingRight:100 }}>{l.address || 'Untitled listing'}</div>
+                )}
 
-                {/* Row 3: Inline edits (price + commission) */}
-                <div style={{ display:'flex', gap:8, marginBottom:10, flexWrap:'wrap' }}>
-                  <div style={{ flex:'1 1 120px', minWidth:100 }}>
-                    <div className="label" style={{ marginBottom:2, fontSize:9 }}>PRICE</div>
-                    <input className="field-input" value={l.price||''}
-                      onChange={e=>updateListingLocal(l.id,'price',e.target.value)}
-                      onBlur={e=>updateListing(l.id,'price',e.target.value)}
-                      placeholder="450000"
-                      style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box', color:'var(--gold2)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
+                {/* Price */}
+                <div className="deal-price">{priceNum > 0 ? formatPrice(l.price) : '—'}</div>
+
+                {/* Metadata line */}
+                {metaParts.length > 0 && (
+                  <div className="deal-meta-line">
+                    {metaParts.map((part, i) => (
+                      <span key={i}>{i > 0 && <span className="sep" style={{ display:'inline-block', marginRight:10 }}/>}{part}</span>
+                    ))}
                   </div>
-                  <div style={{ flex:'1 1 120px', minWidth:100 }}>
-                    <div className="label" style={{ marginBottom:2, fontSize:9 }}>COMMISSION</div>
-                    <div style={{ display:'flex', alignItems:'center', gap:4 }}>
-                      <div style={{ position:'relative', flex:1 }}>
+                )}
+
+                {/* Edit fields (progressive disclosure) */}
+                {isEditing && (
+                  <div className="listing-edit-row">
+                    <div>
+                      <span className="label">Price</span>
+                      <input className="field-input" value={l.price||''}
+                        onChange={e=>updateListingLocal(l.id,'price',e.target.value)}
+                        onBlur={e=>updateListing(l.id,'price',e.target.value)}
+                        placeholder="450000"
+                        style={{ padding:'8px 12px', marginTop:4, width:'100%', boxSizing:'border-box', color:'var(--gold2)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
+                    </div>
+                    <div>
+                      <span className="label">Commission</span>
+                      <div style={{ display:'flex', gap:4, marginTop:4 }}>
                         <input className="field-input"
                           value={isP ? String(l.commission||'').replace(/%$/,'') : (l.commission||'')}
                           onChange={e => updateListingLocal(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)}
                           onBlur={e => updateListing(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)}
                           placeholder={isP ? '3' : '5000'}
-                          style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box', color: isP ? 'var(--muted)' : 'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
-                        {isP && <span style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', fontSize:11, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", pointerEvents:'none' }}>%</span>}
+                          style={{ padding:'8px 12px', flex:1, minWidth:0, color: isP ? 'var(--muted)' : 'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
+                        <button onClick={()=>toggleListingCommType(l.id)} style={{
+                          background:'var(--bg2)', border:'1px solid var(--b2)', borderRadius:6, cursor:'pointer', padding:'6px 10px',
+                          fontSize:10, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600, whiteSpace:'nowrap',
+                        }}>{isP ? '$ Flat' : '% Rate'}</button>
                       </div>
-                      <button onClick={()=>toggleListingCommType(l.id)} style={{
-                        background:'var(--bg2)', border:'1px solid var(--b2)', borderRadius:5, cursor:'pointer', padding:'4px 8px',
-                        fontSize:9, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600, whiteSpace:'nowrap',
-                      }}>{isP ? '$ Flat' : '% Rate'}</button>
+                    </div>
+                    <div>
+                      <span className="label">Lead Source</span>
+                      <select className="field-input" value={l.leadSource||''}
+                        onChange={e=>updateListing(l.id,'leadSource',e.target.value)}
+                        style={{ padding:'8px 12px', marginTop:4, width:'100%', boxSizing:'border-box' }}>
+                        <option value="">None</option>
+                        {LEAD_SOURCES.map(s=><option key={s} value={s}>{s}</option>)}
+                      </select>
                     </div>
                   </div>
-                  <div style={{ flex:'0 1 120px', minWidth:100 }}>
-                    <div className="label" style={{ marginBottom:2, fontSize:9 }}>LEAD SOURCE</div>
-                    <select className="field-input" value={l.leadSource||''}
-                      onChange={e=>updateListing(l.id,'leadSource',e.target.value)}
-                      style={{ padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box' }}>
-                      <option value="">—</option>
-                      {LEAD_SOURCES.map(s=><option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                </div>
+                )}
 
-                {/* Row 4: Actions */}
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, borderTop:'1px solid var(--b1)', paddingTop:10 }}>
-                  <div className="deal-actions">
-                    {l.status !== 'closed' ? (
-                      <>
-                        <button className="act-btn act-btn-blue" onClick={()=>handleListingOfferReceived(l)}
-                          title="Log an offer received on this listing">
-                          📥 Offer Rec'd
-                        </button>
-                        {(l.status==='active' || !l.status) && (
-                          <button className="act-btn act-btn-amber" onClick={()=>handleListingStatus(l,'pending')}>
-                            → Pending
-                          </button>
-                        )}
-                        <button className="act-btn act-btn-green" onClick={()=>handleListingStatus(l,'closed')}>
-                          ✓ Closed
-                        </button>
-                      </>
-                    ) : (
-                      <span style={{ fontSize:10, color:'var(--dim)', fontStyle:'italic' }}>Deal completed</span>
-                    )}
-                  </div>
-                  <div style={{ display:'flex', gap:4, alignItems:'center' }}>
-                    <button title="Generate client update" onClick={()=>setClientUpdateListing(l)} style={{
-                      background:'none', border:'none', cursor:'pointer', padding:2, fontSize:14, opacity:.5,
-                      transition:'opacity .15s' }} onMouseEnter={e=>e.target.style.opacity=1} onMouseLeave={e=>e.target.style.opacity=.5}>📋</button>
-                    <button className="btn-del" style={{ flexShrink:0 }} onClick={()=>removeListing(l)}>✕</button>
-                  </div>
+                {/* Actions */}
+                <div className="deal-actions">
+                  {l.status !== 'closed' ? (
+                    <>
+                      <button className="act-btn act-btn-blue" onClick={()=>handleListingOfferReceived(l)}>Offer Rec'd</button>
+                      {(l.status==='active' || !l.status) && (
+                        <button className="act-btn act-btn-amber" onClick={()=>handleListingStatus(l,'pending')}>→ Pending</button>
+                      )}
+                      <button className="act-btn act-btn-green" onClick={()=>handleListingStatus(l,'closed')}>✓ Closed</button>
+                    </>
+                  ) : (
+                    <span style={{ fontSize:11, color:'var(--dim)', fontStyle:'italic' }}>Deal completed</span>
+                  )}
+                  <div style={{ flex:1 }}/>
+                  <button className="edit-toggle" title="Generate client update" onClick={()=>setClientUpdateListing(l)}>📋</button>
+                  <button className="edit-toggle" title={isEditing ? 'Done editing' : 'Edit listing'} onClick={()=>setEditingListing(isEditing ? null : l.id)}>
+                    {isEditing ? '✓' : '✏️'}
+                  </button>
+                  <button className="edit-toggle" title="Remove listing" onClick={()=>removeListing(l)} style={{ color:'var(--dim)' }}>✕</button>
                 </div>
               </div>
               )
             })}
+          </div>
 
-            {/* Add new listing card */}
-            <div className="deal-card" style={{ borderStyle:'dashed', background:'var(--bg)' }}>
-              <div style={{ fontSize:12, fontWeight:600, color:'var(--muted)', marginBottom:10 }}>+ New Listing</div>
-              <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:10 }}>
-                <input className="field-input" value={newAddr} onChange={e=>setNewAddr(e.target.value)}
-                  onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="Property address…"
-                  style={{ padding:'8px 12px', flex:'2 1 200px', minWidth:0 }}/>
+          {/* Add listing bar */}
+          <div style={{ marginTop:14 }}>
+            <div className={`add-bar${addListingExpanded ? '' : ''}`}>
+              <span style={{ fontSize:16, color:'var(--dim)', flexShrink:0 }}>+</span>
+              <input value={newAddr} onChange={e=>setNewAddr(e.target.value)}
+                onFocus={()=>setAddListingExpanded(true)}
+                onKeyDown={e=>e.key==='Enter'&&addListing()}
+                placeholder="Add a new listing address…"/>
+            </div>
+            {addListingExpanded && (
+              <div className="add-bar-fields">
                 <input className="field-input" value={newPrice} onChange={e=>setNewPrice(e.target.value)}
-                  onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="Price"
-                  style={{ padding:'8px 10px', flex:'1 1 100px', minWidth:80, color:'var(--gold2)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
+                  onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="List price"
+                  style={{ padding:'8px 12px', color:'var(--gold2)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
                 <input className="field-input" value={newComm} onChange={e=>setNewComm(e.target.value)}
-                  onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="3 (%)"
-                  style={{ padding:'8px 10px', flex:'1 1 80px', minWidth:70, color:'var(--green)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
+                  onKeyDown={e=>e.key==='Enter'&&addListing()} placeholder="Commission (3%)"
+                  style={{ padding:'8px 12px', color:'var(--green)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
                 <select className="field-input" value={newLeadSource} onChange={e=>setNewLeadSource(e.target.value)}
-                  style={{ padding:'8px 10px', flex:'1 1 100px', minWidth:90, fontSize:12 }}>
-                  <option value="">Source…</option>
+                  style={{ padding:'8px 12px' }}>
+                  <option value="">Lead source…</option>
                   {LEAD_SOURCES.map(s=><option key={s} value={s}>{s}</option>)}
                 </select>
+                <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                  <button className="btn-gold" onClick={addListing} disabled={!newAddr.trim()}
+                    style={{ whiteSpace:'nowrap', padding:'8px 16px' }}>+ Add</button>
+                  <button onClick={()=>{setAddListingExpanded(false);setNewAddr('');setNewPrice('');setNewComm('');setNewLeadSource('')}}
+                    style={{ background:'none', border:'none', color:'var(--dim)', cursor:'pointer', fontSize:12, fontWeight:600 }}>Cancel</button>
+                </div>
               </div>
-              <button onClick={addListing} disabled={!newAddr.trim()} style={{
-                width:'100%',
-                background: newAddr.trim() ? 'var(--purple)' : 'var(--b2)', border:'none',
-                color: newAddr.trim() ? '#fff' : 'var(--dim)', borderRadius:9,
-                padding:'10px 14px', fontSize:13, fontWeight:700, cursor: newAddr.trim() ? 'pointer' : 'default', lineHeight:1,
-                display:'flex', alignItems:'center', justifyContent:'center', gap:5,
-                transition:'background .15s, color .15s',
-              }}>+ Add Listing</button>
-            </div>
+            )}
           </div>
         </div>
 
@@ -3218,7 +3246,7 @@ function Dashboard({ theme, onToggleTheme }) {
           {/* Buyer Rep cards */}
           <div className="deal-card-grid">
             {buyerReps.length === 0 && (
-              <div className="card" style={{ textAlign:'center', padding:'28px 20px', color:'var(--dim)', fontSize:13 }}>
+              <div className="deal-card" style={{ textAlign:'center', padding:'28px 20px', color:'var(--dim)', fontSize:13 }}>
                 No buyer rep agreements yet — add one below
               </div>
             )}
@@ -3226,92 +3254,87 @@ function Dashboard({ theme, onToggleTheme }) {
             {buyerReps.map(rep => {
               const bd = rep.buyerDetails || {}
               const isExpanded = expandedRep === rep.id
-              const hasDetails = bd.preApproval || bd.timeline || bd.locationPrefs || bd.mustHaves
+              const isEditingName = editingRep === rep.id
+              const hasMetaInfo = bd.preApproval || bd.timeline || bd.locationPrefs
               return (
-              <div key={rep.id} className="deal-card" style={{ borderLeft:`3px solid ${rep.status==='closed' ? 'rgba(16,185,129,.4)' : 'rgba(14,165,233,.35)'}` }}>
-                {/* Row 1: Client name + status */}
-                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8, marginBottom:6 }}>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div className="deal-title" style={{ display:'flex', alignItems:'center', gap:6 }}>
-                      <span style={{ fontSize:15, flexShrink:0 }}>👤</span>
-                      <input value={rep.clientName||''}
-                        onChange={e => updateBuyerRepLocal(rep.id, e.target.value)}
-                        onBlur={e => persistBuyerRep(rep.id, e.target.value)}
-                        placeholder="Client name…"/>
-                    </div>
-                  </div>
-                  <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
-                    {rep.monthYear && rep.monthYear !== MONTH_YEAR && (
-                      <span title={`Added in ${fmtMonth(rep.monthYear)}`} style={{
-                        fontSize:9, padding:'2px 6px', borderRadius:4,
-                        background:'var(--bg2)', color:'var(--dim)',
-                        fontFamily:"'JetBrains Mono',monospace", fontWeight:600, letterSpacing:.3,
-                        border:'1px solid var(--b2)', whiteSpace:'nowrap',
-                      }}>
-                        {fmtMonth(rep.monthYear)}
-                      </span>
-                    )}
-                    <span className="status-pill-lg" style={{
-                      background: rep.status==='closed' ? 'rgba(16,185,129,.12)' : 'rgba(14,165,233,.1)',
-                      color: rep.status==='closed' ? 'var(--green)' : 'var(--blue)',
-                      border: `1px solid ${rep.status==='closed' ? 'rgba(16,185,129,.3)' : 'rgba(14,165,233,.25)'}`,
-                    }}>
-                      {rep.status === 'closed' ? '✓ CLOSED' : '● ACTIVE'}
-                    </span>
-                  </div>
+              <div key={rep.id} className="deal-card">
+                {/* Status pill — top-right */}
+                <div className="deal-status">
+                  <span className="status-pill-lg" style={{
+                    background: rep.status==='closed' ? 'rgba(16,185,129,.12)' : 'rgba(14,165,233,.1)',
+                    color: rep.status==='closed' ? 'var(--green)' : 'var(--blue)',
+                    border: `1px solid ${rep.status==='closed' ? 'rgba(16,185,129,.3)' : 'rgba(14,165,233,.25)'}`,
+                  }}>
+                    {rep.status === 'closed' ? '✓ CLOSED' : '● ACTIVE'}
+                  </span>
                 </div>
 
-                {/* Row 2: Quick stats (from buyerDetails) */}
-                {hasDetails && (
-                  <div className="deal-meta" style={{ marginBottom:8 }}>
-                    {bd.preApproval && (
-                      <span style={{ fontSize:11, color:'var(--muted)', display:'flex', alignItems:'center', gap:3 }}>
-                        <span style={{ fontSize:9, color:'var(--dim)' }}>Pre-approved:</span>
-                        <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color:'var(--blue)' }}>{formatPrice(bd.preApproval) || bd.preApproval}</span>
-                      </span>
-                    )}
-                    {bd.timeline && (
-                      <span style={{ fontSize:11, color:'var(--muted)', display:'flex', alignItems:'center', gap:3 }}>
-                        <span style={{ fontSize:9, color:'var(--dim)' }}>Timeline:</span>
-                        <span style={{ fontWeight:600 }}>{bd.timeline}</span>
-                      </span>
-                    )}
-                    {bd.locationPrefs && (
-                      <span style={{ fontSize:11, color:'var(--muted)', display:'flex', alignItems:'center', gap:3 }}>
-                        <span style={{ fontSize:10 }}>📍</span>
-                        <span style={{ maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{bd.locationPrefs}</span>
-                      </span>
-                    )}
-                  </div>
-                )}
+                {/* Client name — display or edit */}
+                <div style={{ display:'flex', alignItems:'center', gap:8, paddingRight:90 }}>
+                  <span style={{ fontSize:16, flexShrink:0 }}>👤</span>
+                  {isEditingName ? (
+                    <input className="deal-title" value={rep.clientName||''}
+                      autoFocus
+                      onChange={e => updateBuyerRepLocal(rep.id, e.target.value)}
+                      onBlur={e => { persistBuyerRep(rep.id, e.target.value); setEditingRep(null) }}
+                      onKeyDown={e => e.key === 'Enter' && e.target.blur()}
+                      placeholder="Client name…"
+                      style={{ background:'none', border:'none', outline:'none', width:'100%', minWidth:0, padding:0,
+                        fontFamily:"'Fraunces',serif", borderBottom:'1.5px solid var(--blue)' }}/>
+                  ) : (
+                    <span className="deal-title" style={{ cursor:'default' }}>
+                      {rep.clientName || 'Unnamed client'}
+                    </span>
+                  )}
+                </div>
 
-                {/* Row 3: Actions + expand */}
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, borderTop:'1px solid var(--b1)', paddingTop:8 }}>
-                  <div className="deal-actions">
-                    {rep.status !== 'closed' ? (
-                      <>
-                        <button className="act-btn act-btn-blue"
-                          onClick={() => setOfferModal({ repId:rep.id, repName:rep.clientName||'Buyer' })}>
-                          📤 Offer Made
-                        </button>
-                        <button className="act-btn act-btn-amber" onClick={() => closeBuyerRep(rep)}>
-                          ✓ Close Rep
-                        </button>
-                      </>
-                    ) : (
-                      <span style={{ fontSize:10, color:'var(--dim)', fontStyle:'italic' }}>Agreement closed</span>
-                    )}
-                  </div>
-                  <div style={{ display:'flex', gap:4, alignItems:'center' }}>
-                    <button onClick={() => setExpandedRep(isExpanded ? null : rep.id)} style={{
-                      background: isExpanded ? 'var(--blue)' : 'var(--bg2)', border:`1px solid ${isExpanded ? 'var(--blue)' : 'var(--b2)'}`,
-                      borderRadius:6, cursor:'pointer', padding:'4px 10px', fontSize:10, fontWeight:600,
-                      color: isExpanded ? '#fff' : 'var(--muted)', transition:'all .15s',
-                      display:'flex', alignItems:'center', gap:4,
-                    }}>
-                      {isExpanded ? '▲ Hide' : '▼ Details'}
+                {/* Metadata line — pre-approval, timeline, location, month */}
+                <div className="deal-meta-line">
+                  {bd.preApproval && (
+                    <>
+                      <span>Pre-approved: <span style={{ color:'var(--blue)', fontWeight:600 }}>{formatPrice(bd.preApproval) || bd.preApproval}</span></span>
+                    </>
+                  )}
+                  {bd.preApproval && bd.timeline && <span className="sep"/>}
+                  {bd.timeline && <span>{bd.timeline}</span>}
+                  {(bd.preApproval || bd.timeline) && bd.locationPrefs && <span className="sep"/>}
+                  {bd.locationPrefs && (
+                    <span style={{ maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>📍 {bd.locationPrefs}</span>
+                  )}
+                  {hasMetaInfo && rep.monthYear && rep.monthYear !== MONTH_YEAR && <span className="sep"/>}
+                  {rep.monthYear && rep.monthYear !== MONTH_YEAR && (
+                    <span>{fmtMonth(rep.monthYear)}</span>
+                  )}
+                </div>
+
+                {/* Actions row */}
+                <div className="deal-actions">
+                  {rep.status !== 'closed' ? (
+                    <>
+                      <button className="act-btn act-btn-blue"
+                        onClick={() => setOfferModal({ repId:rep.id, repName:rep.clientName||'Buyer' })}>
+                        📤 Offer Made
+                      </button>
+                      <button className="act-btn act-btn-amber" onClick={() => closeBuyerRep(rep)}>
+                        ✓ Close Rep
+                      </button>
+                    </>
+                  ) : (
+                    <span style={{ fontSize:11, color:'var(--dim)', fontStyle:'italic' }}>Agreement closed</span>
+                  )}
+                  <div style={{ marginLeft:'auto', display:'flex', gap:4, alignItems:'center' }}>
+                    <button onClick={() => setExpandedRep(isExpanded ? null : rep.id)}
+                      className="edit-toggle" title={isExpanded ? 'Hide details' : 'Show details'}
+                      style={ isExpanded ? { background:'var(--blue)', color:'#fff', borderColor:'var(--blue)' } : {}}>
+                      {isExpanded ? '▲' : '▼'}
                     </button>
-                    <button className="btn-del" style={{ flexShrink:0 }} onClick={() => removeBuyerRep(rep)}>✕</button>
+                    <button className="edit-toggle" title="Edit name"
+                      onClick={() => setEditingRep(isEditingName ? null : rep.id)}
+                      style={ isEditingName ? { background:'var(--bg2)', color:'var(--text)', borderColor:'var(--b2)' } : {}}>
+                      ✏️
+                    </button>
+                    <button className="edit-toggle" title="Remove" onClick={() => removeBuyerRep(rep)}
+                      style={{ color:'var(--red)', fontSize:12 }}>✕</button>
                   </div>
                 </div>
 
@@ -3434,24 +3457,20 @@ function Dashboard({ theme, onToggleTheme }) {
               </div>
               )
             })}
+          </div>
 
-            {/* Add new buyer rep card */}
-            <div className="deal-card" style={{ borderStyle:'dashed', background:'var(--bg)' }}>
-              <div style={{ fontSize:12, fontWeight:600, color:'var(--muted)', marginBottom:10 }}>+ New Buyer Rep</div>
-              <div style={{ display:'flex', gap:8 }}>
-                <input className="field-input" value={newRepClient}
-                  onChange={e => setNewRepClient(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && addBuyerRep()}
-                  placeholder="Client name…" style={{ padding:'8px 12px', flex:1 }}/>
-                <button onClick={addBuyerRep} disabled={!newRepClient.trim()} style={{
-                  background: newRepClient.trim() ? 'var(--blue)' : 'var(--b2)', border:'none',
-                  color: newRepClient.trim() ? '#fff' : 'var(--dim)', borderRadius:9,
-                  padding:'9px 18px', fontSize:13, fontWeight:700, cursor: newRepClient.trim() ? 'pointer' : 'default', lineHeight:1,
-                  display:'flex', alignItems:'center', justifyContent:'center', gap:5,
-                  transition:'background .15s, color .15s', whiteSpace:'nowrap',
-                }}>+ Add Buyer Rep</button>
-              </div>
-            </div>
+          {/* Add new buyer rep — clean add-bar */}
+          <div className="add-bar" style={{ marginTop:14 }} onClick={() => document.getElementById('add-rep-input')?.focus()}>
+            <span style={{ color:'var(--dim)', fontSize:16, flexShrink:0 }}>+</span>
+            <input id="add-rep-input" value={newRepClient}
+              onChange={e => setNewRepClient(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addBuyerRep()}
+              placeholder="Add a new buyer rep…"/>
+            {newRepClient.trim() && (
+              <button onClick={addBuyerRep} className="act-btn act-btn-blue" style={{ flexShrink:0 }}>
+                + Add
+              </button>
+            )}
           </div>
         </div>
 

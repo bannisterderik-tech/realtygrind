@@ -1986,13 +1986,12 @@ function Dashboard({ theme, onToggleTheme }) {
 
   // ── Checklist handlers ────────────────────────────────────────────────────
   function updateChecklist(dealId, updater) {
-    let updated
-    setPendingDeals(prev => prev.map(r => {
-      if (r.id !== dealId) return r
-      updated = typeof updater === 'function' ? updater(r.checklist||[]) : updater
-      return { ...r, checklist: updated }
-    }))
-    if (updated && dealId && !String(dealId).startsWith('tmp-')) {
+    // Compute updated checklist from current state (avoid relying on setState callback for DB write)
+    const deal = pendingDeals.find(r => r.id === dealId)
+    if (!deal) return
+    const updated = typeof updater === 'function' ? updater(deal.checklist||[]) : updater
+    setPendingDeals(prev => prev.map(r => r.id === dealId ? { ...r, checklist: updated } : r))
+    if (dealId && !String(dealId).startsWith('tmp-')) {
       safeDb(supabase.from('transactions').update({ checklist: updated }).eq('id', dealId).eq('user_id', user.id))
     }
   }

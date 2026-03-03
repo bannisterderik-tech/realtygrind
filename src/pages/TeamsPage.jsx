@@ -1278,10 +1278,25 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                         </div>
                       </div>
                       <div style={{ display:'flex', gap:12, alignItems:'center' }}>
-                        <div className="card-inset" style={{ padding:'10px 20px', textAlign:'center' }}>
+                        <div className="card-inset" style={{ padding:'10px 20px', textAlign:'center', position:'relative' }}>
                           <div className="label" style={{ marginBottom:4 }}>Invite Code</div>
-                          <div className="mono" style={{ fontSize:22, fontWeight:700, color:'var(--gold)', letterSpacing:5 }}>
-                            {teamData.invite_code}
+                          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+                            <div className="mono" style={{ fontSize:22, fontWeight:700, color:'var(--gold)', letterSpacing:5 }}>
+                              {teamData.invite_code}
+                            </div>
+                            <button title="Copy invite code" onClick={(e)=>{
+                              e.stopPropagation()
+                              navigator.clipboard.writeText(teamData.invite_code).then(()=>{
+                                const btn = e.currentTarget
+                                btn.textContent = '✓'
+                                btn.style.color = '#10b981'
+                                setTimeout(()=>{ btn.textContent = '📋'; btn.style.color = 'var(--muted)' }, 1500)
+                              })
+                            }} style={{
+                              background:'none', border:'1px solid var(--b2)', borderRadius:6,
+                              cursor:'pointer', fontSize:14, padding:'4px 7px', color:'var(--muted)',
+                              transition:'all .15s', lineHeight:1,
+                            }}>📋</button>
                           </div>
                         </div>
                         {/* Owner and group leaders cannot leave — owner created the team, leaders must resign first */}
@@ -1457,7 +1472,10 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                   <div className="tabs" style={{ marginBottom:16, display:'flex', alignItems:'center' }}>
                     <button className={`tab-item${teamsTab==='roster'?' on':''}`} onClick={()=>setTeamsTab('roster')}>👥 Roster</button>
                     {isAdminOrOwner && (
-                      <button className={`tab-item${teamsTab==='admin'?' on':''}`} onClick={()=>setTeamsTab('admin')}>📊 Admin</button>
+                      <button className={`tab-item${teamsTab==='groups'?' on':''}`} onClick={()=>setTeamsTab('groups')}>🫂 Groups</button>
+                    )}
+                    {isTeamOwner && (
+                      <button className={`tab-item${teamsTab==='admin'?' on':''}`} onClick={()=>setTeamsTab('admin')}>⚙️ Admin</button>
                     )}
                     {teamsTab==='roster' && members.length > 0 && (
                       <button onClick={()=>setTvMode(true)} style={{
@@ -1772,17 +1790,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                   </>
                   )} {/* end roster tab */}
 
-                  {/* Admin tab */}
-                  {teamsTab==='admin' && isAdminOrOwner && (
-                    <div>
-                      {/* Admin sub-tab bar */}
-                      <div className="tabs" style={{ marginBottom:20 }}>
-                        {(isTeamOwner||isAdmin) && <button className={`tab-item${adminSubTab==='groups'?' on':''}`} onClick={()=>setAdminSubTab('groups')}>🫂 Groups</button>}
-                        {isTeamOwner && <button className={`tab-item${adminSubTab==='settings'?' on':''}`} onClick={()=>setAdminSubTab('settings')}>⚙️ Settings</button>}
-                      </div>
-
-                      {/* Groups sub-tab — owner full access; admins read-only */}
-                      {adminSubTab==='groups' && (isTeamOwner || isAdmin) && (
+                  {/* Groups tab — owner full access; admins read-only */}
+                  {teamsTab==='groups' && isAdminOrOwner && (
                         <div>
                           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
                             <div>
@@ -1908,12 +1917,10 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                           })}
                         </div>
                       )}
+                  )} {/* end groups tab */}
 
-                    </div>
-                  )}
-
-                      {/* ── Settings sub-tab (owner only) ─────────────────── */}
-                      {teamsTab==='admin' && adminSubTab==='settings' && isTeamOwner && (
+                  {/* Admin tab (owner only) */}
+                  {teamsTab==='admin' && isTeamOwner && (
                         <div>
                           {/* Team Admins */}
                           <div style={{ marginBottom:32 }}>
@@ -2087,7 +2094,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                             </div>
                           </div>
                         </div>
-                      )}
+                  )} {/* end admin tab */}
 
                   </>} {/* end !groupView normal view */}
 

@@ -64,7 +64,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [memberStats,setMemberStats]= useState({})
   const [challengeForm, setChallengeForm] = useState(null) // null | { title, metric, bonusXp }
   const [challengeSaving, setChallengeSaving] = useState(false)
-  const [teamsTab,       setTeamsTab]       = useState('roster') // 'roster' | 'groups' | 'settings'
+  const [teamsTab,       setTeamsTab]       = useState('roster') // 'roster' | 'groups' | 'challenges' | 'listings' | 'settings'
+  const [settingsSubTab, setSettingsSubTab] = useState('invites') // 'invites' | 'admins' | 'groups' | 'ai' | 'directory' | 'danger'
   const [groupForm,      setGroupForm]      = useState(null)     // null | { name, leaderId, memberIds, editingId }
   const [groupSaving,    setGroupSaving]    = useState(false)
   const [groupView,      setGroupView]      = useState(null)     // null | groupId — full group dashboard
@@ -1313,14 +1314,18 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                   )}
 
                   {/* ── Page Tabs (prominent, at top) ── */}
-                  <div className="tabs" style={{ marginBottom:24, display:'flex', alignItems:'center', gap:2 }}>
+                  <div className="tabs" style={{ marginBottom:24, display:'flex', alignItems:'center', gap:2, flexWrap:'wrap' }}>
                     <button className={`tab-item${teamsTab==='roster'?' on':''}`} onClick={()=>setTeamsTab('roster')}
-                      style={{ fontSize:15, padding:'12px 22px', fontWeight:600 }}>👥 Roster</button>
+                      style={{ fontSize:14, padding:'10px 18px', fontWeight:600 }}>👥 Roster</button>
+                    <button className={`tab-item${teamsTab==='challenges'?' on':''}`} onClick={()=>setTeamsTab('challenges')}
+                      style={{ fontSize:14, padding:'10px 18px', fontWeight:600 }}>🏆 Challenges</button>
+                    <button className={`tab-item${teamsTab==='listings'?' on':''}`} onClick={()=>setTeamsTab('listings')}
+                      style={{ fontSize:14, padding:'10px 18px', fontWeight:600 }}>🏠 Listings</button>
                     <button className={`tab-item${teamsTab==='groups'?' on':''}`} onClick={()=>setTeamsTab('groups')}
-                      style={{ fontSize:15, padding:'12px 22px', fontWeight:600 }}>🫂 Groups</button>
+                      style={{ fontSize:14, padding:'10px 18px', fontWeight:600 }}>🫂 Groups</button>
                     {isTeamOwner && (
                       <button className={`tab-item${teamsTab==='settings'?' on':''}`} onClick={()=>setTeamsTab('settings')}
-                        style={{ fontSize:15, padding:'12px 22px', fontWeight:600 }}>⚙️ Settings</button>
+                        style={{ fontSize:14, padding:'10px 18px', fontWeight:600 }}>⚙️ Settings</button>
                     )}
                     {teamsTab==='roster' && members.length > 0 && (
                       <button onClick={()=>setTvMode(true)} style={{
@@ -1424,69 +1429,19 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       )
                     })}
                   </div>
+                  </>
+                  )} {/* end roster tab */}
 
-                  {/* ── Team Listings ── */}
-                  {teamListings.length > 0 && (
-                    <div style={{ marginTop:28 }}>
-                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-                        <div className="serif" style={{ fontSize:20, color:'var(--text)' }}>🏠 Active Listings</div>
-                        <span style={{ fontSize:11, padding:'3px 10px', borderRadius:20, fontWeight:600,
-                          background:'rgba(16,185,129,.1)', color:'var(--green)', border:'1px solid rgba(16,185,129,.2)' }}>
-                          {teamListings.length} active
-                        </span>
-                      </div>
-                      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                        {teamListings.map(l => {
-                          const pA = v => { const n=parseFloat(String(v||'').replace(/[^0-9.]/g,'')); return isNaN(n)?0:n }
-                          const price = pA(l.price); const comm = pA(l.commission)
-                          const isMe  = l.user_id === user?.id
-                          const sc    = l.status === 'pending' ? '#6366f1' : '#10b981'
-                          return (
-                            <div key={l.id} style={{ padding:'12px 16px', borderRadius:10,
-                              border:`1px solid ${isMe ? 'rgba(217,119,6,.3)' : 'var(--b2)'}`,
-                              background: isMe ? 'var(--gold3)' : 'var(--surface)' }}>
-                              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:(price>0||comm>0)?6:0 }}>
-                                <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700,
-                                  background:`${sc}15`, color:sc, border:`1px solid ${sc}30`,
-                                  textTransform:'uppercase', letterSpacing:'.5px', flexShrink:0 }}>
-                                  {l.status || 'Active'}
-                                </span>
-                                {l.address && (
-                                  <span style={{ fontSize:13, color:'var(--text)', fontWeight:500, flex:1, minWidth:0,
-                                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{l.address}</span>
-                                )}
-                                <span style={{ fontSize:11, flexShrink:0, whiteSpace:'nowrap',
-                                  color: isMe ? 'var(--gold)' : 'var(--dim)', fontWeight: isMe ? 700 : 400 }}>
-                                  {isMe ? '⭐ You' : l.agentName}
-                                </span>
-                              </div>
-                              {(price>0 || comm>0) && (
-                                <div style={{ display:'flex', gap:20 }}>
-                                  {price>0 && <div>
-                                    <div style={{ fontSize:9, color:'var(--dim)', fontWeight:700, letterSpacing:'.5px' }}>LIST PRICE</div>
-                                    <div style={{ fontSize:13, color:'var(--text)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}>{fmtMoney(price)}</div>
-                                  </div>}
-                                  {comm>0 && <div>
-                                    <div style={{ fontSize:9, color:'var(--dim)', fontWeight:700, letterSpacing:'.5px' }}>COMMISSION</div>
-                                    <div style={{ fontSize:13, color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}>{fmtMoney(comm)}</div>
-                                  </div>}
-                                </div>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ── Team Challenges ── */}
+                  {/* ════════ CHALLENGES TAB ════════ */}
+                  {teamsTab==='challenges' && (
+                  <>
                   {(() => {
                     const isOwner = teamData?.created_by === user?.id
                     const allChallenges = teamData?.team_prefs?.challenges || []
                     const active  = allChallenges.filter(c=>c.status==='active')
                     const ended   = allChallenges.filter(c=>c.status==='ended').slice(-3).reverse()
                     return (
-                      <div style={{ marginTop:28 }}>
+                      <div>
                         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
                           <div className="serif" style={{ fontSize:20, color:'var(--text)' }}>🏆 Team Challenges</div>
                           {isOwner && !challengeForm && (
@@ -1633,7 +1588,70 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                     )
                   })()}
                   </>
-                  )} {/* end roster tab */}
+                  )} {/* end challenges tab */}
+
+                  {/* ════════ LISTINGS TAB ════════ */}
+                  {teamsTab==='listings' && (
+                  <>
+                  <div>
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+                      <div className="serif" style={{ fontSize:20, color:'var(--text)' }}>🏠 Team Listings</div>
+                      {teamListings.length > 0 && (
+                        <span style={{ fontSize:11, padding:'3px 10px', borderRadius:20, fontWeight:600,
+                          background:'rgba(16,185,129,.1)', color:'var(--green)', border:'1px solid rgba(16,185,129,.2)' }}>
+                          {teamListings.length} active
+                        </span>
+                      )}
+                    </div>
+                    {teamListings.length === 0 && (
+                      <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic', padding:'16px 0' }}>
+                        No active listings right now.
+                      </div>
+                    )}
+                    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                      {teamListings.map(l => {
+                        const pA = v => { const n=parseFloat(String(v||'').replace(/[^0-9.]/g,'')); return isNaN(n)?0:n }
+                        const price = pA(l.price); const comm = pA(l.commission)
+                        const isMe  = l.user_id === user?.id
+                        const sc    = l.status === 'pending' ? '#6366f1' : '#10b981'
+                        return (
+                          <div key={l.id} style={{ padding:'12px 16px', borderRadius:10,
+                            border:`1px solid ${isMe ? 'rgba(217,119,6,.3)' : 'var(--b2)'}`,
+                            background: isMe ? 'var(--gold3)' : 'var(--surface)' }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:(price>0||comm>0)?6:0 }}>
+                              <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700,
+                                background:`${sc}15`, color:sc, border:`1px solid ${sc}30`,
+                                textTransform:'uppercase', letterSpacing:'.5px', flexShrink:0 }}>
+                                {l.status || 'Active'}
+                              </span>
+                              {l.address && (
+                                <span style={{ fontSize:13, color:'var(--text)', fontWeight:500, flex:1, minWidth:0,
+                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{l.address}</span>
+                              )}
+                              <span style={{ fontSize:11, flexShrink:0, whiteSpace:'nowrap',
+                                color: isMe ? 'var(--gold)' : 'var(--dim)', fontWeight: isMe ? 700 : 400 }}>
+                                {isMe ? '⭐ You' : l.agentName}
+                              </span>
+                            </div>
+                            {(price>0 || comm>0) && (
+                              <div style={{ display:'flex', gap:20 }}>
+                                {price>0 && <div>
+                                  <div style={{ fontSize:9, color:'var(--dim)', fontWeight:700, letterSpacing:'.5px' }}>LIST PRICE</div>
+                                  <div style={{ fontSize:13, color:'var(--text)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}>{fmtMoney(price)}</div>
+                                </div>}
+                                {comm>0 && <div>
+                                  <div style={{ fontSize:9, color:'var(--dim)', fontWeight:700, letterSpacing:'.5px' }}>COMMISSION</div>
+                                  <div style={{ fontSize:13, color:'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}>{fmtMoney(comm)}</div>
+                                </div>}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  </>
+                  )} {/* end listings tab */}
 
                   {/* ════════ GROUPS TAB ════════ */}
                   {teamsTab==='groups' && (
@@ -1647,7 +1665,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 🫂 You're not in any group yet. Ask your team owner to add you.
                               </div>
                             )
-                            if (myGroups.length === 0) return null
+                            if (myGroups.length === 0) return (
+                              <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic', padding:'16px 0' }}>
+                                No groups yet.{isTeamOwner && ' Go to Settings → Groups to create one.'}
+                              </div>
+                            )
                             return (
                               <div style={{ marginBottom:28 }}>
                                 {myGroups.map(myGroup => {
@@ -1745,141 +1767,35 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               </div>
                             )
                           })()}
-
-                          {/* Group Management (admin/owner) */}
-                          {isAdminOrOwner && (<>
-                          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-                            <div>
-                              <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:2 }}>🫂 Manage Groups</div>
-                              <div style={{ fontSize:12, color:'var(--muted)' }}>Assign a leader to each group — leaders can coach and view their members' activity.</div>
-                            </div>
-                            {isTeamOwner && !groupForm && (
-                              <button className="btn-outline" onClick={()=>setGroupForm({ name:'', leaderId:'', memberIds:[], editingId:null })}
-                                style={{ fontSize:12 }}>+ New Group</button>
-                            )}
-                          </div>
-
-                          {isTeamOwner && groupForm && (
-                            <div className="card" style={{ padding:20, marginBottom:16, border:'1px solid rgba(139,92,246,.3)', background:'rgba(139,92,246,.04)' }}>
-                              <div className="serif" style={{ fontSize:15, color:'var(--text)', marginBottom:14 }}>
-                                {groupForm.editingId ? 'Edit Group' : 'New Group'}
-                              </div>
-                              <div style={{ marginBottom:12 }}>
-                                <div className="label" style={{ marginBottom:5 }}>Group Name</div>
-                                <input className="field-input" value={groupForm.name}
-                                  onChange={e=>setGroupForm(f=>({...f,name:e.target.value}))}
-                                  placeholder="e.g. Alpha Team" style={{ width:'100%' }}/>
-                              </div>
-                              <div style={{ marginBottom:12 }}>
-                                <div className="label" style={{ marginBottom:5 }}>Group Leader</div>
-                                <select className="field-input" value={groupForm.leaderId}
-                                  onChange={e=>{
-                                    const newLeaderId = e.target.value
-                                    setGroupForm(f=>({
-                                      ...f,
-                                      leaderId: newLeaderId,
-                                      // auto-add the new leader to members if not already included
-                                      memberIds: newLeaderId && !f.memberIds.includes(newLeaderId)
-                                        ? [...f.memberIds, newLeaderId]
-                                        : f.memberIds,
-                                    }))
-                                  }} style={{ width:'100%' }}>
-                                  <option value="">Select a leader…</option>
-                                  {members.map(m=><option key={m.id} value={m.id}>{m.full_name||'Agent'}</option>)}
-                                </select>
-                              </div>
-                              <div style={{ marginBottom:12 }}>
-                                <div className="label" style={{ marginBottom:8 }}>Members (any number)</div>
-                                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                                  {members.map(m=>{
-                                    const isLeader = groupForm.leaderId === m.id
-                                    const checked  = isLeader || groupForm.memberIds.includes(m.id)
-                                    const mRank    = getRank(m.xp||0)
-                                    return (
-                                      <label key={m.id} style={{ display:'flex', alignItems:'center', gap:8,
-                                        cursor: isLeader ? 'not-allowed' : 'pointer',
-                                        padding:'6px 10px', borderRadius:6,
-                                        background:checked?'rgba(139,92,246,.08)':'var(--bg2)',
-                                        border:`1px solid ${checked?'rgba(139,92,246,.3)':'var(--b1)'}`,
-                                        opacity: isLeader ? 0.85 : 1 }}>
-                                        <input type="checkbox" checked={checked} disabled={isLeader}
-                                          title={isLeader ? 'Leader is always a member of their group' : undefined}
-                                          onChange={e=>!isLeader && setGroupForm(f=>({...f, memberIds: e.target.checked
-                                            ? [...f.memberIds, m.id]
-                                            : f.memberIds.filter(id=>id!==m.id)
-                                          }))}/>
-                                        <span style={{ fontSize:14 }}>{mRank.icon}</span>
-                                        <span style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{m.full_name||'Agent'}</span>
-                                        {isLeader && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:4, background:'rgba(139,92,246,.18)', color:'#8b5cf6', fontWeight:700 }}>LEADER</span>}
-                                        {isLeader && <span style={{ fontSize:10, color:'var(--dim)', marginLeft:'auto' }}>always a member</span>}
-                                      </label>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                              <div style={{ display:'flex', gap:8 }}>
-                                <button className="btn-primary" onClick={saveGroup} disabled={groupSaving||!groupForm.name.trim()}
-                                  style={{ fontSize:13, padding:'9px 22px' }}>
-                                  {groupSaving?'Saving…':'Save Group'}
-                                </button>
-                                <button className="btn-outline" onClick={()=>setGroupForm(null)} style={{ fontSize:13 }}>Cancel</button>
-                              </div>
-                            </div>
-                          )}
-
-                          {allGroups.length===0 && !groupForm && (
-                            <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic', padding:'12px 0' }}>
-                              No groups yet. Create one to assign leaders and build accountability.
-                            </div>
-                          )}
-                          {allGroups.map(grp=>{
-                            const leader = members.find(m=>m.id===grp.leaderId)
-                            return (
-                              <div key={grp.id} className="card" style={{ padding:16, marginBottom:10 }}>
-                                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10 }}>
-                                  <div>
-                                    <div style={{ fontWeight:600, fontSize:14, color:'var(--text)', marginBottom:4 }}>🫂 {grp.name}</div>
-                                    <div style={{ fontSize:12, color:'var(--muted)', marginBottom:4 }}>
-                                      {grp.memberIds.length} {grp.memberIds.length===1?'member':'members'} · {grp.memberIds.map(id=>members.find(m=>m.id===id)?.full_name||'?').join(', ')}
-                                    </div>
-                                    {leader && <div style={{ fontSize:11, color:'#8b5cf6', fontWeight:600 }}>👑 Leader: {leader.full_name||'Agent'}</div>}
-                                  </div>
-                                  <div style={{ display:'flex', gap:6, flexShrink:0 }}>
-                                    <button className="btn-outline" style={{ fontSize:11, padding:'5px 10px' }}
-                                      onClick={()=>{ setGroupView(grp.id); setGroupChallengeForm(null) }}>
-                                      📊 Dashboard
-                                    </button>
-                                    {isTeamOwner && (<>
-                                      <button className="btn-outline" style={{ fontSize:11, padding:'5px 10px' }}
-                                        onClick={()=>{
-                                          const safeMemberIds = grp.leaderId && !grp.memberIds.includes(grp.leaderId)
-                                            ? [...grp.memberIds, grp.leaderId]
-                                            : [...grp.memberIds]
-                                          setGroupForm({ name:grp.name, leaderId:grp.leaderId, memberIds:safeMemberIds, editingId:grp.id })
-                                        }}>
-                                        Edit
-                                      </button>
-                                      <button onClick={()=>setConfirmModal({ message:`Delete the group "${grp.name}"? Members won't be removed from the team.`, label:'Delete Group', onConfirm:()=>deleteGroup(grp.id) })}
-                                        style={{ background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.2)',
-                                          color:'var(--red)', borderRadius:7, padding:'5px 10px', cursor:'pointer', fontSize:11, fontWeight:600 }}>
-                                        ✕
-                                      </button>
-                                    </>)}
-                                  </div>
-                                </div>
-                              </div>
-                            )
-                          })}
-                          </>)}
                         </div>
                   )} {/* end groups tab */}
 
                   {/* ════════ SETTINGS TAB (owner only) ════════ */}
                   {teamsTab==='settings' && isTeamOwner && (
                         <div>
-                          {/* ── Invite by Email ── */}
+                          {/* Settings sub-tabs */}
+                          <div style={{ display:'flex', gap:0, marginBottom:20, borderBottom:'1px solid var(--b2)', flexWrap:'wrap' }}>
+                            {[
+                              { id:'invites', label:'✉️ Invites' },
+                              { id:'admins',  label:'👑 Admins' },
+                              { id:'groups',  label:'🫂 Groups' },
+                              { id:'ai',      label:'🤖 AI Tools' },
+                              { id:'directory', label:'🔗 Directory' },
+                              { id:'danger',  label:'⚠️ Danger Zone' },
+                            ].map(t=>(
+                              <button key={t.id} onClick={()=>setSettingsSubTab(t.id)} style={{
+                                background:'none', border:'none', cursor:'pointer', fontSize:12, fontWeight:600,
+                                padding:'10px 16px', color: settingsSubTab===t.id ? 'var(--text)' : 'var(--muted)',
+                                borderBottom: settingsSubTab===t.id ? '2px solid var(--gold2)' : '2px solid transparent',
+                                transition:'all .15s', fontFamily:'Poppins,sans-serif',
+                              }}>{t.label}</button>
+                            ))}
+                          </div>
+
+                          {/* ── Invites sub-tab ── */}
+                          {settingsSubTab==='invites' && (
                           <div className="card" style={{
-                            padding:'18px 20px', marginBottom:24,
+                            padding:'18px 20px',
                             borderLeft:'3px solid var(--gold2)',
                             background:'linear-gradient(135deg, rgba(217,119,6,.06) 0%, var(--surface) 55%)',
                           }}>
@@ -1924,9 +1840,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               </div>
                             )}
                           </div>
+                          )}
 
-                          {/* Team Admins */}
-                          <div style={{ marginBottom:32 }}>
+                          {/* ── Admins sub-tab ── */}
+                          {settingsSubTab==='admins' && (
+                          <div>
                             <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:6 }}>👑 Team Admins</div>
                             <div style={{ fontSize:13, color:'var(--muted)', marginBottom:16, lineHeight:1.6 }}>
                               Admins can view all member details, write coaching notes for any agent, and see all standups. They cannot manage groups or transfer ownership.
@@ -1963,9 +1881,136 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               )}
                             </div>
                           </div>
+                          )}
 
-                          {/* ── AI Tools toggle ── */}
-                          <div className="card" style={{ padding: 24, marginBottom: 20 }}>
+                          {/* ── Groups sub-tab (Manage Groups — moved from Groups tab) ── */}
+                          {settingsSubTab==='groups' && (
+                          <div>
+                            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+                              <div>
+                                <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:2 }}>🫂 Manage Groups</div>
+                                <div style={{ fontSize:12, color:'var(--muted)' }}>Assign a leader to each group — leaders can coach and view their members' activity.</div>
+                              </div>
+                              {!groupForm && (
+                                <button className="btn-outline" onClick={()=>setGroupForm({ name:'', leaderId:'', memberIds:[], editingId:null })}
+                                  style={{ fontSize:12 }}>+ New Group</button>
+                              )}
+                            </div>
+
+                            {groupForm && (
+                              <div className="card" style={{ padding:20, marginBottom:16, border:'1px solid rgba(139,92,246,.3)', background:'rgba(139,92,246,.04)' }}>
+                                <div className="serif" style={{ fontSize:15, color:'var(--text)', marginBottom:14 }}>
+                                  {groupForm.editingId ? 'Edit Group' : 'New Group'}
+                                </div>
+                                <div style={{ marginBottom:12 }}>
+                                  <div className="label" style={{ marginBottom:5 }}>Group Name</div>
+                                  <input className="field-input" value={groupForm.name}
+                                    onChange={e=>setGroupForm(f=>({...f,name:e.target.value}))}
+                                    placeholder="e.g. Alpha Team" style={{ width:'100%' }}/>
+                                </div>
+                                <div style={{ marginBottom:12 }}>
+                                  <div className="label" style={{ marginBottom:5 }}>Group Leader</div>
+                                  <select className="field-input" value={groupForm.leaderId}
+                                    onChange={e=>{
+                                      const newLeaderId = e.target.value
+                                      setGroupForm(f=>({
+                                        ...f,
+                                        leaderId: newLeaderId,
+                                        memberIds: newLeaderId && !f.memberIds.includes(newLeaderId)
+                                          ? [...f.memberIds, newLeaderId]
+                                          : f.memberIds,
+                                      }))
+                                    }} style={{ width:'100%' }}>
+                                    <option value="">Select a leader…</option>
+                                    {members.map(m=><option key={m.id} value={m.id}>{m.full_name||'Agent'}</option>)}
+                                  </select>
+                                </div>
+                                <div style={{ marginBottom:12 }}>
+                                  <div className="label" style={{ marginBottom:8 }}>Members (any number)</div>
+                                  <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                                    {members.map(m=>{
+                                      const isLeader = groupForm.leaderId === m.id
+                                      const checked  = isLeader || groupForm.memberIds.includes(m.id)
+                                      const mRank    = getRank(m.xp||0)
+                                      return (
+                                        <label key={m.id} style={{ display:'flex', alignItems:'center', gap:8,
+                                          cursor: isLeader ? 'not-allowed' : 'pointer',
+                                          padding:'6px 10px', borderRadius:6,
+                                          background:checked?'rgba(139,92,246,.08)':'var(--bg2)',
+                                          border:`1px solid ${checked?'rgba(139,92,246,.3)':'var(--b1)'}`,
+                                          opacity: isLeader ? 0.85 : 1 }}>
+                                          <input type="checkbox" checked={checked} disabled={isLeader}
+                                            title={isLeader ? 'Leader is always a member of their group' : undefined}
+                                            onChange={e=>!isLeader && setGroupForm(f=>({...f, memberIds: e.target.checked
+                                              ? [...f.memberIds, m.id]
+                                              : f.memberIds.filter(id=>id!==m.id)
+                                            }))}/>
+                                          <span style={{ fontSize:14 }}>{mRank.icon}</span>
+                                          <span style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{m.full_name||'Agent'}</span>
+                                          {isLeader && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:4, background:'rgba(139,92,246,.18)', color:'#8b5cf6', fontWeight:700 }}>LEADER</span>}
+                                          {isLeader && <span style={{ fontSize:10, color:'var(--dim)', marginLeft:'auto' }}>always a member</span>}
+                                        </label>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                                <div style={{ display:'flex', gap:8 }}>
+                                  <button className="btn-primary" onClick={saveGroup} disabled={groupSaving||!groupForm.name.trim()}
+                                    style={{ fontSize:13, padding:'9px 22px' }}>
+                                    {groupSaving?'Saving…':'Save Group'}
+                                  </button>
+                                  <button className="btn-outline" onClick={()=>setGroupForm(null)} style={{ fontSize:13 }}>Cancel</button>
+                                </div>
+                              </div>
+                            )}
+
+                            {allGroups.length===0 && !groupForm && (
+                              <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic', padding:'12px 0' }}>
+                                No groups yet. Create one to assign leaders and build accountability.
+                              </div>
+                            )}
+                            {allGroups.map(grp=>{
+                              const leader = members.find(m=>m.id===grp.leaderId)
+                              return (
+                                <div key={grp.id} className="card" style={{ padding:16, marginBottom:10 }}>
+                                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10 }}>
+                                    <div>
+                                      <div style={{ fontWeight:600, fontSize:14, color:'var(--text)', marginBottom:4 }}>🫂 {grp.name}</div>
+                                      <div style={{ fontSize:12, color:'var(--muted)', marginBottom:4 }}>
+                                        {grp.memberIds.length} {grp.memberIds.length===1?'member':'members'} · {grp.memberIds.map(id=>members.find(m=>m.id===id)?.full_name||'?').join(', ')}
+                                      </div>
+                                      {leader && <div style={{ fontSize:11, color:'#8b5cf6', fontWeight:600 }}>👑 Leader: {leader.full_name||'Agent'}</div>}
+                                    </div>
+                                    <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                                      <button className="btn-outline" style={{ fontSize:11, padding:'5px 10px' }}
+                                        onClick={()=>{ setGroupView(grp.id); setGroupChallengeForm(null) }}>
+                                        📊 Dashboard
+                                      </button>
+                                      <button className="btn-outline" style={{ fontSize:11, padding:'5px 10px' }}
+                                        onClick={()=>{
+                                          const safeMemberIds = grp.leaderId && !grp.memberIds.includes(grp.leaderId)
+                                            ? [...grp.memberIds, grp.leaderId]
+                                            : [...grp.memberIds]
+                                          setGroupForm({ name:grp.name, leaderId:grp.leaderId, memberIds:safeMemberIds, editingId:grp.id })
+                                        }}>
+                                        Edit
+                                      </button>
+                                      <button onClick={()=>setConfirmModal({ message:`Delete the group "${grp.name}"? Members won't be removed from the team.`, label:'Delete Group', onConfirm:()=>deleteGroup(grp.id) })}
+                                        style={{ background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.2)',
+                                          color:'var(--red)', borderRadius:7, padding:'5px 10px', cursor:'pointer', fontSize:11, fontWeight:600 }}>
+                                        ✕
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                          )}
+
+                          {/* ── AI Tools sub-tab ── */}
+                          {settingsSubTab==='ai' && (
+                          <div className="card" style={{ padding: 24 }}>
                             <div className="serif" style={{ fontSize: 18, color: 'var(--text)', marginBottom: 8 }}>🤖 AI Tools</div>
                             <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16, lineHeight: 1.6 }}>
                               Control whether team members can access AI-powered tools like the AI Assistant.
@@ -2005,7 +2050,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               </button>
                             </div>
                           </div>
+                          )}
 
+                          {/* ── Directory sub-tab ── */}
+                          {settingsSubTab==='directory' && (
+                          <>
                           {/* ── Tools Directory ── */}
                           <div className="card" style={{ padding: 24, marginBottom: 20 }}>
                             <div className="serif" style={{ fontSize: 18, color: 'var(--text)', marginBottom: 8 }}>🔗 Tools Directory</div>
@@ -2355,8 +2404,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               </button>
                             )}
                           </div>
+                          </>
+                          )}
 
-                          {/* Transfer Ownership — danger zone */}
+                          {/* ── Danger Zone sub-tab ── */}
+                          {settingsSubTab==='danger' && (
                           <div style={{ border:'1px solid rgba(220,38,38,.25)', borderRadius:12, padding:24 }}>
                             <div className="serif" style={{ fontSize:18, color:'var(--red)', marginBottom:8 }}>⚠️ Transfer Ownership</div>
                             <div style={{ fontSize:13, color:'var(--muted)', marginBottom:16, lineHeight:1.6 }}>
@@ -2393,6 +2445,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               )}
                             </div>
                           </div>
+                          )}
+
                         </div>
                   )} {/* end settings tab */}
 

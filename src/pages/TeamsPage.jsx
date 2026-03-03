@@ -90,6 +90,9 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [panelNoteSaving, setPanelNoteSaving] = useState(false)
   const [teamListings,    setTeamListings]    = useState([])     // active listings for all team members
   const [tvMode,          setTvMode]          = useState(false)   // fullscreen TV leaderboard
+  const [editingToolId,   setEditingToolId]   = useState(null)    // tool id whose URL is being edited
+  const [editingToolUrl,  setEditingToolUrl]  = useState('')      // URL being typed
+  const [customToolForm,  setCustomToolForm]  = useState(null)    // null | { name, url, icon, category }
 
   // Depend only on team_id — prevents re-fetching every time the profile object
   // is recreated (e.g. on token refresh) while nothing meaningful has changed.
@@ -2007,53 +2010,350 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                           <div className="card" style={{ padding: 24, marginBottom: 20 }}>
                             <div className="serif" style={{ fontSize: 18, color: 'var(--text)', marginBottom: 8 }}>🔗 Tools Directory</div>
                             <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16, lineHeight: 1.6 }}>
-                              Select which real estate tools appear in your team's Tools page. Only enabled tools will be visible to team members.
+                              Manage your team's tools — toggle visibility, edit URLs, or add custom tools.
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {/* Built-in tools */}
                               {ALL_APPS.map(app => {
                                 const enabledTools = teamData?.team_prefs?.enabled_tools
                                 const defaultIds = ['fub','redx','skyslope','rmls','gdrive','gmail','zillow','rpr','ylopo']
                                 const isEnabled = enabledTools ? enabledTools.includes(app.id) : defaultIds.includes(app.id)
+                                const overrideUrl = teamData?.team_prefs?.tool_overrides?.[app.id]?.url
+                                const displayUrl = overrideUrl
+                                  ? overrideUrl.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '').slice(0,40)
+                                  : app.display
+                                const isEditing = editingToolId === app.id
                                 return (
-                                  <div key={app.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', borderRadius: 8, background: 'var(--bg2)', border: '1px solid var(--b1)' }}>
-                                    <span style={{ fontSize: 18, flexShrink: 0 }}>{app.icon}</span>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{app.name}</div>
-                                      <div style={{ fontSize: 10, color: 'var(--muted)' }}>{app.category}</div>
+                                  <div key={app.id} style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--bg2)', border: '1px solid var(--b1)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                      <span style={{ fontSize: 18, flexShrink: 0 }}>{app.icon}</span>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{app.name}</div>
+                                        <div style={{ fontSize: 10, color: 'var(--muted)' }}>{app.category}</div>
+                                      </div>
+                                      {!isEditing && (
+                                        <button onClick={() => { setEditingToolId(app.id); setEditingToolUrl(overrideUrl || app.url) }}
+                                          title="Edit URL" style={{ background: 'none', border: '1px solid var(--b2)', borderRadius: 5,
+                                            padding: '3px 7px', fontSize: 11, cursor: 'pointer', color: 'var(--muted)', flexShrink: 0 }}>
+                                          ✏️
+                                        </button>
+                                      )}
+                                      <button
+                                        onClick={async () => {
+                                          const current = teamData?.team_prefs?.enabled_tools || defaultIds
+                                          const updated = isEnabled
+                                            ? current.filter(id => id !== app.id)
+                                            : [...current, app.id]
+                                          const newPrefs = { ...(teamData?.team_prefs || {}), enabled_tools: updated }
+                                          try {
+                                            const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                            if (err) throw err
+                                            setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+                                          } catch (err) {
+                                            setError('Failed to update tools.')
+                                            console.error('toggleTool error:', err)
+                                          }
+                                        }}
+                                        style={{
+                                          width: 42, height: 24, borderRadius: 12, cursor: 'pointer', border: 'none',
+                                          position: 'relative', flexShrink: 0, transition: 'background .2s',
+                                          background: isEnabled ? '#10b981' : 'var(--b2)',
+                                        }}
+                                      >
+                                        <div style={{
+                                          width: 18, height: 18, borderRadius: 9,
+                                          background: '#fff', position: 'absolute', top: 3,
+                                          transition: 'left .2s',
+                                          left: isEnabled ? 21 : 3,
+                                        }} />
+                                      </button>
                                     </div>
-                                    <button
-                                      onClick={async () => {
-                                        const current = teamData?.team_prefs?.enabled_tools || defaultIds
-                                        const updated = isEnabled
-                                          ? current.filter(id => id !== app.id)
-                                          : [...current, app.id]
-                                        const newPrefs = { ...(teamData?.team_prefs || {}), enabled_tools: updated }
-                                        try {
-                                          const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
-                                          if (err) throw err
-                                          setTeamData(td => ({ ...td, team_prefs: newPrefs }))
-                                        } catch (err) {
-                                          setError('Failed to update tools.')
-                                          console.error('toggleTool error:', err)
+                                    {/* URL display / edit */}
+                                    {isEditing ? (
+                                      <div style={{ display: 'flex', gap: 6, marginTop: 8, paddingLeft: 30 }}>
+                                        <input className="field-input" value={editingToolUrl}
+                                          onChange={e => setEditingToolUrl(e.target.value)}
+                                          onKeyDown={e => e.key === 'Enter' && (async () => {
+                                            const url = editingToolUrl.trim()
+                                            if (!url) return
+                                            const overrides = { ...(teamData?.team_prefs?.tool_overrides || {}), [app.id]: { url } }
+                                            const newPrefs = { ...(teamData?.team_prefs || {}), tool_overrides: overrides }
+                                            try {
+                                              const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                              if (err) throw err
+                                              setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+                                              setEditingToolId(null)
+                                            } catch (err) { setError('Failed to save URL.'); console.error(err) }
+                                          })()}
+                                          placeholder="https://..." style={{ flex: 1, fontSize: 12, padding: '6px 10px' }}/>
+                                        <button onClick={async () => {
+                                          const url = editingToolUrl.trim()
+                                          if (!url) return
+                                          const overrides = { ...(teamData?.team_prefs?.tool_overrides || {}), [app.id]: { url } }
+                                          const newPrefs = { ...(teamData?.team_prefs || {}), tool_overrides: overrides }
+                                          try {
+                                            const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                            if (err) throw err
+                                            setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+                                            setEditingToolId(null)
+                                          } catch (err) { setError('Failed to save URL.'); console.error(err) }
+                                        }} style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, cursor: 'pointer',
+                                          background: 'var(--text)', border: 'none', color: 'var(--bg)', fontWeight: 600, flexShrink: 0 }}>
+                                          Save
+                                        </button>
+                                        <button onClick={() => setEditingToolId(null)} style={{ fontSize: 11, padding: '5px 10px',
+                                          borderRadius: 6, cursor: 'pointer', background: 'none', border: '1px solid var(--b2)',
+                                          color: 'var(--muted)', flexShrink: 0 }}>
+                                          Cancel
+                                        </button>
+                                        {overrideUrl && (
+                                          <button onClick={async () => {
+                                            const overrides = { ...(teamData?.team_prefs?.tool_overrides || {}) }
+                                            delete overrides[app.id]
+                                            const newPrefs = { ...(teamData?.team_prefs || {}), tool_overrides: overrides }
+                                            try {
+                                              const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                              if (err) throw err
+                                              setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+                                              setEditingToolId(null)
+                                            } catch (err) { setError('Failed to reset URL.'); console.error(err) }
+                                          }} title="Reset to default URL" style={{ fontSize: 10, padding: '5px 8px',
+                                            borderRadius: 6, cursor: 'pointer', background: 'rgba(220,38,38,.06)',
+                                            border: '1px solid rgba(220,38,38,.2)', color: 'var(--red)', flexShrink: 0 }}>
+                                            Reset
+                                          </button>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <div style={{ paddingLeft: 30, marginTop: 2 }}>
+                                        <span style={{ fontSize: 10, color: overrideUrl ? '#0ea5e9' : 'var(--dim)',
+                                          fontFamily: "'JetBrains Mono',monospace" }}>
+                                          {displayUrl}
+                                        </span>
+                                        {overrideUrl && <span style={{ fontSize: 9, marginLeft: 6, padding: '1px 5px',
+                                          borderRadius: 3, background: 'rgba(14,165,233,.1)', color: '#0ea5e9',
+                                          fontWeight: 700 }}>CUSTOM URL</span>}
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })}
+
+                              {/* Custom tools */}
+                              {(teamData?.team_prefs?.custom_tools || []).map(tool => {
+                                const enabledTools = teamData?.team_prefs?.enabled_tools
+                                const defaultIds = ['fub','redx','skyslope','rmls','gdrive','gmail','zillow','rpr','ylopo']
+                                const isEnabled = enabledTools ? enabledTools.includes(tool.id) : false
+                                const isEditing = editingToolId === tool.id
+                                const displayUrl = (tool.url || '').replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '').slice(0,40)
+                                return (
+                                  <div key={tool.id} style={{ padding: '10px 12px', borderRadius: 8,
+                                    background: 'var(--bg2)', border: '1px solid rgba(217,119,6,.25)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                      <span style={{ fontSize: 18, flexShrink: 0 }}>{tool.icon || '🔧'}</span>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{tool.name}</span>
+                                          <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3,
+                                            background: 'var(--gold4)', color: 'var(--gold)', fontWeight: 700 }}>CUSTOM</span>
+                                        </div>
+                                        <div style={{ fontSize: 10, color: 'var(--muted)' }}>{tool.category || 'Custom'}</div>
+                                      </div>
+                                      {!isEditing && (
+                                        <button onClick={() => { setEditingToolId(tool.id); setEditingToolUrl(tool.url || '') }}
+                                          title="Edit" style={{ background: 'none', border: '1px solid var(--b2)', borderRadius: 5,
+                                            padding: '3px 7px', fontSize: 11, cursor: 'pointer', color: 'var(--muted)', flexShrink: 0 }}>
+                                          ✏️
+                                        </button>
+                                      )}
+                                      <button onClick={() => setConfirmModal({
+                                        message: `Remove "${tool.name}" from your tools directory?`,
+                                        label: 'Remove Tool',
+                                        onConfirm: async () => {
+                                          const updated = (teamData?.team_prefs?.custom_tools || []).filter(t => t.id !== tool.id)
+                                          const updatedEnabled = (teamData?.team_prefs?.enabled_tools || defaultIds).filter(id => id !== tool.id)
+                                          const newPrefs = { ...(teamData?.team_prefs || {}), custom_tools: updated, enabled_tools: updatedEnabled }
+                                          try {
+                                            const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                            if (err) throw err
+                                            setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+                                          } catch (err) { setError('Failed to remove tool.'); console.error(err) }
                                         }
-                                      }}
-                                      style={{
-                                        width: 42, height: 24, borderRadius: 12, cursor: 'pointer', border: 'none',
-                                        position: 'relative', flexShrink: 0, transition: 'background .2s',
-                                        background: isEnabled ? '#10b981' : 'var(--b2)',
-                                      }}
-                                    >
-                                      <div style={{
-                                        width: 18, height: 18, borderRadius: 9,
-                                        background: '#fff', position: 'absolute', top: 3,
-                                        transition: 'left .2s',
-                                        left: isEnabled ? 21 : 3,
-                                      }} />
-                                    </button>
+                                      })} title="Remove tool" style={{ background: 'rgba(220,38,38,.06)', border: '1px solid rgba(220,38,38,.2)',
+                                        borderRadius: 5, padding: '3px 7px', fontSize: 11, cursor: 'pointer', color: 'var(--red)', flexShrink: 0 }}>
+                                        ✕
+                                      </button>
+                                      <button
+                                        onClick={async () => {
+                                          const current = teamData?.team_prefs?.enabled_tools || defaultIds
+                                          const updated = isEnabled
+                                            ? current.filter(id => id !== tool.id)
+                                            : [...current, tool.id]
+                                          const newPrefs = { ...(teamData?.team_prefs || {}), enabled_tools: updated }
+                                          try {
+                                            const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                            if (err) throw err
+                                            setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+                                          } catch (err) { setError('Failed to update tools.'); console.error(err) }
+                                        }}
+                                        style={{
+                                          width: 42, height: 24, borderRadius: 12, cursor: 'pointer', border: 'none',
+                                          position: 'relative', flexShrink: 0, transition: 'background .2s',
+                                          background: isEnabled ? '#10b981' : 'var(--b2)',
+                                        }}
+                                      >
+                                        <div style={{
+                                          width: 18, height: 18, borderRadius: 9,
+                                          background: '#fff', position: 'absolute', top: 3,
+                                          transition: 'left .2s',
+                                          left: isEnabled ? 21 : 3,
+                                        }} />
+                                      </button>
+                                    </div>
+                                    {/* URL display / edit for custom tool */}
+                                    {isEditing ? (
+                                      <div style={{ display: 'flex', gap: 6, marginTop: 8, paddingLeft: 30 }}>
+                                        <input className="field-input" value={editingToolUrl}
+                                          onChange={e => setEditingToolUrl(e.target.value)}
+                                          onKeyDown={e => e.key === 'Enter' && (async () => {
+                                            const url = editingToolUrl.trim()
+                                            if (!url) return
+                                            const updated = (teamData?.team_prefs?.custom_tools || []).map(t =>
+                                              t.id === tool.id ? { ...t, url, display: url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '') } : t)
+                                            const newPrefs = { ...(teamData?.team_prefs || {}), custom_tools: updated }
+                                            try {
+                                              const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                              if (err) throw err
+                                              setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+                                              setEditingToolId(null)
+                                            } catch (err) { setError('Failed to save URL.'); console.error(err) }
+                                          })()}
+                                          placeholder="https://..." style={{ flex: 1, fontSize: 12, padding: '6px 10px' }}/>
+                                        <button onClick={async () => {
+                                          const url = editingToolUrl.trim()
+                                          if (!url) return
+                                          const updated = (teamData?.team_prefs?.custom_tools || []).map(t =>
+                                            t.id === tool.id ? { ...t, url, display: url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '') } : t)
+                                          const newPrefs = { ...(teamData?.team_prefs || {}), custom_tools: updated }
+                                          try {
+                                            const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                            if (err) throw err
+                                            setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+                                            setEditingToolId(null)
+                                          } catch (err) { setError('Failed to save URL.'); console.error(err) }
+                                        }} style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, cursor: 'pointer',
+                                          background: 'var(--text)', border: 'none', color: 'var(--bg)', fontWeight: 600, flexShrink: 0 }}>
+                                          Save
+                                        </button>
+                                        <button onClick={() => setEditingToolId(null)} style={{ fontSize: 11, padding: '5px 10px',
+                                          borderRadius: 6, cursor: 'pointer', background: 'none', border: '1px solid var(--b2)',
+                                          color: 'var(--muted)', flexShrink: 0 }}>
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    ) : displayUrl ? (
+                                      <div style={{ paddingLeft: 30, marginTop: 2 }}>
+                                        <span style={{ fontSize: 10, color: 'var(--dim)', fontFamily: "'JetBrains Mono',monospace" }}>
+                                          {displayUrl}
+                                        </span>
+                                      </div>
+                                    ) : null}
                                   </div>
                                 )
                               })}
                             </div>
+
+                            {/* Add Custom Tool */}
+                            {customToolForm ? (
+                              <div style={{ marginTop: 14, padding: 16, borderRadius: 10,
+                                border: '1px solid rgba(217,119,6,.3)', background: 'var(--gold3)' }}>
+                                <div className="serif" style={{ fontSize: 14, color: 'var(--text)', marginBottom: 12 }}>Add Custom Tool</div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
+                                    <div>
+                                      <div className="label" style={{ marginBottom: 4, fontSize: 10 }}>Tool Name</div>
+                                      <input className="field-input" value={customToolForm.name}
+                                        onChange={e => setCustomToolForm(f => ({ ...f, name: e.target.value }))}
+                                        placeholder="e.g. Dotloop" style={{ width: '100%', fontSize: 12 }}/>
+                                    </div>
+                                    <div>
+                                      <div className="label" style={{ marginBottom: 4, fontSize: 10 }}>Icon</div>
+                                      <input className="field-input" value={customToolForm.icon}
+                                        onChange={e => setCustomToolForm(f => ({ ...f, icon: e.target.value }))}
+                                        placeholder="🔧" style={{ width: 48, fontSize: 16, textAlign: 'center' }}/>
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="label" style={{ marginBottom: 4, fontSize: 10 }}>URL</div>
+                                    <input className="field-input" value={customToolForm.url}
+                                      onChange={e => setCustomToolForm(f => ({ ...f, url: e.target.value }))}
+                                      placeholder="https://app.dotloop.com" style={{ width: '100%', fontSize: 12 }}/>
+                                  </div>
+                                  <div>
+                                    <div className="label" style={{ marginBottom: 4, fontSize: 10 }}>Category</div>
+                                    <select className="field-input" value={customToolForm.category}
+                                      onChange={e => setCustomToolForm(f => ({ ...f, category: e.target.value }))}
+                                      style={{ width: '100%', fontSize: 12 }}>
+                                      <option value="CRM">CRM</option>
+                                      <option value="Lead Gen">Lead Gen</option>
+                                      <option value="Transactions">Transactions</option>
+                                      <option value="MLS">MLS</option>
+                                      <option value="Productivity">Productivity</option>
+                                      <option value="Research">Research</option>
+                                      <option value="Marketing">Marketing</option>
+                                      <option value="Custom">Custom</option>
+                                    </select>
+                                  </div>
+                                  <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                                    <button onClick={async () => {
+                                      const name = customToolForm.name?.trim()
+                                      const url = customToolForm.url?.trim()
+                                      if (!name || !url) return
+                                      const newTool = {
+                                        id: 'custom-' + Date.now().toString(36),
+                                        name,
+                                        url,
+                                        icon: customToolForm.icon?.trim() || '🔧',
+                                        category: customToolForm.category || 'Custom',
+                                        display: url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, ''),
+                                      }
+                                      const existing = teamData?.team_prefs?.custom_tools || []
+                                      const defaultIds = ['fub','redx','skyslope','rmls','gdrive','gmail','zillow','rpr','ylopo']
+                                      const currentEnabled = teamData?.team_prefs?.enabled_tools || defaultIds
+                                      const newPrefs = {
+                                        ...(teamData?.team_prefs || {}),
+                                        custom_tools: [...existing, newTool],
+                                        enabled_tools: [...currentEnabled, newTool.id],
+                                      }
+                                      try {
+                                        const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                        if (err) throw err
+                                        setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+                                        setCustomToolForm(null)
+                                      } catch (err) { setError('Failed to add tool.'); console.error(err) }
+                                    }} disabled={!customToolForm.name?.trim() || !customToolForm.url?.trim()}
+                                      className="btn-primary" style={{ fontSize: 12, padding: '8px 18px' }}>
+                                      Add Tool
+                                    </button>
+                                    <button onClick={() => setCustomToolForm(null)}
+                                      className="btn-outline" style={{ fontSize: 12 }}>
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <button onClick={() => setCustomToolForm({ name: '', url: '', icon: '🔧', category: 'Custom' })}
+                                style={{ marginTop: 12, width: '100%', padding: '10px 16px', borderRadius: 8,
+                                  border: '1.5px dashed var(--b2)', background: 'none', cursor: 'pointer',
+                                  fontSize: 13, color: 'var(--muted)', fontWeight: 600, transition: 'all .15s',
+                                  fontFamily: 'Poppins,sans-serif',
+                                }}
+                                onMouseEnter={e => { e.target.style.borderColor = 'var(--gold2)'; e.target.style.color = 'var(--gold)' }}
+                                onMouseLeave={e => { e.target.style.borderColor = 'var(--b2)'; e.target.style.color = 'var(--muted)' }}>
+                                + Add Custom Tool
+                              </button>
+                            )}
                           </div>
 
                           {/* Transfer Ownership — danger zone */}

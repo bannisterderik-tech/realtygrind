@@ -215,7 +215,7 @@ export const ALL_APPS = [
   },
 ]
 
-const CATS = ['All', 'CRM', 'Lead Gen', 'MLS', 'Transactions', 'Research', 'Productivity']
+const BASE_CATS = ['All', 'CRM', 'Lead Gen', 'MLS', 'Transactions', 'Research', 'Productivity', 'Marketing', 'Custom']
 
 export default function DirectoryPage({ onNavigate, theme, onToggleTheme }) {
   const { profile } = useAuth()
@@ -231,12 +231,30 @@ export default function DirectoryPage({ onNavigate, theme, onToggleTheme }) {
     ? (teamPrefs?.enabled_tools || null)
     : (profile?.habit_prefs?.enabled_tools || null)
 
-  // Filter ALL_APPS to only show enabled tools
+  // Merge built-in tools with custom tools (from team_prefs) and apply URL overrides
+  const toolOverrides = isOnTeam ? (teamPrefs?.tool_overrides || {}) : {}
+  const customTools = isOnTeam ? (teamPrefs?.custom_tools || []) : []
+  const CAT_COLORS = { CRM:'#0ea5e9', 'Lead Gen':'#f43f5e', Transactions:'#10b981', MLS:'#8b5cf6',
+    Productivity:'#f59e0b', Research:'#6366f1', Marketing:'#ec4899', Custom:'#6b7280' }
+  const allAvailableTools = [
+    ...ALL_APPS.map(app => {
+      const ov = toolOverrides[app.id]
+      if (!ov?.url) return app
+      return { ...app, url: ov.url, display: ov.url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '') }
+    }),
+    ...customTools.map(t => {
+      const cc = CAT_COLORS[t.category] || CAT_COLORS.Custom
+      return { ...t, catColor: cc, catBg: `${cc}18`, catBorder: `${cc}40`,
+        desc: t.desc || `Custom tool — ${t.category || 'Custom'}` }
+    }),
+  ]
+
+  // Filter to only show enabled tools
   // null = no preference set yet → show the original default set
   const DEFAULT_TOOL_IDS = ['fub','redx','skyslope','rmls','gdrive','gmail','zillow','rpr','ylopo']
   const activeTools = enabledToolIds
-    ? ALL_APPS.filter(a => enabledToolIds.includes(a.id))
-    : ALL_APPS.filter(a => DEFAULT_TOOL_IDS.includes(a.id))
+    ? allAvailableTools.filter(a => enabledToolIds.includes(a.id))
+    : allAvailableTools.filter(a => DEFAULT_TOOL_IDS.includes(a.id))
 
   const visible = activeTools.filter(a => {
     const matchCat    = filter === 'All' || a.category === filter
@@ -279,7 +297,7 @@ export default function DirectoryPage({ onNavigate, theme, onToggleTheme }) {
 
             {/* Category pills */}
             <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-              {CATS.map(c => (
+              {BASE_CATS.map(c => (
                 <button key={c} onClick={() => setFilter(c)} style={{
                   padding:'7px 14px', borderRadius:20, border:'1px solid', fontSize:12, fontWeight:600,
                   cursor:'pointer', transition:'all .15s',

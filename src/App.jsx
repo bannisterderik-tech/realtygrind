@@ -206,7 +206,10 @@ function OfferModal({ repName, onSubmit, onClose }) {
   const [addr,  setAddr]  = useState('')
   const [price, setPrice] = useState('')
   const [comm,  setComm]  = useState('')
-  const submit = () => { if (addr.trim()) onSubmit(addr.trim(), price.trim(), comm.trim()) }
+  const [isPercent, setIsPercent] = useState(true) // default to percentage
+  const commVal = isPercent ? (comm ? comm.replace(/%$/,'') + '%' : '') : comm
+  const commResolved = resolveCommission(commVal, price)
+  const submit = () => { if (addr.trim()) onSubmit(addr.trim(), price.trim(), commVal.trim()) }
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:1000,
       display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
@@ -226,7 +229,7 @@ function OfferModal({ repName, onSubmit, onClose }) {
         <input className="field-input" value={addr} onChange={e => setAddr(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && submit()} autoFocus
           placeholder="123 Main St, City, OR 97401" style={{ marginBottom:12 }}/>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:22 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:8 }}>
           <div>
             <div className="label" style={{ marginBottom:5 }}>Offer Price</div>
             <input className="field-input" value={price} onChange={e => setPrice(e.target.value)}
@@ -235,13 +238,25 @@ function OfferModal({ repName, onSubmit, onClose }) {
               style={{ color:'var(--gold2)', fontFamily:"'JetBrains Mono',monospace" }}/>
           </div>
           <div>
-            <div className="label" style={{ marginBottom:5 }}>Commission Est.</div>
-            <input className="field-input" value={comm} onChange={e => setComm(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && submit()}
-              placeholder="$13,500"
-              style={{ color:'var(--green)', fontFamily:"'JetBrains Mono',monospace" }}/>
+            <div className="label" style={{ marginBottom:5 }}>Commission</div>
+            <div style={{ display:'flex', gap:4 }}>
+              <input className="field-input" value={comm} onChange={e => setComm(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && submit()}
+                placeholder={isPercent ? '3' : '$13,500'}
+                style={{ flex:1, minWidth:0, color: isPercent ? 'var(--muted)' : 'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
+              <button onClick={() => setIsPercent(!isPercent)} style={{
+                background:'var(--bg2)', border:'1px solid var(--b2)', borderRadius:6, cursor:'pointer', padding:'6px 10px',
+                fontSize:10, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600, whiteSpace:'nowrap',
+              }}>{isPercent ? '$ Flat' : '% Rate'}</button>
+            </div>
           </div>
         </div>
+        {isPercent && commResolved > 0 && (
+          <div style={{ fontSize:12, color:'var(--green)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600, marginBottom:14, textAlign:'right' }}>
+            = {fmtMoney(commResolved)}
+          </div>
+        )}
+        {!(isPercent && commResolved > 0) && <div style={{ height:14 }}/>}
         <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
           <button className="btn-outline" onClick={onClose}>Cancel</button>
           <button className="btn-gold" onClick={submit} disabled={!addr.trim()} style={{ minWidth:130 }}>

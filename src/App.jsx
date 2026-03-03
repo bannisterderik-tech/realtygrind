@@ -1028,7 +1028,7 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
               <input className="deal-title" value={r.address||''}
                 autoFocus
                 onChange={e=>update(r.id,'address',e.target.value)}
-                onBlur={e=>{ persist(r.id,'address',e.target.value); setEditingPipe(null) }}
+                onBlur={e=>persist(r.id,'address',e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && e.target.blur()}
                 placeholder="Property address…"
                 style={{ background:'none', border:'none', outline:'none', width:'100%', minWidth:0, padding:0,
@@ -1102,13 +1102,13 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
               )}
               <div style={{ marginLeft:'auto', display:'flex', gap:4, alignItems:'center' }}>
                 {!showSource && (
-                  <button className="edit-toggle" title="Edit" onClick={()=>setEditingPipe(isEditingRow ? null : r.id)}
+                  <button className="edit-toggle" title={isEditingRow ? 'Done editing' : 'Edit'} onClick={()=>setEditingPipe(isEditingRow ? null : r.id)}
                     style={ isEditingRow ? { background:'var(--bg2)', color:'var(--text)', borderColor:'var(--b2)' } : {}}>
-                    ✏️
+                    {isEditingRow ? '✓' : '✏️'}
                   </button>
                 )}
                 <button className="edit-toggle" title="Remove" onClick={()=>remove(r)}
-                  style={{ color:'var(--red)', fontSize:12 }}>✕</button>
+                  style={{ color:'var(--dim)' }}>✕</button>
               </div>
             </div>
 
@@ -3513,13 +3513,13 @@ function Dashboard({ theme, onToggleTheme }) {
                       style={ isExpanded ? { background:'var(--blue)', color:'#fff', borderColor:'var(--blue)' } : {}}>
                       {isExpanded ? '▲' : '▼'}
                     </button>
-                    <button className="edit-toggle" title="Edit name"
+                    <button className="edit-toggle" title={isEditingName ? 'Done editing' : 'Edit name'}
                       onClick={() => setEditingRep(isEditingName ? null : rep.id)}
                       style={ isEditingName ? { background:'var(--bg2)', color:'var(--text)', borderColor:'var(--b2)' } : {}}>
-                      ✏️
+                      {isEditingName ? '✓' : '✏️'}
                     </button>
                     <button className="edit-toggle" title="Remove" onClick={() => removeBuyerRep(rep)}
-                      style={{ color:'var(--red)', fontSize:12 }}>✕</button>
+                      style={{ color:'var(--dim)' }}>✕</button>
                   </div>
                 </div>
 

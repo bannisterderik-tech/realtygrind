@@ -197,6 +197,19 @@ Deno.serve(async (req) => {
       if (!val || String(val).trim() === '') return 'Not listed'
       return String(val).includes('%') ? String(val) : `${val}%`
     }
+    function fmtDate(val: unknown): string {
+      if (!val) return ''
+      try {
+        const d = new Date(String(val))
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      } catch { return String(val) }
+    }
+    function daysOnMarket(listDate: unknown, createdAt: unknown): number | null {
+      const ref = listDate || createdAt
+      if (!ref) return null
+      const d = Math.floor((Date.now() - new Date(String(ref)).getTime()) / 86400000)
+      return d >= 0 ? d : null
+    }
 
     const [listingsRes, transactionsRes, allTransactionsRes, habitsRes] = await Promise.all([
       admin.from('listings').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(50),
@@ -228,7 +241,9 @@ Deno.serve(async (req) => {
                     t.type === 'closed' ? 'Closed' : t.type
       const priceStr = parsePrice(t.price) > 0 ? ` at ${fmtPrice(t.price)}` : ''
       const fromStr = t.closed_from ? ` (from ${t.closed_from})` : ''
-      activityByAddress[addr].push(`${label}${priceStr}${fromStr} [${t.month_year || ''}]`)
+      const sideStr = t.deal_side ? ` [${t.deal_side} side]` : ''
+      const sourceStr = t.original_lead_source ? ` [source: ${t.original_lead_source}]` : ''
+      activityByAddress[addr].push(`${label}${priceStr}${fromStr}${sideStr}${sourceStr} [${t.month_year || ''}]`)
     }
 
     // Helper to get pipeline activity for a listing
@@ -291,7 +306,7 @@ Deno.serve(async (req) => {
           ? admin.from('transactions').select('user_id, type, price').eq('month_year', MONTH_YEAR).in('user_id', memberIds).limit(500)
           : { data: [] },
         memberIds.length > 0
-          ? admin.from('listings').select('user_id, address, price, status, commission').in('user_id', memberIds).neq('status', 'closed').limit(200)
+          ? admin.from('listings').select('user_id, address, price, status, commission, list_date, expires_date, lead_source, created_at').in('user_id', memberIds).neq('status', 'closed').limit(200)
           : { data: [] },
       ])
 
@@ -332,7 +347,10 @@ Deno.serve(async (req) => {
 
         let memberLine = `- ${m.full_name || 'Agent'} | XP: ${m.xp || 0} | Streak: ${m.streak || 0}d | Habits: ${habitCount} this month | Closed: ${deals.closed}${deals.volume > 0 ? ` ($${deals.volume.toLocaleString()})` : ''} | Pending: ${deals.pending} | Offers: ${deals.offers}${mBio.specialty ? ` | Specialty: ${mBio.specialty}` : ''}${mGoals.monthly_closings ? ` | Goal: ${mGoals.monthly_closings} closings` : ''}`
         if (mListings.length > 0) {
-          memberLine += ` | Active Listings: ${mListings.length} (${mListings.slice(0, 3).map(l => `${l.address || 'Unknown'} @ ${fmtPrice(l.price)}`).join('; ')}${mListings.length > 3 ? ` +${mListings.length - 3} more` : ''})`
+          memberLine += ` | Active Listings: ${mListings.length} (${mListings.slice(0, 3).map(l => {
+            const mDom = daysOnMarket(l.list_date, l.created_at)
+            return `${l.address || 'Unknown'} @ ${fmtPrice(l.price)}${mDom !== null ? `, ${mDom}d DOM` : ''}${l.lead_source ? `, ${l.lead_source}` : ''}`
+          }).join('; ')}${mListings.length > 3 ? ` +${mListings.length - 3} more` : ''})`
         }
         memberLines.push(memberLine)
 
@@ -392,14 +410,27 @@ Deno.serve(async (req) => {
       // Team member data (for owners/admins)
       teamMemberContext || null,
       `\nACTIVE LISTINGS (${activeListings.length}):`,
-      ...activeListings.slice(0, 20).map(l =>
-        `- ${l.address || 'Unknown'} | Price: ${fmtPrice(l.price)} | Status: ${l.status || 'active'} | Commission: ${fmtComm(l.commission)} | Listed: ${l.month_year || 'unknown'}${getActivity(l.address)}`
-      ),
+      ...activeListings.slice(0, 20).map(l => {
+        const dom = daysOnMarket(l.list_date, l.created_at)
+        const parts = [`- ${l.address || 'Unknown'}`, `Price: ${fmtPrice(l.price)}`, `Status: ${l.status || 'active'}`, `Commission: ${fmtComm(l.commission)}`]
+        if (l.list_date) parts.push(`List Date: ${fmtDate(l.list_date)}`)
+        if (l.expires_date) parts.push(`Expires: ${fmtDate(l.expires_date)}`)
+        if (dom !== null) parts.push(`Days on Market: ${dom}`)
+        if (l.lead_source) parts.push(`Lead Source: ${l.lead_source}`)
+        if (!l.list_date) parts.push(`Added: ${l.month_year || 'unknown'}`)
+        parts.push(getActivity(l.address))
+        return parts.filter(Boolean).join(' | ')
+      }),
       activeListings.length === 0 ? '- None' : null,
       `\nCLOSED LISTINGS (${closedListings.length}):`,
-      ...closedListings.slice(0, 10).map(l =>
-        `- ${l.address || 'Unknown'} | Price: ${fmtPrice(l.price)} | Commission: ${fmtComm(l.commission)} | Listed: ${l.month_year || 'unknown'}${getActivity(l.address)}`
-      ),
+      ...closedListings.slice(0, 10).map(l => {
+        const parts = [`- ${l.address || 'Unknown'}`, `Price: ${fmtPrice(l.price)}`, `Commission: ${fmtComm(l.commission)}`]
+        if (l.list_date) parts.push(`List Date: ${fmtDate(l.list_date)}`)
+        if (l.lead_source) parts.push(`Lead Source: ${l.lead_source}`)
+        if (!l.list_date) parts.push(`Listed: ${l.month_year || 'unknown'}`)
+        parts.push(getActivity(l.address))
+        return parts.filter(Boolean).join(' | ')
+      }),
       closedListings.length === 0 ? '- None' : null,
       `\nBUYER REP AGREEMENTS (${buyerReps.length}):`,
       ...buyerReps.slice(0, 15).map(b => {
@@ -409,9 +440,9 @@ Deno.serve(async (req) => {
         if (d.paymentRange)  parts.push(`Payment: ${d.paymentRange}`)
         if (d.downPayment)   parts.push(`Down: ${d.downPayment}`)
         if (d.timeline)      parts.push(`Timeline: ${d.timeline}`)
-        if (d.dateSigned)    parts.push(`Signed: ${d.dateSigned}`)
-        if (d.dateExpires)   parts.push(`Expires: ${d.dateExpires}`)
-        if (d.lastCallDate)  parts.push(`Last Call: ${d.lastCallDate}`)
+        if (d.dateSigned)    parts.push(`Signed: ${fmtDate(d.dateSigned)}`)
+        if (d.dateExpires)   parts.push(`Expires: ${fmtDate(d.dateExpires)}`)
+        if (d.lastCallDate)  parts.push(`Last Call: ${fmtDate(d.lastCallDate)}`)
         if (d.locationPrefs) parts.push(`Location: ${d.locationPrefs}`)
         if (d.mustHaves)     parts.push(`Must-haves: ${d.mustHaves}`)
         if (d.niceToHaves)   parts.push(`Nice-to-haves: ${d.niceToHaves}`)
@@ -426,6 +457,29 @@ Deno.serve(async (req) => {
       `\nACTIVITY THIS MONTH:`,
       ...Object.entries(habitCounts).map(([id, count]) => `- ${id}: ${count} completions`),
       Object.keys(habitCounts).length === 0 ? '- No tracked activity yet' : null,
+      // Key dates alert — flag urgent items
+      (() => {
+        const alerts: string[] = []
+        const now = Date.now()
+        for (const l of activeListings) {
+          const dom = daysOnMarket(l.list_date, l.created_at)
+          if (l.expires_date) {
+            const daysUntilExpiry = Math.floor((new Date(l.expires_date).getTime() - now) / 86400000)
+            if (daysUntilExpiry <= 14 && daysUntilExpiry >= 0) alerts.push(`⚠ "${l.address}" listing expires in ${daysUntilExpiry} days (${fmtDate(l.expires_date)})`)
+            if (daysUntilExpiry < 0) alerts.push(`🚨 "${l.address}" listing EXPIRED ${Math.abs(daysUntilExpiry)} days ago`)
+          }
+          if (dom !== null && dom > 60) alerts.push(`⚠ "${l.address}" has been on market ${dom} days — consider price adjustment`)
+        }
+        for (const b of buyerReps) {
+          const d = b.buyer_details || {}
+          if (d.dateExpires) {
+            const daysUntilExpiry = Math.floor((new Date(d.dateExpires).getTime() - now) / 86400000)
+            if (daysUntilExpiry <= 14 && daysUntilExpiry >= 0) alerts.push(`⚠ Buyer rep "${b.address}" expires in ${daysUntilExpiry} days (${fmtDate(d.dateExpires)})`)
+            if (daysUntilExpiry < 0) alerts.push(`🚨 Buyer rep "${b.address}" EXPIRED ${Math.abs(daysUntilExpiry)} days ago`)
+          }
+        }
+        return alerts.length > 0 ? `\nKEY DATE ALERTS:\n${alerts.join('\n')}` : null
+      })(),
     ].filter(Boolean).join('\n')
 
     // ── 8. System prompt ────────────────────────────────────────────────────

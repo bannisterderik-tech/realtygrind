@@ -44,23 +44,63 @@ export default function AdminPage({ onNavigate }) {
     setError('')
     try {
       if (!supabase) throw new Error('Service unavailable')
-      // refreshSession() forces a fresh token — getSession() can return a stale/expired JWT
-      const { data: { session }, error: sessErr } = await supabase.auth.refreshSession()
-      if (sessErr || !session) throw new Error('Not authenticated — please log out and back in.')
-      const resp = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-dashboard`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-        }
-      )
-      const result = await resp.json()
-      if (!resp.ok) throw new Error(result.error || `Server error (${resp.status})`)
-      setData(result)
+
+      // Query profiles directly — profiles_select_admin RLS policy grants access
+      const { data: profiles, error: profilesErr } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, plan, billing_status, xp, streak, team_id, ai_credits_used, ai_credits_reset, stripe_customer_id, stripe_subscription_id, app_role')
+        .order('xp', { ascending: false })
+
+      if (profilesErr) throw new Error(profilesErr.message || 'Failed to fetch profiles')
+
+      // Fetch team names (teams are readable by all via RLS)
+      const { data: teams } = await supabase
+        .from('teams')
+        .select('id, name, created_by')
+
+      const teamMap = {}
+      for (const t of (teams || [])) teamMap[t.id] = t.name || 'Unnamed Team'
+
+      const allProfiles = profiles || []
+      const now = new Date()
+      const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
+      // Compute aggregate stats (same logic as edge function)
+      const byPlan = { solo: 0, team: 0, brokerage: 0, free: 0 }
+      const byBilling = { active: 0, trialing: 0, past_due: 0, cancelled: 0, free: 0 }
+      let mrrEstimate = 0, aiCreditsTotal = 0, aiCreditsThisMonth = 0
+
+      for (const p of allProfiles) {
+        const planKey = p.plan || 'free'
+        byPlan[planKey] = (byPlan[planKey] || 0) + 1
+        const billingKey = p.billing_status || 'free'
+        byBilling[billingKey] = (byBilling[billingKey] || 0) + 1
+        if (p.billing_status === 'active' || p.billing_status === 'trialing')
+          mrrEstimate += PLAN_PRICES[p.plan] || 0
+        aiCreditsTotal += p.ai_credits_used || 0
+        if (p.ai_credits_reset === month) aiCreditsThisMonth += p.ai_credits_used || 0
+      }
+
+      const teamIds = new Set(allProfiles.map(p => p.team_id).filter(Boolean))
+
+      const stats = {
+        total_users: allProfiles.length,
+        by_plan: byPlan,
+        by_billing: byBilling,
+        paying_users: (byBilling.active || 0) + (byBilling.trialing || 0),
+        mrr_estimate: mrrEstimate,
+        trial_count: byBilling.trialing || 0,
+        ai_credits_used_total: aiCreditsTotal,
+        ai_credits_this_month: aiCreditsThisMonth,
+        total_teams: teamIds.size,
+      }
+
+      const users = allProfiles.map(p => ({
+        ...p,
+        team_name: p.team_id ? (teamMap[p.team_id] || null) : null,
+      }))
+
+      setData({ stats, users })
       setLastRefresh(new Date())
     } catch (err) {
       console.error('Admin dashboard error:', err)

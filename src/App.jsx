@@ -1306,6 +1306,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [pipelineView, setPipelineView] = useState('list')   // 'list' | 'board'
   const [showGci, setShowGci] = useState(false)
   const [clientUpdateListing, setClientUpdateListing] = useState(null)
+  const [clientUpdateNotes, setClientUpdateNotes] = useState('')
   const todayDate = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD in local timezone
 
   // Depend on user.id only — prevents re-running when a new user object is created
@@ -1777,7 +1778,14 @@ function Dashboard({ theme, onToggleTheme }) {
     }
     if (dealSide) insertObj.deal_side = dealSide
     if (originalLeadSource) insertObj.original_lead_source = originalLeadSource
-    const {data, error} = await supabase.from('transactions').insert(insertObj).select().single()
+    let {data, error} = await supabase.from('transactions').insert(insertObj).select().single()
+    // If the insert failed (e.g. new columns not migrated), retry without them
+    if (error && (dealSide || originalLeadSource)) {
+      console.warn('dbInsert retrying without deal_side/original_lead_source:', error.message)
+      delete insertObj.deal_side
+      delete insertObj.original_lead_source
+      ;({data, error} = await supabase.from('transactions').insert(insertObj).select().single())
+    }
     if (error) { console.error('dbInsert error:', error.message); return null }
     return data
   }
@@ -3277,7 +3285,7 @@ function Dashboard({ theme, onToggleTheme }) {
                     <span style={{ fontSize:11, color:'var(--dim)', fontStyle:'italic' }}>Deal completed</span>
                   )}
                   <div style={{ flex:1 }}/>
-                  <button className="edit-toggle" title="Generate client update" onClick={()=>setClientUpdateListing(l)}>📋</button>
+                  <button className="edit-toggle" title="Generate client update" onClick={()=>{setClientUpdateNotes('');setClientUpdateListing(l)}}>📋</button>
                   <button className="edit-toggle" title={isEditing ? 'Done editing' : 'Edit listing'} onClick={()=>setEditingListing(isEditing ? null : l.id)}>
                     {isEditing ? '✓' : '✏️'}
                   </button>
@@ -3983,12 +3991,14 @@ function Dashboard({ theme, onToggleTheme }) {
                 )}
               </div>
 
-              {/* Notes Area */}
+              {/* Notes Area — editable, shows on print */}
               <div style={{ padding:'18px 32px 8px' }}>
                 <div style={{ fontSize:10, color:'#9ca3af', letterSpacing:.8, fontWeight:600, fontFamily:"'Poppins',sans-serif", marginBottom:8 }}>NOTES</div>
-                <div style={{ borderBottom:'1px solid #ddd', height:28, marginBottom:6 }}/>
-                <div style={{ borderBottom:'1px solid #ddd', height:28, marginBottom:6 }}/>
-                <div style={{ borderBottom:'1px solid #ddd', height:28, marginBottom:6 }}/>
+                <textarea value={clientUpdateNotes} onChange={e=>setClientUpdateNotes(e.target.value)}
+                  placeholder="Type notes here — they will appear on the printed page…"
+                  style={{ width:'100%', minHeight:90, resize:'vertical', padding:'10px 12px', fontSize:13, lineHeight:1.7,
+                    border:'1px solid #e5e7eb', borderRadius:8, fontFamily:"Georgia, 'Times New Roman', serif",
+                    color:'#111', background:'#fafafa', outline:'none' }}/>
               </div>
 
               {/* Footer */}

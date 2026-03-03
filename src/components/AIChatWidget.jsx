@@ -270,7 +270,7 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
       {/* ── Backdrop (click-outside-to-close) ── */}
       {isOpen && (
         <div onClick={onClose} style={{
-          position:'fixed', inset:0, zIndex:498, background:'transparent',
+          position:'fixed', inset:0, zIndex:100000, background:'transparent',
         }}/>
       )}
 
@@ -280,7 +280,7 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
           position:'fixed', bottom:92, right:24, width:'min(400px, calc(100vw - 48px))', maxHeight:'70vh',
           borderRadius:16, background:'var(--surface)', border:'1px solid var(--b2)',
           boxShadow:'0 8px 40px rgba(0,0,0,.18), 0 2px 12px rgba(0,0,0,.08)',
-          display:'flex', flexDirection:'column', zIndex:500,
+          display:'flex', flexDirection:'column', zIndex:100002,
           animation:'slideUpWidget .22s ease', overflow:'hidden',
         }}>
 
@@ -549,7 +549,7 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
         boxShadow: isOpen
           ? '0 2px 12px rgba(0,0,0,.12)'
           : '0 4px 20px rgba(139,92,246,.4), 0 2px 8px rgba(0,0,0,.1)',
-        zIndex:500,
+        zIndex:100001,
         display:'flex', alignItems:'center', justifyContent:'center',
         transition:'transform .2s, background .2s, box-shadow .2s',
         animation: !isOpen && messages.length === 0 ? 'pulseGlow 2.5s ease infinite' : 'none',

@@ -584,11 +584,18 @@ body,.page { background: var(--bg); color: var(--text); }
   html, body { width: 8.5in !important; height: 11in !important; overflow: hidden !important; }
   body * { visibility: hidden; }
   .print-sheet, .print-sheet * { visibility: visible; }
+  .client-update-sheet, .client-update-sheet * { visibility: visible; }
   .print-modal-header { display: none !important; }
+  .no-print { display: none !important; }
   .print-sheet {
     position: fixed; inset: 0; width: 8.5in !important; height: 11in !important;
     padding: 14mm 16mm; background: white; border-radius: 0;
     font-size: 12px !important;
+  }
+  .client-update-sheet {
+    position: fixed; inset: 0; width: 8.5in !important; height: 11in !important;
+    padding: 14mm 18mm; background: white; border-radius: 0;
+    font-size: 13px !important; overflow: hidden;
   }
 }
 

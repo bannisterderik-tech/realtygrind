@@ -3902,46 +3902,107 @@ function Dashboard({ theme, onToggleTheme }) {
       {clientUpdateListing && (() => {
         const cl = clientUpdateListing
         const comm = resolveCommission(cl.commission, cl.price)
+        const dom = daysOnMarket(cl.createdAt)
+        const priceNum = parseFloat(String(cl.price||'').replace(/[^0-9.]/g,''))
         const agentName = profile?.full_name || 'Your Agent'
+        const agentPhone = profile?.phone || ''
+        const agentEmail = user?.email || ''
+        const statusLabel = cl.status==='closed'?'Closed':cl.status==='pending'?'Pending':'Active'
+        const statusColor = cl.status==='closed'?'#10b981':cl.status==='pending'?'#f59e0b':'#8b5cf6'
         return (
           <div style={{ position:'fixed', inset:0, zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.55)' }}
             onClick={()=>setClientUpdateListing(null)}>
-            <div onClick={e=>e.stopPropagation()} style={{ background:'#fff', borderRadius:16, width:520, maxWidth:'92vw', maxHeight:'90vh', overflow:'auto', boxShadow:'0 25px 60px rgba(0,0,0,.3)' }}>
-              <div style={{ padding:'28px 32px', borderBottom:'1px solid #e5e7eb' }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div onClick={e=>e.stopPropagation()} className="client-update-sheet" style={{ background:'#fff', borderRadius:16, width:580, maxWidth:'94vw', maxHeight:'92vh', overflow:'auto', boxShadow:'0 25px 60px rgba(0,0,0,.3)', color:'#111', fontFamily:"Georgia, 'Times New Roman', serif" }}>
+              {/* Header */}
+              <div style={{ padding:'28px 32px 20px', borderBottom:'2px solid #111' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
                   <div>
-                    <div style={{ fontSize:10, letterSpacing:1.2, color:'#9ca3af', fontWeight:600, marginBottom:4 }}>CLIENT UPDATE</div>
-                    <div style={{ fontSize:20, fontWeight:700, color:'#111', fontFamily:"'Fraunces',serif" }}>{cl.address}</div>
+                    <div style={{ fontSize:10, letterSpacing:1.5, color:'#9ca3af', fontWeight:700, fontFamily:"'Poppins',sans-serif", marginBottom:6 }}>LISTING STATUS UPDATE</div>
+                    <div style={{ fontSize:22, fontWeight:700, color:'#111', fontFamily:"'Fraunces',serif", lineHeight:1.2 }}>{cl.address || 'Untitled'}</div>
                   </div>
-                  <span className={`status-pill sp-${cl.status||'active'}`} style={{ fontSize:11 }}>
-                    {cl.status==='pending'?'⏳ Pending':cl.status==='closed'?'✓ Closed':'● Active'}
-                  </span>
-                </div>
-              </div>
-              <div style={{ padding:'24px 32px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
-                <div>
-                  <div style={{ fontSize:10, color:'#9ca3af', letterSpacing:.8, marginBottom:4 }}>LIST PRICE</div>
-                  <div style={{ fontSize:22, fontWeight:700, color:'#111' }}>{formatPrice(cl.price)||'—'}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize:10, color:'#9ca3af', letterSpacing:.8, marginBottom:4 }}>STATUS</div>
-                  <div style={{ fontSize:22, fontWeight:700, color:cl.status==='closed'?'#10b981':cl.status==='pending'?'#f59e0b':'#8b5cf6' }}>
-                    {cl.status==='closed'?'Closed':cl.status==='pending'?'Pending':'Active'}
+                  <div style={{ textAlign:'right' }}>
+                    <div style={{ fontSize:10, letterSpacing:1.2, color:'#9ca3af', fontWeight:600, fontFamily:"'Poppins',sans-serif", marginBottom:4 }}>STATUS</div>
+                    <div style={{ display:'inline-block', background:`${statusColor}18`, color:statusColor, border:`1.5px solid ${statusColor}40`, borderRadius:6, padding:'4px 12px', fontSize:12, fontWeight:700, fontFamily:"'Poppins',sans-serif", letterSpacing:'.5px' }}>
+                      {statusLabel.toUpperCase()}
+                    </div>
                   </div>
                 </div>
               </div>
-              <div style={{ padding:'16px 32px 28px', display:'flex', justifyContent:'space-between', alignItems:'center', borderTop:'1px solid #f3f4f6' }}>
-                <div style={{ fontSize:11, color:'#6b7280' }}>
-                  Prepared by <strong style={{ color:'#111' }}>{agentName}</strong> · {new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}
+
+              {/* Key Metrics Grid */}
+              <div style={{ padding:'22px 32px', display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:16, borderBottom:'1px solid #e5e7eb' }}>
+                <div>
+                  <div style={{ fontSize:10, color:'#9ca3af', letterSpacing:.8, fontWeight:600, fontFamily:"'Poppins',sans-serif", marginBottom:4 }}>LIST PRICE</div>
+                  <div style={{ fontSize:24, fontWeight:700, color:'#111', fontFamily:"'JetBrains Mono',monospace", letterSpacing:'-.02em' }}>{priceNum > 0 ? formatPrice(cl.price) : '—'}</div>
                 </div>
-                <div style={{ display:'flex', gap:8 }}>
+                <div>
+                  <div style={{ fontSize:10, color:'#9ca3af', letterSpacing:.8, fontWeight:600, fontFamily:"'Poppins',sans-serif", marginBottom:4 }}>COMMISSION</div>
+                  <div style={{ fontSize:18, fontWeight:700, color:'#059669', fontFamily:"'JetBrains Mono',monospace" }}>
+                    {cl.commission ? (
+                      <>{cl.commission}{comm > 0 && <span style={{ fontSize:13, color:'#6b7280', fontWeight:500 }}> = {fmtMoney(comm)}</span>}</>
+                    ) : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize:10, color:'#9ca3af', letterSpacing:.8, fontWeight:600, fontFamily:"'Poppins',sans-serif", marginBottom:4 }}>DAYS ON MARKET</div>
+                  <div style={{ fontSize:24, fontWeight:700, color: dom > 90 ? '#ef4444' : dom > 30 ? '#d97706' : '#059669', fontFamily:"'JetBrains Mono',monospace" }}>
+                    {dom !== null ? dom : '—'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Details Grid */}
+              <div style={{ padding:'18px 32px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, borderBottom:'1px solid #e5e7eb' }}>
+                {cl.leadSource && (
+                  <div>
+                    <div style={{ fontSize:10, color:'#9ca3af', letterSpacing:.8, fontWeight:600, fontFamily:"'Poppins',sans-serif", marginBottom:3 }}>LEAD SOURCE</div>
+                    <div style={{ fontSize:14, fontWeight:600, color:'#111', fontFamily:"'Poppins',sans-serif" }}>{cl.leadSource}</div>
+                  </div>
+                )}
+                {cl.listDate && (
+                  <div>
+                    <div style={{ fontSize:10, color:'#9ca3af', letterSpacing:.8, fontWeight:600, fontFamily:"'Poppins',sans-serif", marginBottom:3 }}>LIST DATE</div>
+                    <div style={{ fontSize:14, fontWeight:600, color:'#111', fontFamily:"'Poppins',sans-serif" }}>{fmtShortDate(cl.listDate)}</div>
+                  </div>
+                )}
+                {cl.expiresDate && (
+                  <div>
+                    <div style={{ fontSize:10, color:'#9ca3af', letterSpacing:.8, fontWeight:600, fontFamily:"'Poppins',sans-serif", marginBottom:3 }}>LISTING EXPIRES</div>
+                    <div style={{ fontSize:14, fontWeight:600, color: new Date(cl.expiresDate+'T00:00:00') < new Date() ? '#ef4444' : '#111', fontFamily:"'Poppins',sans-serif" }}>{fmtShortDate(cl.expiresDate)}</div>
+                  </div>
+                )}
+                {cl.monthYear && (
+                  <div>
+                    <div style={{ fontSize:10, color:'#9ca3af', letterSpacing:.8, fontWeight:600, fontFamily:"'Poppins',sans-serif", marginBottom:3 }}>MONTH</div>
+                    <div style={{ fontSize:14, fontWeight:600, color:'#111', fontFamily:"'Poppins',sans-serif" }}>{fmtMonth(cl.monthYear)}</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Notes Area */}
+              <div style={{ padding:'18px 32px 8px' }}>
+                <div style={{ fontSize:10, color:'#9ca3af', letterSpacing:.8, fontWeight:600, fontFamily:"'Poppins',sans-serif", marginBottom:8 }}>NOTES</div>
+                <div style={{ borderBottom:'1px solid #ddd', height:28, marginBottom:6 }}/>
+                <div style={{ borderBottom:'1px solid #ddd', height:28, marginBottom:6 }}/>
+                <div style={{ borderBottom:'1px solid #ddd', height:28, marginBottom:6 }}/>
+              </div>
+
+              {/* Footer */}
+              <div style={{ padding:'16px 32px 24px', display:'flex', justifyContent:'space-between', alignItems:'center', borderTop:'1px solid #e5e7eb', marginTop:8 }}>
+                <div style={{ fontSize:11, color:'#6b7280', fontFamily:"'Poppins',sans-serif", lineHeight:1.6 }}>
+                  <strong style={{ color:'#111' }}>{agentName}</strong>
+                  {agentEmail && <><br/>{agentEmail}</>}
+                  {agentPhone && <> · {agentPhone}</>}
+                  <br/>{new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}
+                </div>
+                <div style={{ display:'flex', gap:8 }} className="no-print">
                   <button onClick={()=>window.print()} style={{
                     background:'#111', color:'#fff', border:'none', borderRadius:8, padding:'8px 18px',
-                    fontSize:12, fontWeight:700, cursor:'pointer'
+                    fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:"'Poppins',sans-serif"
                   }}>🖨️ Print</button>
                   <button onClick={()=>setClientUpdateListing(null)} style={{
                     background:'#f3f4f6', color:'#6b7280', border:'none', borderRadius:8, padding:'8px 18px',
-                    fontSize:12, fontWeight:600, cursor:'pointer'
+                    fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:"'Poppins',sans-serif"
                   }}>Close</button>
                 </div>
               </div>

@@ -1899,8 +1899,8 @@ function Dashboard({ theme, onToggleTheme }) {
       if (newListDate) insertObj.list_date = newListDate
       if (newExpiresDate) insertObj.expires_date = newExpiresDate
       let {data, error} = await supabase.from('listings').insert(insertObj).select().single()
-      // If lead_source/date columns don't exist yet, retry without them
-      if (error && error.message?.includes('lead_source')) {
+      // If optional columns don't exist yet (migration not applied), retry without them
+      if (error && (error.message?.includes('lead_source') || error.message?.includes('list_date') || error.message?.includes('expires_date') || error.message?.includes('column'))) {
         delete insertObj.lead_source; delete insertObj.list_date; delete insertObj.expires_date
         const retry = await supabase.from('listings').insert(insertObj).select().single()
         data = retry.data; error = retry.error

@@ -1019,7 +1019,7 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
         const isP = String(r.commission||'').trim().endsWith('%')
         const commAmt = resolveCommission(r.commission, r.price)
         const priceNum = parseFloat(String(r.price||'').replace(/[^0-9.]/g,''))
-        const dom = daysOnMarket(r.createdAt)
+        const dom = daysOnMarket(r.listDate, r.createdAt)
         const isEditingRow = editingPipe === r.id
         return (
           <div key={r.id} className="deal-card" style={{ padding:'14px 18px' }}>
@@ -3214,7 +3214,7 @@ function Dashboard({ theme, onToggleTheme }) {
             {listings.map(l => {
               const isP = String(l.commission||'').trim().endsWith('%')
               const comm = resolveCommission(l.commission, l.price)
-              const dom = daysOnMarket(l.createdAt)
+              const dom = daysOnMarket(l.listDate, l.createdAt)
               const priceNum = parseFloat(String(l.price||'').replace(/[^0-9.]/g,''))
               const isEditing = editingListing === l.id
               const metaParts = []
@@ -3958,7 +3958,7 @@ function Dashboard({ theme, onToggleTheme }) {
       {clientUpdateListing && (() => {
         const cl = clientUpdateListing
         const comm = resolveCommission(cl.commission, cl.price)
-        const dom = daysOnMarket(cl.createdAt)
+        const dom = daysOnMarket(cl.listDate, cl.createdAt)
         const priceNum = parseFloat(String(cl.price||'').replace(/[^0-9.]/g,''))
         const agentName = profile?.full_name || 'Your Agent'
         const agentPhone = profile?.phone || ''

@@ -44,10 +44,11 @@ export function formatPrice(v) {
 // Strip formatting for editing: "$450,000" → "450000"
 export function stripPrice(v) { return String(v||'').replace(/[^0-9.]/g,'') }
 
-// Days on market from created_at
-export function daysOnMarket(createdAt) {
-  if (!createdAt) return null
-  const d = Math.floor((Date.now()-new Date(createdAt).getTime())/(86400000))
+// Days on market — prefer listDate, fall back to createdAt
+export function daysOnMarket(listDate, createdAt) {
+  const ref = listDate || createdAt
+  if (!ref) return null
+  const d = Math.floor((Date.now()-new Date(ref).getTime())/(86400000))
   return d >= 0 ? d : null
 }
 

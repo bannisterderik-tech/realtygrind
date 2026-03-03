@@ -57,6 +57,13 @@ Deno.serve(async (req: Request) => {
     }
     const userId = user.id
 
+    const ct = req.headers.get('content-type') || ''
+    if (!ct.includes('application/json')) {
+      return new Response(JSON.stringify({ error: 'Content-Type must be application/json' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     let body: Record<string, unknown>
     try { body = await req.json() } catch { return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }) }
     const { email, teamId } = body as { email: string; teamId: string }

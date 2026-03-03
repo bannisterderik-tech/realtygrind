@@ -49,24 +49,24 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   )
 
-  // Idempotency: skip events already processed (upsert event ID)
-  const { data: existing } = await supabase
-    .from('processed_events')
-    .select('id')
-    .eq('event_id', event.id)
-    .maybeSingle()
-
-  if (existing) {
-    return new Response(JSON.stringify({ received: true, duplicate: true }), {
-      headers: { 'Content-Type': 'application/json' },
-    })
-  }
-
-  // Record event ID (best-effort — table may not exist yet, fail gracefully)
-  await supabase
+  // Idempotency: atomic INSERT — if event_id already exists the unique
+  // constraint rejects it, guaranteeing at-most-once processing even when
+  // Stripe retries the same event concurrently.
+  const { error: idempotencyErr } = await supabase
     .from('processed_events')
     .insert({ event_id: event.id, event_type: event.type })
-    .then(() => {}, () => {})
+
+  if (idempotencyErr) {
+    // 23505 = unique_violation → event was already processed
+    if (idempotencyErr.code === '23505') {
+      return new Response(JSON.stringify({ received: true, duplicate: true }), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    // Other errors (table missing, etc.) — log but continue processing
+    // so Stripe doesn't keep retrying indefinitely.
+    console.warn('Idempotency insert failed (continuing):', idempotencyErr.message)
+  }
 
   console.log(`Processing event: ${event.type}`)
 

@@ -84,34 +84,42 @@ export function AuthProvider({ children }) {
       // ── Auto-join team for users invited via email ──────────────────────────
       // team_id is stored in user_metadata by the invite edge function.
       // On first login, profile.team_id is null — auto-join here.
+      // Wrapped in its own try/catch so a failed auto-join doesn't break the
+      // entire auth flow — user still loads with their profile (sans team).
       const pendingTeamId = userMeta?.team_id
       if (data && !data.team_id && pendingTeamId) {
-        await supabase.from('team_members').upsert(
-          { team_id: pendingTeamId, user_id: userId, role: 'member' },
-          { onConflict: 'user_id' }
-        )
-        await supabase.from('profiles').update({ team_id: pendingTeamId }).eq('id', userId)
-        // Clean up pending invite for this user's email
-        if (userEmail) {
-          const { data: teamRow } = await supabase.from('teams').select('team_prefs').eq('id', pendingTeamId).single()
-          const pending = teamRow?.team_prefs?.pending_invites || []
-          const cleaned = pending.filter(i => i.email.toLowerCase() !== userEmail.toLowerCase())
-          if (cleaned.length !== pending.length) {
-            await supabase.from('teams').update({
-              team_prefs: { ...(teamRow.team_prefs || {}), pending_invites: cleaned }
-            }).eq('id', pendingTeamId)
+        try {
+          await supabase.from('team_members').upsert(
+            { team_id: pendingTeamId, user_id: userId, role: 'member' },
+            { onConflict: 'user_id' }
+          )
+          await supabase.from('profiles').update({ team_id: pendingTeamId }).eq('id', userId)
+          // Clean up pending invite for this user's email
+          if (userEmail) {
+            const { data: teamRow } = await supabase.from('teams').select('team_prefs').eq('id', pendingTeamId).single()
+            const pending = teamRow?.team_prefs?.pending_invites || []
+            const cleaned = pending.filter(i => i.email.toLowerCase() !== userEmail.toLowerCase())
+            if (cleaned.length !== pending.length) {
+              await supabase.from('teams').update({
+                team_prefs: { ...(teamRow.team_prefs || {}), pending_invites: cleaned }
+              }).eq('id', pendingTeamId)
+            }
           }
+          if (!mountedRef.current) return
+          const { data: updated } = await supabase
+            .from('profiles')
+            .select('*, teams(name, invite_code, created_by, team_prefs)')
+            .eq('id', userId)
+            .single()
+          if (mountedRef.current) {
+            setProfile(updated ?? null)
+            setLoading(false)
+          }
+          return
+        } catch (joinErr) {
+          console.error('Auto-join team failed (continuing with profile):', joinErr)
+          // Fall through to set profile without team — user can retry join later
         }
-        const { data: updated } = await supabase
-          .from('profiles')
-          .select('*, teams(name, invite_code, created_by, team_prefs)')
-          .eq('id', userId)
-          .single()
-        if (mountedRef.current) {
-          setProfile(updated ?? null)
-          setLoading(false)
-        }
-        return
       }
 
       setProfile(data ?? null)

@@ -44,15 +44,25 @@ export default function AdminPage({ onNavigate }) {
     setError('')
     try {
       if (!supabase) throw new Error('Service unavailable')
-      const { data: result, error: fnErr } = await supabase.functions.invoke('admin-dashboard')
-      if (fnErr) {
-        const msg = fnErr?.context?.error || fnErr.message || 'Failed to load admin data.'
-        throw new Error(msg.includes('Failed to send') ? 'Could not reach admin service. Please try again.' : msg)
-      }
-      if (result?.error) throw new Error(result.error)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Not authenticated')
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-dashboard`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        }
+      )
+      const result = await resp.json()
+      if (!resp.ok) throw new Error(result.error || `Server error (${resp.status})`)
       setData(result)
       setLastRefresh(new Date())
     } catch (err) {
+      console.error('Admin dashboard error:', err)
       setError(err.message || 'Unknown error')
     } finally {
       setLoading(false)

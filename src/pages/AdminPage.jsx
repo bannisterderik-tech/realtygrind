@@ -44,8 +44,9 @@ export default function AdminPage({ onNavigate }) {
     setError('')
     try {
       if (!supabase) throw new Error('Service unavailable')
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error('Not authenticated')
+      // refreshSession() forces a fresh token — getSession() can return a stale/expired JWT
+      const { data: { session }, error: sessErr } = await supabase.auth.refreshSession()
+      if (sessErr || !session) throw new Error('Not authenticated — please log out and back in.')
       const resp = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-dashboard`,
         {

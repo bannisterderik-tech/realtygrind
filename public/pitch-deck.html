@@ -1,0 +1,1421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RealtyGrind — Pitch Deck</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800;900&family=Poppins:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  :root {
+    --bg: #0c0a09;
+    --surface: #1c1917;
+    --surface2: #292524;
+    --gold: #d97706;
+    --gold-light: #fbbf24;
+    --amber: #f59e0b;
+    --text: #fafaf9;
+    --muted: #a8a29e;
+    --dim: #78716c;
+    --green: #10b981;
+    --blue: #3b82f6;
+    --purple: #a855f7;
+    --red: #ef4444;
+    --cyan: #22d3ee;
+  }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Poppins', sans-serif;
+    overflow: hidden;
+    height: 100%;
+    width: 100%;
+  }
+
+  .deck {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 60px 80px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .5s ease, transform .5s ease;
+    transform: translateX(40px);
+    overflow-y: auto;
+  }
+  .slide.active {
+    opacity: 1;
+    pointer-events: all;
+    transform: translateX(0);
+  }
+
+  .serif { font-family: 'Playfair Display', serif; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  h1 { font-family: 'Playfair Display', serif; font-weight: 800; }
+  h2 { font-family: 'Playfair Display', serif; font-weight: 700; }
+  h3 { font-family: 'Poppins', sans-serif; font-weight: 700; }
+
+  .gold { color: var(--gold); }
+  .amber { color: var(--amber); }
+  .green { color: var(--green); }
+  .blue { color: var(--blue); }
+  .purple { color: var(--purple); }
+  .muted { color: var(--muted); }
+  .dim { color: var(--dim); }
+
+  /* ── Navigation ── */
+  .nav-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    background: rgba(12,10,9,.92);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(255,255,255,.06);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    z-index: 100;
+  }
+  .nav-bar button {
+    background: var(--surface2);
+    border: 1px solid rgba(255,255,255,.1);
+    color: var(--text);
+    padding: 8px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: 'Poppins', sans-serif;
+    transition: all .15s;
+  }
+  .nav-bar button:hover { background: var(--gold); color: #000; border-color: var(--gold); }
+  .nav-bar button:disabled { opacity: .3; cursor: default; }
+  .nav-bar button:disabled:hover { background: var(--surface2); color: var(--text); border-color: rgba(255,255,255,.1); }
+  .progress-dots {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .progress-dots .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--dim);
+    transition: all .25s;
+    cursor: pointer;
+  }
+  .progress-dots .dot.active {
+    background: var(--gold);
+    width: 24px;
+    border-radius: 4px;
+  }
+  .slide-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--dim);
+    letter-spacing: 1px;
+  }
+
+  /* ── Slide Layouts ── */
+  .slide-center {
+    text-align: center;
+    max-width: 900px;
+  }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+    width: 100%;
+    max-width: 1100px;
+    align-items: center;
+  }
+
+  .three-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 28px;
+    width: 100%;
+    max-width: 1100px;
+  }
+
+  .four-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 20px;
+    width: 100%;
+    max-width: 1100px;
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid rgba(255,255,255,.06);
+    border-radius: 16px;
+    padding: 28px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid rgba(255,255,255,.06);
+    border-radius: 16px;
+    padding: 24px;
+    text-align: center;
+  }
+  .stat-card .value {
+    font-family: 'Playfair Display', serif;
+    font-size: 42px;
+    font-weight: 800;
+    line-height: 1.1;
+  }
+  .stat-card .label {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 6px;
+    letter-spacing: .5px;
+  }
+
+  /* ── Pricing Cards ── */
+  .price-card {
+    background: var(--surface);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 20px;
+    padding: 32px 28px;
+    position: relative;
+    transition: all .2s;
+  }
+  .price-card.featured {
+    border-color: var(--gold);
+    box-shadow: 0 0 40px rgba(217,119,6,.12);
+  }
+  .price-card .badge {
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--gold);
+    color: #000;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4px 14px;
+    border-radius: 20px;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+  }
+  .price-card .plan-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .price-card .price {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 36px;
+    font-weight: 700;
+    color: var(--gold);
+  }
+  .price-card .price span { font-size: 14px; color: var(--muted); font-weight: 400; }
+  .price-card ul {
+    list-style: none;
+    margin-top: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .price-card li {
+    font-size: 13px;
+    color: var(--muted);
+    padding-left: 22px;
+    position: relative;
+    line-height: 1.5;
+  }
+  .price-card li::before {
+    content: '\2713';
+    position: absolute;
+    left: 0;
+    color: var(--green);
+    font-weight: 700;
+  }
+
+  /* ── Misc ── */
+  .pill {
+    display: inline-block;
+    background: rgba(217,119,6,.12);
+    border: 1px solid rgba(217,119,6,.3);
+    color: var(--gold);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 5px 14px;
+    border-radius: 20px;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+
+  .divider {
+    width: 60px;
+    height: 3px;
+    background: var(--gold);
+    border-radius: 2px;
+    margin: 20px auto;
+  }
+
+  .feature-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    margin-bottom: 14px;
+  }
+
+  .timeline-item {
+    display: flex;
+    gap: 18px;
+    align-items: flex-start;
+    margin-bottom: 22px;
+  }
+  .timeline-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--gold);
+    margin-top: 5px;
+    flex-shrink: 0;
+  }
+
+  .rank-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 16px;
+    background: var(--surface);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    border: 1px solid rgba(255,255,255,.04);
+  }
+
+  .glow-text {
+    text-shadow: 0 0 40px rgba(217,119,6,.3);
+  }
+
+  .gradient-text {
+    background: linear-gradient(135deg, var(--gold-light), var(--gold), #ea580c);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* subtle grid background */
+  .grid-bg {
+    background-image:
+      linear-gradient(rgba(255,255,255,.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.02) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .slide.active .animate-in {
+    animation: fadeUp .6s ease forwards;
+  }
+  .slide.active .animate-in.d1 { animation-delay: .1s; opacity: 0; }
+  .slide.active .animate-in.d2 { animation-delay: .2s; opacity: 0; }
+  .slide.active .animate-in.d3 { animation-delay: .3s; opacity: 0; }
+  .slide.active .animate-in.d4 { animation-delay: .4s; opacity: 0; }
+  .slide.active .animate-in.d5 { animation-delay: .5s; opacity: 0; }
+  .slide.active .animate-in.d6 { animation-delay: .6s; opacity: 0; }
+
+  /* ── Key bindings hint ── */
+  .key-hint {
+    position: fixed;
+    top: 16px;
+    right: 24px;
+    font-size: 10px;
+    color: var(--dim);
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: .5px;
+    z-index: 100;
+    opacity: .5;
+  }
+</style>
+</head>
+<body>
+
+<div class="key-hint">Arrow keys or click to navigate</div>
+
+<div class="deck" id="deck">
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- SLIDE 1: TITLE -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="slide grid-bg" data-slide="0">
+    <div class="slide-center">
+      <div class="animate-in d1" style="margin-bottom:32px">
+        <div style="font-size:64px; margin-bottom:8px">&#x1f525;</div>
+      </div>
+      <h1 class="animate-in d2 gradient-text" style="font-size:clamp(48px,6vw,80px); line-height:1.05; margin-bottom:16px;">
+        RealtyGrind
+      </h1>
+      <p class="animate-in d3" style="font-size:clamp(18px,2.2vw,26px); color:var(--muted); font-weight:300; max-width:700px; margin:0 auto 32px;">
+        Outwork Everyone. Track Everything.
+      </p>
+      <div class="divider animate-in d4"></div>
+      <p class="animate-in d5" style="font-size:14px; color:var(--dim); margin-top:20px; line-height:1.7; max-width:600px; margin-left:auto; margin-right:auto;">
+        The habit tracker, pipeline manager, AI coaching assistant,<br>
+        and team accountability platform built for real estate agents<br>
+        who refuse to wing it.
+      </p>
+      <p class="animate-in d6 mono" style="font-size:11px; color:var(--dim); margin-top:40px; letter-spacing:1px;">
+        CONFIDENTIAL &bull; 2025
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- SLIDE 2: THE PROBLEM -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="slide grid-bg" data-slide="1">
+    <div class="slide-center">
+      <div class="pill animate-in d1">The Problem</div>
+      <h1 class="animate-in d2" style="font-size:clamp(32px,4vw,52px); margin-bottom:28px; line-height:1.15;">
+        87% of agents fail<br>within <span class="gold">5 years.</span>
+      </h1>
+      <p class="animate-in d3 muted" style="font-size:16px; line-height:1.8; max-width:680px; margin:0 auto 48px;">
+        Not because they lack talent. Because they lack systems. No daily structure, no accountability, no visibility into what's actually working. They wing it until they wash out.
+      </p>
+
+      <div class="three-col animate-in d4">
+        <div class="card" style="text-align:center; border-top:2px solid var(--red)">
+          <div style="font-size:32px; margin-bottom:10px">&#x1f4c9;</div>
+          <h3 style="font-size:15px; margin-bottom:8px;">No Daily Structure</h3>
+          <p class="muted" style="font-size:12px; line-height:1.6;">Agents start each day from scratch. No repeatable habits, no accountability framework, no system for consistency.</p>
+        </div>
+        <div class="card" style="text-align:center; border-top:2px solid var(--amber)">
+          <div style="font-size:32px; margin-bottom:10px">&#x1f441;</div>
+          <h3 style="font-size:15px; margin-bottom:8px;">Blind Team Leaders</h3>
+          <p class="muted" style="font-size:12px; line-height:1.6;">Brokers & team leads can't see daily activity. Coaching is guesswork. Underperformance festers until it's too late.</p>
+        </div>
+        <div class="card" style="text-align:center; border-top:2px solid var(--blue)">
+          <div style="font-size:32px; margin-bottom:10px">&#x1f9e9;</div>
+          <h3 style="font-size:15px; margin-bottom:8px;">Fragmented Tools</h3>
+          <p class="muted" style="font-size:12px; line-height:1.6;">CRMs track contacts, not behavior. Spreadsheets die. There's nothing purpose-built for agent accountability and motivation.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- SLIDE 3: THE SOLUTION -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="slide grid-bg" data-slide="2">
+    <div class="slide-center">
+      <div class="pill animate-in d1">The Solution</div>
+      <h1 class="animate-in d2" style="font-size:clamp(30px,3.5vw,48px); margin-bottom:16px; line-height:1.15;">
+        One platform for <span class="gradient-text">daily discipline,</span><br>
+        <span class="gradient-text">deal tracking,</span> and <span class="gradient-text">team coaching.</span>
+      </h1>
+      <p class="animate-in d3 muted" style="font-size:15px; line-height:1.7; max-width:640px; margin:0 auto 44px;">
+        RealtyGrind turns the chaos of real estate into a repeatable, gamified system. Agents build daily habits, track every deal, get AI coaching, and compete on leaderboards &mdash; all from one dashboard.
+      </p>
+
+      <div class="four-col animate-in d4">
+        <div class="card" style="text-align:center; padding:24px 18px;">
+          <div style="font-size:28px; margin-bottom:10px">&#x2705;</div>
+          <h3 style="font-size:13px;">Daily Habits</h3>
+          <p class="dim" style="font-size:11px; margin-top:6px; line-height:1.5;">11 real estate habits with streaks, XP, and skip protection</p>
+        </div>
+        <div class="card" style="text-align:center; padding:24px 18px;">
+          <div style="font-size:28px; margin-bottom:10px">&#x1f4b0;</div>
+          <h3 style="font-size:13px;">Deal Pipeline</h3>
+          <p class="dim" style="font-size:11px; margin-top:6px; line-height:1.5;">Track offers, pendings, and closings with commission totals</p>
+        </div>
+        <div class="card" style="text-align:center; padding:24px 18px;">
+          <div style="font-size:28px; margin-bottom:10px">&#x1f916;</div>
+          <h3 style="font-size:13px;">AI Coach</h3>
+          <p class="dim" style="font-size:11px; margin-top:6px; line-height:1.5;">Claude-powered assistant that reads your live data</p>
+        </div>
+        <div class="card" style="text-align:center; padding:24px 18px;">
+          <div style="font-size:28px; margin-bottom:10px">&#x1f4ca;</div>
+          <h3 style="font-size:13px;">Team Boards</h3>
+          <p class="dim" style="font-size:11px; margin-top:6px; line-height:1.5;">Rosters, leaderboards, standups, and coaching notes</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- SLIDE 4: PRODUCT DEEP DIVE — HABITS -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="slide grid-bg" data-slide="3">
+    <div style="width:100%; max-width:1100px;">
+      <div class="pill animate-in d1">Core Product</div>
+      <h1 class="animate-in d2" style="font-size:clamp(28px,3vw,42px); margin-bottom:8px;">
+        Your entire day, organized.
+      </h1>
+      <p class="animate-in d3 muted" style="font-size:14px; margin-bottom:36px; max-width:600px;">
+        11 purpose-built real estate habits, each earning XP. Check them off, build streaks, climb ranks. Consistency compounds.
+      </p>
+
+      <div class="two-col animate-in d4">
+        <div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div class="rank-row" style="border-left:3px solid var(--gold);">
+              <span style="width:28px; text-align:center">&#x1f4de;</span>
+              <div style="flex:1">
+                <div style="font-size:13px; font-weight:600;">Prospecting Calls</div>
+                <div class="dim" style="font-size:11px;">+25 XP base &bull; +10 XP per call</div>
+              </div>
+            </div>
+            <div class="rank-row" style="border-left:3px solid var(--green);">
+              <span style="width:28px; text-align:center">&#x1f4e7;</span>
+              <div style="flex:1">
+                <div style="font-size:13px; font-weight:600;">Follow-Up Emails</div>
+                <div class="dim" style="font-size:11px;">+15 XP base &bull; +8 XP per email</div>
+              </div>
+            </div>
+            <div class="rank-row" style="border-left:3px solid var(--blue);">
+              <span style="width:28px; text-align:center">&#x1f4c5;</span>
+              <div style="flex:1">
+                <div style="font-size:13px; font-weight:600;">Appointments Booked</div>
+                <div class="dim" style="font-size:11px;">+30 XP base &bull; +25 XP per appt</div>
+              </div>
+            </div>
+            <div class="rank-row" style="border-left:3px solid var(--purple);">
+              <span style="width:28px; text-align:center">&#x1f3e0;</span>
+              <div style="flex:1">
+                <div style="font-size:13px; font-weight:600;">Property Showings</div>
+                <div class="dim" style="font-size:11px;">+30 XP base &bull; +20 XP per showing</div>
+              </div>
+            </div>
+            <div class="rank-row" style="border-left:3px solid var(--amber);">
+              <span style="width:28px; text-align:center">&#x1f4f1;</span>
+              <div style="flex:1">
+                <div style="font-size:13px; font-weight:600;">Social Media Posts</div>
+                <div class="dim" style="font-size:11px;">+10 XP base &bull; +8 XP per post</div>
+              </div>
+            </div>
+            <div class="rank-row" style="border-left:3px solid var(--cyan);">
+              <span style="width:28px; text-align:center">&#x1f4dd;</span>
+              <div style="flex:1">
+                <div style="font-size:13px; font-weight:600;">+ 6 more habits</div>
+                <div class="dim" style="font-size:11px;">Listings, CRM, networking, training, reviews</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="card" style="padding:28px; border-top:2.5px solid var(--gold);">
+            <h3 style="font-size:15px; margin-bottom:18px;">Key Features</h3>
+            <div style="display:flex; flex-direction:column; gap:14px;">
+              <div style="display:flex; gap:12px; align-items:flex-start;">
+                <span style="color:var(--gold); font-size:16px; flex-shrink:0; margin-top:1px">&#x1f525;</span>
+                <div>
+                  <div style="font-size:13px; font-weight:600;">Streak Protection</div>
+                  <div class="dim" style="font-size:11px; line-height:1.5;">Skip a habit without breaking your streak. Life happens &mdash; your progress shouldn't reset.</div>
+                </div>
+              </div>
+              <div style="display:flex; gap:12px; align-items:flex-start;">
+                <span style="color:var(--green); font-size:16px; flex-shrink:0; margin-top:1px">&#x2795;</span>
+                <div>
+                  <div style="font-size:13px; font-weight:600;">Custom Tasks</div>
+                  <div class="dim" style="font-size:11px; line-height:1.5;">Add your own daily habits with custom labels, icons, and XP values.</div>
+                </div>
+              </div>
+              <div style="display:flex; gap:12px; align-items:flex-start;">
+                <span style="color:var(--blue); font-size:16px; flex-shrink:0; margin-top:1px">&#x1f5a8;</span>
+                <div>
+                  <div style="font-size:13px; font-weight:600;">Print PDF Checklist</div>
+                  <div class="dim" style="font-size:11px; line-height:1.5;">One-click PDF export for car time, open houses, and offline accountability.</div>
+                </div>
+              </div>
+              <div style="display:flex; gap:12px; align-items:flex-start;">
+                <span style="color:var(--purple); font-size:16px; flex-shrink:0; margin-top:1px">&#x1f4c8;</span>
+                <div>
+                  <div style="font-size:13px; font-weight:600;">Counter Mode</div>
+                  <div class="dim" style="font-size:11px; line-height:1.5;">Track quantity per habit (calls made, emails sent) for granular XP earning.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- SLIDE 5: GAMIFICATION -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="slide grid-bg" data-slide="4">
+    <div style="width:100%; max-width:1000px;">
+      <div class="pill animate-in d1">Gamification</div>
+      <h1 class="animate-in d2" style="font-size:clamp(28px,3vw,42px); margin-bottom:8px;">
+        Turn discipline into <span class="gradient-text">status.</span>
+      </h1>
+      <p class="animate-in d3 muted" style="font-size:14px; margin-bottom:40px; max-width:580px;">
+        Every habit checked, every deal closed, every challenge won earns XP. Climb the ranks. Lead the board. Make grinding addictive.
+      </p>
+
+      <div class="two-col animate-in d4">
+        <div>
+          <h3 style="font-size:14px; margin-bottom:16px; color:var(--muted);">RANK PROGRESSION</h3>
+          <div class="rank-row">
+            <span style="font-size:22px;">&#x1f949;</span>
+            <div style="flex:1">
+              <div style="font-size:13px; font-weight:600; color:#cd7c32;">Bronze</div>
+              <div class="mono dim" style="font-size:11px;">0 &mdash; 500 XP</div>
+            </div>
+            <div style="width:80px; height:4px; background:rgba(255,255,255,.06); border-radius:2px;">
+              <div style="width:100%; height:100%; background:#cd7c32; border-radius:2px;"></div>
+            </div>
+          </div>
+          <div class="rank-row">
+            <span style="font-size:22px;">&#x1f948;</span>
+            <div style="flex:1">
+              <div style="font-size:13px; font-weight:600; color:#94a3b8;">Silver</div>
+              <div class="mono dim" style="font-size:11px;">500 &mdash; 1,500 XP</div>
+            </div>
+            <div style="width:80px; height:4px; background:rgba(255,255,255,.06); border-radius:2px;">
+              <div style="width:70%; height:100%; background:#94a3b8; border-radius:2px;"></div>
+            </div>
+          </div>
+          <div class="rank-row">
+            <span style="font-size:22px;">&#x1f947;</span>
+            <div style="flex:1">
+              <div style="font-size:13px; font-weight:600; color:#d97706;">Gold</div>
+              <div class="mono dim" style="font-size:11px;">1,500 &mdash; 3,000 XP</div>
+            </div>
+            <div style="width:80px; height:4px; background:rgba(255,255,255,.06); border-radius:2px;">
+              <div style="width:50%; height:100%; background:#d97706; border-radius:2px;"></div>
+            </div>
+          </div>
+          <div class="rank-row">
+            <span style="font-size:22px;">&#x1f31f;</span>
+            <div style="flex:1">
+              <div style="font-size:13px; font-weight:600; color:#38bdf8;">Platinum</div>
+              <div class="mono dim" style="font-size:11px;">3,000 &mdash; 6,000 XP</div>
+            </div>
+            <div style="width:80px; height:4px; background:rgba(255,255,255,.06); border-radius:2px;">
+              <div style="width:30%; height:100%; background:#38bdf8; border-radius:2px;"></div>
+            </div>
+          </div>
+          <div class="rank-row" style="border:1px solid rgba(168,85,247,.3); background:rgba(168,85,247,.06);">
+            <span style="font-size:22px;">&#x1f48e;</span>
+            <div style="flex:1">
+              <div style="font-size:13px; font-weight:600; color:#a855f7;">Diamond</div>
+              <div class="mono dim" style="font-size:11px;">6,000+ XP</div>
+            </div>
+            <div style="width:80px; height:4px; background:rgba(255,255,255,.06); border-radius:2px;">
+              <div style="width:15%; height:100%; background:#a855f7; border-radius:2px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="card" style="border-top:2.5px solid var(--purple); margin-bottom:20px;">
+            <h3 style="font-size:15px; margin-bottom:14px;">XP Sources</h3>
+            <div style="display:flex; flex-direction:column; gap:12px;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:13px;">Daily habit completion</span>
+                <span class="mono gold" style="font-size:12px; font-weight:600;">+10-35 XP</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:13px;">Counter bonuses (per unit)</span>
+                <span class="mono gold" style="font-size:12px; font-weight:600;">+5-30 XP</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:13px;">Closing a deal</span>
+                <span class="mono green" style="font-size:12px; font-weight:600;">+50-100 XP</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:13px;">Team challenge wins</span>
+                <span class="mono purple" style="font-size:12px; font-weight:600;">Bonus XP</span>
+              </div>
+            </div>
+          </div>
+          <div class="card" style="border-top:2.5px solid var(--gold);">
+            <h3 style="font-size:15px; margin-bottom:10px;">Why It Works</h3>
+            <p class="muted" style="font-size:12px; line-height:1.7;">
+              Real estate is a game of reps. The agents who make the most calls, send the most follow-ups, and show up every day &mdash; win. Gamification makes the boring stuff fun. Streaks create stakes. Leaderboards create competition. Ranks create identity.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- SLIDE 6: AI COACHING -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="slide grid-bg" data-slide="5">
+    <div style="width:100%; max-width:1000px;">
+      <div class="pill animate-in d1">AI-Powered</div>
+      <h1 class="animate-in d2" style="font-size:clamp(28px,3vw,42px); margin-bottom:8px;">
+        Your personal <span class="gradient-text">listing strategist.</span>
+      </h1>
+      <p class="animate-in d3 muted" style="font-size:14px; margin-bottom:40px; max-width:620px;">
+        An AI coaching assistant powered by Claude that reads your live listings, pipeline, habits, and goals &mdash; then gives you actionable advice.
+      </p>
+
+      <div class="two-col animate-in d4">
+        <div>
+          <h3 style="font-size:14px; margin-bottom:18px; color:var(--muted);">QUICK ACTIONS</h3>
+          <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:28px;">
+            <span style="background:rgba(217,119,6,.1); border:1px solid rgba(217,119,6,.25); color:var(--gold); padding:7px 14px; border-radius:20px; font-size:12px; font-weight:500;">Analyze My Listings</span>
+            <span style="background:rgba(16,185,129,.1); border:1px solid rgba(16,185,129,.25); color:var(--green); padding:7px 14px; border-radius:20px; font-size:12px; font-weight:500;">Review My Pipeline</span>
+            <span style="background:rgba(59,130,246,.1); border:1px solid rgba(59,130,246,.25); color:var(--blue); padding:7px 14px; border-radius:20px; font-size:12px; font-weight:500;">Goal Progress Check</span>
+            <span style="background:rgba(168,85,247,.1); border:1px solid rgba(168,85,247,.25); color:var(--purple); padding:7px 14px; border-radius:20px; font-size:12px; font-weight:500;">Prospecting Tips</span>
+            <span style="background:rgba(34,211,238,.1); border:1px solid rgba(34,211,238,.25); color:var(--cyan); padding:7px 14px; border-radius:20px; font-size:12px; font-weight:500;">Buyer Search Strategies</span>
+            <span style="background:rgba(245,158,11,.1); border:1px solid rgba(245,158,11,.25); color:var(--amber); padding:7px 14px; border-radius:20px; font-size:12px; font-weight:500;">Find Comps</span>
+          </div>
+
+          <h3 style="font-size:14px; margin-bottom:14px; color:var(--muted);">CAPABILITIES</h3>
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <div style="display:flex; gap:10px; align-items:center;">
+              <span style="color:var(--green)">&#x2713;</span>
+              <span style="font-size:13px;">Analyzes active listings &amp; days-on-market</span>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <span style="color:var(--green)">&#x2713;</span>
+              <span style="font-size:13px;">Reviews deal pipeline &amp; pending transactions</span>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <span style="color:var(--green)">&#x2713;</span>
+              <span style="font-size:13px;">Tracks progress against monthly goals</span>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <span style="color:var(--green)">&#x2713;</span>
+              <span style="font-size:13px;">Coaching on prospecting & time-blocking</span>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <span style="color:var(--green)">&#x2713;</span>
+              <span style="font-size:13px;">Team data summaries for leaders & admins</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="card" style="background:#111; border:1px solid rgba(217,119,6,.2); border-radius:20px; padding:24px; font-size:13px;">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:18px;">
+              <div style="width:32px; height:32px; border-radius:8px; background:rgba(217,119,6,.15); display:flex; align-items:center; justify-content:center; font-size:16px;">&#x1f916;</div>
+              <div>
+                <div style="font-weight:600; font-size:12px;">AI Coach</div>
+                <div class="dim" style="font-size:10px;">Powered by Claude</div>
+              </div>
+            </div>
+            <div style="background:rgba(217,119,6,.06); border:1px solid rgba(217,119,6,.15); border-radius:12px; padding:14px; margin-bottom:12px; line-height:1.6; color:var(--muted);">
+              You have 3 active listings averaging 28 DOM. Your $425K listing on Oak Drive is approaching 45 days &mdash; consider a 2-3% price adjustment to re-engage buyer interest. Your pipeline shows 2 pending deals closing this month, putting you at 4/6 of your monthly goal. Focus prospecting energy on new buyer leads to close the gap.
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span class="mono dim" style="font-size:10px;">12 / 50 credits used this month</span>
+              <span style="font-size:10px; color:var(--gold);">&#x26a1; Live data</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- SLIDE 7: TEAMS & BROKERAGE -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="slide grid-bg" data-slide="6">
+    <div style="width:100%; max-width:1000px;">
+      <div class="pill animate-in d1">Teams & Brokerage</div>
+      <h1 class="animate-in d2" style="font-size:clamp(28px,3vw,42px); margin-bottom:8px;">
+        Full visibility. <span class="gradient-text">Real coaching.</span>
+      </h1>
+      <p class="animate-in d3 muted" style="font-size:14px; margin-bottom:40px; max-width:600px;">
+        Team leaders and brokers get a command center for agent performance. Leaderboards drive competition. Coaching notes drive improvement. Accountability drives results.
+      </p>
+
+      <div class="three-col animate-in d4">
+        <div class="card" style="border-top:2.5px solid var(--gold); padding:24px;">
+          <div style="font-size:28px; margin-bottom:12px;">&#x1f465;</div>
+          <h3 style="font-size:14px; margin-bottom:8px;">Roster & Leaderboard</h3>
+          <p class="dim" style="font-size:12px; line-height:1.6;">
+            See every agent's XP, streak, rank, and daily completion rate. Sort by any metric. Identify top performers and those falling behind.
+          </p>
+        </div>
+        <div class="card" style="border-top:2.5px solid var(--green); padding:24px;">
+          <div style="font-size:28px; margin-bottom:12px;">&#x1f4dd;</div>
+          <h3 style="font-size:14px; margin-bottom:8px;">Coaching Notes</h3>
+          <p class="dim" style="font-size:12px; line-height:1.6;">
+            Private per-agent notes with reply threads. Pin critical feedback. Track conversations. Build a coaching history for every agent.
+          </p>
+        </div>
+        <div class="card" style="border-top:2.5px solid var(--blue); padding:24px;">
+          <div style="font-size:28px; margin-bottom:12px;">&#x1f4e2;</div>
+          <h3 style="font-size:14px; margin-bottom:8px;">Daily Standups</h3>
+          <p class="dim" style="font-size:12px; line-height:1.6;">
+            Activity feed showing what every agent completed today. Accountability groups keep teams focused and aligned.
+          </p>
+        </div>
+        <div class="card" style="border-top:2.5px solid var(--purple); padding:24px;">
+          <div style="font-size:28px; margin-bottom:12px;">&#x1f3c6;</div>
+          <h3 style="font-size:14px; margin-bottom:8px;">Team Challenges</h3>
+          <p class="dim" style="font-size:12px; line-height:1.6;">
+            Create time-limited challenges with bonus XP rewards. Drive friendly competition. Celebrate wins together.
+          </p>
+        </div>
+        <div class="card" style="border-top:2.5px solid var(--amber); padding:24px;">
+          <div style="font-size:28px; margin-bottom:12px;">&#x1f3e0;</div>
+          <h3 style="font-size:14px; margin-bottom:8px;">Active Listings Board</h3>
+          <p class="dim" style="font-size:12px; line-height:1.6;">
+            See all active listings across every agent in one view. Track status changes, days on market, and pricing.
+          </p>
+        </div>
+        <div class="card" style="border-top:2.5px solid var(--cyan); padding:24px;">
+          <div style="font-size:28px; margin-bottom:12px;">&#x1f4ca;</div>
+          <h3 style="font-size:14px; margin-bottom:8px;">AI Team Insights</h3>
+          <p class="dim" style="font-size:12px; line-height:1.6;">
+            Team leaders get AI-powered summaries of agent performance, listings, and pipeline data for smarter coaching conversations.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- SLIDE 8: PRICING -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="slide grid-bg" data-slide="7">
+    <div class="slide-center">
+      <div class="pill animate-in d1">Pricing</div>
+      <h1 class="animate-in d2" style="font-size:clamp(28px,3vw,42px); margin-bottom:8px;">
+        Simple, transparent pricing.
+      </h1>
+      <p class="animate-in d3 muted" style="font-size:14px; margin-bottom:40px;">
+        14-day free trial on all plans. No credit card required to start.
+      </p>
+
+      <div class="three-col animate-in d4" style="max-width:960px; margin:0 auto;">
+        <div class="price-card">
+          <div class="plan-name">Solo</div>
+          <p class="dim" style="font-size:12px; margin-bottom:14px;">Individual agents</p>
+          <div class="price">$29<span>/mo</span></div>
+          <p class="dim" style="font-size:11px; margin-top:2px;">or $24/mo billed annually</p>
+          <ul>
+            <li>Habit tracker & XP system</li>
+            <li>Skip & restore habits</li>
+            <li>Pipeline & closing tracker</li>
+            <li>Annual production report</li>
+            <li>Print daily checklist PDF</li>
+            <li>50 AI coaching credits/mo</li>
+          </ul>
+        </div>
+
+        <div class="price-card featured">
+          <div class="badge">Most Popular</div>
+          <div class="plan-name">Team</div>
+          <p class="dim" style="font-size:12px; margin-bottom:14px;">2-15 agents</p>
+          <div class="price">$199<span>/mo</span></div>
+          <p class="dim" style="font-size:11px; margin-top:2px;">or $166/mo billed annually</p>
+          <ul>
+            <li>Everything in Solo</li>
+            <li>Up to 15 agents</li>
+            <li>Roster & leaderboard</li>
+            <li>Coaching notes per agent</li>
+            <li>Daily standup feed</li>
+            <li>Accountability groups</li>
+            <li>Team challenges & XP bonuses</li>
+            <li>250 AI coaching credits/mo</li>
+          </ul>
+        </div>
+
+        <div class="price-card">
+          <div class="plan-name">Brokerage</div>
+          <p class="dim" style="font-size:12px; margin-bottom:14px;">Multi-team brokers</p>
+          <div class="price">$499<span>/mo</span></div>
+          <p class="dim" style="font-size:11px; margin-top:2px;">or $416/mo billed annually</p>
+          <ul>
+            <li>Everything in Team</li>
+            <li>50 agents included</li>
+            <li>$7/seat for additional agents</li>
+            <li>Multiple accountability groups</li>
+            <li>Priority support</li>
+            <li>Early access to new features</li>
+            <li>500 AI coaching credits/mo</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- SLIDE 9: BUSINESS MODEL & UNIT ECONOMICS -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="slide grid-bg" data-slide="8">
+    <div style="width:100%; max-width:1000px;">
+      <div class="pill animate-in d1">Business Model</div>
+      <h1 class="animate-in d2" style="font-size:clamp(28px,3vw,42px); margin-bottom:8px;">
+        SaaS with <span class="gradient-text">land & expand.</span>
+      </h1>
+      <p class="animate-in d3 muted" style="font-size:14px; margin-bottom:40px; max-width:620px;">
+        Agents start solo. When they see results, they bring their team. Teams become brokerages. The flywheel spins itself.
+      </p>
+
+      <div class="two-col animate-in d4">
+        <div>
+          <h3 style="font-size:14px; margin-bottom:20px; color:var(--muted);">EXPANSION FLYWHEEL</h3>
+          <div class="timeline-item">
+            <div class="timeline-dot" style="background:var(--gold);"></div>
+            <div>
+              <div style="font-size:14px; font-weight:600;">Agent signs up solo</div>
+              <div class="dim" style="font-size:12px; line-height:1.5;">$29/mo. Builds habits, tracks deals, sees results.</div>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-dot" style="background:var(--green);"></div>
+            <div>
+              <div style="font-size:14px; font-weight:600;">Brings their team</div>
+              <div class="dim" style="font-size:12px; line-height:1.5;">$199/mo for up to 15 agents. Leaderboards + coaching = retention.</div>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-dot" style="background:var(--blue);"></div>
+            <div>
+              <div style="font-size:14px; font-weight:600;">Brokerage adopts org-wide</div>
+              <div class="dim" style="font-size:12px; line-height:1.5;">$499/mo + $7/seat overage. Multiple groups, priority support.</div>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-dot" style="background:var(--purple);"></div>
+            <div>
+              <div style="font-size:14px; font-weight:600;">Agents leave, take it with them</div>
+              <div class="dim" style="font-size:12px; line-height:1.5;">New solo account. New team. The cycle repeats. Zero churn &mdash; just redistribution.</div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="card" style="border-top:2.5px solid var(--green); margin-bottom:20px;">
+            <h3 style="font-size:14px; margin-bottom:16px;">Revenue Drivers</h3>
+            <div style="display:flex; flex-direction:column; gap:12px;">
+              <div style="display:flex; justify-content:space-between;">
+                <span style="font-size:13px;">Solo subscriptions</span>
+                <span class="mono gold" style="font-size:12px;">$29/mo</span>
+              </div>
+              <div style="display:flex; justify-content:space-between;">
+                <span style="font-size:13px;">Team subscriptions</span>
+                <span class="mono gold" style="font-size:12px;">$199/mo</span>
+              </div>
+              <div style="display:flex; justify-content:space-between;">
+                <span style="font-size:13px;">Brokerage subscriptions</span>
+                <span class="mono gold" style="font-size:12px;">$499/mo</span>
+              </div>
+              <div style="display:flex; justify-content:space-between;">
+                <span style="font-size:13px;">Overage seats</span>
+                <span class="mono gold" style="font-size:12px;">$7/seat/mo</span>
+              </div>
+              <div style="display:flex; justify-content:space-between;">
+                <span style="font-size:13px;">Annual discount (17% off)</span>
+                <span class="mono green" style="font-size:12px;">Higher retention</span>
+              </div>
+            </div>
+          </div>
+          <div class="card" style="border-top:2.5px solid var(--blue);">
+            <h3 style="font-size:14px; margin-bottom:12px;">Market Size</h3>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div>
+                <div class="mono gold" style="font-size:18px; font-weight:700;">1.5M+</div>
+                <div class="dim" style="font-size:11px;">Active real estate agents in the US</div>
+              </div>
+              <div>
+                <div class="mono green" style="font-size:18px; font-weight:700;">86,000+</div>
+                <div class="dim" style="font-size:11px;">Real estate brokerages</div>
+              </div>
+              <div>
+                <div class="mono blue" style="font-size:18px; font-weight:700;">$1.8B</div>
+                <div class="dim" style="font-size:11px;">Real estate tech SaaS TAM</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- SLIDE 10: COMPETITIVE ADVANTAGE -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="slide grid-bg" data-slide="9">
+    <div style="width:100%; max-width:1000px;">
+      <div class="pill animate-in d1">Why Us</div>
+      <h1 class="animate-in d2" style="font-size:clamp(28px,3vw,42px); margin-bottom:8px;">
+        Nothing else does <span class="gradient-text">all of this.</span>
+      </h1>
+      <p class="animate-in d3 muted" style="font-size:14px; margin-bottom:40px; max-width:620px;">
+        CRMs track contacts. RealtyGrind tracks behavior. We sit in the whitespace between Salesforce and a spreadsheet &mdash; purpose-built for agent accountability.
+      </p>
+
+      <div class="animate-in d4" style="width:100%; overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+          <thead>
+            <tr style="border-bottom:1px solid rgba(255,255,255,.1);">
+              <th style="text-align:left; padding:12px 16px; color:var(--muted); font-weight:500; font-size:12px;"></th>
+              <th style="text-align:center; padding:12px 16px; color:var(--gold); font-weight:700; font-size:13px;">RealtyGrind</th>
+              <th style="text-align:center; padding:12px 16px; color:var(--muted); font-weight:500; font-size:12px;">Traditional CRM</th>
+              <th style="text-align:center; padding:12px 16px; color:var(--muted); font-weight:500; font-size:12px;">Spreadsheets</th>
+              <th style="text-align:center; padding:12px 16px; color:var(--muted); font-weight:500; font-size:12px;">Generic Habit Apps</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+              <td style="padding:10px 16px;">Daily habit tracking</td>
+              <td style="text-align:center; color:var(--green);">&#x2713;</td>
+              <td style="text-align:center; color:var(--red);">&#x2717;</td>
+              <td style="text-align:center; color:var(--amber);">~</td>
+              <td style="text-align:center; color:var(--green);">&#x2713;</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+              <td style="padding:10px 16px;">Real estate-specific habits</td>
+              <td style="text-align:center; color:var(--green);">&#x2713;</td>
+              <td style="text-align:center; color:var(--red);">&#x2717;</td>
+              <td style="text-align:center; color:var(--red);">&#x2717;</td>
+              <td style="text-align:center; color:var(--red);">&#x2717;</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+              <td style="padding:10px 16px;">XP, ranks & gamification</td>
+              <td style="text-align:center; color:var(--green);">&#x2713;</td>
+              <td style="text-align:center; color:var(--red);">&#x2717;</td>
+              <td style="text-align:center; color:var(--red);">&#x2717;</td>
+              <td style="text-align:center; color:var(--amber);">~</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+              <td style="padding:10px 16px;">Deal & pipeline tracking</td>
+              <td style="text-align:center; color:var(--green);">&#x2713;</td>
+              <td style="text-align:center; color:var(--green);">&#x2713;</td>
+              <td style="text-align:center; color:var(--amber);">~</td>
+              <td style="text-align:center; color:var(--red);">&#x2717;</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+              <td style="padding:10px 16px;">AI coaching with live data</td>
+              <td style="text-align:center; color:var(--green);">&#x2713;</td>
+              <td style="text-align:center; color:var(--red);">&#x2717;</td>
+              <td style="text-align:center; color:var(--red);">&#x2717;</td>
+              <td style="text-align:center; color:var(--red);">&#x2717;</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+              <td style="padding:10px 16px;">Team leaderboards & coaching</td>
+              <td style="text-align:center; color:var(--green);">&#x2713;</td>
+              <td style="text-align:center; color:var(--amber);">~</td>
+              <td style="text-align:center; color:var(--red);">&#x2717;</td>
+              <td style="text-align:center; color:var(--red);">&#x2717;</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 16px;">Brokerage-scale management</td>
+              <td style="text-align:center; color:var(--green);">&#x2713;</td>
+              <td style="text-align:center; color:var(--green);">&#x2713;</td>
+              <td style="text-align:center; color:var(--red);">&#x2717;</td>
+              <td style="text-align:center; color:var(--red);">&#x2717;</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- SLIDE 11: ROADMAP -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="slide grid-bg" data-slide="10">
+    <div style="width:100%; max-width:1000px;">
+      <div class="pill animate-in d1">Roadmap</div>
+      <h1 class="animate-in d2" style="font-size:clamp(28px,3vw,42px); margin-bottom:36px;">
+        Where we're <span class="gradient-text">headed.</span>
+      </h1>
+
+      <div class="two-col animate-in d3">
+        <div>
+          <div class="card" style="border-left:3px solid var(--green); margin-bottom:16px;">
+            <div class="mono" style="font-size:10px; color:var(--green); letter-spacing:1px; margin-bottom:6px;">COMPLETED</div>
+            <h3 style="font-size:14px; margin-bottom:8px;">Core Platform</h3>
+            <div class="dim" style="font-size:12px; line-height:1.6;">
+              &#x2713; 11 real estate habits with XP &amp; streaks<br>
+              &#x2713; Full pipeline &amp; commission tracking<br>
+              &#x2713; AI coaching assistant (Claude-powered)<br>
+              &#x2713; Team management &amp; leaderboards<br>
+              &#x2713; Brokerage plan with seat management<br>
+              &#x2713; Stripe billing &amp; 14-day free trials<br>
+              &#x2713; Guided walkthrough tour for new users<br>
+              &#x2713; Print PDF daily checklist
+            </div>
+          </div>
+          <div class="card" style="border-left:3px solid var(--gold);">
+            <div class="mono" style="font-size:10px; color:var(--gold); letter-spacing:1px; margin-bottom:6px;">Q2 2025</div>
+            <h3 style="font-size:14px; margin-bottom:8px;">Growth Features</h3>
+            <div class="dim" style="font-size:12px; line-height:1.6;">
+              &#x25CB; Mobile app (React Native)<br>
+              &#x25CB; Push notifications for streaks &amp; challenges<br>
+              &#x25CB; MLS integration for automatic listing sync<br>
+              &#x25CB; Advanced AI: market trend analysis
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="card" style="border-left:3px solid var(--blue); margin-bottom:16px;">
+            <div class="mono" style="font-size:10px; color:var(--blue); letter-spacing:1px; margin-bottom:6px;">Q3 2025</div>
+            <h3 style="font-size:14px; margin-bottom:8px;">Scale &amp; Integrations</h3>
+            <div class="dim" style="font-size:12px; line-height:1.6;">
+              &#x25CB; CRM integrations (Follow Up Boss, KVCore)<br>
+              &#x25CB; Transaction coordinator workflow<br>
+              &#x25CB; Automated weekly reports for team leads<br>
+              &#x25CB; White-label option for brokerages
+            </div>
+          </div>
+          <div class="card" style="border-left:3px solid var(--purple);">
+            <div class="mono" style="font-size:10px; color:var(--purple); letter-spacing:1px; margin-bottom:6px;">Q4 2025</div>
+            <h3 style="font-size:14px; margin-bottom:8px;">Enterprise</h3>
+            <div class="dim" style="font-size:12px; line-height:1.6;">
+              &#x25CB; Multi-office brokerage dashboard<br>
+              &#x25CB; Custom onboarding for franchises<br>
+              &#x25CB; API access for brokerage data exports<br>
+              &#x25CB; Enterprise SSO &amp; admin controls
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- SLIDE 12: GO-TO-MARKET STRATEGY -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="slide grid-bg" data-slide="11">
+    <div style="width:100%; max-width:1000px;">
+      <div class="pill animate-in d1">Go-to-Market</div>
+      <h1 class="animate-in d2" style="font-size:clamp(28px,3vw,42px); margin-bottom:8px;">
+        Three-phase <span class="gradient-text">launch strategy.</span>
+      </h1>
+      <p class="animate-in d3 muted" style="font-size:14px; margin-bottom:36px; max-width:620px;">
+        Land solo agents, expand into teams, then scale through brokerages. Each phase fuels the next.
+      </p>
+
+      <div class="animate-in d4" style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:28px;">
+        <!-- Phase 1 -->
+        <div class="card" style="border-top:3px solid var(--green);">
+          <div class="mono" style="font-size:10px; color:var(--green); letter-spacing:1px; margin-bottom:8px;">PHASE 1 &bull; MONTHS 1&ndash;3</div>
+          <h3 style="font-size:15px; margin-bottom:10px;">Seed &mdash; Solo Agents</h3>
+          <div class="dim" style="font-size:12px; line-height:1.7;">
+            &bull; Content marketing: Instagram, TikTok, YouTube Shorts targeting agent productivity<br>
+            &bull; Real estate Facebook groups &amp; Reddit community outreach<br>
+            &bull; 14-day free trial on Solo plan<br>
+            &bull; SEO: &ldquo;real estate habit tracker&rdquo;, &ldquo;agent accountability app&rdquo;
+          </div>
+          <div style="margin-top:14px; padding-top:12px; border-top:1px solid rgba(255,255,255,.06);">
+            <div class="mono green" style="font-size:18px; font-weight:700;">100</div>
+            <div class="dim" style="font-size:11px;">Solo subscribers target</div>
+          </div>
+        </div>
+        <!-- Phase 2 -->
+        <div class="card" style="border-top:3px solid var(--gold);">
+          <div class="mono" style="font-size:10px; color:var(--gold); letter-spacing:1px; margin-bottom:8px;">PHASE 2 &bull; MONTHS 4&ndash;6</div>
+          <h3 style="font-size:15px; margin-bottom:10px;">Grow &mdash; Team Leaders</h3>
+          <div class="dim" style="font-size:12px; line-height:1.7;">
+            &bull; Convert solo agents into team evangelists (referral bonuses)<br>
+            &bull; Direct outreach to team leaders at KW, eXp, RE/MAX, Compass<br>
+            &bull; Conference &amp; local board presence<br>
+            &bull; Case studies: &ldquo;How Team X increased activity 40%&rdquo;
+          </div>
+          <div style="margin-top:14px; padding-top:12px; border-top:1px solid rgba(255,255,255,.06);">
+            <div class="mono gold" style="font-size:18px; font-weight:700;">20 teams</div>
+            <div class="dim" style="font-size:11px;">~300 agent seats</div>
+          </div>
+        </div>
+        <!-- Phase 3 -->
+        <div class="card" style="border-top:3px solid var(--purple);">
+          <div class="mono" style="font-size:10px; color:var(--purple); letter-spacing:1px; margin-bottom:8px;">PHASE 3 &bull; MONTHS 7&ndash;12</div>
+          <h3 style="font-size:15px; margin-bottom:10px;">Scale &mdash; Brokerages</h3>
+          <div class="dim" style="font-size:12px; line-height:1.7;">
+            &bull; Enterprise sales to brokerage ops managers<br>
+            &bull; White-label pilot program<br>
+            &bull; Strategic partnerships: Tom Ferry, Buffini, coaching companies<br>
+            &bull; Real estate podcast sponsorships &amp; guest appearances
+          </div>
+          <div style="margin-top:14px; padding-top:12px; border-top:1px solid rgba(255,255,255,.06);">
+            <div class="mono" style="font-size:18px; font-weight:700; color:var(--purple);">5 brokerages</div>
+            <div class="dim" style="font-size:11px;">250+ seats</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="animate-in d5 card" style="border-top:2.5px solid var(--cyan);">
+        <h3 style="font-size:14px; margin-bottom:12px;">Key Acquisition Channels</h3>
+        <div style="display:flex; flex-wrap:wrap; gap:10px;">
+          <span style="background:rgba(34,211,238,.08); border:1px solid rgba(34,211,238,.2); border-radius:8px; padding:6px 14px; font-size:12px;">Social Media (Organic)</span>
+          <span style="background:rgba(217,119,6,.08); border:1px solid rgba(217,119,6,.2); border-radius:8px; padding:6px 14px; font-size:12px;">Email Sequences</span>
+          <span style="background:rgba(16,185,129,.08); border:1px solid rgba(16,185,129,.2); border-radius:8px; padding:6px 14px; font-size:12px;">Direct Sales</span>
+          <span style="background:rgba(168,85,247,.08); border:1px solid rgba(168,85,247,.2); border-radius:8px; padding:6px 14px; font-size:12px;">Referral Program</span>
+          <span style="background:rgba(59,130,246,.08); border:1px solid rgba(59,130,246,.2); border-radius:8px; padding:6px 14px; font-size:12px;">RE Podcasts &amp; Events</span>
+          <span style="background:rgba(245,158,11,.08); border:1px solid rgba(245,158,11,.2); border-radius:8px; padding:6px 14px; font-size:12px;">SEO &amp; Content</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- SLIDE 13: ROLLING 12-MONTH PROJECTIONS -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="slide grid-bg" data-slide="12">
+    <div style="width:100%; max-width:1060px;">
+      <div class="pill animate-in d1">Projections</div>
+      <h1 class="animate-in d2" style="font-size:clamp(28px,3vw,42px); margin-bottom:8px;">
+        Rolling 12-month <span class="gradient-text">financial model.</span>
+      </h1>
+      <p class="animate-in d3 muted" style="font-size:14px; margin-bottom:28px; max-width:620px;">
+        Conservative projections. Solo @ $29/mo, Team @ $199/mo, Brokerage @ $499/mo. 8% monthly churn on Solo, 40% trial conversion.
+      </p>
+
+      <div class="animate-in d4" style="width:100%; overflow-x:auto; margin-bottom:24px;">
+        <table style="width:100%; border-collapse:collapse; font-size:12px;">
+          <thead>
+            <tr style="border-bottom:2px solid rgba(255,255,255,.1);">
+              <th style="text-align:left; padding:10px 12px; color:var(--muted); font-weight:600; font-size:11px;">Month</th>
+              <th style="text-align:right; padding:10px 12px; color:var(--green); font-weight:600; font-size:11px;">Solo</th>
+              <th style="text-align:right; padding:10px 12px; color:var(--gold); font-weight:600; font-size:11px;">Team</th>
+              <th style="text-align:right; padding:10px 12px; color:var(--purple); font-weight:600; font-size:11px;">Brokerage</th>
+              <th style="text-align:right; padding:10px 12px; color:var(--text); font-weight:600; font-size:11px;">Total Users</th>
+              <th style="text-align:right; padding:10px 12px; color:var(--cyan); font-weight:700; font-size:11px;">MRR</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+              <td style="padding:8px 12px; font-weight:600;">1</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--green);">25</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--dim);">&mdash;</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--dim);">&mdash;</td>
+              <td style="text-align:right; padding:8px 12px;">25</td>
+              <td class="mono" style="text-align:right; padding:8px 12px; color:var(--cyan);">$725</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+              <td style="padding:8px 12px; font-weight:600;">2</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--green);">48</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--dim);">&mdash;</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--dim);">&mdash;</td>
+              <td style="text-align:right; padding:8px 12px;">48</td>
+              <td class="mono" style="text-align:right; padding:8px 12px; color:var(--cyan);">$1,392</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+              <td style="padding:8px 12px; font-weight:600;">3</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--green);">80</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--dim);">&mdash;</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--dim);">&mdash;</td>
+              <td style="text-align:right; padding:8px 12px;">80</td>
+              <td class="mono" style="text-align:right; padding:8px 12px; color:var(--cyan);">$2,320</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04); background:rgba(217,119,6,.03);">
+              <td style="padding:8px 12px; font-weight:600;">4</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--green);">100</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--gold);">5</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--dim);">&mdash;</td>
+              <td style="text-align:right; padding:8px 12px;">105</td>
+              <td class="mono" style="text-align:right; padding:8px 12px; color:var(--cyan);">$3,895</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+              <td style="padding:8px 12px; font-weight:600;">5</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--green);">118</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--gold);">9</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--dim);">&mdash;</td>
+              <td style="text-align:right; padding:8px 12px;">127</td>
+              <td class="mono" style="text-align:right; padding:8px 12px; color:var(--cyan);">$5,213</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+              <td style="padding:8px 12px; font-weight:600;">6</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--green);">150</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--gold);">15</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--dim);">&mdash;</td>
+              <td style="text-align:right; padding:8px 12px;">165</td>
+              <td class="mono" style="text-align:right; padding:8px 12px; color:var(--cyan);">$7,335</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04); background:rgba(168,85,247,.03);">
+              <td style="padding:8px 12px; font-weight:600;">7</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--green);">170</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--gold);">20</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--purple);">1</td>
+              <td style="text-align:right; padding:8px 12px;">191</td>
+              <td class="mono" style="text-align:right; padding:8px 12px; color:var(--cyan);">$9,409</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+              <td style="padding:8px 12px; font-weight:600;">8</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--green);">190</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--gold);">24</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--purple);">2</td>
+              <td style="text-align:right; padding:8px 12px;">216</td>
+              <td class="mono" style="text-align:right; padding:8px 12px; color:var(--cyan);">$11,284</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+              <td style="padding:8px 12px; font-weight:600;">9</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--green);">220</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--gold);">30</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--purple);">3</td>
+              <td style="text-align:right; padding:8px 12px;">253</td>
+              <td class="mono" style="text-align:right; padding:8px 12px; color:var(--cyan);">$13,867</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+              <td style="padding:8px 12px; font-weight:600;">10</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--green);">250</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--gold);">36</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--purple);">4</td>
+              <td style="text-align:right; padding:8px 12px;">290</td>
+              <td class="mono" style="text-align:right; padding:8px 12px; color:var(--cyan);">$16,410</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+              <td style="padding:8px 12px; font-weight:600;">11</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--green);">280</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--gold);">42</td>
+              <td style="text-align:right; padding:8px 12px; color:var(--purple);">5</td>
+              <td style="text-align:right; padding:8px 12px;">327</td>
+              <td class="mono" style="text-align:right; padding:8px 12px; color:var(--cyan);">$18,973</td>
+            </tr>
+            <tr style="border-bottom:2px solid rgba(217,119,6,.3); background:rgba(217,119,6,.04);">
+              <td style="padding:10px 12px; font-weight:800; color:var(--gold);">12</td>
+              <td style="text-align:right; padding:10px 12px; color:var(--green); font-weight:700;">310</td>
+              <td style="text-align:right; padding:10px 12px; color:var(--gold); font-weight:700;">50</td>
+              <td style="text-align:right; padding:10px 12px; color:var(--purple); font-weight:700;">7</td>
+              <td style="text-align:right; padding:10px 12px; font-weight:700;">367</td>
+              <td class="mono" style="text-align:right; padding:10px 12px; color:var(--gold); font-weight:800; font-size:14px;">$22,483</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="animate-in d5" style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px;">
+        <div class="card" style="text-align:center; border-top:2.5px solid var(--gold);">
+          <div class="mono gold" style="font-size:22px; font-weight:800;">~$270K</div>
+          <div class="dim" style="font-size:11px; margin-top:2px;">Month 12 ARR</div>
+        </div>
+        <div class="card" style="text-align:center; border-top:2.5px solid var(--green);">
+          <div class="mono green" style="font-size:22px; font-weight:800;">~$141K</div>
+          <div class="dim" style="font-size:11px; margin-top:2px;">Year 1 Revenue</div>
+        </div>
+        <div class="card" style="text-align:center; border-top:2.5px solid var(--cyan);">
+          <div class="mono" style="font-size:22px; font-weight:800; color:var(--cyan);">Month 5</div>
+          <div class="dim" style="font-size:11px; margin-top:2px;">Break-even Target</div>
+        </div>
+        <div class="card" style="text-align:center; border-top:2.5px solid var(--purple);">
+          <div class="mono" style="font-size:22px; font-weight:800; color:var(--purple);">5:1+</div>
+          <div class="dim" style="font-size:11px; margin-top:2px;">LTV / CAC Target</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- SLIDE 14: THE ASK / CLOSING -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="slide grid-bg" data-slide="13">
+    <div class="slide-center">
+      <div class="animate-in d1" style="font-size:56px; margin-bottom:20px;">&#x1f525;</div>
+      <h1 class="animate-in d2 gradient-text" style="font-size:clamp(36px,4.5vw,60px); margin-bottom:16px; line-height:1.1;">
+        Let's build the<br>operating system<br>for real estate agents.
+      </h1>
+      <div class="divider animate-in d3"></div>
+      <p class="animate-in d4 muted" style="font-size:16px; margin-top:24px; margin-bottom:40px; line-height:1.7; max-width:560px; margin-left:auto; margin-right:auto;">
+        The platform is built, polished, and ready to launch.<br>
+        Daily habits. Deal tracking. AI coaching. Team accountability.<br>
+        All in one place, purpose-built for real estate.
+      </p>
+
+      <div class="animate-in d5" style="display:flex; gap:16px; justify-content:center; flex-wrap:wrap; margin-bottom:44px;">
+        <div style="background:rgba(217,119,6,.08); border:1px solid rgba(217,119,6,.25); border-radius:12px; padding:16px 28px; text-align:center;">
+          <div class="mono gold" style="font-size:11px; letter-spacing:1px; margin-bottom:4px;">WEBSITE</div>
+          <div style="font-size:14px; font-weight:600;">realtygrind.com</div>
+        </div>
+        <div style="background:rgba(16,185,129,.08); border:1px solid rgba(16,185,129,.25); border-radius:12px; padding:16px 28px; text-align:center;">
+          <div class="mono green" style="font-size:11px; letter-spacing:1px; margin-bottom:4px;">LIVE APP</div>
+          <div style="font-size:14px; font-weight:600;">realtygrind.vercel.app</div>
+        </div>
+      </div>
+
+      <p class="animate-in d6 mono dim" style="font-size:11px; letter-spacing:1px;">
+        THANK YOU &bull; CONFIDENTIAL
+      </p>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- Navigation Bar -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<div class="nav-bar">
+  <button id="prevBtn" onclick="navigate(-1)">&#x2190; Previous</button>
+  <div style="display:flex; align-items:center; gap:16px;">
+    <span class="slide-num" id="slideNum">1 / 14</span>
+    <div class="progress-dots" id="dots"></div>
+  </div>
+  <button id="nextBtn" onclick="navigate(1)">Next &#x2192;</button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide')
+  const totalSlides = slides.length
+  let current = 0
+
+  // Build dots
+  const dotsContainer = document.getElementById('dots')
+  for (let i = 0; i < totalSlides; i++) {
+    const d = document.createElement('div')
+    d.className = 'dot' + (i === 0 ? ' active' : '')
+    d.onclick = () => goTo(i)
+    dotsContainer.appendChild(d)
+  }
+
+  function goTo(n) {
+    if (n < 0 || n >= totalSlides) return
+    slides[current].classList.remove('active')
+    dotsContainer.children[current].classList.remove('active')
+    current = n
+    slides[current].classList.add('active')
+    dotsContainer.children[current].classList.add('active')
+    document.getElementById('slideNum').textContent = `${current + 1} / ${totalSlides}`
+    document.getElementById('prevBtn').disabled = current === 0
+    document.getElementById('nextBtn').disabled = current === totalSlides - 1
+  }
+
+  function navigate(dir) { goTo(current + dir) }
+
+  // Keyboard navigation
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); navigate(1) }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); navigate(-1) }
+    if (e.key === 'Home') { e.preventDefault(); goTo(0) }
+    if (e.key === 'End') { e.preventDefault(); goTo(totalSlides - 1) }
+  })
+
+  // Touch/swipe support
+  let touchStartX = 0
+  document.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].screenX }, { passive: true })
+  document.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].screenX - touchStartX
+    if (Math.abs(dx) > 50) navigate(dx < 0 ? 1 : -1)
+  }, { passive: true })
+
+  // Initialize
+  goTo(0)
+</script>
+
+</body>
+</html>

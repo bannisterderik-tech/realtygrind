@@ -742,9 +742,15 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
           <div style={{ fontSize:12, color:'var(--muted)', fontFamily:'Poppins,sans-serif' }}>
             © {new Date().getFullYear()} RealtyGrind. Built for agents who refuse to wing it.
           </div>
-          <button onClick={onGetStarted} style={{ fontSize:13, color:gold, fontFamily:'Poppins,sans-serif', fontWeight:600, background:'transparent', border:'none', cursor:'pointer' }}>
-            Get Started →
-          </button>
+          <div style={{ display:'flex', alignItems:'center', gap:20 }}>
+            <a href="/pitch-deck.html" target="_blank" rel="noopener noreferrer"
+              style={{ fontSize:13, color:gold, fontFamily:'Poppins,sans-serif', fontWeight:600, textDecoration:'none' }}>
+              📊 Pitch Deck
+            </a>
+            <button onClick={onGetStarted} style={{ fontSize:13, color:gold, fontFamily:'Poppins,sans-serif', fontWeight:600, background:'transparent', border:'none', cursor:'pointer' }}>
+              Get Started →
+            </button>
+          </div>
         </div>
       </footer>
 

@@ -219,7 +219,7 @@ function DashboardMockup({ theme }) {
 }
 
 // ── Main Component ────────────────────────────────────────────────────────
-export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubscribe }) {
+export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubscribe, onShowTerms }) {
   const gold = theme === 'dark' ? '#d97706' : '#b45309'
   const goldBg = theme === 'dark' ? 'rgba(217,119,6,.12)' : 'rgba(180,83,9,.08)'
 
@@ -742,7 +742,10 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
           <div style={{ fontSize:12, color:'var(--muted)', fontFamily:'Poppins,sans-serif' }}>
             © {new Date().getFullYear()} RealtyGrind. Built for agents who refuse to wing it.
           </div>
-          <div style={{ display:'flex', alignItems:'center', gap:20 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:20, flexWrap:'wrap' }}>
+            <button onClick={onShowTerms} style={{ fontSize:13, color:'var(--muted)', fontFamily:'Poppins,sans-serif', fontWeight:500, background:'transparent', border:'none', cursor:'pointer' }}>
+              Terms &amp; Privacy
+            </button>
             <a href="/pitch-deck.html" target="_blank" rel="noopener noreferrer"
               style={{ fontSize:13, color:gold, fontFamily:'Poppins,sans-serif', fontWeight:600, textDecoration:'none' }}>
               📊 Pitch Deck

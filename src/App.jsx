@@ -14,6 +14,7 @@ const BillingPage     = lazy(() => import('./pages/BillingPage'))
 const AIAssistantPage = lazy(() => import('./pages/AIAssistantPage'))
 const CoachingPage    = lazy(() => import('./pages/CoachingPage'))
 const AdminPage       = lazy(() => import('./pages/AdminPage'))
+const TermsPage       = lazy(() => import('./pages/TermsPage'))
 import AIChatWidget from './components/AIChatWidget'
 import { CSS, Ring, StatCard, Wordmark, Loader, ThemeToggle, getRank, fmtMoney, resolveCommission, RANKS, CAT, formatPrice, stripPrice, daysOnMarket, LEAD_SOURCES, LEAD_SOURCE_COLORS } from './design'
 import { HABITS } from './habits'
@@ -2593,6 +2594,7 @@ function Dashboard({ theme, onToggleTheme }) {
       {page==='directory' && <ErrorBoundary key="directory" onReset={()=>setPage('dashboard')}><DirectoryPage onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
       {page==='apod'      && <ErrorBoundary key="apod" onReset={()=>setPage('dashboard')}><APODPage      onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
       {page==='admin'     && <ErrorBoundary key="admin" onReset={()=>setPage('dashboard')}><AdminPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      {page==='terms'     && <ErrorBoundary key="terms" onReset={()=>setPage('dashboard')}><TermsPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
       </Suspense>
       {/* AI Assistant now handled by floating widget — see useEffect redirect below */}
 
@@ -4280,6 +4282,17 @@ function Dashboard({ theme, onToggleTheme }) {
           theme={theme}
         />
       </ErrorBoundary>
+
+      {/* ── App Footer ── */}
+      <footer style={{ textAlign:'center', padding:'24px 16px 32px', fontSize:12, color:'var(--muted)',
+        fontFamily:"'Poppins',sans-serif" }}>
+        <button onClick={()=>setPage('terms')} style={{ background:'none', border:'none', cursor:'pointer',
+          color:'var(--muted)', fontSize:12, fontFamily:'inherit', textDecoration:'underline' }}>
+          Terms &amp; Privacy
+        </button>
+        <span style={{ margin:'0 8px' }}>·</span>
+        © {new Date().getFullYear()} RealtyGrind
+      </footer>
     </div>
   )
 }
@@ -4290,6 +4303,7 @@ function AppInner() {
   const { user, loading } = useAuth()
   const [theme,       setTheme]       = useState(()=>localStorage.getItem('rg_theme')||'light')
   const [showAuth,    setShowAuth]    = useState(false)
+  const [showTerms,   setShowTerms]   = useState(false)
   const [checkoutMsg, setCheckoutMsg] = useState(null) // 'success' | 'cancelled'
   const [checkoutLoading, setCheckoutLoading] = useState(false)
 
@@ -4395,13 +4409,16 @@ function AppInner() {
           <span style={{ color:'#fff', fontFamily:'Poppins,sans-serif', fontWeight:600 }}>Redirecting to checkout…</span>
         </div>
       )}
-      <ErrorBoundary key={showAuth ? 'auth' : 'landing'} onReset={()=>setShowAuth(false)}>
+      <ErrorBoundary key={showTerms ? 'terms' : showAuth ? 'auth' : 'landing'} onReset={()=>{ setShowAuth(false); setShowTerms(false) }}>
         <Suspense fallback={<Loader/>}>
-        {showAuth
-          ? <AuthPage theme={theme} onToggleTheme={toggleTheme} onBack={()=>setShowAuth(false)}/>
-          : <LandingPage theme={theme} onToggleTheme={toggleTheme}
-              onGetStarted={()=>setShowAuth(true)}
-              onSubscribe={handleSubscribe}/>
+        {showTerms
+          ? <TermsPage theme={theme} onNavigate={()=>setShowTerms(false)}/>
+          : showAuth
+            ? <AuthPage theme={theme} onToggleTheme={toggleTheme} onBack={()=>setShowAuth(false)}/>
+            : <LandingPage theme={theme} onToggleTheme={toggleTheme}
+                onGetStarted={()=>setShowAuth(true)}
+                onSubscribe={handleSubscribe}
+                onShowTerms={()=>setShowTerms(true)}/>
         }
         </Suspense>
       </ErrorBoundary>

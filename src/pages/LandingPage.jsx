@@ -331,7 +331,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
                 <button className="lp-outline-btn" onClick={onGetStarted}>Sign In</button>
               </div>
               <div style={{ display:'flex', gap:20, fontSize:12, color:'var(--dim)', fontFamily:'Poppins,sans-serif', flexWrap:'wrap' }}>
-                {['✓ Free to start','✓ No credit card','✓ 2 min setup'].map(t => <span key={t}>{t}</span>)}
+                {['✓ Free to start','✓ Cancel anytime','✓ 2 min setup'].map(t => <span key={t}>{t}</span>)}
               </div>
             </div>
             <DashboardMockup theme={theme} />

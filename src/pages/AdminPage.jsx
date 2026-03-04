@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, memo } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import { CSS, StatCard, Loader, fmtMoney } from '../design'
@@ -140,7 +140,7 @@ function UserRow({ u, badge, indent, showTeam = true }) {
   )
 }
 
-export default function AdminPage({ onNavigate }) {
+function AdminPage({ onNavigate }) {
   const { profile } = useAuth()
   const [tab, setTab] = useState('overview')
   const [data, setData] = useState(null)
@@ -164,6 +164,18 @@ export default function AdminPage({ onNavigate }) {
   const gtmBoardRef = useRef(null)
 
   const isAdmin = profile?.app_role === 'admin'
+  const mountedRef = useRef(true)
+
+  // Reset mounted flag on each mount (critical for StrictMode double-invoke)
+  // and clean up save timer + flag on unmount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      if (gtmSaveTimer.current) clearTimeout(gtmSaveTimer.current)
+    }
+  }, [])
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -241,13 +253,15 @@ export default function AdminPage({ onNavigate }) {
         is_team_owner: p.team_id ? (teamOwnerMap[p.team_id] === p.id) : false,
       }))
 
+      if (!mountedRef.current) return
       setData({ stats, users, teams: teams || [] })
       setLastRefresh(new Date())
     } catch (err) {
       console.error('Admin dashboard error:', err)
+      if (!mountedRef.current) return
       setError(err.message || 'Unknown error')
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
   }
 
@@ -357,6 +371,7 @@ export default function AdminPage({ onNavigate }) {
         const saved = row?.habit_prefs?.gtm_board
         const board = (saved?.tasks?.length) ? saved : { tasks: DEFAULT_GTM_TASKS.map(t => ({ ...t })) }
         gtmBoardRef.current = board
+        if (!mountedRef.current) return
         setGtmBoard(board)
         if (!saved?.tasks?.length) scheduleGtmSave()
       } catch (e) { console.error('GTM load error:', e) }
@@ -1075,3 +1090,5 @@ export default function AdminPage({ onNavigate }) {
     </>
   )
 }
+
+export default memo(AdminPage)

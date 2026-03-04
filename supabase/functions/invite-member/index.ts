@@ -98,45 +98,46 @@ Deno.serve(async (req: Request) => {
       })
     }
     // Allow team owner OR super admin (app_role = 'admin')
-    if (team.created_by !== userId) {
-      const { data: callerProfile } = await adminClient
-        .from('profiles').select('app_role').eq('id', userId).single()
-      if (callerProfile?.app_role !== 'admin') {
-        return new Response(JSON.stringify({ error: 'Only the team owner can send invites' }), {
+    const { data: callerProfile } = await adminClient
+      .from('profiles').select('app_role').eq('id', userId).single()
+    const isSuperAdmin = callerProfile?.app_role === 'admin'
+    if (team.created_by !== userId && !isSuperAdmin) {
+      return new Response(JSON.stringify({ error: 'Only the team owner can send invites' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // ── 3. Check team member count vs plan limit (super admins bypass) ───────
+    if (!isSuperAdmin) {
+      const PLAN_MAX_MEMBERS: Record<string, number> = { solo: 0, team: 15, brokerage: 50 }
+      const { data: ownerProfile } = await adminClient
+        .from('profiles')
+        .select('plan, billing_status')
+        .eq('id', team.created_by)
+        .single()
+      const planMax = PLAN_MAX_MEMBERS[ownerProfile?.plan || ''] ?? 0
+      const billingActive = ownerProfile?.billing_status === 'active' || ownerProfile?.billing_status === 'trialing'
+      if (!billingActive || planMax === 0) {
+        return new Response(JSON.stringify({ error: 'Your current plan does not support team invites.' }), {
           status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
       }
-    }
-
-    // ── 3. Check team member count vs plan limit ──────────────────────────────
-    const PLAN_MAX_MEMBERS: Record<string, number> = { solo: 0, team: 15, brokerage: 50 }
-    const { data: ownerProfile } = await adminClient
-      .from('profiles')
-      .select('plan, billing_status')
-      .eq('id', team.created_by)
-      .single()
-    const planMax = PLAN_MAX_MEMBERS[ownerProfile?.plan || ''] ?? 0
-    const billingActive = ownerProfile?.billing_status === 'active' || ownerProfile?.billing_status === 'trialing'
-    if (!billingActive || planMax === 0) {
-      return new Response(JSON.stringify({ error: 'Your current plan does not support team invites.' }), {
-        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-    // For brokerage, respect team-level max_members override (support can grant extra seats)
-    const { data: teamRow } = await adminClient
-      .from('teams')
-      .select('max_members')
-      .eq('id', teamId)
-      .single()
-    const effectiveMax = (teamRow?.max_members && teamRow.max_members > planMax) ? teamRow.max_members : planMax
-    const { count } = await adminClient
-      .from('team_members')
-      .select('id', { count: 'exact', head: true })
-      .eq('team_id', teamId)
-    if ((count ?? 0) >= effectiveMax) {
-      return new Response(JSON.stringify({ error: `Team is at the ${effectiveMax}-member limit. Contact support to add more seats ($7/seat/mo).` }), {
-        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      // For brokerage, respect team-level max_members override (support can grant extra seats)
+      const { data: teamRow } = await adminClient
+        .from('teams')
+        .select('max_members')
+        .eq('id', teamId)
+        .single()
+      const effectiveMax = (teamRow?.max_members && teamRow.max_members > planMax) ? teamRow.max_members : planMax
+      const { count } = await adminClient
+        .from('team_members')
+        .select('id', { count: 'exact', head: true })
+        .eq('team_id', teamId)
+      if ((count ?? 0) >= effectiveMax) {
+        return new Response(JSON.stringify({ error: `Team is at the ${effectiveMax}-member limit. Contact support to add more seats ($7/seat/mo).` }), {
+          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
     }
 
     // ── 4. Send the invite ────────────────────────────────────────────────────

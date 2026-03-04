@@ -221,7 +221,7 @@ const GtmBoard = memo(function GtmBoard({ profileId, mrrEstimate }) {
                 style={{
                   background: 'var(--surface)',
                   border: '1px solid var(--b1)',
-                  borderRadius: 12, minHeight: 300,
+                  borderRadius: 12, minHeight: 300, minWidth: 0, overflow: 'hidden',
                 }}>
                 {/* Column header */}
                 <div style={{

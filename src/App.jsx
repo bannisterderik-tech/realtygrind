@@ -4414,7 +4414,7 @@ function AppInner() {
         {showTerms
           ? <TermsPage theme={theme} onNavigate={()=>setShowTerms(false)}/>
           : showAuth
-            ? <AuthPage theme={theme} onToggleTheme={toggleTheme} onBack={()=>setShowAuth(false)}/>
+            ? <AuthPage theme={theme} onToggleTheme={toggleTheme} onBack={()=>setShowAuth(false)} onShowTerms={()=>setShowTerms(true)}/>
             : <LandingPage theme={theme} onToggleTheme={toggleTheme}
                 onGetStarted={()=>setShowAuth(true)}
                 onSubscribe={handleSubscribe}

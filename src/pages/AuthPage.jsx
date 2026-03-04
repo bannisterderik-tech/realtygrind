@@ -15,7 +15,7 @@ function friendlyAuthError(msg) {
   return 'Something went wrong. Please try again.'
 }
 
-export default function AuthPage({ theme, onToggleTheme, onBack }) {
+export default function AuthPage({ theme, onToggleTheme, onBack, onShowTerms }) {
   const [mode,    setMode]    = useState('login')
   const [name,    setName]    = useState('')
   const [email,   setEmail]   = useState('')
@@ -152,10 +152,10 @@ export default function AuthPage({ theme, onToggleTheme, onBack }) {
                     style={{ marginTop:3, accentColor:'#d97706', width:16, height:16, flexShrink:0 }}/>
                   <span>
                     I agree to the{' '}
-                    <a href="#" onClick={e=>{ e.preventDefault(); window.open('/terms','_blank') }}
-                      style={{ color:'#d97706', fontWeight:600, textDecoration:'underline' }}>
+                    <button type="button" onClick={onShowTerms}
+                      style={{ color:'#d97706', fontWeight:600, textDecoration:'underline', background:'none', border:'none', cursor:'pointer', padding:0, font:'inherit', fontSize:'inherit' }}>
                       Terms of Service, Privacy Policy &amp; Disclaimers
-                    </a>
+                    </button>
                   </span>
                 </label>
               )}

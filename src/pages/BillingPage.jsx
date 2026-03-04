@@ -23,7 +23,7 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
   async function openPortal() {
     if (portalLoading || checkoutLoading) return
     if (!hasStripeCustomer) {
-      setError('Billing portal is not available — your plan was activated manually. Contact support@realtygrind.com to manage your subscription.')
+      setError('Billing portal is not available — your plan was activated manually. Contact support@realtygrind.co to manage your subscription.')
       return
     }
     setPortalLoading(true); setError('')
@@ -287,7 +287,7 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
               {/* Help text */}
               <div style={{ textAlign:'center', padding:'24px 0 40px', fontSize:12, color:'var(--muted)', lineHeight:1.7 }}>
                 Solo plan includes a 14-day free trial. Cancel anytime from the billing portal.<br/>
-                Need help? Contact us at <span style={{ color:'var(--gold)' }}>support@realtygrind.com</span>
+                Need help? Contact us at <span style={{ color:'var(--gold)' }}>support@realtygrind.co</span>
               </div>
             </>
           )}

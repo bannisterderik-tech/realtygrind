@@ -33,14 +33,22 @@ export default function CoachingPage({ onNavigate, theme, onToggleTheme }) {
 
   // ── Data fetching ──────────────────────────────────────────────────────
   const fetchSeqRef = useRef(0)
+  const lastFetchedTeamId = useRef(null)
+  const fetchInFlight = useRef(false)
 
   useEffect(() => {
-    if (!profile?.team_id) { setLoading(false); return }
+    const tid = profile?.team_id
+    if (!tid) { setLoading(false); return }
+    // Skip if already fetched/fetching this team
+    if (lastFetchedTeamId.current === tid && fetchInFlight.current) return
     fetchTeamData()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.team_id])
 
   async function fetchTeamData() {
+    if (fetchInFlight.current) return
+    fetchInFlight.current = true
+    lastFetchedTeamId.current = profile.team_id
     setLoading(true)
     const seq = ++fetchSeqRef.current
     try {
@@ -60,6 +68,7 @@ export default function CoachingPage({ onNavigate, theme, onToggleTheme }) {
       console.error('CoachingPage fetch error:', err)
       setError('Failed to load team data.')
     } finally {
+      fetchInFlight.current = false
       if (seq === fetchSeqRef.current) setLoading(false)
     }
   }

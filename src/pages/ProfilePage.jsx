@@ -77,6 +77,9 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   const [profileReplyForms,   setProfileReplyForms]   = useState({})
   const [profileReplySaving,  setProfileReplySaving]  = useState(null)
   const fetchAnnualSeqRef = useRef(0)
+  const profileDataLoaded = useRef(false)
+  const goalsLoaded = useRef(false)
+  const prefsLoadedForTeam = useRef(null) // track which team_id we loaded prefs for
 
   useEffect(()=>{ if (user?.id) fetchAnnual(year) },[year, user?.id])
   useEffect(()=>{ if(activeTab==='history' && !histFetched) fetchHistory() },[activeTab, histFetched])
@@ -99,7 +102,13 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   // Load habit_prefs (for solo users) and bio (always per-user) in a single query
   useEffect(()=>{
     if (!user?.id) return
-    if (profile?.team_id && profile?.teams) {
+    const teamId = profile?.team_id || null
+    // Skip if we already loaded for this exact team context
+    if (profileDataLoaded.current && prefsLoadedForTeam.current === teamId) return
+    profileDataLoaded.current = true
+    prefsLoadedForTeam.current = teamId
+
+    if (teamId && profile?.teams) {
       // On a team — use team_prefs for habit prefs (owner and member both see team defaults)
       setHabitPrefs(profile.teams.team_prefs || { hidden:[], order:[], edits:{} })
     }
@@ -110,7 +119,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
         if (!mountedRef.current) return
         if (data?.habit_prefs) {
           // Only set habitPrefs from own profile when NOT on a team
-          if (!profile?.team_id) setHabitPrefs(data.habit_prefs)
+          if (!teamId) setHabitPrefs(data.habit_prefs)
           // Bio is always per-user
           if (data.habit_prefs.bio) setBio(b => ({ ...b, ...data.habit_prefs.bio }))
         }
@@ -119,7 +128,8 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   },[user?.id, profile?.team_id])
 
   useEffect(()=>{
-    if (!user?.id) return
+    if (!user?.id || goalsLoaded.current) return
+    goalsLoaded.current = true
     supabase.from('profiles').select('goals').eq('id', user.id).single()
       .then(({data}) => {
         if (!mountedRef.current) return

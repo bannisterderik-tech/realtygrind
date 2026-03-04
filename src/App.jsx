@@ -1338,6 +1338,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [pwConfirm, setPwConfirm] = useState('')
   const [pwError, setPwError] = useState('')
   const [pwSaving, setPwSaving] = useState(false)
+  const passwordSetDone = useRef(false)
 
   // Habit state
   const [habits,   setHabits]   = useState(()=>{
@@ -1586,8 +1587,9 @@ function Dashboard({ theme, onToggleTheme }) {
     }
   }, [page])
 
-  // Check if invited user needs to set a password
+  // Check if invited user needs to set a password (only once per session)
   useEffect(() => {
+    if (passwordSetDone.current) return
     if (!dbLoading && user?.user_metadata?.team_id && !profile?.habit_prefs?.password_set) {
       setNeedsPassword(true)
     }
@@ -1602,6 +1604,7 @@ function Dashboard({ theme, onToggleTheme }) {
     try {
       const { error } = await supabase.auth.updateUser({ password: newPw })
       if (error) throw error
+      passwordSetDone.current = true
       const newPrefs = { ...habitPrefs, password_set: true }
       setHabitPrefs(newPrefs)
       await supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id)

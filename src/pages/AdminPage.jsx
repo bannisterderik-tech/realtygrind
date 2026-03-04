@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react'
+import { useState, useEffect, useMemo, useRef, memo } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import { CSS, StatCard, Loader, fmtMoney } from '../design'
@@ -46,21 +46,15 @@ const GtmBoard = memo(function GtmBoard({ profileId, mrrEstimate }) {
   const [board, setBoard] = useState(null)
   const [phaseFilter, setPhaseFilter] = useState('all')
   const [editingId, setEditingId] = useState(null)
-  const [dragId, setDragId] = useState(null)
-  const [dragOverCol, setDragOverCol] = useState(null)
   const [newTitle, setNewTitle] = useState('')
   const boardRef = useRef(null)
-  const saveTimer = useRef(null)
   const mountedRef = useRef(true)
 
-  // Lifecycle: reset mounted flag + cleanup on unmount
+  // Lifecycle: reset mounted flag on unmount
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     mountedRef.current = true
-    return () => {
-      mountedRef.current = false
-      if (saveTimer.current) clearTimeout(saveTimer.current)
-    }
+    return () => { mountedRef.current = false }
   }, [])
 
   // Load board once on mount
@@ -77,29 +71,24 @@ const GtmBoard = memo(function GtmBoard({ profileId, mrrEstimate }) {
         const b = (saved?.tasks?.length) ? saved : { tasks: DEFAULT_GTM_TASKS.map(t => ({ ...t })) }
         boardRef.current = b
         setBoard(b)
-        if (!saved?.tasks?.length) scheduleSave(profileId)
+        if (!saved?.tasks?.length) saveBoard(b, profileId)
       } catch (e) { console.error('GTM load error:', e) }
     })()
     return () => { cancelled = true }
   }, [profileId])
 
-  function scheduleSave(pid) {
+  async function saveBoard(boardData, pid) {
     const id = pid || profileId
-    if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(async () => {
-      if (!mountedRef.current) return
-      const b = boardRef.current
-      if (!b || !supabase || !id) return
-      try {
-        const { data: row } = await supabase
-          .from('profiles').select('habit_prefs').eq('id', id).single()
-        if (!mountedRef.current) return
-        const prefs = row?.habit_prefs || {}
-        await supabase.from('profiles')
-          .update({ habit_prefs: { ...prefs, gtm_board: b } })
-          .eq('id', id)
-      } catch (e) { console.error('GTM save error:', e) }
-    }, 600)
+    const b = boardData || boardRef.current
+    if (!b || !supabase || !id) return
+    try {
+      const { data: row } = await supabase
+        .from('profiles').select('habit_prefs').eq('id', id).single()
+      const prefs = row?.habit_prefs || {}
+      await supabase.from('profiles')
+        .update({ habit_prefs: { ...prefs, gtm_board: b } })
+        .eq('id', id)
+    } catch (e) { console.error('GTM save error:', e) }
   }
 
   function moveTask(taskId, newColumn) {
@@ -109,7 +98,7 @@ const GtmBoard = memo(function GtmBoard({ profileId, mrrEstimate }) {
     const next = { ...prev, tasks }
     boardRef.current = next
     setBoard(next)
-    scheduleSave()
+    saveBoard(next)
   }
 
   function addTask(title) {
@@ -122,7 +111,7 @@ const GtmBoard = memo(function GtmBoard({ profileId, mrrEstimate }) {
     boardRef.current = next
     setBoard(next)
     setNewTitle('')
-    scheduleSave()
+    saveBoard(next)
   }
 
   function updateTask(taskId, updates) {
@@ -132,7 +121,7 @@ const GtmBoard = memo(function GtmBoard({ profileId, mrrEstimate }) {
     const next = { ...prev, tasks }
     boardRef.current = next
     setBoard(next)
-    scheduleSave()
+    saveBoard(next)
   }
 
   function deleteTask(taskId) {
@@ -141,16 +130,17 @@ const GtmBoard = memo(function GtmBoard({ profileId, mrrEstimate }) {
     const next = { ...prev, tasks: prev.tasks.filter(t => t.id !== taskId) }
     boardRef.current = next
     setBoard(next)
-    scheduleSave()
+    saveBoard(next)
   }
 
   return (
     <div>
       {/* MRR Progress */}
-      <div className="card" style={{
+      <div style={{
         padding: '24px 28px', marginBottom: 20,
         background: 'linear-gradient(135deg, rgba(16,185,129,.06) 0%, var(--surface) 60%)',
-        borderTop: '3px solid #10b981',
+        border: '1px solid var(--b2)', borderTop: '3px solid #10b981',
+        borderRadius: 'var(--r)', boxShadow: 'var(--shadow)',
       }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
           <div className="label">🎯 Road to $100K MRR</div>
@@ -228,16 +218,8 @@ const GtmBoard = memo(function GtmBoard({ profileId, mrrEstimate }) {
             )
             return (
               <div key={col.id}
-                onDragOver={e => { e.preventDefault(); setDragOverCol(col.id) }}
-                onDragLeave={() => setDragOverCol(prev => prev === col.id ? null : prev)}
-                onDrop={e => {
-                  e.preventDefault()
-                  setDragOverCol(null)
-                  const taskId = e.dataTransfer.getData('text/plain')
-                  if (taskId) moveTask(taskId, col.id)
-                }}
                 style={{
-                  background: dragOverCol === col.id ? 'var(--bg2)' : 'var(--surface)',
+                  background: 'var(--surface)',
                   border: '1px solid var(--b1)',
                   borderRadius: 12, minHeight: 300,
                 }}>
@@ -265,19 +247,12 @@ const GtmBoard = memo(function GtmBoard({ profileId, mrrEstimate }) {
                     const phaseColor = GTM_PHASE_COLORS[task.phase] || '#94a3b8'
                     return (
                       <div key={task.id}
-                        draggable={!isEditing}
-                        onDragStart={e => {
-                          e.dataTransfer.setData('text/plain', task.id)
-                          setDragId(task.id)
-                        }}
-                        onDragEnd={() => { setDragId(null); setDragOverCol(null) }}
                         onClick={() => !isEditing && setEditingId(task.id)}
                         style={{
                           padding: '10px 12px', borderRadius: 8,
-                          background: dragId === task.id ? 'var(--bg2)' : 'var(--bg)',
+                          background: 'var(--bg)',
                           border: `1px solid ${isEditing ? phaseColor + '66' : 'var(--b1)'}`,
-                          cursor: isEditing ? 'default' : 'grab',
-                          opacity: dragId === task.id ? 0.5 : 1,
+                          cursor: isEditing ? 'default' : 'pointer',
                         }}>
                         {/* Phase badge */}
                         <div style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -387,7 +362,7 @@ const GtmBoard = memo(function GtmBoard({ profileId, mrrEstimate }) {
                       padding: '24px 12px', textAlign: 'center',
                       fontSize: 11, color: 'var(--dim)', fontStyle: 'italic',
                     }}>
-                      Drop tasks here
+                      No tasks
                     </div>
                   )}
                 </div>

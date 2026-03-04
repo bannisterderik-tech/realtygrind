@@ -1331,6 +1331,9 @@ function Dashboard({ theme, onToggleTheme }) {
   const [dbLoading, setDbLoading] = useState(true)
   const [dbError,   setDbError]   = useState(null)
   const [aiWidgetOpen, setAiWidgetOpen] = useState(false)
+  // Stable callbacks for AI widget — avoids new function refs on every render
+  const toggleAiWidget = useCallback(() => setAiWidgetOpen(o => !o), [])
+  const closeAiWidget  = useCallback(() => setAiWidgetOpen(false), [])
 
   // Force password setup for invited users
   const [needsPassword, setNeedsPassword] = useState(false)
@@ -1339,6 +1342,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [pwError, setPwError] = useState('')
   const [pwSaving, setPwSaving] = useState(false)
   const passwordSetDone = useRef(false)
+  const dataLoadedRef = useRef(false) // prevents loadAll from running more than once
 
   // Habit state
   const [habits,   setHabits]   = useState(()=>{
@@ -1424,7 +1428,11 @@ function Dashboard({ theme, onToggleTheme }) {
 
   // Depend on user.id only — prevents re-running when a new user object is created
   // (e.g. on token refresh) while the same user is still logged in.
-  useEffect(()=>{ if (user?.id) loadAll() },[user?.id])
+  useEffect(()=>{
+    if (!user?.id || dataLoadedRef.current) return
+    dataLoadedRef.current = true
+    loadAll()
+  },[user?.id])
 
   async function loadAll() {
     if (!user) return
@@ -4279,8 +4287,8 @@ function Dashboard({ theme, onToggleTheme }) {
       <ErrorBoundary key="ai-widget" onReset={() => setAiWidgetOpen(false)}>
         <AIChatWidget
           isOpen={aiWidgetOpen}
-          onToggle={() => setAiWidgetOpen(o => !o)}
-          onClose={() => setAiWidgetOpen(false)}
+          onToggle={toggleAiWidget}
+          onClose={closeAiWidget}
           onNavigate={setPage}
           theme={theme}
         />

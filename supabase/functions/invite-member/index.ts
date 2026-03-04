@@ -52,7 +52,8 @@ Deno.serve(async (req: Request) => {
     })
     const { data: { user }, error: authErr } = await userClient.auth.getUser()
     if (authErr || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      console.error('invite-member auth error:', authErr?.message || 'no user')
+      return new Response(JSON.stringify({ error: `Unauthorized: ${authErr?.message || 'invalid session'}` }), {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }

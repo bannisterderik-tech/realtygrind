@@ -147,13 +147,12 @@ Deno.serve(async (req: Request) => {
 
     if (inviteErr) {
       console.error('invite-member inviteErr:', inviteErr.message)
-      // Map known Supabase Auth errors to safe user-facing messages
       const msg = inviteErr.message || ''
       const safeMsg = msg.includes('already registered')
         ? 'This email is already registered. They can join your team from their dashboard.'
         : msg.includes('rate limit')
         ? 'Too many invites sent. Please wait a moment and try again.'
-        : 'Could not send invite. Please check the email and try again.'
+        : `Could not send invite: ${msg}`
       return new Response(JSON.stringify({ error: safeMsg }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -165,7 +164,8 @@ Deno.serve(async (req: Request) => {
     )
   } catch (err) {
     console.error('invite-member error:', err)
-    return new Response(JSON.stringify({ error: 'Failed to send invite. Please try again.' }), {
+    const errMsg = err instanceof Error ? err.message : String(err)
+    return new Response(JSON.stringify({ error: `Failed to send invite: ${errMsg}` }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }

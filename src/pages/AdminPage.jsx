@@ -161,7 +161,7 @@ export default function AdminPage({ onNavigate }) {
   const [gtmNewTitle, setGtmNewTitle] = useState('')
   const gtmSaveTimer = useRef(null)
   const gtmLoadedRef = useRef(false)
-  const gtmSkipSave = useRef(true)
+  const gtmBoardRef = useRef(null)
 
   const isAdmin = profile?.app_role === 'admin'
 
@@ -326,11 +326,12 @@ export default function AdminPage({ onNavigate }) {
     })
   }
 
-  // ── GTM board persistence ───────────────────────────────────────────────
-  function saveGtmToDb(board) {
-    if (!supabase || !profile?.id) return
+  // ── GTM board persistence (ref-based, zero useEffect for saves) ─────────
+  function scheduleGtmSave() {
     if (gtmSaveTimer.current) clearTimeout(gtmSaveTimer.current)
     gtmSaveTimer.current = setTimeout(async () => {
+      const board = gtmBoardRef.current
+      if (!board || !supabase || !profile?.id) return
       try {
         const { data: row } = await supabase
           .from('profiles').select('habit_prefs').eq('id', profile.id).single()
@@ -343,6 +344,7 @@ export default function AdminPage({ onNavigate }) {
   }
 
   // Load GTM board exactly once when tab opens
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (tab !== 'gtm' || gtmLoadedRef.current) return
     gtmLoadedRef.current = true
@@ -352,57 +354,54 @@ export default function AdminPage({ onNavigate }) {
         const { data: row } = await supabase
           .from('profiles').select('habit_prefs').eq('id', profile.id).single()
         const saved = row?.habit_prefs?.gtm_board
-        if (saved?.tasks?.length) {
-          setGtmBoard(saved)
-        } else {
-          const seed = { tasks: DEFAULT_GTM_TASKS.map(t => ({ ...t })) }
-          setGtmBoard(seed)
-          saveGtmToDb(seed)
-        }
+        const board = (saved?.tasks?.length) ? saved : { tasks: DEFAULT_GTM_TASKS.map(t => ({ ...t })) }
+        gtmBoardRef.current = board
+        setGtmBoard(board)
+        if (!saved?.tasks?.length) scheduleGtmSave()
       } catch (e) { console.error('GTM load error:', e) }
     })()
   }, [tab])
 
-  // Auto-save GTM board when it changes (skip initial load from DB)
-  useEffect(() => {
-    if (!gtmBoard) return
-    if (gtmSkipSave.current) { gtmSkipSave.current = false; return }
-    saveGtmToDb(gtmBoard)
-  }, [gtmBoard])
-
-  // Pure state updaters — no side effects inside setState callbacks
   function gtmMoveTask(taskId, newColumn) {
-    setGtmBoard(prev => {
-      if (!prev) return prev
-      const tasks = prev.tasks.map(t => t.id === taskId ? { ...t, column: newColumn } : t)
-      return { ...prev, tasks }
-    })
+    const prev = gtmBoardRef.current
+    if (!prev) return
+    const tasks = prev.tasks.map(t => t.id === taskId ? { ...t, column: newColumn } : t)
+    const next = { ...prev, tasks }
+    gtmBoardRef.current = next
+    setGtmBoard(next)
+    scheduleGtmSave()
   }
 
   function gtmAddTask(title) {
     if (!title.trim()) return
-    setGtmBoard(prev => {
-      if (!prev) return prev
-      const nextId = `gtm-custom-${Date.now()}`
-      const task = { id: nextId, title: title.trim(), phase: 1, column: 'backlog', notes: '' }
-      return { ...prev, tasks: [...prev.tasks, task] }
-    })
+    const prev = gtmBoardRef.current
+    if (!prev) return
+    const nextId = `gtm-custom-${Date.now()}`
+    const task = { id: nextId, title: title.trim(), phase: 1, column: 'backlog', notes: '' }
+    const next = { ...prev, tasks: [...prev.tasks, task] }
+    gtmBoardRef.current = next
+    setGtmBoard(next)
     setGtmNewTitle('')
+    scheduleGtmSave()
   }
 
   function gtmUpdateTask(taskId, updates) {
-    setGtmBoard(prev => {
-      if (!prev) return prev
-      const tasks = prev.tasks.map(t => t.id === taskId ? { ...t, ...updates } : t)
-      return { ...prev, tasks }
-    })
+    const prev = gtmBoardRef.current
+    if (!prev) return
+    const tasks = prev.tasks.map(t => t.id === taskId ? { ...t, ...updates } : t)
+    const next = { ...prev, tasks }
+    gtmBoardRef.current = next
+    setGtmBoard(next)
+    scheduleGtmSave()
   }
 
   function gtmDeleteTask(taskId) {
-    setGtmBoard(prev => {
-      if (!prev) return prev
-      return { ...prev, tasks: prev.tasks.filter(t => t.id !== taskId) }
-    })
+    const prev = gtmBoardRef.current
+    if (!prev) return
+    const next = { ...prev, tasks: prev.tasks.filter(t => t.id !== taskId) }
+    gtmBoardRef.current = next
+    setGtmBoard(next)
+    scheduleGtmSave()
   }
 
   // ── Access guard ────────────────────────────────────────────────────────

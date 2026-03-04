@@ -170,10 +170,13 @@ export default function CoachingPage({ onNavigate, theme, onToggleTheme }) {
         if (error) throw error
         setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
       } else {
-        const existingReplies = profile?.goals?.coaching_replies || {}
+        // Read from members state (not stale profile) so consecutive replies don't overwrite each other
+        const myMember = members.find(m => m.id === user.id)
+        const currentGoals = myMember?.goals || profile?.goals || {}
+        const existingReplies = currentGoals.coaching_replies || {}
         const noteReplies = existingReplies[noteId] || []
         const updatedCoachingReplies = { ...existingReplies, [noteId]: [...noteReplies, newReply] }
-        const updatedGoals = { ...(profile?.goals||{}), coaching_replies: updatedCoachingReplies }
+        const updatedGoals = { ...currentGoals, coaching_replies: updatedCoachingReplies }
         const { error } = await supabase.from('profiles').update({ goals: updatedGoals }).eq('id', user.id)
         if (error) throw error
         setMembers(ms => ms.map(m => m.id===user.id ? { ...m, goals: updatedGoals } : m))
@@ -548,7 +551,8 @@ export default function CoachingPage({ onNavigate, theme, onToggleTheme }) {
 
                         {/* Replies */}
                         {(()=>{
-                          const myAgentReplies = profile?.goals?.coaching_replies?.[note.id] || []
+                          const myMember = members.find(m=>m.id===user?.id)
+                          const myAgentReplies = myMember?.goals?.coaching_replies?.[note.id] || []
                           const allReplies = [...(note.replies||[]), ...myAgentReplies].sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt))
                           return allReplies.length > 0 && (
                           <div style={{ borderLeft:'2px solid var(--b2)', paddingLeft:10, marginBottom:10, display:'flex', flexDirection:'column', gap:8 }}>

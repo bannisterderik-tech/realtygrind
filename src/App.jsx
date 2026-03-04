@@ -2445,8 +2445,9 @@ function Dashboard({ theme, onToggleTheme }) {
         <div style={{ display:'flex', alignItems:'center', gap:7 }}>
           <ThemeToggle theme={theme} onToggle={onToggleTheme}/>
 
-          {/* Board + Teams — hidden on mobile */}
+          {/* Dashboard + Teams — hidden on mobile */}
           <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
+          <button className={`nav-btn mob-hide${page==='dashboard'?' active':''}`} onClick={()=>setPage('dashboard')}>🏠 Dashboard</button>
           <button className={`nav-btn mob-hide${page==='teams'?' active':''}`} onClick={()=>setPage('teams')}>👥 Teams</button>
           <button className={`nav-btn mob-hide${page==='coaching'?' active':''}`} onClick={()=>setPage('coaching')}>📝 Coaching</button>
 

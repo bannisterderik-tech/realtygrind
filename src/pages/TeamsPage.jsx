@@ -732,13 +732,15 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
         setTeamData(td => ({ ...td, team_prefs: updatedPrefs }))
       } else {
         // Agent writes reply to their own profile row (always allowed)
-        const existingReplies = profile?.goals?.coaching_replies || {}
+        // Read from members state (not stale profile) so consecutive replies don't overwrite each other
+        const myMember = members.find(m => m.id === user.id)
+        const currentGoals = myMember?.goals || profile?.goals || {}
+        const existingReplies = currentGoals.coaching_replies || {}
         const noteReplies = existingReplies[noteId] || []
         const updatedCoachingReplies = { ...existingReplies, [noteId]: [...noteReplies, newReply] }
-        const updatedGoals = { ...(profile?.goals||{}), coaching_replies: updatedCoachingReplies }
+        const updatedGoals = { ...currentGoals, coaching_replies: updatedCoachingReplies }
         const { error } = await supabase.from('profiles').update({ goals: updatedGoals }).eq('id', user.id)
         if (error) throw error
-        // Optimistically update members list so coach can see it after next fetch
         setMembers(ms => ms.map(m => m.id===user.id ? { ...m, goals: updatedGoals } : m))
       }
       setReplyForms(f => ({ ...f, [noteId]: '' }))
@@ -1130,8 +1132,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                           )}
                         </div>
 
-                        {/* Group Listings */}
-                        {(()=>{
+                        {/* Group Listings (leaders/admins/owner only) */}
+                        {canManageGroup && (()=>{
                           const groupListings = teamListings.filter(l => groupMems.some(m=>m.id===l.user_id))
                           if (!groupListings.length) return null
                           return (
@@ -1188,8 +1190,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                           )
                         })()}
 
-                        {/* Standup Feed */}
-                        <div>
+                        {/* Standup Feed (leaders/admins/owner only) */}
+                        {canManageGroup && <div>
                           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
                             <div className="serif" style={{ fontSize:20, color:'var(--text)' }}>⚡ Today's Standups</div>
                             <div style={{ fontSize:12, color:'var(--muted)' }}>
@@ -1267,7 +1269,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               </div>
                             )
                           })}
-                        </div>
+                        </div>}
                       </div>
                     )
                   })()}
@@ -1287,6 +1289,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                         </div>
                       </div>
                       <div style={{ display:'flex', gap:12, alignItems:'center' }}>
+                        {isAdminOrOwner && (
                         <div className="card-inset" style={{ padding:'10px 20px', textAlign:'center', position:'relative' }}>
                           <div className="label" style={{ marginBottom:4 }}>Invite Code</div>
                           <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
@@ -1308,6 +1311,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                             }}>📋</button>
                           </div>
                         </div>
+                        )}
                         {/* Owner and group leaders cannot leave — owner created the team, leaders must resign first */}
                         {!isTeamOwner && !isGroupLeader && (
                           <button onClick={()=>setConfirmModal({ message:'Leave this team? Your group membership will also be removed.', label:'Leave Team', onConfirm:leaveTeam })} style={{
@@ -1770,12 +1774,10 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                         <span className="serif" style={{ fontSize:18, color:'var(--text)' }}>{myGroup.name}</span>
                                         {isLeader && <span style={{ fontSize:10, padding:'2px 8px', borderRadius:10, background:'rgba(139,92,246,.12)', color:'#8b5cf6', fontWeight:700 }}>LEADER</span>}
                                         <span style={{ fontSize:11, padding:'2px 8px', borderRadius:10, background:'rgba(139,92,246,.08)', color:'#8b5cf6', fontWeight:600 }}>{myGroup.memberIds.length} members</span>
-                                        {(isLeader || isTeamOwner) && (
-                                          <button className="btn-outline" style={{ marginLeft:'auto', fontSize:11, padding:'5px 12px' }}
-                                            onClick={()=>{ setGroupView(myGroup.id); setGroupChallengeForm(null) }}>
-                                            View Dashboard →
-                                          </button>
-                                        )}
+                                        <button className="btn-outline" style={{ marginLeft:'auto', fontSize:11, padding:'5px 12px' }}
+                                          onClick={()=>{ setGroupView(myGroup.id); setGroupChallengeForm(null) }}>
+                                          View Dashboard →
+                                        </button>
                                       </div>
                                       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:12 }}>
                                         {me && (()=>{

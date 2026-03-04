@@ -6,7 +6,7 @@ import { PLANS } from '../lib/plans'
 
 const FAQS = [
   { q:'Is there a free trial?',
-    a:'Every paid plan starts with a 14-day free trial. No credit card required to get started.' },
+    a:'The Solo plan includes a 14-day free trial so you can try it risk-free.' },
   { q:'Can I skip a habit without breaking my streak?',
     a:'Yes — hit the X on any habit to skip it for the day. Your streak stays completely intact. Restore it anytime.' },
   { q:'How does the team plan work?',

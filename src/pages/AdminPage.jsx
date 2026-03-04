@@ -50,16 +50,28 @@ const GtmBoard = memo(function GtmBoard({ profileId, mrrEstimate }) {
   const [newTitle, setNewTitle] = useState('')
   const boardRef = useRef(null)
   const saveTimer = useRef(null)
-  const loadedRef = useRef(false)
+  const mountedRef = useRef(true)
+
+  // Lifecycle: reset mounted flag + cleanup on unmount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+    }
+  }, [])
 
   // Load board once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (loadedRef.current || !supabase || !profileId) return
-    loadedRef.current = true
+    if (!supabase || !profileId) return
+    let cancelled = false
     ;(async () => {
       try {
         const { data: row } = await supabase
           .from('profiles').select('habit_prefs').eq('id', profileId).single()
+        if (cancelled || !mountedRef.current) return
         const saved = row?.habit_prefs?.gtm_board
         const b = (saved?.tasks?.length) ? saved : { tasks: DEFAULT_GTM_TASKS.map(t => ({ ...t })) }
         boardRef.current = b
@@ -67,18 +79,20 @@ const GtmBoard = memo(function GtmBoard({ profileId, mrrEstimate }) {
         if (!saved?.tasks?.length) scheduleSave(profileId)
       } catch (e) { console.error('GTM load error:', e) }
     })()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { cancelled = true }
   }, [profileId])
 
   function scheduleSave(pid) {
     const id = pid || profileId
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
+      if (!mountedRef.current) return
       const b = boardRef.current
       if (!b || !supabase || !id) return
       try {
         const { data: row } = await supabase
           .from('profiles').select('habit_prefs').eq('id', id).single()
+        if (!mountedRef.current) return
         const prefs = row?.habit_prefs || {}
         await supabase.from('profiles')
           .update({ habit_prefs: { ...prefs, gtm_board: b } })

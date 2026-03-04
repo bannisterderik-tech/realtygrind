@@ -428,9 +428,9 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
           throw new Error(`Team is at capacity (${teamData.max_members} seats). Contact support to add more seats ($7/seat/mo).`)
         }
       }
-      // Use raw fetch — supabase.functions.invoke doesn't support the new publishable key format
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error('Not authenticated')
+      // Use raw fetch with a fresh token (getSession can return stale tokens)
+      const { data: { session }, error: sessErr } = await supabase.auth.refreshSession()
+      if (sessErr || !session) throw new Error('Not authenticated — please sign out and back in')
       let resp, result
       try {
         resp = await fetch(

@@ -86,6 +86,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [transferConfirm, setTransferConfirm] = useState(false) // two-step confirm
   const fetchSeqRef = useRef(0)        // increments per fetchMemberDetail; stale results are discarded
   const fetchMembersSeqRef = useRef(0) // increments per fetchMembers; prevents stale team data
+  const lastFetchedTeamId = useRef(null) // prevents duplicate fetches for the same team
+  const fetchInFlight = useRef(false)    // prevents concurrent fetchMembers calls
   const [confirmModal,    setConfirmModal]    = useState(null)   // { message, label, onConfirm } | null
   const [panelNoteForm,   setPanelNoteForm]   = useState(null)   // { text, type } | null
   const [panelNoteSaving, setPanelNoteSaving] = useState(false)
@@ -97,12 +99,23 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
 
   // Depend only on team_id — prevents re-fetching every time the profile object
   // is recreated (e.g. on token refresh) while nothing meaningful has changed.
+  // Guards: skip if already fetching the same team, skip if profile is transiently null
+  // (e.g. during token refresh / wake from sleep).
   useEffect(()=>{
-    if (profile?.team_id) {
-      setMode('myteam'); fetchMembers(profile.team_id)
-    } else if (profile !== null && !profile?.team_id) {
-      // User left the team or has no team — reset to landing menu
-      setMode('menu'); setMembers([]); setTeamData(null); setMemberStats({})
+    const tid = profile?.team_id
+    if (tid) {
+      // Skip if we already fetched (or are fetching) this exact team
+      if (lastFetchedTeamId.current === tid && (members.length > 0 || fetchInFlight.current)) return
+      setMode('myteam')
+      fetchMembers(tid)
+    } else if (profile !== null && !tid) {
+      // Only reset if we actually had a team before (prevents flash on wake)
+      if (lastFetchedTeamId.current) {
+        lastFetchedTeamId.current = null
+        setMode('menu'); setMembers([]); setTeamData(null); setMemberStats({})
+      } else if (mode !== 'menu' && mode !== 'create' && mode !== 'join') {
+        setMode('menu')
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[profile?.team_id])
@@ -136,6 +149,9 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   },[viewingMember, members])
 
   async function fetchMembers(tid) {
+    if (fetchInFlight.current) return // prevent concurrent calls
+    fetchInFlight.current = true
+    lastFetchedTeamId.current = tid
     const seq = ++fetchMembersSeqRef.current
     setLoading(true)
     try {
@@ -200,6 +216,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       console.error('fetchMembers error:', err)
       if (seq === fetchMembersSeqRef.current) setError('Failed to load team data. Please refresh.')
     } finally {
+      fetchInFlight.current = false
       if (seq === fetchMembersSeqRef.current) setLoading(false)
     }
   }

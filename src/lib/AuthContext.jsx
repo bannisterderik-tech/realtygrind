@@ -9,6 +9,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const mountedRef = useRef(true)
   const profileLoadedRef = useRef(false)  // prevents duplicate profile fetches
+  const signOutTimerRef = useRef(null)    // debounce SIGNED_OUT to avoid transient clears on wake
 
   useEffect(() => {
     mountedRef.current = true
@@ -20,13 +21,24 @@ export function AuthProvider({ children }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mountedRef.current) return
 
-      // ── SIGNED_OUT is the ONLY event that should clear state ──
+      // ── SIGNED_OUT — debounce to avoid transient clears on wake from sleep ──
+      // On wake, Supabase may fire SIGNED_OUT then SIGNED_IN in quick succession.
+      // Wait 500ms before actually clearing state; cancel if SIGNED_IN arrives first.
       if (event === 'SIGNED_OUT') {
-        setUser(null)
-        setProfile(null)
-        setLoading(false)
-        profileLoadedRef.current = false
+        signOutTimerRef.current = setTimeout(() => {
+          if (!mountedRef.current) return
+          setUser(null)
+          setProfile(null)
+          setLoading(false)
+          profileLoadedRef.current = false
+        }, 500)
         return
+      }
+
+      // Any non-signout event cancels pending signout (e.g. wake reconnect)
+      if (signOutTimerRef.current) {
+        clearTimeout(signOutTimerRef.current)
+        signOutTimerRef.current = null
       }
 
       // ── No session: only act on INITIAL_SESSION (first load, user not logged in) ──
@@ -59,6 +71,7 @@ export function AuthProvider({ children }) {
 
     return () => {
       mountedRef.current = false
+      if (signOutTimerRef.current) clearTimeout(signOutTimerRef.current)
       subscription.unsubscribe()
     }
   }, [])

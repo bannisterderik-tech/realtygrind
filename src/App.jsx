@@ -2434,6 +2434,16 @@ function Dashboard({ theme, onToggleTheme }) {
         )
       })()}
 
+      {/* ── Beta Banner ──────────────────────────────────────── */}
+      <div style={{ background:'#d97706', color:'#fff', textAlign:'center', padding:'8px 16px',
+        fontSize:13, fontWeight:600, fontFamily:"'Poppins',sans-serif", letterSpacing:'.01em',
+        display:'flex', alignItems:'center', justifyContent:'center', gap:8, flexWrap:'wrap' }}>
+        <span>⚠️ Beta — We're stabilizing the platform. Thanks for your patience!</span>
+        <a href="tel:5307367085" style={{ color:'#fff', textDecoration:'underline', fontWeight:700 }}>
+          Questions? Call Derik: (530) 736-7085
+        </a>
+      </div>
+
       {/* ── Nav ─────────────────────────────────────────────── */}
       <nav className="topnav">
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>

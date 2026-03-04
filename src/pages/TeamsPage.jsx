@@ -105,7 +105,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     const tid = profile?.team_id
     if (tid) {
       // Skip if we already fetched (or are fetching) this exact team
-      if (lastFetchedTeamId.current === tid && (members.length > 0 || fetchInFlight.current)) return
+      if (lastFetchedTeamId.current === tid) return
       setMode('myteam')
       fetchMembers(tid)
     } else if (profile !== null && !tid) {

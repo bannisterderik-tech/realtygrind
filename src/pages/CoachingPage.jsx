@@ -39,8 +39,8 @@ export default function CoachingPage({ onNavigate, theme, onToggleTheme }) {
   useEffect(() => {
     const tid = profile?.team_id
     if (!tid) { setLoading(false); return }
-    // Skip if already fetched/fetching this team
-    if (lastFetchedTeamId.current === tid && fetchInFlight.current) return
+    // Skip if already fetched this team (whether in-flight or completed)
+    if (lastFetchedTeamId.current === tid) return
     fetchTeamData()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.team_id])

@@ -14,6 +14,7 @@ import Stripe from 'npm:stripe@14'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const PROD_ORIGINS = [
+  'https://realtygrind.co',
   'https://realtygrind.vercel.app',
 ]
 const DEV_ORIGINS = [
@@ -36,13 +37,13 @@ function getCorsHeaders(req: Request) {
 
 // Validate returnUrl to prevent open redirects — only allow same-origin or known app URLs
 function getSafeReturnUrl(returnUrl: string | undefined): string {
-  const fallback = Deno.env.get('APP_URL') || 'https://realtygrind.vercel.app'
+  const fallback = Deno.env.get('APP_URL') || 'https://realtygrind.co'
   if (!returnUrl) return fallback
   try {
     const parsed = new URL(returnUrl)
     // Only allow https and known origins
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return fallback
-    const allowed = (Deno.env.get('ALLOWED_ORIGINS') || 'realtygrind.vercel.app,localhost').split(',').map(s => s.trim())
+    const allowed = (Deno.env.get('ALLOWED_ORIGINS') || 'realtygrind.co,realtygrind.vercel.app,localhost').split(',').map(s => s.trim())
     if (allowed.some(domain => parsed.hostname === domain || parsed.hostname.endsWith('.' + domain))) {
       return parsed.origin
     }

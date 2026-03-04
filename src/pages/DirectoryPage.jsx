@@ -42,8 +42,8 @@ export const ALL_APPS = [
     catBg: 'rgba(14,165,233,.1)',
     catBorder: 'rgba(14,165,233,.25)',
     desc: 'Team CRM for managing leads, contacts, tasks, and follow-up sequences.',
-    url: 'https://theoperativegroup.followupboss.com/',
-    display: 'theoperativegroup.followupboss.com',
+    url: 'https://www.followupboss.com/',
+    display: 'followupboss.com',
   },
   {
     id: 'redx',

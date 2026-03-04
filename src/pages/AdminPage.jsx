@@ -515,14 +515,10 @@ function AdminPage({ onNavigate }) {
   const mountedRef = useRef(true)
 
   // Reset mounted flag on each mount (critical for StrictMode double-invoke)
-  // and clean up save timer + flag on unmount
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     mountedRef.current = true
-    return () => {
-      mountedRef.current = false
-      if (gtmSaveTimer.current) clearTimeout(gtmSaveTimer.current)
-    }
+    return () => { mountedRef.current = false }
   }, [])
 
   // eslint-disable-next-line react-hooks/exhaustive-deps

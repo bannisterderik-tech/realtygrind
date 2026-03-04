@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, memo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import { CSS, StatCard, Loader, fmtMoney } from '../design'
@@ -47,6 +47,7 @@ const GtmBoard = memo(function GtmBoard({ profileId, mrrEstimate }) {
   const [phaseFilter, setPhaseFilter] = useState('all')
   const [editingId, setEditingId] = useState(null)
   const [dragId, setDragId] = useState(null)
+  const [dragOverCol, setDragOverCol] = useState(null)
   const [newTitle, setNewTitle] = useState('')
   const boardRef = useRef(null)
   const saveTimer = useRef(null)
@@ -192,7 +193,7 @@ const GtmBoard = memo(function GtmBoard({ profileId, mrrEstimate }) {
               color: phaseFilter === f.id
                 ? (f.color || 'var(--gold)')
                 : 'var(--muted)',
-              cursor: 'pointer', transition: 'all .2s',
+              cursor: 'pointer', transition: 'border-color .2s, background .2s, color .2s',
             }}>
             {f.label}
           </button>
@@ -227,17 +228,18 @@ const GtmBoard = memo(function GtmBoard({ profileId, mrrEstimate }) {
             )
             return (
               <div key={col.id}
-                onDragOver={e => { e.preventDefault(); e.currentTarget.style.background = 'var(--bg2)' }}
-                onDragLeave={e => { e.currentTarget.style.background = '' }}
+                onDragOver={e => { e.preventDefault(); setDragOverCol(col.id) }}
+                onDragLeave={() => setDragOverCol(prev => prev === col.id ? null : prev)}
                 onDrop={e => {
                   e.preventDefault()
-                  e.currentTarget.style.background = ''
+                  setDragOverCol(null)
                   const taskId = e.dataTransfer.getData('text/plain')
                   if (taskId) moveTask(taskId, col.id)
                 }}
                 style={{
-                  background: 'var(--surface)', border: '1px solid var(--b1)',
-                  borderRadius: 12, minHeight: 300, transition: 'background .15s',
+                  background: dragOverCol === col.id ? 'var(--bg2)' : 'var(--surface)',
+                  border: '1px solid var(--b1)',
+                  borderRadius: 12, minHeight: 300,
                 }}>
                 {/* Column header */}
                 <div style={{
@@ -268,7 +270,7 @@ const GtmBoard = memo(function GtmBoard({ profileId, mrrEstimate }) {
                           e.dataTransfer.setData('text/plain', task.id)
                           setDragId(task.id)
                         }}
-                        onDragEnd={() => setDragId(null)}
+                        onDragEnd={() => { setDragId(null); setDragOverCol(null) }}
                         onClick={() => !isEditing && setEditingId(task.id)}
                         style={{
                           padding: '10px 12px', borderRadius: 8,
@@ -276,7 +278,6 @@ const GtmBoard = memo(function GtmBoard({ profileId, mrrEstimate }) {
                           border: `1px solid ${isEditing ? phaseColor + '66' : 'var(--b1)'}`,
                           cursor: isEditing ? 'default' : 'grab',
                           opacity: dragId === task.id ? 0.5 : 1,
-                          transition: 'all .15s',
                         }}>
                         {/* Phase badge */}
                         <div style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -865,7 +866,7 @@ function AdminPage({ onNavigate }) {
                           border: userView === v.id ? '1.5px solid var(--gold)' : '1px solid var(--b1)',
                           background: userView === v.id ? 'var(--gold-bg, rgba(217,119,6,.08))' : 'var(--surface)',
                           color: userView === v.id ? 'var(--gold)' : 'var(--muted)',
-                          cursor: 'pointer', transition: 'all .2s',
+                          cursor: 'pointer', transition: 'border-color .2s, background .2s, color .2s',
                         }}>
                         {v.icon} {v.label}
                       </button>

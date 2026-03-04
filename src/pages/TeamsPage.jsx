@@ -780,7 +780,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     isGroupLeader, myGroupMembers, isAdminOrOwner, coachableMembers,
     allCoachingNotes, myCoachingNotes, pendingInvites,
   } = useMemo(() => {
-    const _isTeamOwner      = !!(teamData?.created_by === user?.id)
+    const _isSuperAdmin     = profile?.app_role === 'admin'
+    const _isTeamOwner      = !!(teamData?.created_by === user?.id) || _isSuperAdmin
     const _teamAdmins       = teamData?.team_prefs?.admins || []
     const _isAdmin          = _teamAdmins.includes(user?.id) && !_isTeamOwner
     const _allGroups        = teamData?.team_prefs?.groups || []

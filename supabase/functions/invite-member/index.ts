@@ -97,10 +97,15 @@ Deno.serve(async (req: Request) => {
         status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
+    // Allow team owner OR super admin (app_role = 'admin')
     if (team.created_by !== userId) {
-      return new Response(JSON.stringify({ error: 'Only the team owner can send invites' }), {
-        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      const { data: callerProfile } = await adminClient
+        .from('profiles').select('app_role').eq('id', userId).single()
+      if (callerProfile?.app_role !== 'admin') {
+        return new Response(JSON.stringify({ error: 'Only the team owner can send invites' }), {
+          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
     }
 
     // ── 3. Check team member count vs plan limit ──────────────────────────────

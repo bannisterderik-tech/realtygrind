@@ -319,14 +319,14 @@ const GtmBoard = memo(function GtmBoard({ profileId, mrrEstimate }) {
                             {/* Title */}
                             <div style={{
                               fontSize: 12, fontWeight: 600, color: 'var(--text)',
-                              lineHeight: 1.4, marginBottom: task.notes ? 4 : 0,
+                              lineHeight: 1.4, marginBottom: task.notes ? 4 : 0, wordBreak: 'break-word',
                             }}>
                               {task.title}
                             </div>
                             {task.notes && (
                               <div style={{
                                 fontSize: 10, color: 'var(--muted)', lineHeight: 1.4,
-                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                wordBreak: 'break-word',
                               }}>
                                 {task.notes}
                               </div>

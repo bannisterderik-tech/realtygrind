@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/pitch-deck.html", "destination": "/pitch-deck.html" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

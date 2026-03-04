@@ -23,6 +23,7 @@ export default function AuthPage({ theme, onToggleTheme, onBack }) {
   const [err,     setErr]     = useState('')
   const [ok,      setOk]      = useState('')
   const [loading, setLoading] = useState(false)
+  const [agreed,  setAgreed]  = useState(false)
   const mountedRef = useRef(true)
   useEffect(() => () => { mountedRef.current = false }, [])
 
@@ -49,7 +50,7 @@ export default function AuthPage({ theme, onToggleTheme, onBack }) {
     }
   }
 
-  function switchMode(m) { setMode(m); setErr(''); setOk('') }
+  function switchMode(m) { setMode(m); setErr(''); setOk(''); setAgreed(false) }
 
   return (
     <>
@@ -144,6 +145,21 @@ export default function AuthPage({ theme, onToggleTheme, onBack }) {
                 <input className="field-input" type="password" placeholder="••••••••" value={pw} onChange={e=>setPw(e.target.value)} required minLength={6} autoComplete={mode==='signup'?'new-password':'current-password'}/>
               </div>
 
+              {mode==='signup' && (
+                <label style={{ display:'flex', alignItems:'flex-start', gap:10, cursor:'pointer', fontSize:13,
+                  color:'var(--text2)', lineHeight:1.5 }}>
+                  <input type="checkbox" checked={agreed} onChange={e=>setAgreed(e.target.checked)}
+                    style={{ marginTop:3, accentColor:'#d97706', width:16, height:16, flexShrink:0 }}/>
+                  <span>
+                    I agree to the{' '}
+                    <a href="#" onClick={e=>{ e.preventDefault(); window.open('/terms','_blank') }}
+                      style={{ color:'#d97706', fontWeight:600, textDecoration:'underline' }}>
+                      Terms of Service, Privacy Policy &amp; Disclaimers
+                    </a>
+                  </span>
+                </label>
+              )}
+
               {err && (
                 <div style={{ background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.2)', borderRadius:8, padding:'10px 14px', fontSize:13, color:'var(--red)' }}>
                   {err}
@@ -155,7 +171,7 @@ export default function AuthPage({ theme, onToggleTheme, onBack }) {
                 </div>
               )}
 
-              <button type="submit" className="btn-primary" disabled={loading} style={{ marginTop:4, padding:'12px', width:'100%', fontSize:14 }}>
+              <button type="submit" className="btn-primary" disabled={loading || (mode==='signup' && !agreed)} style={{ marginTop:4, padding:'12px', width:'100%', fontSize:14 }}>
                 {loading?'Please wait…':mode==='login'?'Sign In':'Create Account'}
               </button>
             </form>

@@ -431,21 +431,26 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       // Use raw fetch — supabase.functions.invoke doesn't support the new publishable key format
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Not authenticated')
-      const resp = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-member`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ email, teamId: profile.team_id }),
-        }
-      )
-      const result = await resp.json()
+      let resp, result
+      try {
+        resp = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-member`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ email, teamId: profile.team_id }),
+          }
+        )
+      } catch (fetchErr) {
+        throw new Error(`Network error: ${fetchErr.message}`)
+      }
+      try { result = await resp.json() } catch { result = {} }
       if (!resp.ok) {
-        const raw = result.error || 'Failed to send invite.'
+        const raw = result.error || `Server error (${resp.status})`
         const alreadyExists = /already (registered|exists|invited)/i.test(raw) || /user.*exist/i.test(raw)
         const isRateLimit = /rate.limit/i.test(raw)
         throw new Error(

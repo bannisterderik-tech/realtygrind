@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import { CSS, StatCard, Loader, fmtMoney } from '../design'
@@ -6,6 +6,40 @@ import { CSS, StatCard, Loader, fmtMoney } from '../design'
 const PLAN_COLORS = { admin: '#8b5cf6', solo: '#94a3b8', team: '#d97706', brokerage: '#8b5cf6', team_member: '#6366f1', free: '#706b62' }
 const PLAN_PRICES = { solo: 29, team: 199, brokerage: 499 }
 const PLAN_LABELS = { admin: 'Admin', solo: 'Solo', team: 'Team', brokerage: 'Brokerage', team_member: 'Team Member', free: 'Free' }
+
+// ── GTM Kanban constants ───────────────────────────────────────────────────────
+const GTM_COLUMNS = [
+  { id: 'backlog', label: 'Backlog', icon: '📋' },
+  { id: 'in_progress', label: 'In Progress', icon: '🔨' },
+  { id: 'done', label: 'Done', icon: '✅' },
+  { id: 'blocked', label: 'Blocked', icon: '🚧' },
+]
+const GTM_PHASE_COLORS = { 1: '#10b981', 2: '#d97706', 3: '#8b5cf6' }
+const GTM_PHASE_LABELS = { 1: 'Phase 1 · Seed', 2: 'Phase 2 · Grow', 3: 'Phase 3 · Scale' }
+const MRR_TARGET = 100000
+
+const DEFAULT_GTM_TASKS = [
+  { id: 'gtm-1',  title: 'Create Instagram content calendar (agent productivity tips)', phase: 1, column: 'backlog', notes: '' },
+  { id: 'gtm-2',  title: 'Launch TikTok & YouTube Shorts channel', phase: 1, column: 'backlog', notes: '' },
+  { id: 'gtm-3',  title: 'Real estate Facebook group outreach campaign', phase: 1, column: 'backlog', notes: '' },
+  { id: 'gtm-4',  title: 'Reddit community engagement (r/realtors, r/RealEstate)', phase: 1, column: 'backlog', notes: '' },
+  { id: 'gtm-5',  title: 'Set up 14-day free trial flow (Solo plan)', phase: 1, column: 'backlog', notes: '' },
+  { id: 'gtm-6',  title: 'SEO: target "real estate habit tracker", "agent accountability app"', phase: 1, column: 'backlog', notes: '' },
+  { id: 'gtm-7',  title: 'Build email drip sequence for trial onboarding', phase: 1, column: 'backlog', notes: '' },
+  { id: 'gtm-8',  title: 'Reach 500 solo subscribers', phase: 1, column: 'backlog', notes: '' },
+  { id: 'gtm-9',  title: 'Design referral bonus program for solo → team conversion', phase: 2, column: 'backlog', notes: '' },
+  { id: 'gtm-10', title: 'Direct outreach to KW, eXp, RE/MAX, Compass team leaders', phase: 2, column: 'backlog', notes: '' },
+  { id: 'gtm-11', title: 'Attend 3+ local real estate board events', phase: 2, column: 'backlog', notes: '' },
+  { id: 'gtm-12', title: 'Publish case study: "How Team X increased activity 40%"', phase: 2, column: 'backlog', notes: '' },
+  { id: 'gtm-13', title: 'Build team demo/onboarding deck', phase: 2, column: 'backlog', notes: '' },
+  { id: 'gtm-14', title: 'Reach 45 team subscriptions (~600 seats)', phase: 2, column: 'backlog', notes: '' },
+  { id: 'gtm-15', title: 'Enterprise sales outreach to brokerage ops managers', phase: 3, column: 'backlog', notes: '' },
+  { id: 'gtm-16', title: 'Launch white-label pilot program', phase: 3, column: 'backlog', notes: '' },
+  { id: 'gtm-17', title: 'Partner with Tom Ferry / Buffini coaching companies', phase: 3, column: 'backlog', notes: '' },
+  { id: 'gtm-18', title: 'Sponsor 2+ real estate podcasts', phase: 3, column: 'backlog', notes: '' },
+  { id: 'gtm-19', title: 'Build brokerage-specific landing page', phase: 3, column: 'backlog', notes: '' },
+  { id: 'gtm-20', title: 'Reach 28 brokerage accounts (1,400+ seats)', phase: 3, column: 'backlog', notes: '' },
+]
 
 // Determine effective plan: admins → 'admin', team members → 'team_member'
 function effectivePlan(u) {
@@ -118,6 +152,14 @@ export default function AdminPage({ onNavigate }) {
   const [lastRefresh, setLastRefresh] = useState(null)
   const [userView, setUserView] = useState('teams') // 'solo' | 'teams' | 'free'
   const [expandedTeams, setExpandedTeams] = useState(new Set())
+
+  // ── GTM Kanban state ────────────────────────────────────────────────────
+  const [gtmBoard, setGtmBoard] = useState(null)
+  const [gtmPhaseFilter, setGtmPhaseFilter] = useState('all')
+  const [gtmEditingId, setGtmEditingId] = useState(null)
+  const [gtmDragId, setGtmDragId] = useState(null)
+  const [gtmNewTitle, setGtmNewTitle] = useState('')
+  const gtmSaveTimer = useRef(null)
 
   const isAdmin = profile?.app_role === 'admin'
 
@@ -282,6 +324,80 @@ export default function AdminPage({ onNavigate }) {
     })
   }
 
+  // ── GTM board persistence ───────────────────────────────────────────────
+  async function saveGtmToDb(board) {
+    if (!supabase || !profile?.id) return
+    if (gtmSaveTimer.current) clearTimeout(gtmSaveTimer.current)
+    gtmSaveTimer.current = setTimeout(async () => {
+      const { data: row } = await supabase
+        .from('profiles').select('habit_prefs').eq('id', profile.id).single()
+      const prefs = row?.habit_prefs || {}
+      await supabase.from('profiles')
+        .update({ habit_prefs: { ...prefs, gtm_board: board } })
+        .eq('id', profile.id)
+    }, 500)
+  }
+
+  async function loadGtmBoard() {
+    if (!supabase || !profile?.id) return
+    const { data: row } = await supabase
+      .from('profiles').select('habit_prefs').eq('id', profile.id).single()
+    const saved = row?.habit_prefs?.gtm_board
+    if (saved?.tasks?.length) {
+      setGtmBoard(saved)
+    } else {
+      const seed = { tasks: DEFAULT_GTM_TASKS.map(t => ({ ...t })) }
+      setGtmBoard(seed)
+      saveGtmToDb(seed)
+    }
+  }
+
+  useEffect(() => {
+    if (tab === 'gtm' && !gtmBoard) loadGtmBoard()
+  }, [tab])
+
+  function gtmMoveTask(taskId, newColumn) {
+    setGtmBoard(prev => {
+      if (!prev) return prev
+      const tasks = prev.tasks.map(t => t.id === taskId ? { ...t, column: newColumn } : t)
+      const next = { ...prev, tasks }
+      saveGtmToDb(next)
+      return next
+    })
+  }
+
+  function gtmAddTask(title) {
+    if (!title.trim()) return
+    setGtmBoard(prev => {
+      if (!prev) return prev
+      const nextId = `gtm-custom-${Date.now()}`
+      const task = { id: nextId, title: title.trim(), phase: 1, column: 'backlog', notes: '' }
+      const next = { ...prev, tasks: [...prev.tasks, task] }
+      saveGtmToDb(next)
+      return next
+    })
+    setGtmNewTitle('')
+  }
+
+  function gtmUpdateTask(taskId, updates) {
+    setGtmBoard(prev => {
+      if (!prev) return prev
+      const tasks = prev.tasks.map(t => t.id === taskId ? { ...t, ...updates } : t)
+      const next = { ...prev, tasks }
+      saveGtmToDb(next)
+      return next
+    })
+  }
+
+  function gtmDeleteTask(taskId) {
+    setGtmBoard(prev => {
+      if (!prev) return prev
+      const next = { ...prev, tasks: prev.tasks.filter(t => t.id !== taskId) }
+      saveGtmToDb(next)
+      return next
+    })
+  }
+
   // ── Access guard ────────────────────────────────────────────────────────
   if (!isAdmin) {
     return (
@@ -349,6 +465,7 @@ export default function AdminPage({ onNavigate }) {
                   { id: 'overview', l: 'Overview' },
                   { id: 'users', l: `Users (${data.users.length})` },
                   { id: 'subscriptions', l: 'Subscriptions' },
+                  { id: 'gtm', l: '🎯 GTM Roadmap' },
                 ].map(t => (
                   <button key={t.id} className={`tab-item${tab === t.id ? ' on' : ''}`}
                     onClick={() => setTab(t.id)}>{t.l}</button>
@@ -672,6 +789,276 @@ export default function AdminPage({ onNavigate }) {
                       </div>
                     )
                   })()}
+                </div>
+              )}
+
+              {/* ═══════════ GTM ROADMAP TAB ═══════════ */}
+              {tab === 'gtm' && (
+                <div>
+                  {/* MRR Progress */}
+                  <div className="card" style={{
+                    padding: '24px 28px', marginBottom: 20,
+                    background: 'linear-gradient(135deg, rgba(16,185,129,.06) 0%, var(--surface) 60%)',
+                    borderTop: '3px solid #10b981',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
+                      <div className="label">🎯 Road to $100K MRR</div>
+                      <div className="mono" style={{ fontSize: 13, color: 'var(--text)' }}>
+                        {fmtMoney(stats.mrr_estimate || 0)}{' '}
+                        <span style={{ color: 'var(--muted)' }}>/ {fmtMoney(MRR_TARGET)}</span>
+                      </div>
+                    </div>
+                    <div style={{ height: 12, background: 'var(--b1)', borderRadius: 99, overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%', borderRadius: 99,
+                        width: `${Math.min(100, ((stats.mrr_estimate || 0) / MRR_TARGET) * 100)}%`,
+                        background: 'linear-gradient(90deg, #10b981, #d97706)',
+                        transition: 'width .6s ease',
+                      }} />
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, textAlign: 'right' }}>
+                      {(((stats.mrr_estimate || 0) / MRR_TARGET) * 100).toFixed(1)}% of target
+                    </div>
+                  </div>
+
+                  {/* Phase Filters + Add Task */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                    {[
+                      { id: 'all', label: 'All Tasks', color: null },
+                      { id: 1, label: 'Phase 1 · Seed', color: '#10b981' },
+                      { id: 2, label: 'Phase 2 · Grow', color: '#d97706' },
+                      { id: 3, label: 'Phase 3 · Scale', color: '#8b5cf6' },
+                    ].map(f => (
+                      <button key={f.id}
+                        onClick={() => setGtmPhaseFilter(f.id)}
+                        style={{
+                          padding: '6px 14px', fontSize: 11, fontWeight: 600, borderRadius: 8,
+                          border: gtmPhaseFilter === f.id
+                            ? `1.5px solid ${f.color || 'var(--gold)'}`
+                            : '1px solid var(--b1)',
+                          background: gtmPhaseFilter === f.id
+                            ? (f.color ? f.color + '14' : 'var(--gold-bg, rgba(217,119,6,.08))')
+                            : 'var(--surface)',
+                          color: gtmPhaseFilter === f.id
+                            ? (f.color || 'var(--gold)')
+                            : 'var(--muted)',
+                          cursor: 'pointer', transition: 'all .2s',
+                        }}>
+                        {f.label}
+                      </button>
+                    ))}
+                    <div style={{ flex: 1 }} />
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input
+                        className="field-input"
+                        style={{ padding: '6px 10px', fontSize: 12, width: 220 }}
+                        placeholder="New task title..."
+                        value={gtmNewTitle}
+                        onChange={e => setGtmNewTitle(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && gtmAddTask(gtmNewTitle)}
+                      />
+                      <button className="btn-outline"
+                        style={{ fontSize: 11, padding: '6px 12px', whiteSpace: 'nowrap' }}
+                        onClick={() => gtmAddTask(gtmNewTitle)}>
+                        + Add
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Kanban Board */}
+                  {!gtmBoard ? <Loader /> : (
+                    <div style={{
+                      display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+                      gap: 12, alignItems: 'start',
+                    }}>
+                      {GTM_COLUMNS.map((col, colIdx) => {
+                        const colTasks = gtmBoard.tasks.filter(t =>
+                          t.column === col.id && (gtmPhaseFilter === 'all' || t.phase === gtmPhaseFilter)
+                        )
+                        return (
+                          <div key={col.id}
+                            onDragOver={e => { e.preventDefault(); e.currentTarget.style.background = 'var(--bg2)' }}
+                            onDragLeave={e => { e.currentTarget.style.background = '' }}
+                            onDrop={e => {
+                              e.preventDefault()
+                              e.currentTarget.style.background = ''
+                              const taskId = e.dataTransfer.getData('text/plain')
+                              if (taskId) gtmMoveTask(taskId, col.id)
+                            }}
+                            style={{
+                              background: 'var(--surface)', border: '1px solid var(--b1)',
+                              borderRadius: 12, minHeight: 300, transition: 'background .15s',
+                            }}>
+                            {/* Column header */}
+                            <div style={{
+                              padding: '12px 14px', borderBottom: '1px solid var(--b1)',
+                              display: 'flex', alignItems: 'center', gap: 8,
+                            }}>
+                              <span>{col.icon}</span>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', flex: 1 }}>
+                                {col.label}
+                              </span>
+                              <span className="mono" style={{
+                                fontSize: 11, color: 'var(--muted)',
+                                background: 'var(--bg2)', padding: '2px 7px', borderRadius: 6,
+                              }}>
+                                {colTasks.length}
+                              </span>
+                            </div>
+
+                            {/* Cards */}
+                            <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              {colTasks.map(task => {
+                                const isEditing = gtmEditingId === task.id
+                                const phaseColor = GTM_PHASE_COLORS[task.phase] || '#94a3b8'
+                                return (
+                                  <div key={task.id}
+                                    draggable={!isEditing}
+                                    onDragStart={e => {
+                                      e.dataTransfer.setData('text/plain', task.id)
+                                      setGtmDragId(task.id)
+                                    }}
+                                    onDragEnd={() => setGtmDragId(null)}
+                                    onClick={() => !isEditing && setGtmEditingId(task.id)}
+                                    style={{
+                                      padding: '10px 12px', borderRadius: 8,
+                                      background: gtmDragId === task.id ? 'var(--bg2)' : 'var(--bg)',
+                                      border: `1px solid ${isEditing ? phaseColor + '66' : 'var(--b1)'}`,
+                                      cursor: isEditing ? 'default' : 'grab',
+                                      opacity: gtmDragId === task.id ? 0.5 : 1,
+                                      transition: 'all .15s',
+                                    }}>
+                                    {/* Phase badge */}
+                                    <div style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                      <span style={{
+                                        fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                                        background: phaseColor + '18', color: phaseColor,
+                                      }}>
+                                        {GTM_PHASE_LABELS[task.phase] || `Phase ${task.phase}`}
+                                      </span>
+                                    </div>
+
+                                    {/* Editing mode */}
+                                    {isEditing ? (
+                                      <div onClick={e => e.stopPropagation()}>
+                                        <input className="field-input"
+                                          style={{ width: '100%', fontSize: 12, padding: '4px 8px', marginBottom: 6 }}
+                                          value={task.title}
+                                          onChange={e => gtmUpdateTask(task.id, { title: e.target.value })}
+                                        />
+                                        <textarea className="field-input"
+                                          style={{
+                                            width: '100%', fontSize: 11, padding: '4px 8px',
+                                            minHeight: 48, resize: 'vertical', marginBottom: 6,
+                                          }}
+                                          placeholder="Notes..."
+                                          value={task.notes || ''}
+                                          onChange={e => gtmUpdateTask(task.id, { notes: e.target.value })}
+                                        />
+                                        {/* Phase selector */}
+                                        <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+                                          {[1, 2, 3].map(p => (
+                                            <button key={p}
+                                              onClick={() => gtmUpdateTask(task.id, { phase: p })}
+                                              style={{
+                                                fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                                                border: task.phase === p
+                                                  ? `1.5px solid ${GTM_PHASE_COLORS[p]}`
+                                                  : '1px solid var(--b1)',
+                                                background: task.phase === p
+                                                  ? GTM_PHASE_COLORS[p] + '18' : 'transparent',
+                                                color: task.phase === p
+                                                  ? GTM_PHASE_COLORS[p] : 'var(--muted)',
+                                                cursor: 'pointer',
+                                              }}>
+                                              P{p}
+                                            </button>
+                                          ))}
+                                        </div>
+                                        <div style={{ display: 'flex', gap: 6, justifyContent: 'space-between' }}>
+                                          <button className="btn-ghost"
+                                            style={{ fontSize: 10, color: '#ef4444' }}
+                                            onClick={() => { gtmDeleteTask(task.id); setGtmEditingId(null) }}>
+                                            Delete
+                                          </button>
+                                          <button className="btn-outline"
+                                            style={{ fontSize: 10, padding: '3px 10px' }}
+                                            onClick={() => setGtmEditingId(null)}>
+                                            Done
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        {/* Title */}
+                                        <div style={{
+                                          fontSize: 12, fontWeight: 600, color: 'var(--text)',
+                                          lineHeight: 1.4, marginBottom: task.notes ? 4 : 0,
+                                        }}>
+                                          {task.title}
+                                        </div>
+                                        {task.notes && (
+                                          <div style={{
+                                            fontSize: 10, color: 'var(--muted)', lineHeight: 1.4,
+                                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                          }}>
+                                            {task.notes}
+                                          </div>
+                                        )}
+                                        {/* Move arrows */}
+                                        <div style={{
+                                          display: 'flex', gap: 4, marginTop: 6, justifyContent: 'flex-end',
+                                        }} onClick={e => e.stopPropagation()}>
+                                          {colIdx > 0 && (
+                                            <button className="btn-ghost"
+                                              style={{ fontSize: 10, padding: '2px 6px' }}
+                                              onClick={() => gtmMoveTask(task.id, GTM_COLUMNS[colIdx - 1].id)}
+                                              title={`Move to ${GTM_COLUMNS[colIdx - 1].label}`}>
+                                              ←
+                                            </button>
+                                          )}
+                                          {colIdx < GTM_COLUMNS.length - 1 && (
+                                            <button className="btn-ghost"
+                                              style={{ fontSize: 10, padding: '2px 6px' }}
+                                              onClick={() => gtmMoveTask(task.id, GTM_COLUMNS[colIdx + 1].id)}
+                                              title={`Move to ${GTM_COLUMNS[colIdx + 1].label}`}>
+                                              →
+                                            </button>
+                                          )}
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                              {colTasks.length === 0 && (
+                                <div style={{
+                                  padding: '24px 12px', textAlign: 'center',
+                                  fontSize: 11, color: 'var(--dim)', fontStyle: 'italic',
+                                }}>
+                                  Drop tasks here
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* Task summary footer */}
+                  {gtmBoard && (
+                    <div style={{ marginTop: 16, display: 'flex', gap: 16, justifyContent: 'center' }}>
+                      {GTM_COLUMNS.map(col => {
+                        const count = gtmBoard.tasks.filter(t => t.column === col.id).length
+                        return (
+                          <div key={col.id} className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>
+                            {col.icon} {count} {col.label.toLowerCase()}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </>

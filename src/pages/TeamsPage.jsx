@@ -330,7 +330,26 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       const { error: e2 } = await supabase.from('profiles').update({ team_id: null }).eq('id', user.id)
       if (e2) throw e2
       await refreshProfile()
-      setMode('menu'); setMembers([]); setTeamData(null)
+      setMembers([]); setTeamData(null)
+
+      // ── Force Solo trial signup — team members lose coverage when they leave ──
+      // If the user doesn't have their own active subscription, redirect to Solo checkout
+      const { data: freshProfile } = await supabase.from('profiles').select('billing_status, plan, stripe_customer_id').eq('id', user.id).single()
+      const hasOwnSub = freshProfile?.stripe_customer_id && isActiveBilling(freshProfile?.billing_status)
+      if (!hasOwnSub) {
+        try {
+          const { data: coData, error: coErr } = await supabase.functions.invoke('create-checkout', {
+            body: { planId: 'solo', isAnnual: false, returnUrl: window.location.origin }
+          })
+          if (!coErr && coData?.url) {
+            window.location.href = coData.url
+            return // don't setLoading(false) — page is navigating away
+          }
+        } catch (coEx) {
+          console.error('Solo checkout redirect failed:', coEx)
+        }
+      }
+      setMode('menu')
     } catch (err) {
       setError('Failed to leave team. Please try again.')
       console.error('leaveTeam error:', err)
@@ -866,7 +885,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                     <div style={{ fontSize:13, color:'var(--muted)', lineHeight:1.6, marginBottom:14 }}>
                       {hasSub && currentPlan
                         ? `You're on the ${currentPlan.name} plan. Upgrade to Team to create and manage teams with up to 15 agents.`
-                        : 'Start a 14-day free trial of the Team plan to create and manage teams with up to 15 agents.'}
+                        : 'Subscribe to the Team plan ($199/mo) to create and manage teams with up to 15 agents.'}
                     </div>
                     {hasSub ? (
                       <button className="btn-gold" onClick={async () => {
@@ -894,7 +913,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                         } catch (err) { setError('Could not start checkout.') }
                         setLoading(false)
                       }} disabled={loading} style={{ fontSize:13, padding:'10px 20px' }}>
-                        {loading ? 'Redirecting...' : 'Start Team Plan — Free 14-Day Trial'}
+                        {loading ? 'Redirecting...' : 'Start Team Plan — $199/mo'}
                       </button>
                     )}
                   </div>

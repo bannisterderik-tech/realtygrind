@@ -684,6 +684,18 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
               )
             })}
           </div>
+
+          {/* White-label callout */}
+          <div style={{ marginTop:36, textAlign:'center', padding:'24px 20px', background:'var(--surface)',
+            border:'1px solid var(--b2)', borderRadius:14 }}>
+            <div style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginBottom:6, fontFamily:"'Poppins',sans-serif" }}>
+              Want a white-label version for your brokerage or team?
+            </div>
+            <div style={{ fontSize:13, color:'var(--muted)', fontFamily:"'Poppins',sans-serif" }}>
+              Contact support at{' '}
+              <a href="tel:5307367085" style={{ color:gold, fontWeight:700, textDecoration:'none' }}>(530) 736-7085</a>
+            </div>
+          </div>
         </div>
       </section>
 

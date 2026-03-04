@@ -113,7 +113,7 @@ Deno.serve(async (req: Request) => {
     const { data: ownerProfile } = await adminClient
       .from('profiles')
       .select('plan, billing_status')
-      .eq('id', userId)
+      .eq('id', team.created_by)
       .single()
     const planMax = PLAN_MAX_MEMBERS[ownerProfile?.plan || ''] ?? 0
     const billingActive = ownerProfile?.billing_status === 'active' || ownerProfile?.billing_status === 'trialing'

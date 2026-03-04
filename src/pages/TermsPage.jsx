@@ -66,7 +66,7 @@ export default function TermsPage({ onNavigate, theme }) {
 
           <h3 style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginTop:20, marginBottom:8 }}>5. Acceptable Use</h3>
           <p style={{ marginBottom:14 }}>
-            You agree not to: (a) use the service for any unlawful purpose; (b) attempt to gain unauthorized access to any part of the service; (c) upload malicious code or interfere with service operations; (d) resell or redistribute the service without written permission; (e) use the service to store sensitive client personal information (see Disclaimers below).
+            You agree not to: (a) use the service for any unlawful purpose; (b) attempt to gain unauthorized access to any part of the service; (c) upload malicious code or interfere with service operations; (d) resell or redistribute the service without written permission; (e) use the service to store client phone numbers, email addresses, or financial details (see Disclaimers below).
           </p>
 
           <h3 style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginTop:20, marginBottom:8 }}>6. Intellectual Property</h3>
@@ -150,9 +150,9 @@ export default function TermsPage({ onNavigate, theme }) {
 
           <div style={{ background:'rgba(59,130,246,.05)', border:'1px solid rgba(59,130,246,.18)', borderRadius:10,
             padding:20, marginBottom:20 }}>
-            <h3 style={{ fontSize:15, fontWeight:700, color:'#2563eb', marginBottom:8 }}>🔒 Do Not Store Client Contact Information</h3>
+            <h3 style={{ fontSize:15, fontWeight:700, color:'#2563eb', marginBottom:8 }}>🔒 Client Data Guidelines</h3>
             <p style={{ marginBottom:0, color:'var(--text)' }}>
-              <strong>RealtyGrind is not a CRM and should not be used to store client personal or contact information.</strong> Do not enter your clients' phone numbers, email addresses, home addresses, financial details, or other personally identifiable information into this platform. Client data should be kept in your existing CRM system (e.g., Follow Up Boss, KVCore, LionDesk, etc.). RealtyGrind is not responsible for any client data entered into the platform.
+              <strong>RealtyGrind is not a CRM.</strong> You may enter client names and property addresses for listings and buyer tracking, but <strong>do not store client phone numbers, email addresses, or financial details</strong> on this platform. That information belongs in your existing CRM system (e.g., Follow Up Boss, KVCore, LionDesk, etc.). RealtyGrind is not responsible for any client contact data entered into the platform.
             </p>
           </div>
 

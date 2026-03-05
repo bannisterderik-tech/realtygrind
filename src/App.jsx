@@ -92,6 +92,28 @@ class ErrorBoundary extends Component {
 export const ThemeCtx = createContext({ theme:'light', toggle:()=>{} })
 export const useTheme = () => useContext(ThemeCtx)
 
+// ─── DEV Render Loop Detector ──────────────────────────────────────────────────
+// Enabled only in dev when VITE_DEBUG_RENDER=true.  If a component renders
+// more than 50 times in 2 seconds a console.warn is emitted with the component
+// name and render count.  Import and call useRenderGuard('ComponentName') at the
+// top of any component you want to monitor.
+const RENDER_DEBUG = import.meta.env.DEV && import.meta.env.VITE_DEBUG_RENDER === 'true'
+function useRenderGuard(name) {
+  const countRef = useRef(0)
+  const windowRef = useRef(Date.now())
+  if (!RENDER_DEBUG) return
+  countRef.current++
+  const now = Date.now()
+  if (now - windowRef.current > 2000) {
+    countRef.current = 1
+    windowRef.current = now
+  } else if (countRef.current > 50) {
+    console.warn(`[RENDER STORM] ${name} rendered ${countRef.current} times in 2s`)
+    countRef.current = 0
+    windowRef.current = now
+  }
+}
+
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
 const PIPELINE_XP = { offer_made:75, offer_received:75, went_pending:150, closed:300 }
@@ -1298,6 +1320,7 @@ const HabitCell = memo(function HabitCell({ habitId, weekIndex, dayIndex, checke
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 function Dashboard({ theme, onToggleTheme }) {
+  useRenderGuard('Dashboard')
   const { user, profile } = useAuth()
 
   // ── Stable profile primitives ────────────────────────────────────────────
@@ -1645,11 +1668,13 @@ function Dashboard({ theme, onToggleTheme }) {
   // Scroll to top on page navigation
   useEffect(() => { window.scrollTo(0, 0) }, [page])
 
-  // Redirect ai-assistant page navigation to floating widget
-  // Safe: 'dashboard' !== 'ai-assistant' so the second render is a no-op
+  // Redirect ai-assistant page navigation to floating widget.
+  // Uses _setPage directly to bypass the rAF debounce in setPage — the
+  // debounce's navigatingRef may still be true when this effect fires,
+  // which would silently swallow the redirect and leave the page stuck.
   useEffect(() => {
     if (page === 'ai-assistant') {
-      setPage('dashboard')
+      _setPage('dashboard')
       setAiWidgetOpen(true)
     }
   }, [page])
@@ -4391,6 +4416,7 @@ function Dashboard({ theme, onToggleTheme }) {
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
 function AppInner() {
+  useRenderGuard('AppInner')
   const { user, loading } = useAuth()
   const [theme,       setTheme]       = useState(()=>localStorage.getItem('rg_theme')||'light')
   const [showAuth,    setShowAuth]    = useState(false)

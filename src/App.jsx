@@ -1495,6 +1495,27 @@ function Dashboard({ theme, onToggleTheme }) {
     return () => { mountedRef.current = false }
   }, [])
 
+  // ── Duplication sentinel ─────────────────────────────────────────────────────
+  // Detects if Chrome (HMR, bfcache, or React reconciliation edge-case) ever
+  // leaves two Dashboard trees in the DOM simultaneously.  Logs diagnostics and
+  // removes the stale duplicate so the user never sees doubled content.
+  useEffect(() => {
+    const el = document.getElementById('rg-dashboard')
+    if (el && el !== document.querySelector('#rg-dashboard')) {
+      // Should never happen — id is unique — but guard anyway
+      console.error('[Dashboard] duplicate #rg-dashboard detected on mount')
+    }
+    const check = setInterval(() => {
+      const pages = document.querySelectorAll('.page')
+      if (pages.length > 1) {
+        console.error(`[Dashboard] DUPLICATION: ${pages.length} .page elements — removing stale copies`)
+        // Keep the last one (the freshest React tree) and remove older ones
+        for (let i = 0; i < pages.length - 1; i++) pages[i].remove()
+      }
+    }, 3000)
+    return () => clearInterval(check)
+  }, [])
+
   // Depend on user.id only — prevents re-running when a new user object is created
   // (e.g. on token refresh) while the same user is still logged in.
   useEffect(()=>{
@@ -2468,7 +2489,7 @@ function Dashboard({ theme, onToggleTheme }) {
   })
 
   return (
-    <div className="page">
+    <div id="rg-dashboard" className="page">
       {/* XP float */}
       {xpPop && (
         <div style={{ position:'fixed', top:74, right:30, zIndex:9999, pointerEvents:'none',

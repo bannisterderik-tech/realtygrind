@@ -4449,62 +4449,6 @@ function AppInner() {
     }
   }, [])
 
-  // ── Extension Shield ────────────────────────────────────────────────────────
-  // Chrome extensions (password managers, Grammarly, etc.) inject DOM nodes into
-  // inputs/textareas, breaking React's reconciliation and causing phantom
-  // re-renders. This observer auto-applies defensive attributes to every
-  // input/textarea and strips known extension-injected elements.
-  useEffect(() => {
-    const SHIELD_ATTRS = {
-      'data-lpignore': 'true',         // LastPass
-      'data-1p-ignore': '',            // 1Password
-      'data-form-type': 'other',       // Dashlane
-      'data-gramm': 'false',           // Grammarly
-      'data-gramm_editor': 'false',    // Grammarly editor
-    }
-    const NUKE_SELECTORS = [
-      '[data-lastpass-icon-root]',
-      '[data-lastpass-root]',
-      'com-1password-notification',
-      '[class*="grammarly"]',
-      'grammarly-extension',
-      'grammarly-desktop-integration',
-    ].join(',')
-
-    function shieldEl(el) {
-      for (const [k, v] of Object.entries(SHIELD_ATTRS)) {
-        if (!el.hasAttribute(k)) el.setAttribute(k, v)
-      }
-      if (!el.getAttribute('autocomplete')) el.setAttribute('autocomplete', 'off')
-    }
-
-    function nukeInjected(root) {
-      root.querySelectorAll(NUKE_SELECTORS).forEach(n => n.remove())
-    }
-
-    // Shield all existing inputs/textareas
-    document.querySelectorAll('input, textarea').forEach(shieldEl)
-    nukeInjected(document.body)
-
-    // Watch for new inputs/textareas added dynamically
-    const observer = new MutationObserver(mutations => {
-      for (const m of mutations) {
-        for (const node of m.addedNodes) {
-          if (node.nodeType !== 1) continue
-          if (node.matches?.('input, textarea')) shieldEl(node)
-          else if (node.querySelectorAll) {
-            node.querySelectorAll('input, textarea').forEach(shieldEl)
-          }
-          // Remove extension-injected elements
-          if (node.matches?.(NUKE_SELECTORS)) { node.remove(); continue }
-          if (node.querySelectorAll) nukeInjected(node)
-        }
-      }
-    })
-    observer.observe(document.body, { childList: true, subtree: true })
-    return () => observer.disconnect()
-  }, [])
-
   // Handle Stripe return URLs (?checkout=success|cancelled)
   useEffect(()=>{
     const params = new URLSearchParams(window.location.search)

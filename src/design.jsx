@@ -673,6 +673,10 @@ body,.page { background: var(--bg); color: var(--text); }
   padding:2px 8px; border-radius:5px; font-weight:600; font-family:'JetBrains Mono',monospace; }
 .lead-tag { display:inline-flex; align-items:center; gap:3px; font-size:10px;
   padding:2px 8px; border-radius:5px; font-weight:600; white-space:nowrap; }
+/* ── Extension Shield (CSS-only, no DOM mutation) ────────────────────────── */
+[data-lastpass-icon-root], [data-lastpass-root], com-1password-notification,
+[class*="grammarly"], grammarly-extension, grammarly-desktop-integration,
+[data-dashlane-rid], [data-dashlane-label] { display:none !important; pointer-events:none !important; }
 `
 
 // ─── React components ──────────────────────────────────────────────────────────

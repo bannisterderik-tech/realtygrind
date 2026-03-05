@@ -1307,17 +1307,37 @@ function Dashboard({ theme, onToggleTheme }) {
   const profileFullName    = profile?.full_name ?? null
   const profileAppRole     = profile?.app_role ?? null
   const profileTeamCreator = profile?.teams?.created_by ?? null
+  const profilePlan        = profile?.plan ?? null
+  const profileBillingStatus = profile?.billing_status ?? null
+  const profilePhone       = profile?.phone ?? ''
 
-  // Computed per-render so it never goes stale if tab stays open across a month boundary
-  const now = new Date()
-  const MONTH_YEAR = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`
-  const todayWeek = Math.min(Math.floor((now.getDate()-1)/7),3)
-  const todayDay  = now.getDay()
+  // Memoize plan badge to avoid re-creating object on every render
+  const planBadge = useMemo(
+    () => getPlanBadge(profile, user?.id),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [profileAppRole, profileTeamId, profileTeamCreator, profilePlan, profileBillingStatus, user?.id]
+  )
+
+  // ── Date constants — computed once at mount, stable across re-renders ──────
+  // Uses lazy useState so new Date() runs only once, preventing needless object
+  // churn on every render.  If the tab stays open across a midnight boundary the
+  // user will see stale "today" — an acceptable trade-off vs. re-render storms.
+  const [{ MONTH_YEAR, todayWeek, todayDay, lastDayOfMonth: _lastDay }] = useState(() => {
+    const d = new Date()
+    return {
+      MONTH_YEAR: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`,
+      todayWeek: Math.min(Math.floor((d.getDate()-1)/7),3),
+      todayDay: d.getDay(),
+      lastDayOfMonth: new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(),
+    }
+  })
+  const lastDayOfMonth = _lastDay
   const today = useMemo(() => ({ week: todayWeek, day: todayDay }), [todayWeek, todayDay])
 
   // Day navigation for the Today tab — offset from real today
   const [viewDayOffset, setViewDayOffset] = useState(0)
   const viewDate = useMemo(() => {
+    const now = new Date()
     const d = new Date()
     d.setDate(d.getDate() + viewDayOffset)
     // Clamp to current month
@@ -1332,7 +1352,6 @@ function Dashboard({ theme, onToggleTheme }) {
   const isViewingToday = viewDayOffset === 0
   // Navigation bounds: stay within current month
   const canGoBack    = viewDate.getDate() > 1
-  const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
   const canGoForward = viewDate.getDate() < lastDayOfMonth
 
   const [page, setPage] = useState('dashboard')
@@ -1433,7 +1452,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [showGci, setShowGci] = useState(false)
   const [clientUpdateListing, setClientUpdateListing] = useState(null)
   const [clientUpdateNotes, setClientUpdateNotes] = useState('')
-  const todayDate = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD in local timezone
+  const [todayDate] = useState(() => new Date().toLocaleDateString('en-CA')) // YYYY-MM-DD, stable across re-renders
 
   // Depend on user.id only — prevents re-running when a new user object is created
   // (e.g. on token refresh) while the same user is still logged in.
@@ -2309,7 +2328,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
   const dashStats = useMemo(() => {
     const totalHabitChecks = builtInEffective.reduce((a,h)=>a+habits[h.id].flat().filter(Boolean).length,0)
-    const daysThisMonth    = new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate()
+    const daysThisMonth    = lastDayOfMonth
     const totalPossible    = Math.max(builtInEffective.length,1)*daysThisMonth
     const monthPct         = Math.round(totalHabitChecks/totalPossible*100)
     const viewChecks       = viewBuiltInActive.filter(h=>habits[h.id][viewWeek]?.[viewDayIdx]).length
@@ -2333,7 +2352,7 @@ function Dashboard({ theme, onToggleTheme }) {
       sessionPipeline.went_pending  * PIPELINE_XP.went_pending  +
       sessionPipeline.closed        * PIPELINE_XP.closed
     return { totalHabitChecks, totalPossible, monthPct, viewChecks, viewPct, totalProspecting, totalAppts, totalShowings, totalListings, totalBuyerReps, closedVol, closedComm, viewHabitXp, sessionPipelineXp, viewXp: viewHabitXp + sessionPipelineXp }
-  }, [habits, counters, builtInEffective, viewBuiltInActive, viewWeek, viewDayIdx, listings, buyerReps, closedDeals, sessionPipeline])
+  }, [habits, counters, builtInEffective, viewBuiltInActive, viewWeek, viewDayIdx, listings, buyerReps, closedDeals, sessionPipeline, lastDayOfMonth])
   const { totalHabitChecks, monthPct, viewChecks: todayChecks, viewPct: todayPct, totalProspecting, totalAppts, totalShowings, totalListings, totalBuyerReps, closedVol, closedComm, viewHabitXp: todayHabitXp, sessionPipelineXp, viewXp: todayXp } = dashStats
 
   // ── GCI Dashboard stats ──────────────────────────────────────────────────
@@ -2353,7 +2372,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
   // ── Personal Records ─────────────────────────────────────────────────────
   const personalRecords = useMemo(() => {
-    const dim = new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate()
+    const dim = lastDayOfMonth
     let bestDayXp = 0, bestWeekXp = 0, perfectDays = 0, activeDays = 0
     for (let wi = 0; wi < WEEKS; wi++) {
       let weekXp = 0
@@ -2393,9 +2412,15 @@ function Dashboard({ theme, onToggleTheme }) {
     )
   }, [habits, builtInEffective, habitPrefs.skipped])
 
-  const dateStr   = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})
-  const quote = QUOTES[new Date().getDay()]
-  const timeGreeting = (() => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening' })()
+  // Stable per-mount: dateStr, quote, timeGreeting — no new Date() per render
+  const [{ dateStr, quote: dailyQuote, timeGreeting }] = useState(() => {
+    const d = new Date()
+    return {
+      dateStr: d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}),
+      quote: QUOTES[d.getDay()],
+      timeGreeting: d.getHours() < 12 ? 'Good morning' : d.getHours() < 17 ? 'Good afternoon' : 'Good evening',
+    }
+  })
 
   return (
     <div className="page">
@@ -2532,12 +2557,10 @@ function Dashboard({ theme, onToggleTheme }) {
             <div className="serif" style={{ fontSize:15, color:'#fb923c', lineHeight:1.2 }}>🔥 {streak}</div>
           </div>
 
-          {(() => { const pb = getPlanBadge(profile, user?.id); return (
-            <button className={`nav-btn mob-hide${page==='billing'?' active':''}`} onClick={()=>setPage('billing')}
-              style={{ fontSize:11, fontWeight:700, color:pb.color, letterSpacing:.4 }}>
-              {pb.label}
-            </button>
-          ) })()}
+          <button className={`nav-btn mob-hide${page==='billing'?' active':''}`} onClick={()=>setPage('billing')}
+            style={{ fontSize:11, fontWeight:700, color:planBadge.color, letterSpacing:.4 }}>
+            {planBadge.label}
+          </button>
           <button className={`nav-btn${page==='profile'?' active':''}`} onClick={()=>setPage('profile')}>
             {profileFullName?.split(' ')[0]||'Profile'}
           </button>
@@ -2644,8 +2667,10 @@ function Dashboard({ theme, onToggleTheme }) {
 
       {page==='dashboard' && (
       <ErrorBoundary key="dashboard" onReset={()=>window.location.reload()}>
-      {dbLoading ? <Loader/> : (
-      <div className="page-inner">
+      {/* Show loader ONLY on initial load; once data loads, never unmount page-inner
+          so re-renders (auth events, profile changes) can't cause visible flicker. */}
+      {dbLoading && !dataLoadedRef.current && <Loader/>}
+      <div className="page-inner" style={dbLoading && !dataLoadedRef.current ? { display:'none' } : undefined}>
 
         {/* ── Network Error Banner (loadAll catch) ── */}
         {dbError && (
@@ -2697,7 +2722,7 @@ function Dashboard({ theme, onToggleTheme }) {
           <div style={{ display:'flex', alignItems:'center', gap:18, flexShrink:0 }}>
             <div className="serif mob-hide" style={{ fontStyle:'italic', fontSize:13, color:'var(--dim)',
               maxWidth:220, textAlign:'right', lineHeight:1.75 }}>
-              "{quote}"
+              "{dailyQuote}"
             </div>
             <Ring pct={todayPct} size={80} sw={6}
               color={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'}/>
@@ -4059,7 +4084,6 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
 
       </div>
-      )}
       </ErrorBoundary>
       )}
 
@@ -4193,7 +4217,7 @@ function Dashboard({ theme, onToggleTheme }) {
         const dom = daysOnMarket(cl.listDate, cl.createdAt)
         const priceNum = parseFloat(String(cl.price||'').replace(/[^0-9.]/g,''))
         const agentName = profileFullName || 'Your Agent'
-        const agentPhone = profile?.phone || ''
+        const agentPhone = profilePhone
         const agentEmail = user?.email || ''
         const statusLabel = cl.status==='closed'?'Closed':cl.status==='pending'?'Pending':'Active'
         const statusColor = cl.status==='closed'?'#10b981':cl.status==='pending'?'#f59e0b':'#8b5cf6'

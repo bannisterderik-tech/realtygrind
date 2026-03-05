@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { CSS, Loader, Wordmark, ThemeToggle, getRank } from '../design'
+import { Loader, Wordmark, ThemeToggle, getRank } from '../design'
 import { canUseTeams, isActiveBilling } from '../lib/plans'
 
 const UI_NOTE_LIMIT = 500
@@ -223,32 +223,25 @@ export default function CoachingPage({ onNavigate, theme, onToggleTheme }) {
   // ── Render ─────────────────────────────────────────────────────────────
   if (!profile?.team_id) {
     return (
-      <>
-        <style>{CSS}</style>
-        <div className="page">
-          <div className="page-inner" style={{ maxWidth:860 }}>
-            <div className="card" style={{ padding:32, textAlign:'center' }}>
-              <div className="serif" style={{ fontSize:22, color:'var(--text)', marginBottom:8 }}>📝 Coaching</div>
-              <div style={{ fontSize:14, color:'var(--muted)', marginBottom:20 }}>Join a team to access coaching notes and standups.</div>
-              <button className="btn-primary" onClick={()=>onNavigate('teams')} style={{ fontSize:14, padding:'10px 24px' }}>
-                Go to Teams
-              </button>
-            </div>
-          </div>
+      <div className="page-inner" style={{ maxWidth:860 }}>
+        <div className="card" style={{ padding:32, textAlign:'center' }}>
+          <div className="serif" style={{ fontSize:22, color:'var(--text)', marginBottom:8 }}>📝 Coaching</div>
+          <div style={{ fontSize:14, color:'var(--muted)', marginBottom:20 }}>Join a team to access coaching notes and standups.</div>
+          <button className="btn-primary" onClick={()=>onNavigate('teams')} style={{ fontSize:14, padding:'10px 24px' }}>
+            Go to Teams
+          </button>
         </div>
-      </>
+      </div>
     )
   }
 
-  if (loading) return <><style>{CSS}</style><Loader/></>
+  if (loading) return <Loader/>
 
   const NC = { praise:'#10b981', goal:'#d97706', concern:'#f43f5e', general:'#0ea5e9' }
 
   return (
     <>
-      <style>{CSS}</style>
-      <div className="page">
-        <div className="page-inner" style={{ maxWidth:860 }}>
+      <div className="page-inner" style={{ maxWidth:860 }}>
 
           {error && (
             <div style={{ background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.2)', borderRadius:9,
@@ -615,7 +608,6 @@ export default function CoachingPage({ onNavigate, theme, onToggleTheme }) {
           )}
 
         </div>
-      </div>
 
       {/* Confirm modal */}
       {confirmModal && (

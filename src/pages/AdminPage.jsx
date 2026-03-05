@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, memo } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
-import { CSS, StatCard, Loader, fmtMoney } from '../design'
+import { StatCard, Loader, fmtMoney } from '../design'
 
 const PLAN_COLORS = { admin: '#8b5cf6', solo: '#94a3b8', team: '#d97706', brokerage: '#8b5cf6', team_member: '#6366f1', free: '#706b62' }
 const PLAN_PRICES = { solo: 29, team: 199, brokerage: 499 }
@@ -679,25 +679,20 @@ function AdminPage({ onNavigate }) {
   // ── Access guard ────────────────────────────────────────────────────────
   if (!isAdmin) {
     return (
-      <>
-        <style>{CSS}</style>
-        <div className="page">
-          <div className="page-inner" style={{ maxWidth: 600 }}>
-            <div className="card" style={{ padding: '48px 32px', textAlign: 'center', marginTop: 60 }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
-              <div className="serif" style={{ fontSize: 22, color: 'var(--text)', marginBottom: 8 }}>
-                Access Restricted
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.7, marginBottom: 24 }}>
-                This area is restricted to platform administrators.
-              </div>
-              <button className="btn-outline" onClick={() => onNavigate('dashboard')}>
-                ← Back to Dashboard
-              </button>
-            </div>
+      <div className="page-inner" style={{ maxWidth: 600 }}>
+        <div className="card" style={{ padding: '48px 32px', textAlign: 'center', marginTop: 60 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
+          <div className="serif" style={{ fontSize: 22, color: 'var(--text)', marginBottom: 8 }}>
+            Access Restricted
           </div>
+          <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.7, marginBottom: 24 }}>
+            This area is restricted to platform administrators.
+          </div>
+          <button className="btn-outline" onClick={() => onNavigate('dashboard')}>
+            ← Back to Dashboard
+          </button>
         </div>
-      </>
+      </div>
     )
   }
 
@@ -705,9 +700,7 @@ function AdminPage({ onNavigate }) {
 
   return (
     <>
-      <style>{CSS}</style>
-      <div className="page">
-        <div className="page-inner" style={{ maxWidth: 1100 }}>
+      <div className="page-inner" style={{ maxWidth: 1100 }}>
 
           {/* ── Header ──────────────────────────────────────────────── */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
@@ -1077,7 +1070,6 @@ function AdminPage({ onNavigate }) {
             </>
           )}
         </div>
-      </div>
     </>
   )
 }

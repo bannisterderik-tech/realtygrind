@@ -85,7 +85,6 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
   }
 
   return (
-    <div className="page">
         <div className="page-inner" style={{ maxWidth:880 }}>
 
           {/* Header */}
@@ -292,6 +291,5 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
             </>
           )}
         </div>
-    </div>
   )
 }

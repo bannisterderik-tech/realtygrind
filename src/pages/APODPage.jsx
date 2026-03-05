@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { CSS, Wordmark, ThemeToggle } from '../design'
+import { Wordmark, ThemeToggle } from '../design'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -634,10 +634,7 @@ export default function APODPage({ onNavigate, theme, onToggleTheme }) {
 
   return (
     <>
-      <style>{CSS}</style>
-      <div className="page">
-
-        <div className="page-inner" style={{ maxWidth: 1000 }}>
+      <div className="page-inner" style={{ maxWidth: 1000 }}>
 
           {/* ── Page header ───────────────────────────────────────── */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28, flexWrap: 'wrap', gap: 12 }}>
@@ -1061,7 +1058,6 @@ export default function APODPage({ onNavigate, theme, onToggleTheme }) {
 
           </div>
         </div>
-      </div>
 
       {/* ── Toast ─────────────────────────────────────────────────── */}
       {toastMsg && (

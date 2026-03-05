@@ -1355,10 +1355,9 @@ function Dashboard({ theme, onToggleTheme }) {
   const canGoForward = viewDate.getDate() < lastDayOfMonth
 
   // ── Page navigation with debounce ─────────────────────────────────────────
-  // Rapid clicking between pages causes mount/unmount race conditions where the
-  // outgoing page's DOM hasn't been cleaned up when the incoming page renders,
-  // producing visible content duplication.  The debounce ensures the browser has
-  // painted the current navigation before accepting another one.
+  // A single ternary renders dashboard XOR sub-pages (never both), making
+  // visual duplication structurally impossible.  The rAF debounce is an extra
+  // safety layer against rapid double-clicks.
   const [page, _setPage] = useState('dashboard')
   const navigatingRef = useRef(false)
   const setPage = useCallback((p) => {
@@ -2673,24 +2672,11 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
       )}
 
-      <Suspense fallback={<Loader/>}>
-      {page==='teams'     && <ErrorBoundary key="teams" onReset={()=>setPage('dashboard')}><TeamsPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
-      {page==='coaching'  && <ErrorBoundary key="coaching" onReset={()=>setPage('dashboard')}><CoachingPage  onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
-      {page==='billing'   && <ErrorBoundary key="billing" onReset={()=>setPage('dashboard')}><BillingPage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
-      {page==='profile'   && <ErrorBoundary key="profile" onReset={()=>setPage('dashboard')}><ProfilePage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}
-                                             onTaskDeleted={syncTaskDeleted} onTaskRestored={syncTaskRestored}/></ErrorBoundary>}
-      {page==='directory' && <ErrorBoundary key="directory" onReset={()=>setPage('dashboard')}><DirectoryPage onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
-      {page==='apod'      && <ErrorBoundary key="apod" onReset={()=>setPage('dashboard')}><APODPage      onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
-      {page==='admin'     && <ErrorBoundary key="admin" onReset={()=>setPage('dashboard')}><AdminPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
-      {page==='terms'     && <ErrorBoundary key="terms" onReset={()=>setPage('dashboard')}><TermsPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
-      </Suspense>
-      {/* AI Assistant now handled by floating widget — see useEffect redirect below */}
-
-      {/* ── Dashboard content — kept permanently in DOM ──────────────────────
-           Uses CSS display:none instead of conditional rendering so navigating
-           between pages never unmounts/remounts the dashboard tree.  This
-           eliminates visual duplication caused by rapid mount/unmount cycles. */}
-      <div style={{ display: page === 'dashboard' ? undefined : 'none' }}>
+      {/* ── Page Content — exclusive ternary: dashboard XOR sub-page ─────
+           A ternary renders exactly ONE branch at a time.  This structurally
+           eliminates visual duplication — the other branch doesn't exist in
+           the DOM, so there is nothing to accidentally show twice. */}
+      {page === 'dashboard' ? (
       <ErrorBoundary key="dashboard" onReset={()=>window.location.reload()}>
       {dbLoading ? <Loader/> : (
       <div className="page-inner">
@@ -4109,7 +4095,20 @@ function Dashboard({ theme, onToggleTheme }) {
       </div>
       )}
       </ErrorBoundary>
-      </div>
+      ) : (
+      <Suspense fallback={<Loader/>}>
+      {page==='teams'     && <ErrorBoundary key="teams" onReset={()=>setPage('dashboard')}><TeamsPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      {page==='coaching'  && <ErrorBoundary key="coaching" onReset={()=>setPage('dashboard')}><CoachingPage  onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      {page==='billing'   && <ErrorBoundary key="billing" onReset={()=>setPage('dashboard')}><BillingPage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      {page==='profile'   && <ErrorBoundary key="profile" onReset={()=>setPage('dashboard')}><ProfilePage   onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}
+                                             onTaskDeleted={syncTaskDeleted} onTaskRestored={syncTaskRestored}/></ErrorBoundary>}
+      {page==='directory' && <ErrorBoundary key="directory" onReset={()=>setPage('dashboard')}><DirectoryPage onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      {page==='apod'      && <ErrorBoundary key="apod" onReset={()=>setPage('dashboard')}><APODPage      onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      {page==='admin'     && <ErrorBoundary key="admin" onReset={()=>setPage('dashboard')}><AdminPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      {page==='terms'     && <ErrorBoundary key="terms" onReset={()=>setPage('dashboard')}><TermsPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      </Suspense>
+      )}
+      {/* AI Assistant now handled by floating widget — see useEffect redirect below */}
 
       {/* ── Offer Received Modal (from Listing) ─────────── */}
       {offerReceivedModal && (

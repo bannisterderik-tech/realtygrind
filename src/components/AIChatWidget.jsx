@@ -87,17 +87,22 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
     }
   }, [messages, streaming, isOpen])
 
-  // Fetch credits when user is available
-  useEffect(() => { if (user?.id) fetchCredits() }, [user?.id])
+  // Fetch credits when user is available — AbortController prevents setState after unmount
+  useEffect(() => {
+    if (!user?.id) return
+    const controller = new AbortController()
+    fetchCredits(controller.signal)
+    return () => controller.abort()
+  }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clear new-reply indicator when opening
   useEffect(() => { if (isOpen) setHasNewReply(false) }, [isOpen])
 
-  async function fetchCredits() {
+  async function fetchCredits(signal) {
     if (!supabase) return
     try {
       const token = await getFreshToken()
-      if (!token) return
+      if (!token || signal?.aborted) return
       const resp = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-assistant`,
         {
@@ -106,9 +111,11 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
             'Authorization': `Bearer ${token}`,
           },
+          signal,
         }
       )
       const data = await resp.json()
+      if (signal?.aborted) return
       if (resp.ok) {
         setCreditsUsed(data.credits_used || 0)
         setCreditsLimit(data.credits_limit === -1 ? -1 : (data.credits_limit || 0))
@@ -120,10 +127,11 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
         }
       }
     } catch (err) {
+      if (err.name === 'AbortError') return
       console.error('AI widget fetchCredits error:', err)
       setConnError(true)
     } finally {
-      setLoadingCredits(false)
+      if (!signal?.aborted) setLoadingCredits(false)
     }
   }
 

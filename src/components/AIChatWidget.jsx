@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, memo } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import { isActiveBilling, isTeamMember, isPlatformAdmin } from '../lib/plans'
@@ -54,7 +54,7 @@ function renderMarkdown(text) {
     .replace(/\n/g, '<br/>')
 }
 
-export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, theme }) {
+const AIChatWidget = memo(function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, theme }) {
   const { user, profile } = useAuth()
 
   // Chat state — persists across open/close
@@ -77,8 +77,9 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
   const panelRef    = useRef(null)
   const isOpenRef   = useRef(isOpen)
   const sendingRef  = useRef(false) // double-submit guard
-  useEffect(() => { messagesRef.current = messages }, [messages])
-  useEffect(() => { isOpenRef.current = isOpen }, [isOpen])
+  const retryAbortRef = useRef(null) // AbortController for retry fetchCredits
+  messagesRef.current = messages  // direct assignment — no useEffect overhead
+  isOpenRef.current = isOpen
 
   // Auto-scroll
   useEffect(() => {
@@ -92,7 +93,10 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
     if (!user?.id) return
     const controller = new AbortController()
     fetchCredits(controller.signal)
-    return () => controller.abort()
+    return () => {
+      controller.abort()
+      if (retryAbortRef.current) retryAbortRef.current.abort()
+    }
   }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clear new-reply indicator when opening
@@ -551,7 +555,12 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
               <div style={{ fontSize:12, color:'var(--muted)', marginBottom:18, lineHeight:1.6 }}>
                 Check your connection or try again.
               </div>
-              <button onClick={() => { setConnError(false); setLoadingCredits(true); fetchCredits() }} style={{
+              <button onClick={() => {
+                setConnError(false); setLoadingCredits(true)
+                if (retryAbortRef.current) retryAbortRef.current.abort()
+                const c = new AbortController(); retryAbortRef.current = c
+                fetchCredits(c.signal)
+              }} style={{
                 padding:'8px 20px', borderRadius:9, cursor:'pointer', fontSize:12, fontWeight:700,
                 background:'rgba(139,92,246,.12)', border:'1px solid rgba(139,92,246,.3)', color:'#8b5cf6',
                 transition:'all .15s',
@@ -619,4 +628,6 @@ export default function AIChatWidget({ isOpen, onToggle, onClose, onNavigate, th
       `}</style>
     </>
   )
-}
+})
+
+export default AIChatWidget

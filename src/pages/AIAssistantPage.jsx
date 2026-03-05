@@ -69,7 +69,7 @@ export default function AIAssistantPage({ onNavigate, theme, onToggleTheme }) {
   const textareaRef  = useRef(null)
   const messagesRef  = useRef(messages)
   const sendingRef   = useRef(false) // double-submit guard
-  useEffect(() => { messagesRef.current = messages }, [messages])
+  messagesRef.current = messages  // direct assignment — no useEffect overhead
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {

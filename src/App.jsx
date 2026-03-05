@@ -1299,6 +1299,15 @@ const HabitCell = memo(function HabitCell({ habitId, weekIndex, dayIndex, checke
 
 function Dashboard({ theme, onToggleTheme }) {
   const { user, profile } = useAuth()
+
+  // ── Stable profile primitives ────────────────────────────────────────────
+  // Extract primitive values from profile ONCE so downstream useMemos don't
+  // re-fire when profile object reference changes (e.g. after refreshProfile).
+  const profileTeamId      = profile?.team_id ?? null
+  const profileFullName    = profile?.full_name ?? null
+  const profileAppRole     = profile?.app_role ?? null
+  const profileTeamCreator = profile?.teams?.created_by ?? null
+
   // Computed per-render so it never goes stale if tab stays open across a month boundary
   const now = new Date()
   const MONTH_YEAR = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`
@@ -1433,6 +1442,17 @@ function Dashboard({ theme, onToggleTheme }) {
     dataLoadedRef.current = true
     loadAll()
   },[user?.id])
+
+  // Safety net: if dbLoading stays true for >12s (e.g. loadAll hung or threw
+  // outside the try/catch), force it to false so the UI never gets permanently stuck.
+  useEffect(() => {
+    if (!dbLoading) return
+    const timer = setTimeout(() => {
+      setDbLoading(false)
+      if (!dataLoadedRef.current) setDbError('Loading timed out — please refresh the page.')
+    }, 12000)
+    return () => clearTimeout(timer)
+  }, [dbLoading])
 
   async function loadAll() {
     if (!user) return
@@ -2241,8 +2261,10 @@ function Dashboard({ theme, onToggleTheme }) {
   const rankPct  = nextRank ? Math.round((xp-rank.min)/(nextRank.min-rank.min)*100) : 100
 
   // ── Team vs personal prefs ────────────────────────────────────────────────
-  const isOnTeam    = !!profile?.team_id
-  const isTeamOwner = isOnTeam && profile?.teams?.created_by === user?.id
+  // Use stable primitives (extracted at top of Dashboard) so these booleans
+  // don't change on every profile object reference update.
+  const isOnTeam    = !!profileTeamId
+  const isTeamOwner = isOnTeam && profileTeamCreator === user?.id
   // Stabilize activePrefs: for team members, profile?.teams?.team_prefs is a
   // new object reference every time the profile is re-fetched. Using JSON
   // serialization as a memo key prevents a cascade of useMemo recalculations
@@ -2486,7 +2508,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
           <button className={`nav-btn mob-hide${(page==='directory'||page==='apod'||page==='ai-assistant')?' active':''}`} onClick={()=>setPage('directory')}>🔗 Tools</button>
 
-          {profile?.app_role === 'admin' && (
+          {profileAppRole === 'admin' && (
             <button className={`nav-btn mob-hide${page==='admin'?' active':''}`} onClick={()=>setPage('admin')} style={{ fontSize:11, letterSpacing:'.03em' }}>⚙️ Admin</button>
           )}
 
@@ -2517,7 +2539,7 @@ function Dashboard({ theme, onToggleTheme }) {
             </button>
           ) })()}
           <button className={`nav-btn${page==='profile'?' active':''}`} onClick={()=>setPage('profile')}>
-            {profile?.full_name?.split(' ')[0]||'Profile'}
+            {profileFullName?.split(' ')[0]||'Profile'}
           </button>
           <button className="btn-ghost mob-hide" style={{ background:'transparent', border:'1px solid rgba(255,255,255,.09)', color:'var(--nav-sub)', fontSize:12 }}
             onClick={()=>supabase.auth.signOut()}>Sign out</button>
@@ -2550,7 +2572,7 @@ function Dashboard({ theme, onToggleTheme }) {
             { p:'directory', icon:'🔗', label:'Tools' },
             { p:'billing',   icon:'💳', label:'Billing' },
             { p:'profile',   icon:'👤', label:'Profile' },
-            ...(profile?.app_role === 'admin' ? [{ p:'admin', icon:'⚙️', label:'Admin' }] : []),
+            ...(profileAppRole === 'admin' ? [{ p:'admin', icon:'⚙️', label:'Admin' }] : []),
           ].map(({p, icon, label})=>(
             <button key={p} onClick={()=>{ setPage(p); setMenuOpen(false) }} style={{
               display:'flex', alignItems:'center', gap:12,
@@ -2648,7 +2670,7 @@ function Dashboard({ theme, onToggleTheme }) {
           <div>
             <div style={{ fontSize:10, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace",
               letterSpacing:.7, textTransform:'uppercase', marginBottom:6 }}>
-              {timeGreeting}, {profile?.full_name?.split(' ')[0]||'Agent'} · {dateStr.split(',').slice(1).join(',').trim()}
+              {timeGreeting}, {profileFullName?.split(' ')[0]||'Agent'} · {dateStr.split(',').slice(1).join(',').trim()}
             </div>
             <div className="serif" style={{ fontSize:42, color:'var(--text)', lineHeight:1, letterSpacing:'-.02em', fontWeight:600, marginBottom:12 }}>
               {dateStr.split(',')[0]}<span style={{ color:rank.color }}>.</span>
@@ -4170,7 +4192,7 @@ function Dashboard({ theme, onToggleTheme }) {
         const comm = resolveCommission(cl.commission, cl.price)
         const dom = daysOnMarket(cl.listDate, cl.createdAt)
         const priceNum = parseFloat(String(cl.price||'').replace(/[^0-9.]/g,''))
-        const agentName = profile?.full_name || 'Your Agent'
+        const agentName = profileFullName || 'Your Agent'
         const agentPhone = profile?.phone || ''
         const agentEmail = user?.email || ''
         const statusLabel = cl.status==='closed'?'Closed':cl.status==='pending'?'Pending':'Active'

@@ -339,7 +339,7 @@ Deno.serve(async (req) => {
           ? admin.from('transactions').select('user_id, type, price').eq('month_year', MONTH_YEAR).in('user_id', memberIds).limit(500)
           : { data: [] },
         memberIds.length > 0
-          ? admin.from('listings').select('user_id, address, price, status, commission, list_date, expires_date, lead_source, created_at').in('user_id', memberIds).neq('status', 'closed').limit(200)
+          ? admin.from('listings').select('user_id, address, price, status, commission, list_date, expires_date, lead_source, created_at, unit_count').in('user_id', memberIds).neq('status', 'closed').limit(200)
           : { data: [] },
       ])
 
@@ -378,12 +378,19 @@ Deno.serve(async (req) => {
         const habitCount = memberHabits[m.id] || 0
         const mListings = memberListings[m.id] || []
 
+        // Split member items into actual listings vs buyer rep agreements
+        const mActualListings = mListings.filter(l => (l.unit_count ?? 1) !== 0)
+        const mBuyerReps = mListings.filter(l => (l.unit_count ?? 1) === 0)
+
         let memberLine = `- ${m.full_name || 'Agent'} | XP: ${m.xp || 0} | Streak: ${m.streak || 0}d | Habits: ${habitCount} this month | Closed: ${deals.closed}${deals.volume > 0 ? ` ($${deals.volume.toLocaleString()})` : ''} | Pending: ${deals.pending} | Offers: ${deals.offers}${mBio.specialty ? ` | Specialty: ${mBio.specialty}` : ''}${mGoals.monthly_closings ? ` | Goal: ${mGoals.monthly_closings} closings` : ''}`
-        if (mListings.length > 0) {
-          memberLine += ` | Active Listings: ${mListings.length} (${mListings.slice(0, 3).map(l => {
+        if (mActualListings.length > 0) {
+          memberLine += ` | Active Listings: ${mActualListings.length} (${mActualListings.slice(0, 3).map(l => {
             const mDom = daysOnMarket(l.list_date, l.created_at)
             return `${l.address || 'Unknown'} @ ${fmtPrice(l.price)}${mDom !== null ? `, ${mDom}d DOM` : ''}${l.lead_source ? `, ${l.lead_source}` : ''}`
-          }).join('; ')}${mListings.length > 3 ? ` +${mListings.length - 3} more` : ''})`
+          }).join('; ')}${mActualListings.length > 3 ? ` +${mActualListings.length - 3} more` : ''})`
+        }
+        if (mBuyerReps.length > 0) {
+          memberLine += ` | Buyer Reps: ${mBuyerReps.length}`
         }
         memberLines.push(memberLine)
 

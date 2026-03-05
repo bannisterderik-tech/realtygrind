@@ -60,12 +60,16 @@ export function AuthProvider({ children }) {
       }
 
       // ── INITIAL_SESSION or SIGNED_IN — load profile once ──
-      setUser(session.user)
+      // Use functional update so React bails out of re-render when user id hasn't
+      // changed (wake from sleep, network reconnect fire SIGNED_IN with same user).
+      setUser(prev => prev?.id === session.user.id ? prev : session.user)
       if (!profileLoadedRef.current) {
         profileLoadedRef.current = true
         fetchProfile(session.user.id, session.user.user_metadata, session.user.email)
       } else {
-        setLoading(false)
+        // Only call setLoading if it's actually still true — avoids a no-op state
+        // update that would still recalculate the context useMemo.
+        setLoading(prev => prev ? false : prev)
       }
     })
 

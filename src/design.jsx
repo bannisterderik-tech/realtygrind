@@ -677,6 +677,13 @@ body,.page { background: var(--bg); color: var(--text); }
 [data-lastpass-icon-root], [data-lastpass-root], com-1password-notification,
 [class*="grammarly"], grammarly-extension, grammarly-desktop-integration,
 [data-dashlane-rid], [data-dashlane-label] { display:none !important; pointer-events:none !important; }
+/* ── Duplication guardrail ────────────────────────────────────────────────── */
+/* If React/HMR/bfcache ever leaves duplicate trees in the DOM, only the     */
+/* last instance (freshest React tree) is visible. The JS sentinel in        */
+/* Dashboard will also remove stale copies, but CSS is the instant safety    */
+/* net so the user never sees a flash of duplicated content.                 */
+.page ~ .page { display:none !important; }
+[data-theme] ~ [data-theme] { display:none !important; }
 `
 
 // ─── React components ──────────────────────────────────────────────────────────

@@ -1595,14 +1595,17 @@ function Dashboard({ theme, onToggleTheme }) {
     }
   }, [page])
 
-  // Check if invited user needs to set a password (only once per session)
+  // Check if invited user needs to set a password (only once per session).
+  // Guard: skip if already triggered or if password was already set.
+  const passwordSetVal = profile?.habit_prefs?.password_set
   useEffect(() => {
     if (passwordSetDone.current) return
-    if (!dbLoading && user?.user_metadata?.team_id && !profile?.habit_prefs?.password_set) {
+    if (!dbLoading && user?.user_metadata?.team_id && !passwordSetVal) {
+      passwordSetDone.current = true
       setNeedsPassword(true)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dbLoading, user?.user_metadata?.team_id, profile?.habit_prefs?.password_set])
+  }, [dbLoading, user?.user_metadata?.team_id, passwordSetVal])
 
   async function handleSetPassword() {
     setPwError('')
@@ -2240,9 +2243,17 @@ function Dashboard({ theme, onToggleTheme }) {
   // ── Team vs personal prefs ────────────────────────────────────────────────
   const isOnTeam    = !!profile?.team_id
   const isTeamOwner = isOnTeam && profile?.teams?.created_by === user?.id
-  const activePrefs = isOnTeam
-    ? (profile?.teams?.team_prefs || DEFAULT_PREFS)
-    : habitPrefs
+  // Stabilize activePrefs: for team members, profile?.teams?.team_prefs is a
+  // new object reference every time the profile is re-fetched. Using JSON
+  // serialization as a memo key prevents a cascade of useMemo recalculations
+  // (builtInEffective → effectiveHabits → dashStats) on every profile refresh.
+  const rawTeamPrefs = profile?.teams?.team_prefs
+  const teamPrefsKey = isOnTeam ? JSON.stringify(rawTeamPrefs ?? null) : null
+  const activePrefs = useMemo(
+    () => isOnTeam ? (rawTeamPrefs || DEFAULT_PREFS) : habitPrefs,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isOnTeam, teamPrefsKey, habitPrefs]
+  )
   const activePrefsRef = useRef(activePrefs); activePrefsRef.current = activePrefs
 
   // ── Effective habits: built-ins (with edits, hidden removed) + custom defaults, ordered ──
@@ -2252,7 +2263,7 @@ function Dashboard({ theme, onToggleTheme }) {
       const ed = (activePrefs.edits||{})[h.id] || {}
       return { ...h, label:ed.label||h.label, icon:ed.icon||h.icon, xp:ed.xp||h.xp, isBuiltIn:true }
     })
-  , [activePrefs.hidden, activePrefs.edits])
+  , [activePrefs])
   const customDefaults = useMemo(() => isOnTeam && !isTeamOwner
     ? []
     : customTasks.filter(t => t.isDefault).map(t => ({ ...t, isBuiltIn:false }))

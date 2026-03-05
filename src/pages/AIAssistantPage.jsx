@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
-import { CSS, Loader } from '../design'
+import { Loader } from '../design'
 import { isActiveBilling, isTeamMember, isPlatformAdmin } from '../lib/plans'
 
 // Get a fresh access token (refreshes if expired)
@@ -252,12 +252,7 @@ export default function AIAssistantPage({ onNavigate, theme, onToggleTheme }) {
   const isDisabledByTeam = profile?.teams?.team_prefs?.ai_tools?.assistant_enabled === false
 
   if (loadingCredits) {
-    return (
-      <>
-        <style>{CSS}</style>
-        <div className="page"><div className="page-inner" style={{ maxWidth: 760 }}><Loader /></div></div>
-      </>
-    )
+    return <div className="page-inner" style={{ maxWidth: 760 }}><Loader /></div>
   }
 
   // Credit display
@@ -269,9 +264,7 @@ export default function AIAssistantPage({ onNavigate, theme, onToggleTheme }) {
 
   return (
     <>
-      <style>{CSS}</style>
-      <div className="page">
-        <div className="page-inner" style={{ maxWidth: 760, display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', padding: '0 16px' }}>
+      <div className="page-inner" style={{ maxWidth: 760, display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', padding: '0 16px' }}>
 
           {/* ── Header ───────────────────────────────────── */}
           <div style={{ padding: '20px 0 16px', flexShrink: 0 }}>
@@ -479,7 +472,6 @@ export default function AIAssistantPage({ onNavigate, theme, onToggleTheme }) {
           )}
 
         </div>
-      </div>
 
       {/* Blink animation for streaming cursor */}
       <style>{`

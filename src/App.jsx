@@ -1354,7 +1354,19 @@ function Dashboard({ theme, onToggleTheme }) {
   const canGoBack    = viewDate.getDate() > 1
   const canGoForward = viewDate.getDate() < lastDayOfMonth
 
-  const [page, setPage] = useState('dashboard')
+  // ── Page navigation with debounce ─────────────────────────────────────────
+  // Rapid clicking between pages causes mount/unmount race conditions where the
+  // outgoing page's DOM hasn't been cleaned up when the incoming page renders,
+  // producing visible content duplication.  The debounce ensures the browser has
+  // painted the current navigation before accepting another one.
+  const [page, _setPage] = useState('dashboard')
+  const navigatingRef = useRef(false)
+  const setPage = useCallback((p) => {
+    if (navigatingRef.current) return
+    navigatingRef.current = true
+    _setPage(p)
+    requestAnimationFrame(() => { navigatingRef.current = false })
+  }, [])
   const [tab,  setTab]  = useState('today')
   const [dbLoading, setDbLoading] = useState(true)
   const [dbError,   setDbError]   = useState(null)

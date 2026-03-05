@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { CSS, Loader, Wordmark, ThemeToggle, Ring, getRank, fmtMoney, RANKS } from '../design'
+import { Loader, Wordmark, ThemeToggle, Ring, getRank, fmtMoney, RANKS } from '../design'
 import { HABITS } from '../habits'
 import { ALL_APPS } from './DirectoryPage'
 
@@ -512,10 +512,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
 
   return (
     <>
-      <style>{CSS}</style>
-      <div className="page">
-
-        <div className="page-inner" style={{ maxWidth:880 }}>
+      <div className="page-inner" style={{ maxWidth:880 }}>
 
           {/* Rank banner */}
           <div className="card" style={{ padding:28, marginBottom:20, borderTop:`3px solid ${rank.color}`,
@@ -1368,7 +1365,6 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
             REALTYGRIND — YOUR CAREER, YOUR DATA
           </div>
         </div>
-      </div>
     </>
   )
 }

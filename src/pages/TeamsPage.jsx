@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { CSS, Loader, Wordmark, ThemeToggle, Ring, getRank, CAT, StatCard, fmtMoney, resolveCommission } from '../design'
+import { Loader, Wordmark, ThemeToggle, Ring, getRank, CAT, StatCard, fmtMoney, resolveCommission } from '../design'
 import { HABITS } from '../habits'
 import { canUseTeams, getMaxMembers, getPlan, isActiveBilling } from '../lib/plans'
 import { ALL_APPS } from './DirectoryPage'
@@ -850,10 +850,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
 
   return (
     <>
-      <style>{CSS}</style>
-      <div className="page">
-
-        <div className="page-inner" style={{ maxWidth:860 }}>
+      <div className="page-inner" style={{ maxWidth:860 }}>
 
           {success && (
             <div style={{ background:'rgba(5,150,105,.08)', border:'1px solid rgba(5,150,105,.2)', borderRadius:9,
@@ -2580,7 +2577,6 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
             </div>
           )}
         </div>
-      </div>
       {/* ── Member detail overlay (owner / admin / group leader) ── */}
       {viewingMember && isAdminOrOwner && (() => {
         const rank  = getRank(viewingMember.xp || 0)

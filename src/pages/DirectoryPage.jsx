@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CSS, Wordmark, ThemeToggle } from '../design'
+import { Wordmark, ThemeToggle } from '../design'
 import { useAuth } from '../lib/AuthContext'
 
 const AI_TOOLS = [
@@ -266,10 +266,7 @@ export default function DirectoryPage({ onNavigate, theme, onToggleTheme }) {
 
   return (
     <>
-      <style>{CSS}</style>
-      <div className="page">
-
-        <div className="page-inner" style={{ maxWidth:960 }}>
+      <div className="page-inner" style={{ maxWidth:960 }}>
 
           {/* ── Header ───────────────────────────────────── */}
           <div style={{ marginBottom:28 }}>
@@ -534,7 +531,6 @@ export default function DirectoryPage({ onNavigate, theme, onToggleTheme }) {
           </div>
 
         </div>
-      </div>
     </>
   )
 }

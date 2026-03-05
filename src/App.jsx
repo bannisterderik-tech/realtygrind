@@ -1371,6 +1371,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [pwSaving, setPwSaving] = useState(false)
   const passwordSetDone = useRef(false)
   const dataLoadedRef = useRef(false) // prevents loadAll from running more than once
+  const mountedRef = useRef(true)     // tracks whether Dashboard is mounted for async safety
 
   // Habit state
   const [habits,   setHabits]   = useState(()=>{
@@ -1454,6 +1455,12 @@ function Dashboard({ theme, onToggleTheme }) {
   const [clientUpdateNotes, setClientUpdateNotes] = useState('')
   const [todayDate] = useState(() => new Date().toLocaleDateString('en-CA')) // YYYY-MM-DD, stable across re-renders
 
+  // Track mount status for async safety — prevents stale setState calls after unmount
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
   // Depend on user.id only — prevents re-running when a new user object is created
   // (e.g. on token refresh) while the same user is still logged in.
   useEffect(()=>{
@@ -1474,7 +1481,7 @@ function Dashboard({ theme, onToggleTheme }) {
   }, [dbLoading])
 
   async function loadAll() {
-    if (!user) return
+    if (!user || !mountedRef.current) return
     setDbLoading(true)
     setDbError(null)
     let habRes, listRes, txRes, profRes, ctRes
@@ -1486,6 +1493,8 @@ function Dashboard({ theme, onToggleTheme }) {
         supabase.from('profiles').select('*').eq('id',user.id).single(),
         supabase.from('custom_tasks').select('*').eq('user_id',user.id).limit(200),
       ])
+    // Bail out if component unmounted while waiting for data
+    if (!mountedRef.current) return
 
     if (habRes.data?.length) {
       const g={}; HABITS.forEach(h=>{g[h.id]=Array(WEEKS).fill(null).map(()=>Array(7).fill(false))})
@@ -2665,12 +2674,14 @@ function Dashboard({ theme, onToggleTheme }) {
       </Suspense>
       {/* AI Assistant now handled by floating widget — see useEffect redirect below */}
 
-      {page==='dashboard' && (
+      {/* ── Dashboard content — kept permanently in DOM ──────────────────────
+           Uses CSS display:none instead of conditional rendering so navigating
+           between pages never unmounts/remounts the dashboard tree.  This
+           eliminates visual duplication caused by rapid mount/unmount cycles. */}
+      <div style={{ display: page === 'dashboard' ? undefined : 'none' }}>
       <ErrorBoundary key="dashboard" onReset={()=>window.location.reload()}>
-      {/* Show loader ONLY on initial load; once data loads, never unmount page-inner
-          so re-renders (auth events, profile changes) can't cause visible flicker. */}
-      {dbLoading && !dataLoadedRef.current && <Loader/>}
-      <div className="page-inner" style={dbLoading && !dataLoadedRef.current ? { display:'none' } : undefined}>
+      {dbLoading ? <Loader/> : (
+      <div className="page-inner">
 
         {/* ── Network Error Banner (loadAll catch) ── */}
         {dbError && (
@@ -4084,8 +4095,9 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
 
       </div>
-      </ErrorBoundary>
       )}
+      </ErrorBoundary>
+      </div>
 
       {/* ── Offer Received Modal (from Listing) ─────────── */}
       {offerReceivedModal && (

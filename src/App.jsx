@@ -1794,6 +1794,37 @@ function Dashboard({ theme, onToggleTheme }) {
     await safeDb(supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id))
   }
 
+  // ── Task reordering ────────────────────────────────────────────────────────
+  function getOrderedTasksForDate(dateStr, recHabits, daySpecific) {
+    const all = [...recHabits, ...daySpecific.map(t => ({ ...t, isDaySpecific: true }))]
+    const dayOrder = habitPrefs.dayOrder?.[dateStr]
+    if (dayOrder?.length) {
+      const idx = {}; dayOrder.forEach((id, i) => idx[id] = i)
+      all.sort((a, b) => (idx[a.id] ?? 999) - (idx[b.id] ?? 999))
+    }
+    return all
+  }
+
+  function moveTask(dateStr, orderedList, taskId, direction) {
+    const ids = orderedList.map(t => t.id)
+    const i = ids.indexOf(taskId)
+    if (i < 0) return
+    const j = i + direction
+    if (j < 0 || j >= ids.length) return
+    ;[ids[i], ids[j]] = [ids[j], ids[i]]
+    // Also update the global recurring order for non-day-specific items
+    const recurringIds = ids.filter(id => {
+      const t = orderedList.find(x => x.id === id)
+      return t && !t.isDaySpecific
+    })
+    const newPrefs = {
+      ...habitPrefs,
+      order: recurringIds,
+      dayOrder: { ...(habitPrefs.dayOrder || {}), [dateStr]: ids }
+    }
+    saveProfileHabitPrefs(newPrefs)
+  }
+
   function skipHabitToday(hid) {
     const prev = (habitPrefs.skipped||{})[viewDateStr] || []
     if (prev.includes(String(hid))) return
@@ -3054,9 +3085,14 @@ function Dashboard({ theme, onToggleTheme }) {
                 </div>
               </div>
 
-              {/* ── Unified task list: built-ins + custom defaults (ordered) ── */}
+              {/* ── Unified ordered task list (all types) ──── */}
+              {(()=>{
+                const daySpecific = customTasks.filter(t => !t.isDefault && t.specificDate === viewDateStr)
+                const unifiedList = getOrderedTasksForDate(viewDateStr, effectiveView, daySpecific)
+                return (
+                  <>
               <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
-                {effectiveView.map(h => {
+                {unifiedList.map((h, idx) => {
                   if (h.isBuiltIn) {
                     const done = habits[h.id][viewWeek]?.[viewDayIdx]
                     const cs   = CAT[h.cat]
@@ -3064,6 +3100,10 @@ function Dashboard({ theme, onToggleTheme }) {
                     const cnt  = counters[ckey]||0
                     return (
                       <div key={h.id} className={`habit-row${done?' done':''}`}>
+                        <div className="reorder-arrows">
+                          <button className="reorder-btn" disabled={idx===0} onClick={()=>moveTask(viewDateStr,unifiedList,h.id,-1)}>▲</button>
+                          <button className="reorder-btn" disabled={idx===unifiedList.length-1} onClick={()=>moveTask(viewDateStr,unifiedList,h.id,1)}>▼</button>
+                        </div>
                         <button className="chk" onClick={()=>toggleHabit(h.id,viewWeek,viewDayIdx)}
                           style={done?{background:cs.light,borderColor:cs.color}:{}}>
                           {done && (
@@ -3120,12 +3160,54 @@ function Dashboard({ theme, onToggleTheme }) {
                         )}
                       </div>
                     )
-                  } else {
-                    // Custom default task (in unified order)
+                  } else if (h.isDaySpecific) {
+                    // Day-specific task (today only / gcal event)
                     const ckey = `${h.id}-${viewWeek}-${viewDayIdx}`
                     const done = !!customDone[ckey]
                     return (
                       <div key={h.id} className={`habit-row${done?' done':''}`}>
+                        <div className="reorder-arrows">
+                          <button className="reorder-btn" disabled={idx===0} onClick={()=>moveTask(viewDateStr,unifiedList,h.id,-1)}>▲</button>
+                          <button className="reorder-btn" disabled={idx===unifiedList.length-1} onClick={()=>moveTask(viewDateStr,unifiedList,h.id,1)}>▼</button>
+                        </div>
+                        <button className="chk" onClick={()=>toggleCustomTask(h.id,viewWeek,viewDayIdx)}
+                          style={done?{background:'rgba(6,182,212,.12)',borderColor:'#06b6d4'}:{}}>
+                          {done && (
+                            <svg width="11" height="8" viewBox="0 0 11 8" fill="none">
+                              <path d="M1 4L4 7L10 1" stroke="#06b6d4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          )}
+                        </button>
+                        <span style={{ fontSize:15, flexShrink:0 }}>{h.icon}</span>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
+                            textDecoration:done?'line-through':'none', transition:'all .15s' }}>{h.label}</div>
+                          <div style={{ fontSize:10, color:'var(--dim)' }}>+{h.xp} XP</div>
+                        </div>
+                        <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:500, flexShrink:0,
+                          background: h.googleEventId ? 'rgba(66,133,244,.1)' : 'rgba(245,158,11,.1)',
+                          color: h.googleEventId ? '#4285f4' : 'var(--gold2)',
+                          border: `1px solid ${h.googleEventId ? 'rgba(66,133,244,.25)' : 'rgba(245,158,11,.25)'}` }}>
+                          {h.googleEventId ? 'gcal' : 'today'}
+                        </span>
+                        {gcalToken && !h.googleEventId && !done && (
+                          <button onClick={()=>addToGoogleCalendar(h, viewDateStr)} title="Add to Google Calendar"
+                            style={{ background:'none', border:'none', cursor:'pointer', color:'#4285f4',
+                              fontSize:13, padding:'2px 4px', lineHeight:1, flexShrink:0, opacity:.7 }}>📅</button>
+                        )}
+                        <button className="btn-del" onClick={()=>deleteCustomTask(h.id)}>✕</button>
+                      </div>
+                    )
+                  } else {
+                    // Custom default task
+                    const ckey = `${h.id}-${viewWeek}-${viewDayIdx}`
+                    const done = !!customDone[ckey]
+                    return (
+                      <div key={h.id} className={`habit-row${done?' done':''}`}>
+                        <div className="reorder-arrows">
+                          <button className="reorder-btn" disabled={idx===0} onClick={()=>moveTask(viewDateStr,unifiedList,h.id,-1)}>▲</button>
+                          <button className="reorder-btn" disabled={idx===unifiedList.length-1} onClick={()=>moveTask(viewDateStr,unifiedList,h.id,1)}>▼</button>
+                        </div>
                         <button className="chk" onClick={()=>toggleCustomTask(h.id,viewWeek,viewDayIdx)}
                           style={done?{background:'rgba(6,182,212,.12)',borderColor:'#06b6d4'}:{}}>
                           {done && (
@@ -3160,51 +3242,6 @@ function Dashboard({ theme, onToggleTheme }) {
                 })}
               </div>
 
-              {/* ── Day-specific tasks (today only) ─────────── */}
-              {(()=>{
-                const dayTasks = customTasks.filter(t => !t.isDefault && t.specificDate === viewDateStr)
-                return (
-                  <>
-                    {dayTasks.length > 0 && (
-                      <div style={{ borderTop:'1px solid var(--b1)', marginTop:14, paddingTop:12,
-                        display:'flex', flexDirection:'column', gap:2 }}>
-                        <div className="label" style={{ marginBottom:6, fontSize:11 }}>{isViewingToday ? 'Today Only' : `${FULL_DAYS[viewDayIdx]} Only`}</div>
-                        {dayTasks.map(t => {
-                          const ckey = `${t.id}-${viewWeek}-${viewDayIdx}`
-                          const done = !!customDone[ckey]
-                          return (
-                            <div key={t.id} className={`habit-row${done?' done':''}`}>
-                              <button className="chk" onClick={()=>toggleCustomTask(t.id,viewWeek,viewDayIdx)}
-                                style={done?{background:'rgba(6,182,212,.12)',borderColor:'#06b6d4'}:{}}>
-                                {done && (
-                                  <svg width="11" height="8" viewBox="0 0 11 8" fill="none">
-                                    <path d="M1 4L4 7L10 1" stroke="#06b6d4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                  </svg>
-                                )}
-                              </button>
-                              <span style={{ fontSize:15, flexShrink:0 }}>{t.icon}</span>
-                              <div style={{ flex:1, minWidth:0 }}>
-                                <div style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
-                                  textDecoration:done?'line-through':'none', transition:'all .15s' }}>{t.label}</div>
-                                <div style={{ fontSize:10, color:'var(--dim)' }}>+{t.xp} XP</div>
-                              </div>
-                              <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:500, flexShrink:0,
-                                background: t.googleEventId ? 'rgba(66,133,244,.1)' : 'rgba(245,158,11,.1)',
-                                color: t.googleEventId ? '#4285f4' : 'var(--gold2)',
-                                border: `1px solid ${t.googleEventId ? 'rgba(66,133,244,.25)' : 'rgba(245,158,11,.25)'}` }}>
-                                {t.googleEventId ? 'gcal' : 'today'}
-                              </span>
-                              {gcalToken && !t.googleEventId && !done && (
-                                <button onClick={()=>addToGoogleCalendar(t, viewDateStr)} title="Add to Google Calendar"
-                                  style={{ background:'none', border:'none', cursor:'pointer', color:'#4285f4',
-                                    fontSize:13, padding:'2px 4px', lineHeight:1, flexShrink:0, opacity:.7 }}>📅</button>
-                              )}
-                              <button className="btn-del" onClick={()=>deleteCustomTask(t.id)}>✕</button>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
                     <button className="btn-outline" onClick={()=>setAddTaskModal(true)}
                       style={{ marginTop:12, fontSize:12, width:'100%', justifyContent:'center' }}>
                       + Add task for {isViewingToday ? 'today' : FULL_DAYS[viewDayIdx]}
@@ -3486,67 +3523,73 @@ function Dashboard({ theme, onToggleTheme }) {
                       <Ring pct={pct} size={42} color={dc} sw={4}/>
                     </div>
 
-                    {/* Built-in habits */}
+                    {/* Unified ordered task list */}
+                    {(()=>{
+                      const recHabits = [...activeBuiltIn.map(h=>({...h,isBuiltIn:true})), ...activeDefaults.map(t=>({...t,isBuiltIn:false}))]
+                      const weekUnified = getOrderedTasksForDate(dateStr, recHabits, activeDayTasks)
+                      return (
                     <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
-                      {activeBuiltIn.map(h=>{
-                        const checked = habits[h.id][wi][di]
-                        const cs = CAT[h.cat]
-                        return (
-                          <div key={h.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
-                            <button onClick={()=>toggleHabit(h.id,wi,di)} style={weekRowStyle(checked,cs)}>
-                              {weekCheckBox(checked, cs.color)}
-                              <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
-                                textDecoration:checked?'line-through':'none' }}>{h.icon} {h.label}</span>
-                              <span className="mono" style={{ fontSize:9, color:cs.color }}>+{h.xp}</span>
-                            </button>
-                            {weekRemoveBtn(()=>dateStr && skipHabitForDate(h.id, dateStr))}
-                          </div>
-                        )
-                      })}
-                    </div>
-
-                    {/* Default custom tasks */}
-                    {activeDefaults.length > 0 && (
-                      <div style={{ marginTop:6, display:'flex', flexDirection:'column', gap:3 }}>
-                        {activeDefaults.map(t=>{
-                          const checked = !!(customDone[`${t.id}-${wi}-${di}`])
-                          const cs = { light:'rgba(6,182,212,.1)', color:'#06b6d4', border:'rgba(6,182,212,.3)' }
+                      {weekUnified.map((h, idx)=>{
+                        if (h.isBuiltIn) {
+                          const checked = habits[h.id][wi][di]
+                          const cs = CAT[h.cat]
                           return (
-                            <div key={t.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
-                              <button onClick={()=>toggleCustomTask(t.id,wi,di)} style={weekRowStyle(checked,cs)}>
-                                {weekCheckBox(checked,'#06b6d4')}
+                            <div key={h.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
+                              <div className="week-reorder">
+                                <button className="reorder-btn" disabled={idx===0} onClick={()=>moveTask(dateStr,weekUnified,h.id,-1)}>▲</button>
+                                <button className="reorder-btn" disabled={idx===weekUnified.length-1} onClick={()=>moveTask(dateStr,weekUnified,h.id,1)}>▼</button>
+                              </div>
+                              <button onClick={()=>toggleHabit(h.id,wi,di)} style={{...weekRowStyle(checked,cs),flex:1}}>
+                                {weekCheckBox(checked, cs.color)}
                                 <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
-                                  textDecoration:checked?'line-through':'none' }}>{t.icon} {t.label}</span>
+                                  textDecoration:checked?'line-through':'none' }}>{h.icon} {h.label}</span>
+                                <span className="mono" style={{ fontSize:9, color:cs.color }}>+{h.xp}</span>
                               </button>
-                              {weekRemoveBtn(()=>dateStr && skipHabitForDate(t.id, dateStr))}
+                              {weekRemoveBtn(()=>dateStr && skipHabitForDate(h.id, dateStr))}
                             </div>
                           )
-                        })}
-                      </div>
-                    )}
-
-                    {/* Day-specific custom tasks */}
-                    {activeDayTasks.length > 0 && (
-                      <div style={{ marginTop:6, paddingTop:6, borderTop:'1px solid var(--b1)', display:'flex', flexDirection:'column', gap:3 }}>
-                        {activeDayTasks.map(t=>{
-                          const checked = !!(customDone[`${t.id}-${wi}-${di}`])
-                          const gcal = !!t.googleEventId
+                        } else if (h.isDaySpecific) {
+                          const checked = !!(customDone[`${h.id}-${wi}-${di}`])
+                          const gcal = !!h.googleEventId
                           const cs = gcal
                             ? { light:'rgba(66,133,244,.1)', color:'#4285f4', border:'rgba(66,133,244,.3)' }
                             : { light:'rgba(139,92,246,.1)', color:'#8b5cf6', border:'rgba(139,92,246,.3)' }
                           return (
-                            <div key={t.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
-                              <button onClick={()=>toggleCustomTask(t.id,wi,di)} style={weekRowStyle(checked,cs)}>
+                            <div key={h.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
+                              <div className="week-reorder">
+                                <button className="reorder-btn" disabled={idx===0} onClick={()=>moveTask(dateStr,weekUnified,h.id,-1)}>▲</button>
+                                <button className="reorder-btn" disabled={idx===weekUnified.length-1} onClick={()=>moveTask(dateStr,weekUnified,h.id,1)}>▼</button>
+                              </div>
+                              <button onClick={()=>toggleCustomTask(h.id,wi,di)} style={{...weekRowStyle(checked,cs),flex:1}}>
                                 {weekCheckBox(checked, cs.color)}
                                 <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
-                                  textDecoration:checked?'line-through':'none' }}>{t.icon} {t.label}</span>
+                                  textDecoration:checked?'line-through':'none' }}>{h.icon} {h.label}</span>
                               </button>
-                              {weekRemoveBtn(()=>deleteDayTask(t))}
+                              {weekRemoveBtn(()=>deleteDayTask(h))}
                             </div>
                           )
-                        })}
-                      </div>
-                    )}
+                        } else {
+                          const checked = !!(customDone[`${h.id}-${wi}-${di}`])
+                          const cs = { light:'rgba(6,182,212,.1)', color:'#06b6d4', border:'rgba(6,182,212,.3)' }
+                          return (
+                            <div key={h.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
+                              <div className="week-reorder">
+                                <button className="reorder-btn" disabled={idx===0} onClick={()=>moveTask(dateStr,weekUnified,h.id,-1)}>▲</button>
+                                <button className="reorder-btn" disabled={idx===weekUnified.length-1} onClick={()=>moveTask(dateStr,weekUnified,h.id,1)}>▼</button>
+                              </div>
+                              <button onClick={()=>toggleCustomTask(h.id,wi,di)} style={{...weekRowStyle(checked,cs),flex:1}}>
+                                {weekCheckBox(checked,'#06b6d4')}
+                                <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
+                                  textDecoration:checked?'line-through':'none' }}>{h.icon} {h.label}</span>
+                              </button>
+                              {weekRemoveBtn(()=>dateStr && skipHabitForDate(h.id, dateStr))}
+                            </div>
+                          )
+                        }
+                      })}
+                    </div>
+                      )
+                    })()}
 
                     {/* Restore strip — hidden tasks */}
                     {hasHidden && (

@@ -1389,6 +1389,7 @@ function Dashboard({ theme, onToggleTheme }) {
     _setPage(p)
     requestAnimationFrame(() => { navigatingRef.current = false })
   }, [])
+  const [primaryTab, setPrimaryTab] = useState('calendar')
   const [tab,  setTab]  = useState('today')
   const [dbLoading, setDbLoading] = useState(true)
   const [dbError,   setDbError]   = useState(null)
@@ -1490,6 +1491,8 @@ function Dashboard({ theme, onToggleTheme }) {
   const [standupDone,   setStandupDone]   = useState(false)
   const [standupSaving, setStandupSaving] = useState(false)
   const [pipelineView, setPipelineView] = useState('list')   // 'list' | 'board'
+  const [listingsPipelineView, setListingsPipelineView] = useState('list')
+  const [buyersPipelineView, setBuyersPipelineView] = useState('list')
   const [showGci, setShowGci] = useState(false)
   const [clientUpdateListing, setClientUpdateListing] = useState(null)
   const [clientUpdateNotes, setClientUpdateNotes] = useState('')
@@ -2901,7 +2904,19 @@ function Dashboard({ theme, onToggleTheme }) {
           {showCommSummary && closedComm>0 && <StatCard icon="💰" label="Commission" value={fmtMoney(closedComm)||'$0'} color="var(--green)" accent="#10b981"/>}
         </div>
 
-        {/* ── Tabs ──────────────────────────────────────────── */}
+        {/* ── Primary Tabs ────────────────────────────────── */}
+        <div className="primary-tabs">
+          {[{id:'calendar',l:'📅 Calendar'},{id:'listings',l:'🏡 Listings',count:listings.length},{id:'buyers',l:'🤝 Buyers',count:buyerReps.length}].map(t=>(
+            <button key={t.id} className={`primary-tab${primaryTab===t.id?' on':''}`} onClick={()=>setPrimaryTab(t.id)}>
+              {t.l}{t.count!=null && <span className="ptab-count">{t.count}</span>}
+            </button>
+          ))}
+        </div>
+
+        {/* ══ CALENDAR TAB ═════════════════════════════════════ */}
+        {primaryTab==='calendar' && (<>
+
+        {/* ── Sub-Tabs ─────────────────────────────────────── */}
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
           <div className="tabs" style={{ flex:1 }}>
             {[{id:'today',l:'Today'},{id:'weekly',l:'Week View'},{id:'heatmap',l:'Heatmap'}].map(t=>(
@@ -3617,6 +3632,10 @@ function Dashboard({ theme, onToggleTheme }) {
           </div>
         )}
 
+        </>)}
+
+        {/* ══ LISTINGS TAB ═════════════════════════════════════ */}
+        {primaryTab==='listings' && (<>
 
         {/* ══ LISTINGS ════════════════════════════════════════ */}
         <div style={{ marginTop:36 }}>
@@ -3831,6 +3850,120 @@ function Dashboard({ theme, onToggleTheme }) {
             )}
           </div>
         </div>
+
+        {/* ══ LISTINGS PIPELINE ══════════════════════════════ */}
+        <div style={{ marginTop:36 }}>
+          <div className="section-divider"/>
+          <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:16, flexWrap:'wrap' }}>
+            <span style={{ fontSize:20 }}>📊</span>
+            <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>Listings Pipeline</span>
+            <span style={{ fontSize:11, color:'var(--muted)', paddingLeft:4 }} className="mob-hide">
+              Seller-side transactions
+            </span>
+            <div style={{ marginLeft:'auto', display:'flex', gap:0, border:'1px solid var(--b2)', borderRadius:8, overflow:'hidden' }}>
+              {[{v:'list',l:'☰ List'},{v:'board',l:'▦ Board'}].map(v=>(
+                <button key={v.v} onClick={()=>setListingsPipelineView(v.v)} style={{
+                  padding:'5px 12px', fontSize:11, fontWeight:listingsPipelineView===v.v?700:500, border:'none', cursor:'pointer',
+                  background:listingsPipelineView===v.v?'var(--gold2)':'var(--surface)', color:listingsPipelineView===v.v?'#fff':'var(--muted)',
+                  transition:'all .15s', fontFamily:'Poppins,sans-serif',
+                }}>{v.l}</button>
+              ))}
+            </div>
+          </div>
+
+          {listingsPipelineView === 'list' ? (
+            <>
+              <PipelineSection title="Offers Received" icon="📥" accentColor="#8b5cf6" xpLabel={PIPELINE_XP.offer_received}
+                rows={offersReceived} setRows={setOffersReceived} userId={user.id}
+                onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersReceived)}
+                onAdd={handleOfferReceivedAdd}
+                onRemove={()=>deductPipelineXp('offer_received')}
+                statusOpts={[{v:'pending',l:'✓ Accepted'},{v:'countered',l:'↩ Counter'},{v:'declined',l:'✕ Decline',variant:'red'},{v:'closed',l:'Mark Closed'}]}/>
+
+              <PipelineSection title="Went Pending" icon="⏳" accentColor="#f59e0b" xpLabel={PIPELINE_XP.went_pending}
+                rows={pendingDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing')} setRows={setPendingDeals} userId={user.id}
+                onStatusChange={(r,s)=>handlePendingStatus(r,s)}
+                onRemove={()=>deductPipelineXp('went_pending')}
+                statusOpts={[{v:'active',l:'Active'},{v:'closed',l:'Mark Closed'}]}
+                expandedChecklist={expandedChecklist} setExpandedChecklist={setExpandedChecklist}
+                onToggleChecklistItem={toggleChecklistItem} onAddChecklistItem={addChecklistItem}
+                onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
+
+              <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
+                rows={closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing')} setRows={setClosedDeals} userId={user.id}
+                onRemove={()=>deductPipelineXp('closed')}
+                showSource={true}/>
+            </>
+          ) : (
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, minHeight:200 }}>
+              {[
+                { title:'Offers Rec\'d', icon:'📥', color:'#8b5cf6', rows:offersReceived },
+                { title:'Pending', icon:'⏳', color:'#f59e0b', rows:pendingDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing') },
+                { title:'Closed', icon:'🎉', color:'#10b981', rows:closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing') },
+              ].map(col => (
+                <div key={col.title} style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:12, overflow:'hidden' }}>
+                  <div style={{ padding:'10px 12px', background:`${col.color}11`, borderBottom:`2px solid ${col.color}33`, display:'flex', alignItems:'center', gap:6 }}>
+                    <span style={{ fontSize:14 }}>{col.icon}</span>
+                    <span style={{ fontSize:12, fontWeight:700, color:'var(--text)' }}>{col.title}</span>
+                    <span className="mono" style={{ marginLeft:'auto', fontSize:11, color:col.color, fontWeight:700 }}>{col.rows.length}</span>
+                  </div>
+                  <div style={{ padding:8, display:'flex', flexDirection:'column', gap:6, maxHeight:400, overflowY:'auto' }}>
+                    {col.rows.length === 0 && (
+                      <div style={{ padding:'20px 8px', textAlign:'center', fontSize:11, color:'var(--dim)' }}>No entries</div>
+                    )}
+                    {col.rows.map(r => {
+                      const comm = resolveCommission(r.commission, r.price)
+                      const pn = parseFloat(String(r.price||'').replace(/[^0-9.]/g,''))
+                      return (
+                        <div key={r.id} style={{ padding:'10px 12px', borderRadius:8, background:'var(--bg)', border:'1px solid var(--b1)', transition:'box-shadow .15s' }}>
+                          <div style={{ fontFamily:"'Fraunces',serif", fontSize:12, fontWeight:600, color:'var(--text)', marginBottom:4, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                            {r.address || 'Untitled'}
+                          </div>
+                          <div style={{ display:'flex', gap:8, fontSize:10, color:'var(--muted)', alignItems:'center' }}>
+                            {pn > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color:col.color }}>{formatPrice(r.price)}</span>}
+                            {comm > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", color:'var(--green)', fontWeight:700 }}>{fmtMoney(comm)}</span>}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ══ LISTINGS GCI ══════════════════════════════════════ */}
+        {closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing').length > 0 && (() => {
+          const sellerClosed = closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing')
+          const sellerComm = sellerClosed.reduce((s,d)=>s+resolveCommission(d.commission,d.price),0)
+          const sellerVol = sellerClosed.reduce((s,d)=>s+parseFloat(String(d.price||'').replace(/[^0-9.]/g,'')||0),0)
+          return (
+            <div style={{ marginTop:24 }}>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:10 }}>
+                <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid #10b981' }}>
+                  <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>SELLER GCI</div>
+                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700, color:'#10b981' }}>{fmtMoney(sellerComm)}</div>
+                </div>
+                <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid var(--purple)' }}>
+                  <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>DEALS CLOSED</div>
+                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700, color:'var(--purple)' }}>{sellerClosed.length}</div>
+                </div>
+                {sellerVol > 0 && (
+                  <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid var(--blue)' }}>
+                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>VOLUME</div>
+                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700, color:'var(--blue)' }}>{fmtMoney(sellerVol)}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })()}
+
+        </>)}
+
+        {/* ══ BUYERS TAB ═══════════════════════════════════════ */}
+        {primaryTab==='buyers' && (<>
 
         {/* ══ BUYER REP AGREEMENTS ════════════════════════════ */}
         <div style={{ marginTop:36 }}>
@@ -4101,27 +4234,27 @@ function Dashboard({ theme, onToggleTheme }) {
           </div>
         </div>
 
-        {/* ══ PIPELINE ════════════════════════════════════════ */}
+        {/* ══ BUYERS PIPELINE ═════════════════════════════════ */}
         <div style={{ marginTop:36 }}>
           <div className="section-divider"/>
           <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:16, flexWrap:'wrap' }}>
             <span style={{ fontSize:20 }}>📊</span>
-            <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>Transaction Pipeline</span>
+            <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>Buyers Pipeline</span>
             <span style={{ fontSize:11, color:'var(--muted)', paddingLeft:4 }} className="mob-hide">
-              Historical counts preserved · Commission is per-deal
+              Buyer-side transactions
             </span>
             <div style={{ marginLeft:'auto', display:'flex', gap:0, border:'1px solid var(--b2)', borderRadius:8, overflow:'hidden' }}>
               {[{v:'list',l:'☰ List'},{v:'board',l:'▦ Board'}].map(v=>(
-                <button key={v.v} onClick={()=>setPipelineView(v.v)} style={{
-                  padding:'5px 12px', fontSize:11, fontWeight:pipelineView===v.v?700:500, border:'none', cursor:'pointer',
-                  background:pipelineView===v.v?'var(--gold2)':'var(--surface)', color:pipelineView===v.v?'#fff':'var(--muted)',
+                <button key={v.v} onClick={()=>setBuyersPipelineView(v.v)} style={{
+                  padding:'5px 12px', fontSize:11, fontWeight:buyersPipelineView===v.v?700:500, border:'none', cursor:'pointer',
+                  background:buyersPipelineView===v.v?'var(--gold2)':'var(--surface)', color:buyersPipelineView===v.v?'#fff':'var(--muted)',
                   transition:'all .15s', fontFamily:'Poppins,sans-serif',
                 }}>{v.l}</button>
               ))}
             </div>
           </div>
 
-          {pipelineView === 'list' ? (
+          {buyersPipelineView === 'list' ? (
             <>
               <PipelineSection title="Offers Made" icon="📤" accentColor="#0ea5e9" xpLabel={PIPELINE_XP.offer_made}
                 rows={offersMade} setRows={setOffersMade} userId={user.id}
@@ -4130,15 +4263,8 @@ function Dashboard({ theme, onToggleTheme }) {
                 onRemove={()=>deductPipelineXp('offer_made')}
                 statusOpts={[{v:'active',l:'Active'},{v:'pending',l:'Move to Pending'},{v:'closed',l:'Mark Closed'}]}/>
 
-              <PipelineSection title="Offers Received" icon="📥" accentColor="#8b5cf6" xpLabel={PIPELINE_XP.offer_received}
-                rows={offersReceived} setRows={setOffersReceived} userId={user.id}
-                onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersReceived)}
-                onAdd={handleOfferReceivedAdd}
-                onRemove={()=>deductPipelineXp('offer_received')}
-                statusOpts={[{v:'pending',l:'✓ Accepted'},{v:'countered',l:'↩ Counter'},{v:'declined',l:'✕ Decline',variant:'red'},{v:'closed',l:'Mark Closed'}]}/>
-
               <PipelineSection title="Went Pending" icon="⏳" accentColor="#f59e0b" xpLabel={PIPELINE_XP.went_pending}
-                rows={pendingDeals} setRows={setPendingDeals} userId={user.id}
+                rows={pendingDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))} setRows={setPendingDeals} userId={user.id}
                 onStatusChange={(r,s)=>handlePendingStatus(r,s)}
                 onRemove={()=>deductPipelineXp('went_pending')}
                 statusOpts={[{v:'active',l:'Active'},{v:'closed',l:'Mark Closed'}]}
@@ -4147,18 +4273,16 @@ function Dashboard({ theme, onToggleTheme }) {
                 onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
 
               <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
-                rows={closedDeals} setRows={setClosedDeals} userId={user.id}
+                rows={closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))} setRows={setClosedDeals} userId={user.id}
                 onRemove={()=>deductPipelineXp('closed')}
                 showSource={true}/>
             </>
           ) : (
-            /* ── Kanban Board View ──────────────────────────── */
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, minHeight:200 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, minHeight:200 }}>
               {[
                 { title:'Offers Made', icon:'📤', color:'#0ea5e9', rows:offersMade },
-                { title:'Offers Rec\'d', icon:'📥', color:'#8b5cf6', rows:offersReceived },
-                { title:'Pending', icon:'⏳', color:'#f59e0b', rows:pendingDeals },
-                { title:'Closed', icon:'🎉', color:'#10b981', rows:closedDeals },
+                { title:'Pending', icon:'⏳', color:'#f59e0b', rows:pendingDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing')) },
+                { title:'Closed', icon:'🎉', color:'#10b981', rows:closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing')) },
               ].map(col => (
                 <div key={col.title} style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:12, overflow:'hidden' }}>
                   <div style={{ padding:'10px 12px', background:`${col.color}11`, borderBottom:`2px solid ${col.color}33`, display:'flex', alignItems:'center', gap:6 }}>
@@ -4182,14 +4306,6 @@ function Dashboard({ theme, onToggleTheme }) {
                             {pn > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color:col.color }}>{formatPrice(r.price)}</span>}
                             {comm > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", color:'var(--green)', fontWeight:700 }}>{fmtMoney(comm)}</span>}
                           </div>
-                          {(r.closedFrom || r.dealSide) && (
-                            <div style={{ marginTop:4, fontSize:9, color:'var(--dim)' }}>
-                              {r.closedFrom && <>via {r.closedFrom}</>}
-                              {r.closedFrom && r.dealSide && ' · '}
-                              {r.dealSide && <span style={{ textTransform:'capitalize', color: r.dealSide==='seller'?'#8b5cf6':'#0ea5e9' }}>{r.dealSide}</span>}
-                              {r.originalLeadSource && <> · {r.originalLeadSource}</>}
-                            </div>
-                          )}
                         </div>
                       )
                     })}
@@ -4200,70 +4316,34 @@ function Dashboard({ theme, onToggleTheme }) {
           )}
         </div>
 
-        {/* ══ GCI DASHBOARD ═══════════════════════════════════ */}
-        {closedDeals.length > 0 && (
-          <div style={{ marginTop:36 }}>
-            <div className="section-divider"/>
-            <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:16, cursor:'pointer' }}
-              onClick={()=>setShowGci(p=>!p)}>
-              <span style={{ fontSize:20 }}>💰</span>
-              <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>GCI Dashboard</span>
-              <span style={{ fontSize:11, color:'var(--muted)', paddingLeft:4 }}>{MONTH_YEAR}</span>
-              <span style={{ marginLeft:'auto', fontSize:14, color:'var(--muted)', transition:'transform .2s', transform:showGci?'rotate(180deg)':'rotate(0)' }}>▾</span>
-            </div>
-            {showGci && (
-              <div>
-                {/* GCI stat cards */}
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:10, marginBottom:18 }}>
-                  <div className="card" style={{ padding:16, textAlign:'center', borderTop:'2.5px solid #10b981' }}>
-                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:6 }}>TOTAL GCI</div>
-                    <div className="serif" style={{ fontSize:28, color:'#10b981', fontWeight:700, letterSpacing:'-.02em' }}>{fmtMoney(closedComm)||'$0'}</div>
-                  </div>
-                  <div className="card" style={{ padding:16, textAlign:'center', borderTop:'2.5px solid var(--gold)' }}>
-                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:6 }}>AVG / DEAL</div>
-                    <div className="serif" style={{ fontSize:28, color:'var(--gold2)', fontWeight:700, letterSpacing:'-.02em' }}>{fmtMoney(gciStats.avgDeal)||'$0'}</div>
-                  </div>
-                  <div className="card" style={{ padding:16, textAlign:'center', borderTop:'2.5px solid var(--blue)' }}>
-                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:6 }}>DEALS CLOSED</div>
-                    <div className="serif" style={{ fontSize:28, color:'var(--blue)', fontWeight:700 }}>{closedDeals.length}</div>
-                  </div>
-                  <div className="card" style={{ padding:16, textAlign:'center', borderTop:'2.5px solid #8b5cf6' }}>
-                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:6 }}>ANNUAL PACE</div>
-                    <div className="serif" style={{ fontSize:28, color:'#8b5cf6', fontWeight:700, letterSpacing:'-.02em' }}>{fmtMoney(gciStats.annualPace)||'$0'}</div>
-                  </div>
+        {/* ══ BUYERS GCI ════════════════════════════════════════ */}
+        {closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing')).length > 0 && (() => {
+          const buyerClosed = closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))
+          const buyerComm = buyerClosed.reduce((s,d)=>s+resolveCommission(d.commission,d.price),0)
+          const buyerVol = buyerClosed.reduce((s,d)=>s+parseFloat(String(d.price||'').replace(/[^0-9.]/g,'')||0),0)
+          return (
+            <div style={{ marginTop:24 }}>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:10 }}>
+                <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid #10b981' }}>
+                  <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>BUYER GCI</div>
+                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700, color:'#10b981' }}>{fmtMoney(buyerComm)}</div>
                 </div>
-                {/* GCI by source breakdown */}
-                {gciStats.bySource.length > 0 && (
-                  <div className="card" style={{ padding:18 }}>
-                    <div className="label" style={{ marginBottom:12 }}>Commission by Source</div>
-                    {gciStats.bySource.map(s => {
-                      const pct = closedComm > 0 ? Math.round(s.amount / closedComm * 100) : 0
-                      const colors = { Listing:'#10b981', Offers:'#0ea5e9', Pending:'#f59e0b', Direct:'#8b5cf6' }
-                      const c = colors[s.name] || '#6b7280'
-                      return (
-                        <div key={s.name} style={{ marginBottom:10 }}>
-                          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                            <span style={{ fontSize:12, color:'var(--text2)', fontWeight:600 }}>{s.name}</span>
-                            <span className="mono" style={{ fontSize:12, color:c, fontWeight:700 }}>{fmtMoney(s.amount)} ({pct}%)</span>
-                          </div>
-                          <div className="progress-track">
-                            <div className="progress-fill" style={{ width:`${pct}%`, background:c }}/>
-                          </div>
-                        </div>
-                      )
-                    })}
-                    {closedVol > 0 && (
-                      <div style={{ marginTop:12, paddingTop:10, borderTop:'1px solid var(--b1)', display:'flex', justifyContent:'space-between', fontSize:11, color:'var(--muted)' }}>
-                        <span>Total Volume</span>
-                        <span className="mono" style={{ fontWeight:700, color:'var(--text)' }}>{fmtMoney(closedVol)}</span>
-                      </div>
-                    )}
+                <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid var(--blue)' }}>
+                  <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>DEALS CLOSED</div>
+                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700, color:'var(--blue)' }}>{buyerClosed.length}</div>
+                </div>
+                {buyerVol > 0 && (
+                  <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid var(--purple)' }}>
+                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>VOLUME</div>
+                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700, color:'var(--purple)' }}>{fmtMoney(buyerVol)}</div>
                   </div>
                 )}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )
+        })()}
+
+        </>)}
 
         <div style={{ height:48 }}/>
         <div style={{ textAlign:'center', fontSize:10, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace",

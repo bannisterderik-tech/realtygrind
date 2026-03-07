@@ -1422,9 +1422,9 @@ function Dashboard({ theme, onToggleTheme }) {
   // Toast for error feedback
   const [toast, setToast] = useState(null) // { msg } or null
   const toastTimer = useRef(null)
-  function showToast(msg) {
+  function showToast(msg, type = 'error') {
     if (toastTimer.current) clearTimeout(toastTimer.current)
-    setToast({ msg })
+    setToast({ msg, type })
     toastTimer.current = setTimeout(() => setToast(null), 4000)
   }
   // Clean up toast timer on unmount to prevent setState-after-unmount
@@ -1457,6 +1457,12 @@ function Dashboard({ theme, onToggleTheme }) {
   const [plannerTaskForm,     setPlannerTaskForm]     = useState(null)  // { wi, di } | null
   const [plannerForm,         setPlannerForm]         = useState({ label:'', icon:'🏠', xp:15 })
   const [plannerDeletedTasks, setPlannerDeletedTasks] = useState([])    // day-specific tasks deleted this session
+  // Google Calendar
+  const [gcalToken, setGcalToken] = useState(() => {
+    try { const s = JSON.parse(localStorage.getItem('gcal_token')); if (s?.expiry > Date.now()) return s.token } catch {} return null
+  })
+  const [gcalSyncing, setGcalSyncing] = useState(false)
+
   const [standup,       setStandup]       = useState({ q1:'', q2:'', q3:'' })
   const [standupDone,   setStandupDone]   = useState(false)
   const [standupSaving, setStandupSaving] = useState(false)
@@ -1524,7 +1530,7 @@ function Dashboard({ theme, onToggleTheme }) {
     }
 
     if (ctRes.data) {
-      const toTask = t => ({ id:t.id, label:t.label, icon:t.icon, xp:t.xp, isDefault:t.is_default, specificDate:t.specific_date })
+      const toTask = t => ({ id:t.id, label:t.label, icon:t.icon, xp:t.xp, isDefault:t.is_default, specificDate:t.specific_date, googleEventId:t.google_event_id||null })
       const allNonDeleted = ctRes.data.filter(t => !t.is_deleted).map(toTask)
       // Split: tasks skipped for today go to skippedTodayTasks, rest stay in customTasks
       const persistedSkips = (profRes.data?.habit_prefs?.skipped||{})[todayDate] || []
@@ -1973,6 +1979,90 @@ function Dashboard({ theme, onToggleTheme }) {
   function syncTaskRestored(task) {
     setDeletedDefaultTasks(prev => prev.filter(t => t.id !== task.id))
     setCustomTasks(prev => [...prev, { ...task }])
+  }
+
+  // ── Google Calendar ────────────────────────────────────────────────────────
+
+  function connectGoogleCalendar() {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
+    if (!clientId) { showToast('Set VITE_GOOGLE_CLIENT_ID in .env'); return }
+    if (!window.google?.accounts?.oauth2) { showToast('Google API still loading — try again'); return }
+    const client = window.google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly',
+      callback: async (resp) => {
+        if (resp.error) { showToast('Google Calendar auth failed'); return }
+        const token = resp.access_token
+        localStorage.setItem('gcal_token', JSON.stringify({ token, expiry: Date.now() + resp.expires_in * 1000 }))
+        setGcalToken(token)
+        await syncGoogleCalendar(token)
+      }
+    })
+    client.requestAccessToken()
+  }
+
+  function disconnectGoogleCalendar() {
+    localStorage.removeItem('gcal_token')
+    setGcalToken(null)
+    showToast('Google Calendar disconnected')
+  }
+
+  async function syncGoogleCalendar(token) {
+    if (!token || gcalSyncing) return
+    setGcalSyncing(true)
+    try {
+      const now = new Date()
+      const timeMin = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+      const timeMax = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString()
+      const res = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime&maxResults=250`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      if (!res.ok) {
+        if (res.status === 401) { localStorage.removeItem('gcal_token'); setGcalToken(null); showToast('Session expired — reconnect Google Calendar') }
+        else showToast('Failed to fetch calendar events')
+        return
+      }
+      const data = await res.json()
+      const events = data.items || []
+      console.log('[GCal] Fetched', events.length, 'events from Google Calendar')
+      // Build batch of events to sync via RPC (bypasses PostgREST schema cache)
+      const batch = []
+      for (const event of events) {
+        if (!event.summary) continue
+        const dateStr = event.start?.date || (event.start?.dateTime ? event.start.dateTime.slice(0, 10) : null)
+        if (!dateStr) continue
+        const timeStr = event.start?.dateTime ? new Date(event.start.dateTime).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }) : null
+        batch.push({ label: timeStr ? `${timeStr} — ${event.summary}` : event.summary, specific_date: dateStr, google_event_id: event.id })
+      }
+      const { data: inserted, error } = await supabase.rpc('sync_gcal_events', { events: batch })
+      if (error) { console.error('[GCal] RPC error:', error.message); showToast('Sync failed: ' + error.message); return }
+      const rows = inserted || []
+      if (rows.length > 0) {
+        setCustomTasks(prev => [...prev, ...rows.map(r => ({ id:r.id, label:r.label, icon:r.icon, xp:r.xp, isDefault:false, specificDate:r.specific_date, googleEventId:r.google_event_id }))])
+      }
+      console.log('[GCal] Sync complete:', rows.length, 'added')
+      showToast(rows.length > 0 ? `Synced ${rows.length} event${rows.length !== 1 ? 's' : ''} from Google Calendar` : 'Calendar is up to date', 'success')
+    } catch (e) { console.error('syncGoogleCalendar error:', e); showToast('Failed to sync calendar') }
+    finally { setGcalSyncing(false) }
+  }
+
+  async function addToGoogleCalendar(task, dateStr) {
+    const token = gcalToken
+    if (!token) { connectGoogleCalendar(); return }
+    try {
+      const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ summary: task.label, start: { date: dateStr }, end: { date: dateStr }, description: `RealtyGrind task — ${task.xp} XP` }),
+      })
+      if (!res.ok) {
+        if (res.status === 401) { localStorage.removeItem('gcal_token'); setGcalToken(null); showToast('Session expired — reconnect') }
+        else showToast('Failed to add to Google Calendar')
+        return
+      }
+      showToast(`Added "${task.label}" to Google Calendar`, 'success')
+    } catch (e) { console.error('addToGoogleCalendar error:', e); showToast('Failed to add to calendar') }
   }
 
   // ── Pipeline helpers ───────────────────────────────────────────────────────
@@ -2766,10 +2856,33 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
 
         {/* ── Tabs ──────────────────────────────────────────── */}
-        <div className="tabs">
-          {[{id:'today',l:'Today'},{id:'weekly',l:'Week View'},{id:'heatmap',l:'Heatmap'}].map(t=>(
-            <button key={t.id} className={`tab-item${tab===t.id?' on':''}`} onClick={()=>setTab(t.id)}>{t.l}</button>
-          ))}
+        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          <div className="tabs" style={{ flex:1 }}>
+            {[{id:'today',l:'Today'},{id:'weekly',l:'Week View'},{id:'heatmap',l:'Heatmap'}].map(t=>(
+              <button key={t.id} className={`tab-item${tab===t.id?' on':''}`} onClick={()=>setTab(t.id)}>{t.l}</button>
+            ))}
+          </div>
+          {gcalToken ? (
+            <div style={{ display:'flex', gap:5 }}>
+              <button onClick={() => syncGoogleCalendar(gcalToken)} disabled={gcalSyncing}
+                title="Sync Google Calendar"
+                style={{ background:'rgba(66,133,244,.1)', color:'#4285f4', border:'1px solid rgba(66,133,244,.3)',
+                  borderRadius:7, cursor:gcalSyncing?'wait':'pointer', fontSize:11, fontWeight:600,
+                  padding:'5px 10px', display:'flex', alignItems:'center', gap:5, fontFamily:'Poppins,sans-serif' }}>
+                📅 {gcalSyncing ? 'Syncing…' : 'Sync'}
+              </button>
+              <button onClick={disconnectGoogleCalendar} title="Disconnect Google Calendar"
+                style={{ background:'none', border:'1px solid var(--b2)', borderRadius:7, cursor:'pointer',
+                  fontSize:11, color:'var(--dim)', padding:'5px 8px' }}>✕</button>
+            </div>
+          ) : (
+            <button onClick={connectGoogleCalendar}
+              style={{ background:'rgba(66,133,244,.08)', color:'#4285f4', border:'1px solid rgba(66,133,244,.25)',
+                borderRadius:7, cursor:'pointer', fontSize:11, fontWeight:600,
+                padding:'5px 12px', display:'flex', alignItems:'center', gap:5, fontFamily:'Poppins,sans-serif' }}>
+              📅 Connect Google Calendar
+            </button>
+          )}
         </div>
 
         {/* ══ TODAY ══════════════════════════════════════════ */}
@@ -2934,6 +3047,11 @@ function Dashboard({ theme, onToggleTheme }) {
                         {h.counter && !done && (
                           <span style={{ fontSize:10, color:'var(--dim)', opacity:.45, flexShrink:0 }}>0 {h.unit||'×'}</span>
                         )}
+                        {gcalToken && !done && (
+                          <button onClick={()=>addToGoogleCalendar(h, viewDateStr)} title="Add to Google Calendar"
+                            style={{ background:'none', border:'none', cursor:'pointer', color:'#4285f4',
+                              fontSize:13, padding:'2px 4px', lineHeight:1, flexShrink:0, opacity:.7 }}>📅</button>
+                        )}
                         {!done && (
                           <button onClick={()=>skipHabitToday(h.id)} title="Skip for today"
                             style={{ background:'none', border:'none', cursor:'pointer', color:'var(--dim)',
@@ -2965,6 +3083,11 @@ function Dashboard({ theme, onToggleTheme }) {
                           background:'rgba(6,182,212,.12)', color:'#06b6d4', border:'1px solid rgba(6,182,212,.22)' }}>
                           custom
                         </span>
+                        {gcalToken && !done && (
+                          <button onClick={()=>addToGoogleCalendar(h, viewDateStr)} title="Add to Google Calendar"
+                            style={{ background:'none', border:'none', cursor:'pointer', color:'#4285f4',
+                              fontSize:13, padding:'2px 4px', lineHeight:1, flexShrink:0, opacity:.7 }}>📅</button>
+                        )}
                         {!done && (
                           <button onClick={()=>skipCustomTaskToday(h)} title="Skip for today"
                             style={{ background:'none', border:'none', cursor:'pointer', color:'var(--dim)',
@@ -3005,9 +3128,16 @@ function Dashboard({ theme, onToggleTheme }) {
                                 <div style={{ fontSize:10, color:'var(--dim)' }}>+{t.xp} XP</div>
                               </div>
                               <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:500, flexShrink:0,
-                                background:'rgba(245,158,11,.1)', color:'var(--gold2)', border:'1px solid rgba(245,158,11,.25)' }}>
-                                today
+                                background: t.googleEventId ? 'rgba(66,133,244,.1)' : 'rgba(245,158,11,.1)',
+                                color: t.googleEventId ? '#4285f4' : 'var(--gold2)',
+                                border: `1px solid ${t.googleEventId ? 'rgba(66,133,244,.25)' : 'rgba(245,158,11,.25)'}` }}>
+                                {t.googleEventId ? 'gcal' : 'today'}
                               </span>
+                              {gcalToken && !t.googleEventId && !done && (
+                                <button onClick={()=>addToGoogleCalendar(t, viewDateStr)} title="Add to Google Calendar"
+                                  style={{ background:'none', border:'none', cursor:'pointer', color:'#4285f4',
+                                    fontSize:13, padding:'2px 4px', lineHeight:1, flexShrink:0, opacity:.7 }}>📅</button>
+                              )}
                               <button className="btn-del" onClick={()=>deleteCustomTask(t.id)}>✕</button>
                             </div>
                           )
@@ -3339,11 +3469,14 @@ function Dashboard({ theme, onToggleTheme }) {
                       <div style={{ marginTop:6, paddingTop:6, borderTop:'1px solid var(--b1)', display:'flex', flexDirection:'column', gap:3 }}>
                         {activeDayTasks.map(t=>{
                           const checked = !!(customDone[`${t.id}-${wi}-${di}`])
-                          const cs = { light:'rgba(139,92,246,.1)', color:'#8b5cf6', border:'rgba(139,92,246,.3)' }
+                          const gcal = !!t.googleEventId
+                          const cs = gcal
+                            ? { light:'rgba(66,133,244,.1)', color:'#4285f4', border:'rgba(66,133,244,.3)' }
+                            : { light:'rgba(139,92,246,.1)', color:'#8b5cf6', border:'rgba(139,92,246,.3)' }
                           return (
                             <div key={t.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
                               <button onClick={()=>toggleCustomTask(t.id,wi,di)} style={weekRowStyle(checked,cs)}>
-                                {weekCheckBox(checked,'#8b5cf6')}
+                                {weekCheckBox(checked, cs.color)}
                                 <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
                                   textDecoration:checked?'line-through':'none' }}>{t.icon} {t.label}</span>
                               </button>
@@ -4348,14 +4481,14 @@ function Dashboard({ theme, onToggleTheme }) {
         )
       })()}
 
-      {/* Error toast */}
+      {/* Toast notification */}
       {toast && (
         <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:9999,
-          background:'#dc2626', color:'#fff', padding:'10px 22px', borderRadius:10,
+          background: toast.type === 'success' ? '#16a34a' : '#dc2626', color:'#fff', padding:'10px 22px', borderRadius:10,
           fontFamily:'Poppins,sans-serif', fontWeight:600, fontSize:13,
-          boxShadow:'0 8px 32px rgba(220,38,38,.35)', display:'flex', alignItems:'center', gap:10,
+          boxShadow: toast.type === 'success' ? '0 8px 32px rgba(22,163,74,.35)' : '0 8px 32px rgba(220,38,38,.35)', display:'flex', alignItems:'center', gap:10,
           animation:'slideDown .25s ease', maxWidth:'90vw' }}>
-          <span style={{ flexShrink:0 }}>&#9888;</span>
+          <span style={{ flexShrink:0 }}>{toast.type === 'success' ? '\u2713' : '\u26A0'}</span>
           <span>{toast.msg}</span>
           <button onClick={() => setToast(null)} style={{ background:'none', border:'none', color:'#fff',
             cursor:'pointer', fontWeight:700, fontSize:15, padding:'0 4px', lineHeight:1, flexShrink:0 }}>&#215;</button>

@@ -328,6 +328,26 @@ body,.page { background: var(--bg); color: var(--text); }
 .tab-item:hover { color: var(--text2); background: var(--b1); }
 .tab-item.on { color: var(--text); border-bottom-color: var(--gold2); font-weight: 700; }
 
+/* ── Primary Tabs (nested top-level) ── */
+.primary-tabs { display: flex; gap: 6px; margin-bottom: 20px; }
+.primary-tab {
+  padding: 9px 20px; background: var(--surface); border: 1.5px solid var(--b2);
+  border-radius: 10px; color: var(--muted); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all .18s; white-space: nowrap;
+  font-family: 'Poppins', sans-serif; display: flex; align-items: center; gap: 6px;
+}
+.primary-tab:hover { border-color: var(--gold2); color: var(--text2); background: rgba(212,175,55,.04); }
+.primary-tab.on {
+  background: rgba(212,175,55,.1); border-color: var(--gold2); color: var(--text); font-weight: 700;
+  box-shadow: 0 0 0 1px rgba(212,175,55,.15);
+}
+.primary-tab .ptab-count {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
+  min-width: 20px; text-align: center; border-radius: 6px; padding: 1px 6px;
+  background: var(--b1); color: var(--muted); line-height: 1.4;
+}
+.primary-tab.on .ptab-count { background: rgba(212,175,55,.18); color: var(--gold2); }
+
 /* ── Stat cards ── */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; }
 .stat-card {
@@ -523,6 +543,8 @@ body,.page { background: var(--bg); color: var(--text); }
   .mob-hide    { display: none !important; }
   .today-grid  { grid-template-columns: 1fr; }
   .stat-grid   { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 7px; }
+  .primary-tabs { flex-wrap: wrap; gap: 4px; }
+  .primary-tab  { font-size: 12px; padding: 7px 14px; }
   .tabs        { flex-wrap: wrap; gap: 4px; }
   .tab-item    { font-size: 12px; padding: 8px 12px; }
   .section-sub { font-size: 11px; }
@@ -539,6 +561,7 @@ body,.page { background: var(--bg); color: var(--text); }
 @media (max-width: 480px) {
   .page-inner { padding: 12px 10px; }
   .stat-grid  { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .primary-tab { font-size: 11px; padding: 6px 10px; }
   .tab-item   { font-size: 11px; padding: 7px 10px; }
   .stat-card  { padding: 11px 12px; }
 }

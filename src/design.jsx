@@ -382,6 +382,20 @@ body,.page { background: var(--bg); color: var(--text); }
 .habit-row:hover { background: var(--bg2); border-color: var(--b1); }
 .habit-row.done { background: var(--bg2); border-color: var(--b1); opacity: .88; }
 
+/* ── Reorder arrows ── */
+.reorder-arrows { display: flex; flex-direction: column; gap: 0; flex-shrink: 0; opacity: 0; transition: opacity .15s; }
+.habit-row:hover .reorder-arrows { opacity: 1; }
+.reorder-btn {
+  background: none; border: none; cursor: pointer; color: var(--dim); font-size: 10px;
+  padding: 0 3px; line-height: 1; transition: color .12s;
+}
+.reorder-btn:hover { color: var(--gold2); }
+.reorder-btn:disabled { opacity: 0; cursor: default; }
+/* Week view reorder — always visible due to tight layout */
+.week-reorder { display: flex; flex-direction: column; gap: 0; flex-shrink: 0; }
+.week-reorder .reorder-btn { font-size: 8px; padding: 0 2px; opacity: .5; }
+.week-reorder .reorder-btn:hover { opacity: 1; color: var(--gold2); }
+
 .chk {
   width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid var(--b3);
   background: transparent; cursor: pointer;
@@ -541,6 +555,7 @@ body,.page { background: var(--bg); color: var(--text); }
   .page-inner  { padding: 16px 12px; }
   .topnav      { padding: 0 10px; height: 54px; }
   .mob-hide    { display: none !important; }
+  .reorder-arrows { opacity: 1 !important; }
   .today-grid  { grid-template-columns: 1fr; }
   .stat-grid   { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 7px; }
   .primary-tabs { flex-wrap: wrap; gap: 4px; }

@@ -286,6 +286,11 @@ body,.page { background: var(--bg); color: var(--text); }
 .act-btn-purple { background: rgba(139,92,246,.08); color: var(--purple); border-color: rgba(139,92,246,.28); }
 .act-btn-purple:hover { background: rgba(139,92,246,.18); border-color: rgba(139,92,246,.5); }
 
+/* ── Avatar crop zoom slider ── */
+input[type="range"].crop-zoom { -webkit-appearance:none; appearance:none; height:4px; border-radius:2px; background:var(--b2); outline:none; }
+input[type="range"].crop-zoom::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:20px; height:20px; border-radius:50%; background:var(--gold); cursor:pointer; border:2px solid var(--surface); box-shadow:0 1px 4px rgba(0,0,0,.3); }
+input[type="range"].crop-zoom::-moz-range-thumb { width:20px; height:20px; border-radius:50%; background:var(--gold); cursor:pointer; border:2px solid var(--surface); box-shadow:0 1px 4px rgba(0,0,0,.3); }
+
 /* ── Modal overlay ── */
 .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000;
   display:flex; align-items:center; justify-content:center; padding:20px;

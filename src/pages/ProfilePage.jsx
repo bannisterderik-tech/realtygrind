@@ -8,6 +8,169 @@ import { ALL_APPS } from './DirectoryPage'
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 const CUR_YEAR = new Date().getFullYear()
 
+/* ── Avatar Crop Modal ── */
+function AvatarCropModal({ src, onConfirm, onCancel }) {
+  const OUTPUT_SIZE = 512
+  const CROP_SIZE  = 260
+  const canvasRef    = useRef(null)
+  const imgRef       = useRef(null)
+  const dragRef      = useRef({ active:false, sx:0, sy:0, ox:0, oy:0 })
+  const pinchRef     = useRef({ active:false, dist:0, sc:1 })
+
+  const [imgLoaded,  setImgLoaded]  = useState(false)
+  const [processing, setProcessing] = useState(false)
+  const [offset,     setOffset]     = useState({ x:0, y:0 })
+  const [scale,      setScale]      = useState(1)
+  const [baseScale,  setBaseScale]  = useState(1)
+
+  // Load image and compute initial scale/position
+  useEffect(() => {
+    const img = new Image()
+    img.onload = () => {
+      imgRef.current = img
+      const fit = CROP_SIZE / Math.min(img.naturalWidth, img.naturalHeight)
+      setBaseScale(fit)
+      setScale(fit)
+      setOffset({ x:(CROP_SIZE - img.naturalWidth*fit)/2, y:(CROP_SIZE - img.naturalHeight*fit)/2 })
+      setImgLoaded(true)
+    }
+    img.src = src
+  }, [src])
+
+  // Clamp offset so image can't be dragged away from crop area
+  function clampOffset(ox, oy, sc) {
+    const img = imgRef.current
+    if (!img) return { x:ox, y:oy }
+    const iw = img.naturalWidth * sc, ih = img.naturalHeight * sc
+    const cx = Math.min(0, Math.max(CROP_SIZE - iw, ox))
+    const cy = Math.min(0, Math.max(CROP_SIZE - ih, oy))
+    return { x:cx, y:cy }
+  }
+
+  // ── Pointer drag ──
+  function onPointerDown(e) {
+    if (e.pointerType === 'touch' && pinchRef.current.active) return
+    e.preventDefault()
+    dragRef.current = { active:true, sx:e.clientX, sy:e.clientY, ox:offset.x, oy:offset.y }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  function onPointerMove(e) {
+    if (!dragRef.current.active) return
+    const nx = dragRef.current.ox + (e.clientX - dragRef.current.sx)
+    const ny = dragRef.current.oy + (e.clientY - dragRef.current.sy)
+    setOffset(clampOffset(nx, ny, scale))
+  }
+  function onPointerUp() { dragRef.current.active = false }
+
+  // ── Scroll wheel zoom ──
+  function onWheel(e) {
+    e.preventDefault()
+    const d = e.deltaY > 0 ? -0.04 : 0.04
+    setScale(s => {
+      const ns = Math.max(baseScale*0.5, Math.min(baseScale*4, s + d))
+      setOffset(prev => clampOffset(prev.x, prev.y, ns))
+      return ns
+    })
+  }
+
+  // ── Pinch zoom ──
+  function onTouchStart(e) {
+    if (e.touches.length === 2) {
+      e.preventDefault()
+      const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY)
+      pinchRef.current = { active:true, dist:d, sc:scale }
+    }
+  }
+  function onTouchMove(e) {
+    if (!pinchRef.current.active || e.touches.length !== 2) return
+    e.preventDefault()
+    const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY)
+    const ns = Math.max(baseScale*0.5, Math.min(baseScale*4, pinchRef.current.sc * (d/pinchRef.current.dist)))
+    setScale(ns)
+    setOffset(prev => clampOffset(prev.x, prev.y, ns))
+  }
+  function onTouchEnd(e) { if (e.touches.length < 2) pinchRef.current.active = false }
+
+  // ── Slider zoom ──
+  function onSlider(e) {
+    const ns = parseFloat(e.target.value)
+    setScale(ns)
+    setOffset(prev => clampOffset(prev.x, prev.y, ns))
+  }
+
+  // ── Crop & export ──
+  async function handleConfirm() {
+    const img = imgRef.current; if (!img) return
+    setProcessing(true)
+    const canvas = canvasRef.current
+    canvas.width = OUTPUT_SIZE; canvas.height = OUTPUT_SIZE
+    const ctx = canvas.getContext('2d')
+    const sx = -offset.x / scale, sy = -offset.y / scale
+    const sw = CROP_SIZE / scale, sh = CROP_SIZE / scale
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE)
+    canvas.toBlob(blob => { if (blob) onConfirm(blob); setProcessing(false) }, 'image/jpeg', 0.9)
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:1000, background:'rgba(0,0,0,.75)',
+      backdropFilter:'blur(6px)', display:'flex', alignItems:'center', justifyContent:'center',
+      padding:20, animation:'fadeIn .15s ease' }}
+      onClick={e => { if (e.target === e.currentTarget) onCancel() }}>
+      <div className="card" style={{ padding:28, maxWidth:400, width:'100%',
+        display:'flex', flexDirection:'column', alignItems:'center', gap:18 }}
+        onClick={e => e.stopPropagation()}>
+
+        <div className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>
+          Crop Photo
+        </div>
+        <div style={{ fontSize:12, color:'var(--muted)' }}>
+          Drag to reposition · Scroll or slide to zoom
+        </div>
+
+        {/* Crop viewport */}
+        <div style={{ width:CROP_SIZE, height:CROP_SIZE, borderRadius:'50%', overflow:'hidden',
+          position:'relative', cursor:dragRef.current.active?'grabbing':'grab',
+          border:'3px solid var(--b3)', background:'var(--bg2)', touchAction:'none',
+          boxShadow:'0 0 0 9999px rgba(0,0,0,.35)' }}
+          onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
+          onWheel={onWheel} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+          {imgLoaded && imgRef.current && (
+            <img src={src} alt="" draggable={false} style={{
+              position:'absolute', left:offset.x, top:offset.y,
+              width:imgRef.current.naturalWidth*scale, height:imgRef.current.naturalHeight*scale,
+              pointerEvents:'none', userSelect:'none',
+            }}/>
+          )}
+          {!imgLoaded && (
+            <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center',
+              justifyContent:'center', color:'var(--muted)', fontSize:12 }}>Loading…</div>
+          )}
+        </div>
+
+        {/* Zoom slider */}
+        <div style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'0 12px' }}>
+          <span style={{ fontSize:16, color:'var(--muted)', lineHeight:1 }}>−</span>
+          <input type="range" className="crop-zoom" value={scale}
+            min={baseScale*0.5} max={baseScale*4} step={0.001}
+            onChange={onSlider} style={{ flex:1 }}/>
+          <span style={{ fontSize:16, color:'var(--muted)', lineHeight:1 }}>+</span>
+        </div>
+
+        {/* Actions */}
+        <div style={{ display:'flex', gap:10, width:'100%' }}>
+          <button className="btn-outline" onClick={onCancel} style={{ flex:1 }}>Cancel</button>
+          <button className="btn-gold" onClick={handleConfirm}
+            disabled={!imgLoaded||processing} style={{ flex:1 }}>
+            {processing ? 'Saving…' : 'Save Photo'}
+          </button>
+        </div>
+
+        <canvas ref={canvasRef} style={{ display:'none' }}/>
+      </div>
+    </div>
+  )
+}
+
 export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDeleted, onTaskRestored }) {
   const { user, profile, refreshProfile } = useAuth()
   const rank     = getRank(profile?.xp||0)
@@ -76,6 +239,8 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   const [avatarUrl,     setAvatarUrl]     = useState(profile?.goals?.avatar_url || '')
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [avatarMsg,    setAvatarMsg]    = useState(null) // { text, type: 'success'|'error' }
+  const [cropFile,     setCropFile]     = useState(null)
+  const [cropImgSrc,   setCropImgSrc]   = useState(null)
   const avatarInputRef = useRef(null)
   // Coaching notes (read from team_prefs, replies saved to own profile.goals)
   const [profileReplyForms,   setProfileReplyForms]   = useState({})
@@ -163,22 +328,35 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
     }
   }
 
-  async function uploadAvatar(e) {
+  // Step 1: validate + open crop modal
+  function handleFileSelect(e) {
     const file = e.target.files?.[0]
     if (!file) return
     if (!file.type.startsWith('image/')) { setAvatarMsg({ text:'Please select an image file', type:'error' }); safeTimeout(()=>setAvatarMsg(null),3000); return }
     if (file.size > 5 * 1024 * 1024) { setAvatarMsg({ text:'Image must be under 5 MB', type:'error' }); safeTimeout(()=>setAvatarMsg(null),3000); return }
+    const url = URL.createObjectURL(file)
+    setCropImgSrc(url)
+    setCropFile(file)
+    if (avatarInputRef.current) avatarInputRef.current.value = ''
+  }
+
+  function cancelCrop() {
+    if (cropImgSrc) URL.revokeObjectURL(cropImgSrc)
+    setCropFile(null); setCropImgSrc(null)
+  }
+
+  // Step 2: receive cropped blob from modal → upload
+  async function uploadCroppedAvatar(blob) {
+    if (cropImgSrc) URL.revokeObjectURL(cropImgSrc)
+    setCropFile(null); setCropImgSrc(null)
     setAvatarUploading(true)
     try {
-      const ext = file.name.split('.').pop()
-      const path = `${user.id}/avatar.${ext}`
-      // Remove old file first (ignore errors — may not exist yet)
+      const path = `${user.id}/avatar.jpg`
       await supabase.storage.from('avatars').remove([path])
-      const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+      const { error: upErr } = await supabase.storage.from('avatars').upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
       if (upErr) throw upErr
       const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
       const url = urlData.publicUrl + '?v=' + Date.now()
-      // Save to profile.goals
       const { data: current } = await supabase.from('profiles').select('goals').eq('id', user.id).single()
       const merged = { ...(current?.goals || {}), avatar_url: url }
       const { error: saveErr } = await supabase.from('profiles').update({ goals: merged }).eq('id', user.id)
@@ -191,8 +369,6 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
       setAvatarMsg({ text:'Photo upload failed — please try again', type:'error' }); safeTimeout(()=>setAvatarMsg(null),4000)
     } finally {
       setAvatarUploading(false)
-      // Reset file input so same file can be re-selected
-      if (avatarInputRef.current) avatarInputRef.current.value = ''
     }
   }
 
@@ -582,7 +758,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                 display:'flex', alignItems:'center', justifyContent:'center', fontSize:11 }}>
                 📷
               </div>
-              <input ref={avatarInputRef} type="file" accept="image/*" onChange={uploadAvatar}
+              <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleFileSelect}
                 style={{ display:'none' }}/>
               {avatarMsg && (
                 <div style={{ position:'absolute', top:'100%', left:'50%', transform:'translateX(-50%)',
@@ -1435,6 +1611,11 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
             REALTYGRIND — YOUR CAREER, YOUR DATA
           </div>
         </div>
+
+        {/* Avatar crop modal */}
+        {cropFile && cropImgSrc && (
+          <AvatarCropModal src={cropImgSrc} onConfirm={uploadCroppedAvatar} onCancel={cancelCrop}/>
+        )}
     </>
   )
 }

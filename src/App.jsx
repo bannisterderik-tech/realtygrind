@@ -2203,16 +2203,38 @@ function Dashboard({ theme, onToggleTheme }) {
     }
   }
 
+  // ── Pipeline cascade helpers ─────────────────────────────────────────────
+  // When removing from a stage, also clean up any earlier-stage records with
+  // the same address so they don't reappear after the "most advanced" record
+  // is gone.  When closing a deal that originated from a listing, mark the
+  // listing as closed too.
+  function cleanupEarlierStages(address, stage) {
+    const addr = (address||'').toLowerCase()
+    if (!addr) return
+    const purge = (setter) => {
+      setter(prev => {
+        prev.filter(d=>(d.address||'').toLowerCase()===addr).forEach(d=>dbDelete(d.id))
+        return prev.filter(d=>(d.address||'').toLowerCase()!==addr)
+      })
+    }
+    if (stage === 'closed') { purge(setPendingDeals); purge(setOffersReceived); purge(setOffersMade) }
+    if (stage === 'pending') { purge(setOffersReceived); purge(setOffersMade) }
+  }
+
+  function markListingClosed(address) {
+    const addr = (address||'').toLowerCase()
+    if (!addr) return
+    const listing = listings.find(l=>l.status!=='closed'&&(l.address||'').toLowerCase()===addr)
+    if (listing) updateListing(listing.id, 'status', 'closed')
+  }
+
   async function handleOfferStatus(row, newStatus, srcSetter) {
-    // Infer deal side from context (offers made = buyer side, offers received = seller side)
     const inferredSide = srcSetter === setOffersReceived ? 'seller' : 'buyer'
     const addr = (row.address||'').toLowerCase()
     if (newStatus === 'pending') {
-      // Guard: don't create duplicate pending record for same address
       if (addr && pendingDeals.some(d=>(d.address||'').toLowerCase()===addr)) {
         showToast('This address is already in Pending'); return
       }
-      // Move forward: archive source (preserves stat count), create Went Pending record
       const data = await dbInsert('pending', row, 'Offers', row.dealSide || inferredSide, row.originalLeadSource || row.leadSource || null)
       if (data) {
         const cl = DEFAULT_CHECKLIST.map(i=>({...i}))
@@ -2224,28 +2246,26 @@ function Dashboard({ theme, onToggleTheme }) {
       setWentPendingCount(prev => prev + 1)
       await awardPipelineXp('went_pending', '#f59e0b')
     } else if (newStatus === 'closed') {
-      // Guard: don't create duplicate closed record for same address
       if (addr && closedDeals.some(d=>(d.address||'').toLowerCase()===addr)) {
         showToast('This address is already in Closed Deals'); return
       }
-      // Move forward: archive source, create Closed record
       const data = await dbInsert('closed', row, 'Offers', row.dealSide || inferredSide, row.originalLeadSource || row.leadSource || null)
       if (data) {
         setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:'Offers',dealSide:row.dealSide||inferredSide,originalLeadSource:row.originalLeadSource||row.leadSource||''}])
         srcSetter(prev => prev.filter(r => r.id !== row.id))
         await dbArchive(row.id)
+        cleanupEarlierStages(row.address, 'closed')
+        markListingClosed(row.address)
         const comm = resolveCommission(row.commission, row.price)
         setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
       }
       await awardPipelineXp('closed', '#10b981')
     } else if (newStatus === 'declined') {
-      // Decline offer: fully delete (not a forward move)
       srcSetter(prev => prev.filter(r => r.id !== row.id))
       await dbDelete(row.id)
     } else if (newStatus === 'countered') {
-      // Counter: prompt for new price, update in place
       const newPrice = window.prompt('Enter counter-offer price:', row.price || '')
-      if (newPrice === null) return // cancelled
+      if (newPrice === null) return
       srcSetter(prev => prev.map(r => r.id === row.id ? {...r, price: newPrice} : r))
       if (row.id && !String(row.id).startsWith('tmp-')) {
         await safeDb(supabase.from('transactions').update({ price: newPrice }).eq('id', row.id).eq('user_id', user.id))
@@ -2255,17 +2275,17 @@ function Dashboard({ theme, onToggleTheme }) {
 
   async function handlePendingStatus(row, newStatus) {
     if (newStatus === 'closed') {
-      // Guard: don't create duplicate closed record for same address
       const addr = (row.address||'').toLowerCase()
       if (addr && closedDeals.some(d=>(d.address||'').toLowerCase()===addr)) {
         showToast('This address is already in Closed Deals'); return
       }
-      // Move forward: archive pending, create Closed record (preserves went-pending count)
       const data = await dbInsert('closed', row, row.closedFrom||'Pending', row.dealSide||null, row.originalLeadSource||row.leadSource||null)
       if (data) {
         setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:row.closedFrom||'Pending',dealSide:row.dealSide||'',originalLeadSource:row.originalLeadSource||row.leadSource||''}])
         setPendingDeals(prev => prev.filter(r => r.id !== row.id))
         await dbArchive(row.id)
+        cleanupEarlierStages(row.address, 'closed')
+        markListingClosed(row.address)
         const comm = resolveCommission(row.commission, row.price)
         setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
       }
@@ -4015,14 +4035,14 @@ function Dashboard({ theme, onToggleTheme }) {
                 <PipelineSection title="Went Pending" icon="⏳" accentColor="#f59e0b" xpLabel={PIPELINE_XP.went_pending}
                   rows={dedupPending} setRows={setPendingDeals} userId={user.id}
                   onStatusChange={(r,s)=>handlePendingStatus(r,s)}
-                  onRemove={()=>deductPipelineXp('went_pending')}
+                  onRemove={(row)=>{deductPipelineXp('went_pending');cleanupEarlierStages(row.address,'pending')}}
                   statusOpts={[{v:'active',l:'Active'},{v:'closed',l:'Mark Closed'}]}
                   expandedChecklist={expandedChecklist} setExpandedChecklist={setExpandedChecklist}
                   onToggleChecklistItem={toggleChecklistItem} onAddChecklistItem={addChecklistItem}
                   onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
                 <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
                   rows={sellerClosed} setRows={setClosedDeals} userId={user.id}
-                  onRemove={()=>deductPipelineXp('closed')}
+                  onRemove={(row)=>{deductPipelineXp('closed');cleanupEarlierStages(row.address,'closed')}}
                   showSource={true}/>
               </>
             )
@@ -4405,14 +4425,14 @@ function Dashboard({ theme, onToggleTheme }) {
                 <PipelineSection title="Went Pending" icon="⏳" accentColor="#f59e0b" xpLabel={PIPELINE_XP.went_pending}
                   rows={dedupPending} setRows={setPendingDeals} userId={user.id}
                   onStatusChange={(r,s)=>handlePendingStatus(r,s)}
-                  onRemove={()=>deductPipelineXp('went_pending')}
+                  onRemove={(row)=>{deductPipelineXp('went_pending');cleanupEarlierStages(row.address,'pending')}}
                   statusOpts={[{v:'active',l:'Active'},{v:'closed',l:'Mark Closed'}]}
                   expandedChecklist={expandedChecklist} setExpandedChecklist={setExpandedChecklist}
                   onToggleChecklistItem={toggleChecklistItem} onAddChecklistItem={addChecklistItem}
                   onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
                 <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
                   rows={buyerClosed} setRows={setClosedDeals} userId={user.id}
-                  onRemove={()=>deductPipelineXp('closed')}
+                  onRemove={(row)=>{deductPipelineXp('closed');cleanupEarlierStages(row.address,'closed')}}
                   showSource={true}/>
               </>
             )

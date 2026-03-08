@@ -2565,21 +2565,34 @@ function Dashboard({ theme, onToggleTheme }) {
   const { totalHabitChecks, monthPct, viewChecks: todayChecks, viewPct: todayPct, totalProspecting, totalAppts, totalShowings, totalListings, totalBuyerReps, closedVol, closedComm, viewHabitXp: todayHabitXp, sessionPipelineXp, viewXp: todayXp } = dashStats
 
   // ── Daily targets from monthly goals (auto-redistributing) ─────────────
+  // Uses start-of-day totals so the daily target stays stable as you log today.
+  // If you skip a habit for today, today is excluded from remaining days so the
+  // quota redistributes immediately across future working days.
   const dailyTargets = useMemo(() => {
     const targets = {}
     const remaining = workingDaysRemaining(new Date())
+    const skippedToday = (habitPrefs.skipped || {})[todayDate] || []
     const totals = { prospecting: totalProspecting, appointments: totalAppts, showing: totalShowings }
     Object.entries(GOAL_HABIT_MAP).forEach(([goalKey, habitId]) => {
       const monthlyGoal = parseInt(goals?.[goalKey])
       if (!monthlyGoal || monthlyGoal <= 0) return
-      const soFar = totals[goalKey] || 0
-      const left = Math.max(0, monthlyGoal - soFar)
-      targets[habitId] = left <= 0
-        ? { daily: 0, done: true, monthlyGoal, soFar }
-        : { daily: Math.ceil(left / remaining), done: false, monthlyGoal, soFar }
+      const totalNow = totals[goalKey] || 0
+      const todayCount = counters[`${habitId}-${todayWeek}-${todayDay}`] || 0
+      const soFarBeforeToday = totalNow - todayCount
+      // Monthly goal already met (including today's work)?
+      if (totalNow >= monthlyGoal) {
+        targets[habitId] = { daily: 0, done: true, monthlyGoal, soFar: totalNow }
+      } else {
+        // If this habit is skipped for today, exclude today from remaining days
+        const isSkippedToday = skippedToday.includes(String(habitId))
+        const effectiveRemaining = isSkippedToday ? Math.max(remaining - 1, 1) : remaining
+        // Daily target based on what was left at START of today (stable as you log)
+        const leftAtStartOfDay = Math.max(0, monthlyGoal - soFarBeforeToday)
+        targets[habitId] = { daily: Math.ceil(leftAtStartOfDay / effectiveRemaining), done: false, monthlyGoal, soFar: totalNow }
+      }
     })
     return targets
-  }, [goals, totalProspecting, totalAppts, totalShowings])
+  }, [goals, totalProspecting, totalAppts, totalShowings, counters, todayWeek, todayDay, habitPrefs.skipped, todayDate])
 
   // ── GCI Dashboard stats ──────────────────────────────────────────────────
   const gciStats = useMemo(() => {

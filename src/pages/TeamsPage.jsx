@@ -5,6 +5,7 @@ import { Loader, Wordmark, ThemeToggle, Ring, getRank, CAT, StatCard, fmtMoney, 
 import { HABITS } from '../habits'
 import { canUseTeams, getMaxMembers, getPlan, isActiveBilling } from '../lib/plans'
 import { ALL_APPS } from './DirectoryPage'
+import AvatarCropModal from '../components/AvatarCropModal'
 
 const HABITS_FOR_DISPLAY = [
   { id:'prospecting', label:'Prospecting', cat:'leads' },
@@ -120,6 +121,9 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [buyerReplySaving,setBuyerReplySaving]= useState(null)    // needId being saved, or null
   const [slackUrl,        setSlackUrl]        = useState('')      // team Slack workspace URL
   const [slackSaving,     setSlackSaving]     = useState(false)
+  const [logoCropSrc,     setLogoCropSrc]     = useState(null)    // object URL for crop modal
+  const [logoSaving,      setLogoSaving]      = useState(false)
+  const logoInputRef      = useRef(null)
 
   // Depend only on team_id — prevents re-fetching every time the profile object
   // is recreated (e.g. on token refresh) while nothing meaningful has changed.
@@ -916,6 +920,35 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     finally { setBuyerReplySaving(null) }
   }
 
+  // ── Team logo ──
+  function handleLogoSelect(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) return
+    if (file.size > 5 * 1024 * 1024) return
+    setLogoCropSrc(URL.createObjectURL(file))
+    if (logoInputRef.current) logoInputRef.current.value = ''
+  }
+  function cancelLogoCrop() {
+    if (logoCropSrc) URL.revokeObjectURL(logoCropSrc)
+    setLogoCropSrc(null)
+  }
+  async function saveTeamLogo(dataUrl) {
+    if (logoCropSrc) URL.revokeObjectURL(logoCropSrc)
+    setLogoCropSrc(null)
+    setLogoSaving(true)
+    try {
+      const prefs = { ...(teamData.team_prefs || {}), logo_url: dataUrl }
+      const { error: err } = await supabase.from('teams').update({ team_prefs: prefs }).eq('id', teamData.id)
+      if (err) throw err
+      setTeamData(prev => ({ ...prev, team_prefs: prefs }))
+    } catch (err) {
+      console.error('Logo save failed:', err)
+    } finally {
+      setLogoSaving(false)
+    }
+  }
+
   // ── Derived values (memoized to avoid recomputing on every render) ────────
   const {
     isTeamOwner, teamAdmins, isAdmin, allGroups, myLedGroup,
@@ -1422,11 +1455,46 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                   {teamData && (
                     <div className="card" style={{ padding:22, marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:14,
                       background:'linear-gradient(135deg, rgba(217,119,6,.04) 0%, var(--surface) 60%)', borderTop:'2px solid rgba(217,119,6,.3)' }}>
-                      <div>
-                        <div className="serif" style={{ fontSize:28, color:'var(--text)', marginBottom:4, letterSpacing:'-.01em' }}>{teamData.name}</div>
-                        <div style={{ fontSize:12, color:'var(--muted)' }}>
-                          {members.length} member{members.length!==1?'s':''}
-                          {teamData.max_members ? ` · ${members.length}/${teamData.max_members} seats` : ''}
+                      <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+                        {/* Team logo */}
+                        <div style={{ position:'relative', flexShrink:0, cursor: isTeamOwner ? 'pointer' : 'default' }}
+                          onClick={() => isTeamOwner && logoInputRef.current?.click()}
+                          title={isTeamOwner ? 'Change team logo' : ''}>
+                          {teamData.team_prefs?.logo_url ? (
+                            <img src={teamData.team_prefs.logo_url} alt="" style={{
+                              width:56, height:56, borderRadius:12, objectFit:'cover',
+                              border:'2px solid var(--b2)' }}/>
+                          ) : (
+                            <div style={{ width:56, height:56, borderRadius:12,
+                              background:'linear-gradient(135deg, var(--gold), #92400e)',
+                              display:'flex', alignItems:'center', justifyContent:'center',
+                              fontSize:24, fontWeight:800, color:'#fff', letterSpacing:0,
+                              border:'2px solid rgba(217,119,6,.3)' }}>
+                              {(teamData.name||'T').charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          {isTeamOwner && (
+                            <div style={{ position:'absolute', bottom:-3, right:-3, width:20, height:20, borderRadius:'50%',
+                              background:'var(--surface)', border:'2px solid var(--b2)',
+                              display:'flex', alignItems:'center', justifyContent:'center', fontSize:10 }}>
+                              📷
+                            </div>
+                          )}
+                          {logoSaving && (
+                            <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center',
+                              justifyContent:'center', background:'rgba(0,0,0,.5)', borderRadius:12 }}>
+                              <Loader/>
+                            </div>
+                          )}
+                          <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoSelect}
+                            style={{ display:'none' }}/>
+                        </div>
+                        <div>
+                          <div className="serif" style={{ fontSize:28, color:'var(--text)', marginBottom:4, letterSpacing:'-.01em' }}>{teamData.name}</div>
+                          <div style={{ fontSize:12, color:'var(--muted)' }}>
+                            {members.length} member{members.length!==1?'s':''}
+                            {teamData.max_members ? ` · ${members.length}/${teamData.max_members} seats` : ''}
+                          </div>
                         </div>
                       </div>
                       <div style={{ display:'flex', gap:12, alignItems:'center' }}>
@@ -3589,6 +3657,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
           </div>
         </div>
       )})()}
+
+      {/* Team logo crop modal */}
+      {logoCropSrc && (
+        <AvatarCropModal src={logoCropSrc} onConfirm={saveTeamLogo} onCancel={cancelLogoCrop}
+          title="Crop Team Logo" round={false}/>
+      )}
     </>
   )
 }

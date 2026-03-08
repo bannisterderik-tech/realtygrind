@@ -164,6 +164,25 @@ function fmtShortDate(dateStr) {
   return `${MONTHS[d.getMonth()]} ${d.getDate()}`
 }
 
+// Maps goals keys to habit IDs for daily target computation
+const GOAL_HABIT_MAP = {
+  prospecting:  'prospecting',
+  appointments: 'appointments',
+  showing:      'showing',
+}
+
+// Count remaining weekdays (Mon-Fri) from fromDate to end of month, inclusive
+function workingDaysRemaining(fromDate) {
+  const year = fromDate.getFullYear(), month = fromDate.getMonth()
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  let count = 0
+  for (let d = fromDate.getDate(); d <= lastDay; d++) {
+    const dow = new Date(year, month, d).getDay()
+    if (dow >= 1 && dow <= 5) count++
+  }
+  return Math.max(count, 1)
+}
+
 function getToday()  { const d=new Date(); return { week:Math.min(Math.floor((d.getDate()-1)/7),WEEKS-1), day:d.getDay() } }
 
 // Returns "YYYY-MM-DD" for a given (week_index, day_index) in the current month
@@ -2545,6 +2564,23 @@ function Dashboard({ theme, onToggleTheme }) {
   }, [habits, counters, builtInEffective, viewBuiltInActive, viewWeek, viewDayIdx, listings, buyerReps, closedDeals, sessionPipeline, lastDayOfMonth])
   const { totalHabitChecks, monthPct, viewChecks: todayChecks, viewPct: todayPct, totalProspecting, totalAppts, totalShowings, totalListings, totalBuyerReps, closedVol, closedComm, viewHabitXp: todayHabitXp, sessionPipelineXp, viewXp: todayXp } = dashStats
 
+  // ── Daily targets from monthly goals (auto-redistributing) ─────────────
+  const dailyTargets = useMemo(() => {
+    const targets = {}
+    const remaining = workingDaysRemaining(new Date())
+    const totals = { prospecting: totalProspecting, appointments: totalAppts, showing: totalShowings }
+    Object.entries(GOAL_HABIT_MAP).forEach(([goalKey, habitId]) => {
+      const monthlyGoal = parseInt(goals?.[goalKey])
+      if (!monthlyGoal || monthlyGoal <= 0) return
+      const soFar = totals[goalKey] || 0
+      const left = Math.max(0, monthlyGoal - soFar)
+      targets[habitId] = left <= 0
+        ? { daily: 0, done: true, monthlyGoal, soFar }
+        : { daily: Math.ceil(left / remaining), done: false, monthlyGoal, soFar }
+    })
+    return targets
+  }, [goals, totalProspecting, totalAppts, totalShowings])
+
   // ── GCI Dashboard stats ──────────────────────────────────────────────────
   const gciStats = useMemo(() => {
     if (!closedDeals.length) return { bySource: [], avgDeal: 0, annualPace: 0 }
@@ -2916,13 +2952,13 @@ function Dashboard({ theme, onToggleTheme }) {
             accent={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'}/>
           <StatCard icon="📅" label="Month"        value={`${monthPct}%`}   color="var(--gold)"  sub={`${totalHabitChecks} checks`}/>
           <StatCard icon="📞" label="Calls"         value={totalProspecting} color="var(--gold)"
-            sub={goals?.prospecting ? `${totalProspecting}/${goals.prospecting} goal` : 'this month'}
+            sub={goals?.prospecting ? `${totalProspecting}/${goals.prospecting} goal${dailyTargets.prospecting?.daily ? ` · ${dailyTargets.prospecting.daily}/day` : ''}` : 'this month'}
             accent={goals?.prospecting && totalProspecting>=goals.prospecting ? '#10b981' : undefined}/>
           <StatCard icon="📅" label="Appointments" value={totalAppts}        color="var(--green)"
-            sub={goals?.appointments ? `${totalAppts}/${goals.appointments} goal` : 'this month'}
+            sub={goals?.appointments ? `${totalAppts}/${goals.appointments} goal${dailyTargets.appointments?.daily ? ` · ${dailyTargets.appointments.daily}/day` : ''}` : 'this month'}
             accent={goals?.appointments && totalAppts>=goals.appointments ? '#10b981' : undefined}/>
           <StatCard icon="🔑" label="Showings"      value={totalShowings}    color="var(--blue)"
-            sub={goals?.showing ? `${totalShowings}/${goals.showing} goal` : undefined}
+            sub={goals?.showing ? `${totalShowings}/${goals.showing} goal${dailyTargets.showing?.daily ? ` · ${dailyTargets.showing.daily}/day` : ''}` : undefined}
             accent={goals?.showing && totalShowings>=goals.showing ? '#3b82f6' : undefined}/>
           <StatCard icon="🏡" label="Listed"        value={totalListings}         color="var(--purple)"/>
           <StatCard icon="🤝" label="Buyer Reps"   value={totalBuyerReps}        color="var(--blue)"/>
@@ -3114,8 +3150,18 @@ function Dashboard({ theme, onToggleTheme }) {
                         </button>
                         <span style={{ fontSize:15, flexShrink:0 }}>{h.icon}</span>
                         <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
-                            textDecoration:done?'line-through':'none', transition:'all .15s' }}>{h.label}</div>
+                          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                            <span style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
+                              textDecoration:done?'line-through':'none', transition:'all .15s',
+                              overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1, minWidth:0 }}>{h.label}</span>
+                            {dailyTargets[h.id] && !dailyTargets[h.id].done && (
+                              <span style={{ fontSize:10, fontWeight:700, color:'var(--gold2)', flexShrink:0,
+                                fontFamily:"'JetBrains Mono',monospace" }}>{cnt||0}/{dailyTargets[h.id].daily}</span>
+                            )}
+                            {dailyTargets[h.id]?.done && (
+                              <span style={{ fontSize:9, fontWeight:700, color:'var(--green)', flexShrink:0 }}>✓ goal</span>
+                            )}
+                          </div>
                           <div style={{ fontSize:10, color:'var(--dim)' }}>
                             +{h.xp} XP{h.xpEach?` · +${h.xpEach} per ${h.unit||'extra'}`:''}
                           </div>
@@ -3181,7 +3227,8 @@ function Dashboard({ theme, onToggleTheme }) {
                         <span style={{ fontSize:15, flexShrink:0 }}>{h.icon}</span>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
-                            textDecoration:done?'line-through':'none', transition:'all .15s' }}>{h.label}</div>
+                            textDecoration:done?'line-through':'none', transition:'all .15s',
+                            overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{h.label}</div>
                           <div style={{ fontSize:10, color:'var(--dim)' }}>+{h.xp} XP</div>
                         </div>
                         <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:500, flexShrink:0,
@@ -3219,7 +3266,8 @@ function Dashboard({ theme, onToggleTheme }) {
                         <span style={{ fontSize:15, flexShrink:0 }}>{h.icon}</span>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
-                            textDecoration:done?'line-through':'none', transition:'all .15s' }}>{h.label}</div>
+                            textDecoration:done?'line-through':'none', transition:'all .15s',
+                            overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{h.label}</div>
                           <div style={{ fontSize:10, color:'var(--dim)' }}>+{h.xp} XP</div>
                         </div>
                         <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:500, flexShrink:0,
@@ -3539,11 +3587,12 @@ function Dashboard({ theme, onToggleTheme }) {
                                 <button className="reorder-btn" disabled={idx===0} onClick={()=>moveTask(dateStr,weekUnified,h.id,-1)}>▲</button>
                                 <button className="reorder-btn" disabled={idx===weekUnified.length-1} onClick={()=>moveTask(dateStr,weekUnified,h.id,1)}>▼</button>
                               </div>
-                              <button onClick={()=>toggleHabit(h.id,wi,di)} style={{...weekRowStyle(checked,cs),flex:1}}>
+                              <button onClick={()=>toggleHabit(h.id,wi,di)} style={{...weekRowStyle(checked,cs),flex:1,minWidth:0}}>
                                 {weekCheckBox(checked, cs.color)}
-                                <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
-                                  textDecoration:checked?'line-through':'none' }}>{h.icon} {h.label}</span>
-                                <span className="mono" style={{ fontSize:9, color:cs.color }}>+{h.xp}</span>
+                                <span style={{ fontSize:10, flex:1, minWidth:0, color:checked?'var(--muted)':'var(--text2)',
+                                  textDecoration:checked?'line-through':'none',
+                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{h.icon} {h.label}</span>
+                                <span className="mono" style={{ fontSize:9, color:cs.color, flexShrink:0 }}>+{h.xp}</span>
                               </button>
                               {weekRemoveBtn(()=>dateStr && skipHabitForDate(h.id, dateStr))}
                             </div>
@@ -3560,10 +3609,11 @@ function Dashboard({ theme, onToggleTheme }) {
                                 <button className="reorder-btn" disabled={idx===0} onClick={()=>moveTask(dateStr,weekUnified,h.id,-1)}>▲</button>
                                 <button className="reorder-btn" disabled={idx===weekUnified.length-1} onClick={()=>moveTask(dateStr,weekUnified,h.id,1)}>▼</button>
                               </div>
-                              <button onClick={()=>toggleCustomTask(h.id,wi,di)} style={{...weekRowStyle(checked,cs),flex:1}}>
+                              <button onClick={()=>toggleCustomTask(h.id,wi,di)} style={{...weekRowStyle(checked,cs),flex:1,minWidth:0}}>
                                 {weekCheckBox(checked, cs.color)}
-                                <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
-                                  textDecoration:checked?'line-through':'none' }}>{h.icon} {h.label}</span>
+                                <span style={{ fontSize:10, flex:1, minWidth:0, color:checked?'var(--muted)':'var(--text2)',
+                                  textDecoration:checked?'line-through':'none',
+                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{h.icon} {h.label}</span>
                               </button>
                               {weekRemoveBtn(()=>deleteDayTask(h))}
                             </div>
@@ -3577,10 +3627,11 @@ function Dashboard({ theme, onToggleTheme }) {
                                 <button className="reorder-btn" disabled={idx===0} onClick={()=>moveTask(dateStr,weekUnified,h.id,-1)}>▲</button>
                                 <button className="reorder-btn" disabled={idx===weekUnified.length-1} onClick={()=>moveTask(dateStr,weekUnified,h.id,1)}>▼</button>
                               </div>
-                              <button onClick={()=>toggleCustomTask(h.id,wi,di)} style={{...weekRowStyle(checked,cs),flex:1}}>
+                              <button onClick={()=>toggleCustomTask(h.id,wi,di)} style={{...weekRowStyle(checked,cs),flex:1,minWidth:0}}>
                                 {weekCheckBox(checked,'#06b6d4')}
-                                <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
-                                  textDecoration:checked?'line-through':'none' }}>{h.icon} {h.label}</span>
+                                <span style={{ fontSize:10, flex:1, minWidth:0, color:checked?'var(--muted)':'var(--text2)',
+                                  textDecoration:checked?'line-through':'none',
+                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{h.icon} {h.label}</span>
                               </button>
                               {weekRemoveBtn(()=>dateStr && skipHabitForDate(h.id, dateStr))}
                             </div>

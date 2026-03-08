@@ -2104,9 +2104,9 @@ function Dashboard({ theme, onToggleTheme }) {
   useEffect(() => {
     if (!user?.id) return
     const stored = (() => { try { return JSON.parse(localStorage.getItem('gcal_token')) } catch { return null } })()
-    if (stored?.expiry > Date.now()) return // still valid
+    if (stored?.expiry > Date.now()) { setGcalToken(stored.token); return }
     // Expired or missing — try server-side refresh (works across devices)
-    refreshGcalToken()
+    refreshGcalToken().then(token => { if (token) syncGoogleCalendar(token) })
   }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function connectGoogleCalendar() {

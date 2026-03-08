@@ -10,7 +10,7 @@ const CUR_YEAR = new Date().getFullYear()
 
 /* ── Avatar Crop Modal ── */
 function AvatarCropModal({ src, onConfirm, onCancel }) {
-  const OUTPUT_SIZE = 512
+  const OUTPUT_SIZE = 256
   const CROP_SIZE  = 260
   const canvasRef    = useRef(null)
   const imgRef       = useRef(null)
@@ -98,8 +98,8 @@ function AvatarCropModal({ src, onConfirm, onCancel }) {
     setOffset(prev => clampOffset(prev.x, prev.y, ns))
   }
 
-  // ── Crop & export ──
-  async function handleConfirm() {
+  // ── Crop & export as base64 data URL ──
+  function handleConfirm() {
     const img = imgRef.current; if (!img) return
     setProcessing(true)
     const canvas = canvasRef.current
@@ -108,7 +108,9 @@ function AvatarCropModal({ src, onConfirm, onCancel }) {
     const sx = -offset.x / scale, sy = -offset.y / scale
     const sw = CROP_SIZE / scale, sh = CROP_SIZE / scale
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE)
-    canvas.toBlob(blob => { if (blob) onConfirm(blob); setProcessing(false) }, 'image/jpeg', 0.9)
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.8)
+    onConfirm(dataUrl)
+    setProcessing(false)
   }
 
   return (
@@ -345,31 +347,22 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
     setCropFile(null); setCropImgSrc(null)
   }
 
-  // Step 2: receive cropped blob from modal → upload
-  async function uploadCroppedAvatar(blob) {
+  // Step 2: receive cropped data URL from modal → save directly to profile
+  async function uploadCroppedAvatar(dataUrl) {
     if (cropImgSrc) URL.revokeObjectURL(cropImgSrc)
     setCropFile(null); setCropImgSrc(null)
     setAvatarUploading(true)
     try {
-      const path = `${user.id}/avatar.jpg`
-      await supabase.storage.from('avatars').remove([path])
-      const { error: upErr } = await supabase.storage.from('avatars').upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
-      if (upErr) throw upErr
-      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
-      const url = urlData.publicUrl + '?v=' + Date.now()
       const { data: current } = await supabase.from('profiles').select('goals').eq('id', user.id).single()
-      const merged = { ...(current?.goals || {}), avatar_url: url }
+      const merged = { ...(current?.goals || {}), avatar_url: dataUrl }
       const { error: saveErr } = await supabase.from('profiles').update({ goals: merged }).eq('id', user.id)
       if (saveErr) throw saveErr
-      setAvatarUrl(url)
+      setAvatarUrl(dataUrl)
       setAvatarMsg({ text:'Photo updated ✓', type:'success' }); safeTimeout(()=>setAvatarMsg(null),3000)
       if (refreshProfile) refreshProfile()
     } catch (err) {
-      console.error('Avatar upload failed:', err?.message || err)
-      const msg = err?.message?.includes('row-level security')
-        ? 'Upload blocked — run the avatars migration in Supabase SQL Editor'
-        : 'Photo upload failed — please try again'
-      setAvatarMsg({ text:msg, type:'error' }); safeTimeout(()=>setAvatarMsg(null),6000)
+      console.error('Avatar save failed:', err?.message || err)
+      setAvatarMsg({ text:'Photo save failed — please try again', type:'error' }); safeTimeout(()=>setAvatarMsg(null),5000)
     } finally {
       setAvatarUploading(false)
     }

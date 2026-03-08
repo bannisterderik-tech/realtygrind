@@ -51,6 +51,23 @@ function relativeTime(isoStr) {
   return d === 1 ? '1 day ago' : `${d} days ago`
 }
 
+// Reusable avatar: shows profile photo if available, otherwise initials
+function MemberAvatar({ member, size=38, rank }) {
+  const r = rank || getRank(member?.xp||0)
+  const url = member?.goals?.avatar_url
+  return (
+    <div style={{ width:size, height:size, borderRadius:'50%',
+      background: url ? 'transparent' : `linear-gradient(135deg, ${r.color}, ${r.color}99)`,
+      display:'flex', alignItems:'center', justifyContent:'center',
+      fontSize:Math.round(size*0.4), fontWeight:700, color:'#fff', flexShrink:0, letterSpacing:0,
+      boxShadow:`0 2px 8px ${r.color}44`, overflow:'hidden' }}>
+      {url ? (
+        <img src={url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+      ) : (member?.full_name||'A').charAt(0).toUpperCase()}
+    </div>
+  )
+}
+
 export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const { user, profile, refreshProfile } = useAuth()
   const [mode,       setMode]       = useState('menu')
@@ -101,6 +118,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [buyerFilter,     setBuyerFilter]     = useState('all')   // 'all' | memberId
   const [buyerReplyForms, setBuyerReplyForms] = useState({})      // { [needId]: string }
   const [buyerReplySaving,setBuyerReplySaving]= useState(null)    // needId being saved, or null
+  const [slackUrl,        setSlackUrl]        = useState('')      // team Slack workspace URL
+  const [slackSaving,     setSlackSaving]     = useState(false)
 
   // Depend only on team_id — prevents re-fetching every time the profile object
   // is recreated (e.g. on token refresh) while nothing meaningful has changed.
@@ -166,6 +185,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     const {data:team} = await supabase.from('teams').select('*').eq('id',tid).single()
     if (seq !== fetchMembersSeqRef.current) return
     setTeamData(team)
+    setSlackUrl(team?.team_prefs?.slack_url || '')
     // Load habit stats for all members
     if (mems?.length) {
       const ids = mems.map(m=>m.id)
@@ -1499,13 +1519,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                             <div className="mono" style={{ width:26, fontSize:12, color:'var(--dim)', textAlign:'center', fontWeight:700 }}>
                               {i+1}
                             </div>
-                            <div style={{ width:38, height:38, borderRadius:'50%',
-                              background:`linear-gradient(135deg, ${rank.color}, ${rank.color}99)`,
-                              display:'flex', alignItems:'center', justifyContent:'center',
-                              fontSize:15, fontWeight:700, color:'#fff', flexShrink:0, letterSpacing:0,
-                              boxShadow:`0 2px 8px ${rank.color}44` }}>
-                              {(m.full_name||'A').charAt(0).toUpperCase()}
-                            </div>
+                            <MemberAvatar member={m} size={38} rank={rank}/>
                             <div style={{ flex:1, minWidth:0 }}>
                               <div style={{ display:'flex', alignItems:'center', gap:7, flexWrap:'wrap' }}>
                                 <span style={{ fontSize:14, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'100%' }}>{m.full_name||'Agent'}</span>
@@ -2158,6 +2172,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               { id:'groups',  label:'🫂 Groups' },
                               { id:'ai',      label:'🤖 AI Tools' },
                               { id:'directory', label:'🔗 Directory' },
+                              { id:'integrations', label:'🔌 Integrations' },
                               { id:'danger',  label:'⚠️ Danger Zone' },
                             ].map(t=>(
                               <button key={t.id} onClick={()=>setSettingsSubTab(t.id)} style={{
@@ -2232,12 +2247,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 const rank = getRank(m.xp||0)
                                 return (
                                   <div key={m.id} className="card" style={{ padding:'12px 16px', display:'flex', alignItems:'center', gap:12 }}>
-                                    <div style={{ width:32, height:32, borderRadius:'50%', flexShrink:0,
-                                      background:`linear-gradient(135deg,${rank.color},${rank.color}99)`,
-                                      display:'flex', alignItems:'center', justifyContent:'center',
-                                      fontSize:13, fontWeight:700, color:'#fff' }}>
-                                      {(m.full_name||'A').charAt(0).toUpperCase()}
-                                    </div>
+                                    <MemberAvatar member={m} size={32} rank={rank}/>
                                     <div style={{ flex:1, minWidth:0 }}>
                                       <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.full_name||'Agent'}</div>
                                       <div style={{ fontSize:11, color:'var(--muted)' }}>{rank.name}</div>
@@ -2785,6 +2795,48 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                           )}
 
                           {/* ── Danger Zone sub-tab ── */}
+                          {/* ── Integrations sub-tab ── */}
+                          {settingsSubTab==='integrations' && (
+                          <div className="card" style={{
+                            padding:'18px 20px',
+                            borderLeft:'3px solid #611f69',
+                            background:'linear-gradient(135deg, rgba(97,31,105,.06) 0%, var(--surface) 55%)',
+                          }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+                              <span style={{ fontSize:16 }}>💬</span>
+                              <span className="serif" style={{ fontSize:15, color:'var(--text)', fontWeight:600 }}>Slack Workspace</span>
+                              <span style={{ fontSize:11, color:'var(--muted)', marginLeft:'auto' }}>Shows a join button on member dashboards</span>
+                            </div>
+                            <div style={{ fontSize:12, color:'var(--muted)', marginBottom:12, lineHeight:1.6 }}>
+                              Paste your Slack workspace URL (e.g. https://yourteam.slack.com) and a Slack button will appear on every team member's dashboard.
+                            </div>
+                            <div style={{ display:'flex', gap:8, marginBottom: 0 }}>
+                              <input className="field-input" type="url" value={slackUrl}
+                                onChange={e=>setSlackUrl(e.target.value)}
+                                placeholder="https://yourteam.slack.com" style={{ flex:1 }}/>
+                              <button type="button" className="btn-primary" onClick={async()=>{
+                                setSlackSaving(true)
+                                try {
+                                  const newPrefs = { ...(teamData.team_prefs||{}), slack_url: slackUrl.trim() }
+                                  const { error: e } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                  if (e) throw e
+                                  setTeamData(td=>({ ...td, team_prefs: newPrefs }))
+                                } catch(e) { console.error(e) }
+                                setSlackSaving(false)
+                              }}
+                                disabled={slackSaving}
+                                style={{ fontSize:13, padding:'9px 20px', whiteSpace:'nowrap' }}>
+                                {slackSaving ? 'Saving…' : 'Save'}
+                              </button>
+                            </div>
+                            {slackUrl.trim() && (
+                              <div style={{ marginTop:12, fontSize:12, color:'var(--green)' }}>
+                                ✓ Slack button will appear on team member dashboards
+                              </div>
+                            )}
+                          </div>
+                          )}
+
                           {settingsSubTab==='danger' && (
                           <div style={{ border:'1px solid rgba(220,38,38,.25)', borderRadius:12, padding:24 }}>
                             <div className="serif" style={{ fontSize:18, color:'var(--red)', marginBottom:8 }}>⚠️ Transfer Ownership</div>
@@ -2883,13 +2935,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                 background:`linear-gradient(135deg,${rank.color}0c 0%,var(--surface) 60%)`,
                 borderTop:`3px solid ${rank.color}` }}>
                 <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-                  <div style={{ width:52, height:52, borderRadius:'50%', flexShrink:0,
-                    background:`linear-gradient(135deg,${rank.color},${rank.color}99)`,
-                    display:'flex', alignItems:'center', justifyContent:'center',
-                    fontSize:22, fontWeight:700, color:'#fff',
-                    boxShadow:`0 4px 16px ${rank.color}44` }}>
-                    {(viewingMember.full_name||'A').charAt(0).toUpperCase()}
-                  </div>
+                  <MemberAvatar member={viewingMember} size={52} rank={rank}/>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{viewingMember.full_name||'Agent'}</div>
                     <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>{rank.icon} {rank.name} · 🔥 {viewingMember.streak||0} day streak</div>

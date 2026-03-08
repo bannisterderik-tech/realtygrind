@@ -73,6 +73,9 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   const [bio,      setBio]      = useState({ phone:'', license:'', specialty:'', about:'' })
   const [bioSaving, setBioSaving] = useState(false)
   const [bioMsg,    setBioMsg]   = useState('')
+  const [avatarUrl,     setAvatarUrl]     = useState(profile?.goals?.avatar_url || '')
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const avatarInputRef = useRef(null)
   // Coaching notes (read from team_prefs, replies saved to own profile.goals)
   const [profileReplyForms,   setProfileReplyForms]   = useState({})
   const [profileReplySaving,  setProfileReplySaving]  = useState(null)
@@ -137,6 +140,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
           setGoals(g=>({ ...g, ...Object.fromEntries(Object.entries(data.goals).map(([k,v])=>[k,v||''])) }))
           if (data.goals.gci_target)     setGciTarget(String(data.goals.gci_target))
           if (data.goals.avg_commission) setAvgCommission(String(data.goals.avg_commission))
+          if (data.goals.avatar_url)     setAvatarUrl(data.goals.avatar_url)
         }
       })
       .catch(err => { if (mountedRef.current) console.error('Failed to load goals:', err) })
@@ -155,6 +159,31 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
       setBioMsg('Failed to save')
     } finally {
       setBioSaving(false)
+    }
+  }
+
+  async function uploadAvatar(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) return
+    setAvatarUploading(true)
+    try {
+      const ext = file.name.split('.').pop()
+      const path = `${user.id}/avatar.${ext}`
+      const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+      if (upErr) throw upErr
+      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
+      const url = urlData.publicUrl + '?t=' + Date.now()
+      // Save to profile.goals
+      const { data: current } = await supabase.from('profiles').select('goals').eq('id', user.id).single()
+      const merged = { ...(current?.goals || {}), avatar_url: url }
+      await supabase.from('profiles').update({ goals: merged }).eq('id', user.id)
+      setAvatarUrl(url)
+      if (refreshProfile) refreshProfile()
+    } catch (err) {
+      console.error('Avatar upload failed:', err)
+    } finally {
+      setAvatarUploading(false)
     }
   }
 
@@ -518,11 +547,34 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
           <div className="card" style={{ padding:28, marginBottom:20, borderTop:`3px solid ${rank.color}`,
             background:`linear-gradient(135deg, ${rank.color}0d 0%, var(--surface) 55%)`,
             display:'flex', gap:22, alignItems:'center', flexWrap:'wrap' }}>
-            <div style={{ position:'relative', flexShrink:0 }}>
+            <div style={{ position:'relative', flexShrink:0, cursor:'pointer' }}
+              onClick={()=>avatarInputRef.current?.click()} title="Change profile photo">
               <Ring pct={rankPct} size={84} sw={6} color={rank.color}/>
-              <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:32 }}>
-                {rank.icon}
+              <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="" style={{ width:64, height:64, borderRadius:'50%', objectFit:'cover' }}/>
+                ) : (
+                  <div style={{ width:64, height:64, borderRadius:'50%',
+                    background:`linear-gradient(135deg, ${rank.color}, ${rank.color}88)`,
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    fontSize:26, fontWeight:700, color:'#fff' }}>
+                    {(profile?.full_name||'A').charAt(0).toUpperCase()}
+                  </div>
+                )}
               </div>
+              {avatarUploading && (
+                <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center',
+                  background:'rgba(0,0,0,.5)', borderRadius:'50%' }}>
+                  <Loader/>
+                </div>
+              )}
+              <div style={{ position:'absolute', bottom:-2, right:-2, width:22, height:22, borderRadius:'50%',
+                background:'var(--surface)', border:'2px solid var(--b2)',
+                display:'flex', alignItems:'center', justifyContent:'center', fontSize:11 }}>
+                📷
+              </div>
+              <input ref={avatarInputRef} type="file" accept="image/*" onChange={uploadAvatar}
+                style={{ display:'none' }}/>
             </div>
             <div style={{ flex:1, minWidth:180 }}>
               <div style={{ fontSize:10, color:rank.color, fontFamily:"'JetBrains Mono',monospace", letterSpacing:.8,
@@ -974,6 +1026,8 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                     { key:'prospecting',  label:'Prospecting Calls',       icon:'📞', placeholder:'e.g. 40' },
                     { key:'appointments', label:'Appointments Booked',     icon:'📅', placeholder:'e.g. 10' },
                     { key:'showing',      label:'Property Showings',       icon:'🔑', placeholder:'e.g. 20' },
+                    { key:'listings',     label:'Listings Taken',           icon:'🏡', placeholder:'e.g. 5' },
+                    { key:'buyers',       label:'Buyer Reps Signed',       icon:'🤝', placeholder:'e.g. 5' },
                     { key:'closed',       label:'Deals to Close',          icon:'🎉', placeholder:'e.g. 3' },
                   ].map(f=>(
                     <div key={f.key}>

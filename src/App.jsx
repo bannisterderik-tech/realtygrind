@@ -1636,10 +1636,11 @@ function Dashboard({ theme, onToggleTheme }) {
       })
       setPendingDeals(pendingRows)
       setClosedDeals(   txRes.data.filter(t=>t.type==='closed').map(m))
-      // Historical counts — include archived rows so stats survive forward moves
-      setOffersMadeCount(txRes.data.filter(t=>t.type==='offer_made').length)
-      setOffersReceivedCount(txRes.data.filter(t=>t.type==='offer_received').length)
-      setWentPendingCount(txRes.data.filter(t=>t.type==='pending').length)
+      // Historical counts — a deal that moved forward still counts toward its earlier stage
+      // closedFrom='Offers' means the deal was once an offer; checklist presence means it was pending
+      setOffersMadeCount(txRes.data.filter(t=>t.type==='offer_made'||(t.closed_from==='Offers'&&(t.deal_side==='buyer'||(!t.deal_side&&t.closed_from!=='Listing')))).length)
+      setOffersReceivedCount(txRes.data.filter(t=>t.type==='offer_received'||(t.closed_from==='Offers'&&(t.deal_side==='seller'||!t.deal_side))).length)
+      setWentPendingCount(txRes.data.filter(t=>t.type==='pending'||(t.type==='closed'&&Array.isArray(t.checklist)&&t.checklist.length>0)).length)
     }
 
     if (profRes.data) {
@@ -2203,23 +2204,10 @@ function Dashboard({ theme, onToggleTheme }) {
     }
   }
 
-  // ── Pipeline cascade helpers ─────────────────────────────────────────────
-  // When removing from a stage, also clean up any earlier-stage records with
-  // the same address so they don't reappear after the "most advanced" record
-  // is gone.  When closing a deal that originated from a listing, mark the
-  // listing as closed too.
-  function cleanupEarlierStages(address, stage) {
-    const addr = (address||'').toLowerCase()
-    if (!addr) return
-    const purge = (setter) => {
-      setter(prev => {
-        prev.filter(d=>(d.address||'').toLowerCase()===addr).forEach(d=>dbDelete(d.id))
-        return prev.filter(d=>(d.address||'').toLowerCase()!==addr)
-      })
-    }
-    if (stage === 'closed') { purge(setPendingDeals); purge(setOffersReceived); purge(setOffersMade) }
-    if (stage === 'pending') { purge(setOffersReceived); purge(setOffersMade) }
-  }
+  // ── Pipeline transition helpers ──────────────────────────────────────────
+  // Single-record model: each deal is ONE row in the transactions table whose
+  // `type` field is updated as it moves through stages.  No duplicate records,
+  // no archiving, no ghost data.
 
   function markListingClosed(address) {
     const addr = (address||'').toLowerCase()
@@ -2230,35 +2218,28 @@ function Dashboard({ theme, onToggleTheme }) {
 
   async function handleOfferStatus(row, newStatus, srcSetter) {
     const inferredSide = srcSetter === setOffersReceived ? 'seller' : 'buyer'
-    const addr = (row.address||'').toLowerCase()
     if (newStatus === 'pending') {
-      if (addr && pendingDeals.some(d=>(d.address||'').toLowerCase()===addr)) {
-        showToast('This address is already in Pending'); return
+      const cl = DEFAULT_CHECKLIST.map(i=>({...i}))
+      const updateObj = { type:'pending', closed_from:'Offers', checklist:cl }
+      if (row.id && !String(row.id).startsWith('tmp-')) {
+        const {error} = await supabase.from('transactions').update(updateObj).eq('id',row.id).eq('user_id',user.id)
+        if (error) { console.error('transition error:', error.message); showToast('Failed to update deal'); return }
       }
-      const data = await dbInsert('pending', row, 'Offers', row.dealSide || inferredSide, row.originalLeadSource || row.leadSource || null)
-      if (data) {
-        const cl = DEFAULT_CHECKLIST.map(i=>({...i}))
-        setPendingDeals(prev=>[...prev,{...row,id:data.id,status:'active',closedFrom:'Offers',dealSide:row.dealSide||inferredSide,originalLeadSource:row.originalLeadSource||row.leadSource||'',checklist:cl}])
-        safeDb(supabase.from('transactions').update({checklist:cl}).eq('id',data.id))
-        srcSetter(prev => prev.filter(r => r.id !== row.id))
-        await dbArchive(row.id)
-      }
+      srcSetter(prev => prev.filter(r => r.id !== row.id))
+      setPendingDeals(prev=>[...prev,{...row,closedFrom:'Offers',dealSide:row.dealSide||inferredSide,checklist:cl}])
       setWentPendingCount(prev => prev + 1)
       await awardPipelineXp('went_pending', '#f59e0b')
     } else if (newStatus === 'closed') {
-      if (addr && closedDeals.some(d=>(d.address||'').toLowerCase()===addr)) {
-        showToast('This address is already in Closed Deals'); return
+      const updateObj = { type:'closed', status:'closed', closed_from:row.closedFrom||'Offers' }
+      if (row.id && !String(row.id).startsWith('tmp-')) {
+        const {error} = await supabase.from('transactions').update(updateObj).eq('id',row.id).eq('user_id',user.id)
+        if (error) { console.error('transition error:', error.message); showToast('Failed to update deal'); return }
       }
-      const data = await dbInsert('closed', row, 'Offers', row.dealSide || inferredSide, row.originalLeadSource || row.leadSource || null)
-      if (data) {
-        setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:'Offers',dealSide:row.dealSide||inferredSide,originalLeadSource:row.originalLeadSource||row.leadSource||''}])
-        srcSetter(prev => prev.filter(r => r.id !== row.id))
-        await dbArchive(row.id)
-        cleanupEarlierStages(row.address, 'closed')
-        markListingClosed(row.address)
-        const comm = resolveCommission(row.commission, row.price)
-        setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
-      }
+      srcSetter(prev => prev.filter(r => r.id !== row.id))
+      setClosedDeals(prev=>[...prev,{...row,status:'closed',closedFrom:row.closedFrom||'Offers',dealSide:row.dealSide||inferredSide}])
+      markListingClosed(row.address)
+      const comm = resolveCommission(row.commission, row.price)
+      setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
       await awardPipelineXp('closed', '#10b981')
     } else if (newStatus === 'declined') {
       srcSetter(prev => prev.filter(r => r.id !== row.id))
@@ -2275,20 +2256,16 @@ function Dashboard({ theme, onToggleTheme }) {
 
   async function handlePendingStatus(row, newStatus) {
     if (newStatus === 'closed') {
-      const addr = (row.address||'').toLowerCase()
-      if (addr && closedDeals.some(d=>(d.address||'').toLowerCase()===addr)) {
-        showToast('This address is already in Closed Deals'); return
+      const updateObj = { type:'closed', status:'closed' }
+      if (row.id && !String(row.id).startsWith('tmp-')) {
+        const {error} = await supabase.from('transactions').update(updateObj).eq('id',row.id).eq('user_id',user.id)
+        if (error) { console.error('transition error:', error.message); showToast('Failed to update deal'); return }
       }
-      const data = await dbInsert('closed', row, row.closedFrom||'Pending', row.dealSide||null, row.originalLeadSource||row.leadSource||null)
-      if (data) {
-        setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:row.closedFrom||'Pending',dealSide:row.dealSide||'',originalLeadSource:row.originalLeadSource||row.leadSource||''}])
-        setPendingDeals(prev => prev.filter(r => r.id !== row.id))
-        await dbArchive(row.id)
-        cleanupEarlierStages(row.address, 'closed')
-        markListingClosed(row.address)
-        const comm = resolveCommission(row.commission, row.price)
-        setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
-      }
+      setPendingDeals(prev => prev.filter(r => r.id !== row.id))
+      setClosedDeals(prev=>[...prev,{...row,status:'closed'}])
+      markListingClosed(row.address)
+      const comm = resolveCommission(row.commission, row.price)
+      setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
       await awardPipelineXp('closed', '#10b981')
     }
   }
@@ -2421,26 +2398,50 @@ function Dashboard({ theme, onToggleTheme }) {
     const lPrice = listing.price||''
     const lComm  = listing.commission||''
     const lSource = listing.leadSource||null
+    const addr = (listing.address||'').toLowerCase()
     if (newStatus === 'pending') {
-      // Listing stays with status change, Went Pending entry created
       await updateListing(listing.id, 'status', 'pending')
-      const data = await dbInsert('pending', {address:listing.address, price:lPrice, commission:lComm}, 'Listing', 'seller', lSource)
-      if (data) {
+      // If an offer_received already exists for this address, promote it
+      const existingOffer = offersReceived.find(d=>(d.address||'').toLowerCase()===addr)
+      if (existingOffer) {
         const cl = DEFAULT_CHECKLIST.map(i=>({...i}))
-        setPendingDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'active',closedFrom:'Listing',dealSide:'seller',originalLeadSource:lSource||'',checklist:cl}])
-        safeDb(supabase.from('transactions').update({checklist:cl}).eq('id',data.id))
+        await supabase.from('transactions').update({type:'pending',closed_from:'Listing',checklist:cl}).eq('id',existingOffer.id).eq('user_id',user.id)
+        setOffersReceived(prev=>prev.filter(r=>r.id!==existingOffer.id))
+        setPendingDeals(prev=>[...prev,{...existingOffer,closedFrom:'Listing',checklist:cl}])
+      } else {
+        const data = await dbInsert('pending', {address:listing.address, price:lPrice, commission:lComm}, 'Listing', 'seller', lSource)
+        if (data) {
+          const cl = DEFAULT_CHECKLIST.map(i=>({...i}))
+          setPendingDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'active',closedFrom:'Listing',dealSide:'seller',originalLeadSource:lSource||'',checklist:cl}])
+          safeDb(supabase.from('transactions').update({checklist:cl}).eq('id',data.id))
+        }
       }
       setWentPendingCount(prev => prev + 1)
       await awardPipelineXp('went_pending', '#f59e0b')
     } else if (newStatus === 'closed') {
-      // Listing stays with 'closed' status, Closed entry created
       await updateListing(listing.id, 'status', 'closed')
-      const data = await dbInsert('closed', {address:listing.address, price:lPrice, commission:lComm}, 'Listing', 'seller', lSource)
-      if (data) {
-        setClosedDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'closed',closedFrom:'Listing',dealSide:'seller',originalLeadSource:lSource||''}])
-        const comm = resolveCommission(lComm, lPrice)
-        setCelebration({ address:listing.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (lComm||''), newComm:comm })
+      // If a pending deal exists for this address, promote it to closed
+      const existingPending = pendingDeals.find(d=>(d.address||'').toLowerCase()===addr)
+      if (existingPending) {
+        await supabase.from('transactions').update({type:'closed',status:'closed'}).eq('id',existingPending.id).eq('user_id',user.id)
+        setPendingDeals(prev=>prev.filter(r=>r.id!==existingPending.id))
+        setClosedDeals(prev=>[...prev,{...existingPending,status:'closed'}])
+      } else {
+        // Check offers too
+        const existingOffer = offersReceived.find(d=>(d.address||'').toLowerCase()===addr)
+        if (existingOffer) {
+          await supabase.from('transactions').update({type:'closed',status:'closed',closed_from:'Listing'}).eq('id',existingOffer.id).eq('user_id',user.id)
+          setOffersReceived(prev=>prev.filter(r=>r.id!==existingOffer.id))
+          setClosedDeals(prev=>[...prev,{...existingOffer,status:'closed',closedFrom:'Listing'}])
+        } else {
+          const data = await dbInsert('closed', {address:listing.address, price:lPrice, commission:lComm}, 'Listing', 'seller', lSource)
+          if (data) {
+            setClosedDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'closed',closedFrom:'Listing',dealSide:'seller',originalLeadSource:lSource||''}])
+          }
+        }
       }
+      const comm = resolveCommission(lComm, lPrice)
+      setCelebration({ address:listing.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (lComm||''), newComm:comm })
       await awardPipelineXp('closed', '#10b981')
     }
   }
@@ -4017,73 +4018,64 @@ function Dashboard({ theme, onToggleTheme }) {
             </div>
           </div>
 
-          {(() => {
-            const sellerPending = pendingDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing')
-            const sellerClosed = closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing')
-            const sClosedA = new Set(sellerClosed.map(r=>(r.address||'').toLowerCase()).filter(Boolean))
-            const sPendingA = new Set(sellerPending.map(r=>(r.address||'').toLowerCase()).filter(Boolean))
-            const dedupOffers = offersReceived.filter(r=>!sClosedA.has((r.address||'').toLowerCase())&&!sPendingA.has((r.address||'').toLowerCase()))
-            const dedupPending = sellerPending.filter(r=>!sClosedA.has((r.address||'').toLowerCase()))
-            if (listingsPipelineView === 'list') return (
-              <>
-                <PipelineSection title="Offers Received" icon="📥" accentColor="#8b5cf6" xpLabel={PIPELINE_XP.offer_received}
-                  rows={dedupOffers} setRows={setOffersReceived} userId={user.id}
-                  onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersReceived)}
-                  onAdd={handleOfferReceivedAdd}
-                  onRemove={()=>deductPipelineXp('offer_received')}
-                  statusOpts={[{v:'pending',l:'✓ Accepted'},{v:'countered',l:'↩ Counter'},{v:'declined',l:'✕ Decline',variant:'red'},{v:'closed',l:'Mark Closed'}]}/>
-                <PipelineSection title="Went Pending" icon="⏳" accentColor="#f59e0b" xpLabel={PIPELINE_XP.went_pending}
-                  rows={dedupPending} setRows={setPendingDeals} userId={user.id}
-                  onStatusChange={(r,s)=>handlePendingStatus(r,s)}
-                  onRemove={(row)=>{deductPipelineXp('went_pending');cleanupEarlierStages(row.address,'pending')}}
-                  statusOpts={[{v:'active',l:'Active'},{v:'closed',l:'Mark Closed'}]}
-                  expandedChecklist={expandedChecklist} setExpandedChecklist={setExpandedChecklist}
-                  onToggleChecklistItem={toggleChecklistItem} onAddChecklistItem={addChecklistItem}
-                  onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
-                <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
-                  rows={sellerClosed} setRows={setClosedDeals} userId={user.id}
-                  onRemove={(row)=>{deductPipelineXp('closed');cleanupEarlierStages(row.address,'closed')}}
-                  showSource={true}/>
-              </>
-            )
-            return (
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, minHeight:200 }}>
-                {[
-                  { title:'Offers Rec\'d', icon:'📥', color:'#8b5cf6', rows:dedupOffers },
-                  { title:'Pending', icon:'⏳', color:'#f59e0b', rows:dedupPending },
-                  { title:'Closed', icon:'🎉', color:'#10b981', rows:sellerClosed },
-                ].map(col => (
-                  <div key={col.title} style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:12, overflow:'hidden' }}>
-                    <div style={{ padding:'10px 12px', background:`${col.color}11`, borderBottom:`2px solid ${col.color}33`, display:'flex', alignItems:'center', gap:6 }}>
-                      <span style={{ fontSize:14 }}>{col.icon}</span>
-                      <span style={{ fontSize:12, fontWeight:700, color:'var(--text)' }}>{col.title}</span>
-                      <span className="mono" style={{ marginLeft:'auto', fontSize:11, color:col.color, fontWeight:700 }}>{col.rows.length}</span>
-                    </div>
-                    <div style={{ padding:8, display:'flex', flexDirection:'column', gap:6, maxHeight:400, overflowY:'auto' }}>
-                      {col.rows.length === 0 && (
-                        <div style={{ padding:'20px 8px', textAlign:'center', fontSize:11, color:'var(--dim)' }}>No entries</div>
-                      )}
-                      {col.rows.map(r => {
-                        const comm = resolveCommission(r.commission, r.price)
-                        const pn = parseFloat(String(r.price||'').replace(/[^0-9.]/g,''))
-                        return (
-                          <div key={r.id} style={{ padding:'10px 12px', borderRadius:8, background:'var(--bg)', border:'1px solid var(--b1)', transition:'box-shadow .15s' }}>
-                            <div style={{ fontFamily:"'Fraunces',serif", fontSize:12, fontWeight:600, color:'var(--text)', marginBottom:4, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                              {r.address || 'Untitled'}
-                            </div>
-                            <div style={{ display:'flex', gap:8, fontSize:10, color:'var(--muted)', alignItems:'center' }}>
-                              {pn > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color:col.color }}>{formatPrice(r.price)}</span>}
-                              {comm > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", color:'var(--green)', fontWeight:700 }}>{fmtMoney(comm)}</span>}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
+          {listingsPipelineView === 'list' ? (
+            <>
+              <PipelineSection title="Offers Received" icon="📥" accentColor="#8b5cf6" xpLabel={PIPELINE_XP.offer_received}
+                rows={offersReceived} setRows={setOffersReceived} userId={user.id}
+                onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersReceived)}
+                onAdd={handleOfferReceivedAdd}
+                onRemove={()=>deductPipelineXp('offer_received')}
+                statusOpts={[{v:'pending',l:'✓ Accepted'},{v:'countered',l:'↩ Counter'},{v:'declined',l:'✕ Decline',variant:'red'},{v:'closed',l:'Mark Closed'}]}/>
+              <PipelineSection title="Went Pending" icon="⏳" accentColor="#f59e0b" xpLabel={PIPELINE_XP.went_pending}
+                rows={pendingDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing')} setRows={setPendingDeals} userId={user.id}
+                onStatusChange={(r,s)=>handlePendingStatus(r,s)}
+                onRemove={()=>deductPipelineXp('went_pending')}
+                statusOpts={[{v:'active',l:'Active'},{v:'closed',l:'Mark Closed'}]}
+                expandedChecklist={expandedChecklist} setExpandedChecklist={setExpandedChecklist}
+                onToggleChecklistItem={toggleChecklistItem} onAddChecklistItem={addChecklistItem}
+                onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
+              <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
+                rows={closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing')} setRows={setClosedDeals} userId={user.id}
+                onRemove={()=>deductPipelineXp('closed')}
+                showSource={true}/>
+            </>
+          ) : (
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, minHeight:200 }}>
+              {[
+                { title:'Offers Rec\'d', icon:'📥', color:'#8b5cf6', rows:offersReceived },
+                { title:'Pending', icon:'⏳', color:'#f59e0b', rows:pendingDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing') },
+                { title:'Closed', icon:'🎉', color:'#10b981', rows:closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing') },
+              ].map(col => (
+                <div key={col.title} style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:12, overflow:'hidden' }}>
+                  <div style={{ padding:'10px 12px', background:`${col.color}11`, borderBottom:`2px solid ${col.color}33`, display:'flex', alignItems:'center', gap:6 }}>
+                    <span style={{ fontSize:14 }}>{col.icon}</span>
+                    <span style={{ fontSize:12, fontWeight:700, color:'var(--text)' }}>{col.title}</span>
+                    <span className="mono" style={{ marginLeft:'auto', fontSize:11, color:col.color, fontWeight:700 }}>{col.rows.length}</span>
                   </div>
-                ))}
-              </div>
-            )
-          })()}
+                  <div style={{ padding:8, display:'flex', flexDirection:'column', gap:6, maxHeight:400, overflowY:'auto' }}>
+                    {col.rows.length === 0 && (
+                      <div style={{ padding:'20px 8px', textAlign:'center', fontSize:11, color:'var(--dim)' }}>No entries</div>
+                    )}
+                    {col.rows.map(r => {
+                      const comm = resolveCommission(r.commission, r.price)
+                      const pn = parseFloat(String(r.price||'').replace(/[^0-9.]/g,''))
+                      return (
+                        <div key={r.id} style={{ padding:'10px 12px', borderRadius:8, background:'var(--bg)', border:'1px solid var(--b1)', transition:'box-shadow .15s' }}>
+                          <div style={{ fontFamily:"'Fraunces',serif", fontSize:12, fontWeight:600, color:'var(--text)', marginBottom:4, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                            {r.address || 'Untitled'}
+                          </div>
+                          <div style={{ display:'flex', gap:8, fontSize:10, color:'var(--muted)', alignItems:'center' }}>
+                            {pn > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color:col.color }}>{formatPrice(r.price)}</span>}
+                            {comm > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", color:'var(--green)', fontWeight:700 }}>{fmtMoney(comm)}</span>}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ══ LISTINGS GCI ══════════════════════════════════════ */}
@@ -4407,73 +4399,64 @@ function Dashboard({ theme, onToggleTheme }) {
             </div>
           </div>
 
-          {(() => {
-            const buyerPending = pendingDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))
-            const buyerClosed = closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))
-            const bClosedA = new Set(buyerClosed.map(r=>(r.address||'').toLowerCase()).filter(Boolean))
-            const bPendingA = new Set(buyerPending.map(r=>(r.address||'').toLowerCase()).filter(Boolean))
-            const dedupOffers = offersMade.filter(r=>!bClosedA.has((r.address||'').toLowerCase())&&!bPendingA.has((r.address||'').toLowerCase()))
-            const dedupPending = buyerPending.filter(r=>!bClosedA.has((r.address||'').toLowerCase()))
-            if (buyersPipelineView === 'list') return (
-              <>
-                <PipelineSection title="Offers Made" icon="📤" accentColor="#0ea5e9" xpLabel={PIPELINE_XP.offer_made}
-                  rows={dedupOffers} setRows={setOffersMade} userId={user.id}
-                  onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersMade)}
-                  onAdd={handleOfferMadeAdd}
-                  onRemove={()=>deductPipelineXp('offer_made')}
-                  statusOpts={[{v:'active',l:'Active'},{v:'pending',l:'Move to Pending'},{v:'closed',l:'Mark Closed'}]}/>
-                <PipelineSection title="Went Pending" icon="⏳" accentColor="#f59e0b" xpLabel={PIPELINE_XP.went_pending}
-                  rows={dedupPending} setRows={setPendingDeals} userId={user.id}
-                  onStatusChange={(r,s)=>handlePendingStatus(r,s)}
-                  onRemove={(row)=>{deductPipelineXp('went_pending');cleanupEarlierStages(row.address,'pending')}}
-                  statusOpts={[{v:'active',l:'Active'},{v:'closed',l:'Mark Closed'}]}
-                  expandedChecklist={expandedChecklist} setExpandedChecklist={setExpandedChecklist}
-                  onToggleChecklistItem={toggleChecklistItem} onAddChecklistItem={addChecklistItem}
-                  onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
-                <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
-                  rows={buyerClosed} setRows={setClosedDeals} userId={user.id}
-                  onRemove={(row)=>{deductPipelineXp('closed');cleanupEarlierStages(row.address,'closed')}}
-                  showSource={true}/>
-              </>
-            )
-            return (
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, minHeight:200 }}>
-                {[
-                  { title:'Offers Made', icon:'📤', color:'#0ea5e9', rows:dedupOffers },
-                  { title:'Pending', icon:'⏳', color:'#f59e0b', rows:dedupPending },
-                  { title:'Closed', icon:'🎉', color:'#10b981', rows:buyerClosed },
-                ].map(col => (
-                  <div key={col.title} style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:12, overflow:'hidden' }}>
-                    <div style={{ padding:'10px 12px', background:`${col.color}11`, borderBottom:`2px solid ${col.color}33`, display:'flex', alignItems:'center', gap:6 }}>
-                      <span style={{ fontSize:14 }}>{col.icon}</span>
-                      <span style={{ fontSize:12, fontWeight:700, color:'var(--text)' }}>{col.title}</span>
-                      <span className="mono" style={{ marginLeft:'auto', fontSize:11, color:col.color, fontWeight:700 }}>{col.rows.length}</span>
-                    </div>
-                    <div style={{ padding:8, display:'flex', flexDirection:'column', gap:6, maxHeight:400, overflowY:'auto' }}>
-                      {col.rows.length === 0 && (
-                        <div style={{ padding:'20px 8px', textAlign:'center', fontSize:11, color:'var(--dim)' }}>No entries</div>
-                      )}
-                      {col.rows.map(r => {
-                        const comm = resolveCommission(r.commission, r.price)
-                        const pn = parseFloat(String(r.price||'').replace(/[^0-9.]/g,''))
-                        return (
-                          <div key={r.id} style={{ padding:'10px 12px', borderRadius:8, background:'var(--bg)', border:'1px solid var(--b1)', transition:'box-shadow .15s' }}>
-                            <div style={{ fontFamily:"'Fraunces',serif", fontSize:12, fontWeight:600, color:'var(--text)', marginBottom:4, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                              {r.address || 'Untitled'}
-                            </div>
-                            <div style={{ display:'flex', gap:8, fontSize:10, color:'var(--muted)', alignItems:'center' }}>
-                              {pn > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color:col.color }}>{formatPrice(r.price)}</span>}
-                              {comm > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", color:'var(--green)', fontWeight:700 }}>{fmtMoney(comm)}</span>}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
+          {buyersPipelineView === 'list' ? (
+            <>
+              <PipelineSection title="Offers Made" icon="📤" accentColor="#0ea5e9" xpLabel={PIPELINE_XP.offer_made}
+                rows={offersMade} setRows={setOffersMade} userId={user.id}
+                onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersMade)}
+                onAdd={handleOfferMadeAdd}
+                onRemove={()=>deductPipelineXp('offer_made')}
+                statusOpts={[{v:'active',l:'Active'},{v:'pending',l:'Move to Pending'},{v:'closed',l:'Mark Closed'}]}/>
+              <PipelineSection title="Went Pending" icon="⏳" accentColor="#f59e0b" xpLabel={PIPELINE_XP.went_pending}
+                rows={pendingDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))} setRows={setPendingDeals} userId={user.id}
+                onStatusChange={(r,s)=>handlePendingStatus(r,s)}
+                onRemove={()=>deductPipelineXp('went_pending')}
+                statusOpts={[{v:'active',l:'Active'},{v:'closed',l:'Mark Closed'}]}
+                expandedChecklist={expandedChecklist} setExpandedChecklist={setExpandedChecklist}
+                onToggleChecklistItem={toggleChecklistItem} onAddChecklistItem={addChecklistItem}
+                onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
+              <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
+                rows={closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))} setRows={setClosedDeals} userId={user.id}
+                onRemove={()=>deductPipelineXp('closed')}
+                showSource={true}/>
+            </>
+          ) : (
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, minHeight:200 }}>
+              {[
+                { title:'Offers Made', icon:'📤', color:'#0ea5e9', rows:offersMade },
+                { title:'Pending', icon:'⏳', color:'#f59e0b', rows:pendingDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing')) },
+                { title:'Closed', icon:'🎉', color:'#10b981', rows:closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing')) },
+              ].map(col => (
+                <div key={col.title} style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:12, overflow:'hidden' }}>
+                  <div style={{ padding:'10px 12px', background:`${col.color}11`, borderBottom:`2px solid ${col.color}33`, display:'flex', alignItems:'center', gap:6 }}>
+                    <span style={{ fontSize:14 }}>{col.icon}</span>
+                    <span style={{ fontSize:12, fontWeight:700, color:'var(--text)' }}>{col.title}</span>
+                    <span className="mono" style={{ marginLeft:'auto', fontSize:11, color:col.color, fontWeight:700 }}>{col.rows.length}</span>
                   </div>
-                ))}
-              </div>
-            )
-          })()}
+                  <div style={{ padding:8, display:'flex', flexDirection:'column', gap:6, maxHeight:400, overflowY:'auto' }}>
+                    {col.rows.length === 0 && (
+                      <div style={{ padding:'20px 8px', textAlign:'center', fontSize:11, color:'var(--dim)' }}>No entries</div>
+                    )}
+                    {col.rows.map(r => {
+                      const comm = resolveCommission(r.commission, r.price)
+                      const pn = parseFloat(String(r.price||'').replace(/[^0-9.]/g,''))
+                      return (
+                        <div key={r.id} style={{ padding:'10px 12px', borderRadius:8, background:'var(--bg)', border:'1px solid var(--b1)', transition:'box-shadow .15s' }}>
+                          <div style={{ fontFamily:"'Fraunces',serif", fontSize:12, fontWeight:600, color:'var(--text)', marginBottom:4, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                            {r.address || 'Untitled'}
+                          </div>
+                          <div style={{ display:'flex', gap:8, fontSize:10, color:'var(--muted)', alignItems:'center' }}>
+                            {pn > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color:col.color }}>{formatPrice(r.price)}</span>}
+                            {comm > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", color:'var(--green)', fontWeight:700 }}>{fmtMoney(comm)}</span>}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ══ BUYERS GCI ════════════════════════════════════════ */}

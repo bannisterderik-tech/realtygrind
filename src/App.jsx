@@ -1500,10 +1500,8 @@ function Dashboard({ theme, onToggleTheme }) {
   const [plannerTaskForm,     setPlannerTaskForm]     = useState(null)  // { wi, di } | null
   const [plannerForm,         setPlannerForm]         = useState({ label:'', icon:'🏠', xp:15 })
   const [plannerDeletedTasks, setPlannerDeletedTasks] = useState([])    // day-specific tasks deleted this session
-  // Google Calendar
-  const [gcalToken, setGcalToken] = useState(() => {
-    try { const s = JSON.parse(localStorage.getItem('gcal_token')); if (s?.expiry > Date.now()) return s.token } catch {} return null
-  })
+  // Google Calendar — server-side token management (no localStorage)
+  const [gcalConnected, setGcalConnected] = useState(false)
   const [gcalSyncing, setGcalSyncing] = useState(false)
 
   const [standup,       setStandup]       = useState({ q1:'', q2:'', q3:'' })
@@ -2080,33 +2078,16 @@ function Dashboard({ theme, onToggleTheme }) {
     setCustomTasks(prev => [...prev, { ...task }])
   }
 
-  // ── Google Calendar (persistent auth via server-side refresh tokens) ──────
+  // ── Google Calendar (fully server-side — no client tokens) ────────────────
 
-  // Silently refresh the access token using the server-stored refresh token.
-  // Returns the new access token, or null if not connected / token revoked.
-  async function refreshGcalToken() {
-    try {
-      const { data, error } = await supabase.functions.invoke('google-auth', {
-        body: { action: 'refresh' }
-      })
-      if (error || !data?.access_token) return null
-      if (data.error === 'not_connected' || data.error === 'token_revoked') return null
-      localStorage.setItem('gcal_token', JSON.stringify({
-        token: data.access_token,
-        expiry: Date.now() + (data.expires_in || 3600) * 1000
-      }))
-      setGcalToken(data.access_token)
-      return data.access_token
-    } catch (e) { console.error('refreshGcalToken error:', e); return null }
-  }
-
-  // Auto-refresh Google Calendar token on mount (cross-device persistence)
+  // Check connection status on mount and auto-sync if connected
   useEffect(() => {
     if (!user?.id) return
-    const stored = (() => { try { return JSON.parse(localStorage.getItem('gcal_token')) } catch { return null } })()
-    if (stored?.expiry > Date.now()) { setGcalToken(stored.token); return }
-    // Expired or missing — try server-side refresh (works across devices)
-    refreshGcalToken().then(token => { if (token) syncGoogleCalendar(token) })
+    supabase.functions.invoke('google-auth', { body: { action: 'status' } })
+      .then(({ data }) => {
+        if (data?.connected) { setGcalConnected(true); syncGoogleCalendar() }
+      })
+      .catch(e => console.error('gcal status check error:', e))
   }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function connectGoogleCalendar() {
@@ -2123,13 +2104,13 @@ function Dashboard({ theme, onToggleTheme }) {
           const { data, error } = await supabase.functions.invoke('google-auth', {
             body: { action: 'exchange', code: resp.code }
           })
-          if (error || data?.error) { showToast(data?.error || 'Failed to connect Google Calendar'); return }
-          localStorage.setItem('gcal_token', JSON.stringify({
-            token: data.access_token,
-            expiry: Date.now() + (data.expires_in || 3600) * 1000
-          }))
-          setGcalToken(data.access_token)
-          await syncGoogleCalendar(data.access_token)
+          if (error) { showToast('Failed to connect Google Calendar'); return }
+          if (data?.error === 'no_refresh_token') {
+            showToast('Please disconnect Google Calendar first, then reconnect'); return
+          }
+          if (data?.error) { showToast(data.error); return }
+          setGcalConnected(true)
+          await syncGoogleCalendar()
         } catch (e) { console.error('Google auth exchange error:', e); showToast('Failed to connect Google Calendar') }
       }
     })
@@ -2137,51 +2118,33 @@ function Dashboard({ theme, onToggleTheme }) {
   }
 
   async function disconnectGoogleCalendar() {
-    localStorage.removeItem('gcal_token')
-    setGcalToken(null)
-    // Revoke + clear server-side refresh token (fire-and-forget)
+    setGcalConnected(false)
     try { await supabase.functions.invoke('google-auth', { body: { action: 'disconnect' } }) }
     catch (e) { console.error('Google disconnect error:', e) }
     showToast('Google Calendar disconnected')
   }
 
-  async function syncGoogleCalendar(token, retried = false) {
-    if (!token || gcalSyncing) return
+  async function syncGoogleCalendar() {
+    if (gcalSyncing) return
     setGcalSyncing(true)
     try {
-      const now = new Date()
-      const timeMin = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-      const timeMax = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString()
-      const res = await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime&maxResults=250`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
-      if (!res.ok) {
-        if (res.status === 401) {
-          // Try refreshing the token before giving up
-          if (!retried) {
-            const newToken = await refreshGcalToken()
-            if (newToken) { setGcalSyncing(false); return syncGoogleCalendar(newToken, true) }
-          }
-          localStorage.removeItem('gcal_token'); setGcalToken(null)
-          showToast('Google Calendar session expired — please reconnect')
-        } else showToast('Failed to fetch calendar events')
+      const { data, error } = await supabase.functions.invoke('google-auth', { body: { action: 'sync' } })
+      if (error || data?.error) {
+        if (data?.error === 'not_connected' || data?.error === 'token_revoked') {
+          setGcalConnected(false)
+          showToast('Google Calendar disconnected — please reconnect')
+        } else { showToast('Failed to sync calendar') }
         return
       }
-      const data = await res.json()
-      const events = data.items || []
+      const events = data.events || []
       console.log('[GCal] Fetched', events.length, 'events from Google Calendar')
-      // Build batch of events to sync via RPC (bypasses PostgREST schema cache)
-      const batch = []
-      for (const event of events) {
-        if (!event.summary) continue
-        const dateStr = event.start?.date || (event.start?.dateTime ? event.start.dateTime.slice(0, 10) : null)
-        if (!dateStr) continue
-        const timeStr = event.start?.dateTime ? new Date(event.start.dateTime).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }) : null
-        batch.push({ label: timeStr ? `${timeStr} — ${event.summary}` : event.summary, specific_date: dateStr, google_event_id: event.id })
-      }
-      const { data: inserted, error } = await supabase.rpc('sync_gcal_events', { events: batch })
-      if (error) { console.error('[GCal] RPC error:', error.message); showToast('Sync failed: ' + error.message); return }
+      const batch = events.map(e => ({
+        label: e.time ? `${e.time} — ${e.summary}` : e.summary,
+        specific_date: e.date,
+        google_event_id: e.google_event_id,
+      }))
+      const { data: inserted, error: rpcErr } = await supabase.rpc('sync_gcal_events', { events: batch })
+      if (rpcErr) { console.error('[GCal] RPC error:', rpcErr.message); showToast('Sync failed: ' + rpcErr.message); return }
       const rows = inserted || []
       if (rows.length > 0) {
         setCustomTasks(prev => [...prev, ...rows.map(r => ({ id:r.id, label:r.label, icon:r.icon, xp:r.xp, isDefault:false, specificDate:r.specific_date, googleEventId:r.google_event_id }))])
@@ -2193,29 +2156,14 @@ function Dashboard({ theme, onToggleTheme }) {
   }
 
   async function addToGoogleCalendar(task, dateStr) {
-    let token = gcalToken
-    if (!token) { connectGoogleCalendar(); return }
+    if (!gcalConnected) { connectGoogleCalendar(); return }
     try {
-      let res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ summary: task.label, start: { date: dateStr }, end: { date: dateStr }, description: `RealtyGrind task — ${task.xp} XP` }),
+      const { data, error } = await supabase.functions.invoke('google-auth', {
+        body: { action: 'add_event', summary: task.label, date: dateStr, description: `RealtyGrind task — ${task.xp} XP` }
       })
-      if (!res.ok) {
-        if (res.status === 401) {
-          // Try refreshing before giving up
-          const newToken = await refreshGcalToken()
-          if (newToken) {
-            res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${newToken}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ summary: task.label, start: { date: dateStr }, end: { date: dateStr }, description: `RealtyGrind task — ${task.xp} XP` }),
-            })
-            if (res.ok) { showToast(`Added "${task.label}" to Google Calendar`, 'success'); return }
-          }
-          localStorage.removeItem('gcal_token'); setGcalToken(null); showToast('Session expired — please reconnect')
-        } else showToast('Failed to add to Google Calendar')
-        return
+      if (error || data?.error) {
+        if (data?.error === 'not_connected') { setGcalConnected(false); showToast('Please reconnect Google Calendar'); return }
+        showToast('Failed to add to Google Calendar'); return
       }
       showToast(`Added "${task.label}" to Google Calendar`, 'success')
     } catch (e) { console.error('addToGoogleCalendar error:', e); showToast('Failed to add to calendar') }
@@ -3060,9 +3008,9 @@ function Dashboard({ theme, onToggleTheme }) {
               <button key={t.id} className={`tab-item${tab===t.id?' on':''}`} onClick={()=>setTab(t.id)}>{t.l}</button>
             ))}
           </div>
-          {gcalToken ? (
+          {gcalConnected ? (
             <div style={{ display:'flex', gap:5 }}>
-              <button onClick={() => syncGoogleCalendar(gcalToken)} disabled={gcalSyncing}
+              <button onClick={() => syncGoogleCalendar()} disabled={gcalSyncing}
                 title="Sync Google Calendar"
                 style={{ background:'rgba(66,133,244,.1)', color:'#4285f4', border:'1px solid rgba(66,133,244,.3)',
                   borderRadius:7, cursor:gcalSyncing?'wait':'pointer', fontSize:11, fontWeight:600,
@@ -3264,7 +3212,7 @@ function Dashboard({ theme, onToggleTheme }) {
                         {h.counter && !done && (
                           <span style={{ fontSize:10, color:'var(--dim)', opacity:.45, flexShrink:0 }}>0 {h.unit||'×'}</span>
                         )}
-                        {gcalToken && !done && (
+                        {gcalConnected && !done && (
                           <button onClick={()=>addToGoogleCalendar(h, viewDateStr)} title="Add to Google Calendar"
                             style={{ background:'none', border:'none', cursor:'pointer', color:'#4285f4',
                               fontSize:13, padding:'2px 4px', lineHeight:1, flexShrink:0, opacity:.7 }}>📅</button>
@@ -3307,7 +3255,7 @@ function Dashboard({ theme, onToggleTheme }) {
                           border: `1px solid ${h.googleEventId ? 'rgba(66,133,244,.25)' : 'rgba(245,158,11,.25)'}` }}>
                           {h.googleEventId ? 'gcal' : 'today'}
                         </span>
-                        {gcalToken && !h.googleEventId && !done && (
+                        {gcalConnected && !h.googleEventId && !done && (
                           <button onClick={()=>addToGoogleCalendar(h, viewDateStr)} title="Add to Google Calendar"
                             style={{ background:'none', border:'none', cursor:'pointer', color:'#4285f4',
                               fontSize:13, padding:'2px 4px', lineHeight:1, flexShrink:0, opacity:.7 }}>📅</button>
@@ -3344,7 +3292,7 @@ function Dashboard({ theme, onToggleTheme }) {
                           background:'rgba(6,182,212,.12)', color:'#06b6d4', border:'1px solid rgba(6,182,212,.22)' }}>
                           custom
                         </span>
-                        {gcalToken && !done && (
+                        {gcalConnected && !done && (
                           <button onClick={()=>addToGoogleCalendar(h, viewDateStr)} title="Add to Google Calendar"
                             style={{ background:'none', border:'none', cursor:'pointer', color:'#4285f4',
                               fontSize:13, padding:'2px 4px', lineHeight:1, flexShrink:0, opacity:.7 }}>📅</button>

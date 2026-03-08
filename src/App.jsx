@@ -963,7 +963,7 @@ function BuyersWeeklyModal({ buyerReps, offersMade, onClose }) {
 // ─── Pipeline section ─────────────────────────────────────────────────────────
 
 function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onStatusChange, showSource, statusOpts, onAdd, onRemove, userId,
-  expandedChecklist, setExpandedChecklist, onToggleChecklistItem, onAddChecklistItem, onRemoveChecklistItem, onUpdateChecklistDueDate }) {
+  expandedChecklist, setExpandedChecklist, onToggleChecklistItem, onAddChecklistItem, onRemoveChecklistItem, onUpdateChecklistDueDate, archiveOnRemove }) {
   const [addr,  setAddr]  = useState('')
   const [price, setPrice] = useState('')
   const [comm,  setComm]  = useState('')
@@ -986,10 +986,16 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
     const snapshot = rows
     setRows(prev => prev.filter(r => r.id !== row.id))
     if (row.id && !String(row.id).startsWith('tmp-')) {
-      const r = await safeDb(supabase.from('transactions').delete().eq('id', row.id).eq('user_id', userId))
-      if (!r.ok) { setRows(snapshot); return }
+      if (archiveOnRemove) {
+        // Soft-delete: archive the record so it still counts in monthly stats
+        const r = await safeDb(supabase.from('transactions').update({status:'archived'}).eq('id', row.id).eq('user_id', userId))
+        if (!r.ok) { setRows(snapshot); return }
+      } else {
+        const r = await safeDb(supabase.from('transactions').delete().eq('id', row.id).eq('user_id', userId))
+        if (!r.ok) { setRows(snapshot); return }
+      }
     }
-    if (onRemove) onRemove(row)
+    if (!archiveOnRemove && onRemove) onRemove(row)
   }
 
   function update(id, f, v) { setRows(prev => prev.map(r => r.id===id ? {...r,[f]:v} : r)) }
@@ -1481,6 +1487,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [wentPendingCount, setWentPendingCount] = useState(0) // historical — includes archived
   const [offersMadeCount, setOffersMadeCount] = useState(0) // historical — includes archived
   const [offersReceivedCount, setOffersReceivedCount] = useState(0) // historical — includes archived
+  const [closedCount,    setClosedCount]    = useState(0) // historical — includes archived (for goal tracking)
 
   const [showCommSummary, setShowCommSummary] = useState(false)
   const [showPrint,        setShowPrint]        = useState(false)
@@ -1635,7 +1642,8 @@ function Dashboard({ theme, onToggleTheme }) {
         return row
       })
       setPendingDeals(pendingRows)
-      setClosedDeals(   txRes.data.filter(t=>t.type==='closed').map(m))
+      setClosedDeals(   txRes.data.filter(t=>t.type==='closed' && active(t)).map(m))
+      setClosedCount(txRes.data.filter(t=>t.type==='closed').length)
       // Historical counts — a deal that moved forward still counts toward its earlier stage
       // closedFrom='Offers' means the deal was once an offer; checklist presence means it was pending
       setOffersMadeCount(txRes.data.filter(t=>t.type==='offer_made'||(t.closed_from==='Offers'&&(t.deal_side==='buyer'||(!t.deal_side&&t.closed_from!=='Listing')))).length)
@@ -2237,6 +2245,7 @@ function Dashboard({ theme, onToggleTheme }) {
       }
       srcSetter(prev => prev.filter(r => r.id !== row.id))
       setClosedDeals(prev=>[...prev,{...row,status:'closed',closedFrom:row.closedFrom||'Offers',dealSide:row.dealSide||inferredSide}])
+      setClosedCount(prev => prev + 1)
       markListingClosed(row.address)
       const comm = resolveCommission(row.commission, row.price)
       setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
@@ -2263,6 +2272,7 @@ function Dashboard({ theme, onToggleTheme }) {
       }
       setPendingDeals(prev => prev.filter(r => r.id !== row.id))
       setClosedDeals(prev=>[...prev,{...row,status:'closed'}])
+      setClosedCount(prev => prev + 1)
       markListingClosed(row.address)
       const comm = resolveCommission(row.commission, row.price)
       setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
@@ -2440,6 +2450,7 @@ function Dashboard({ theme, onToggleTheme }) {
           }
         }
       }
+      setClosedCount(prev => prev + 1)
       const comm = resolveCommission(lComm, lPrice)
       setCelebration({ address:listing.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (lComm||''), newComm:comm })
       await awardPipelineXp('closed', '#10b981')
@@ -2840,8 +2851,19 @@ function Dashboard({ theme, onToggleTheme }) {
             style={{ fontSize:11, fontWeight:700, color:planBadge.color, letterSpacing:.4 }}>
             {planBadge.label}
           </button>
-          <button className={`nav-btn${page==='profile'?' active':''}`} onClick={()=>setPage('profile')}>
-            {profileFullName?.split(' ')[0]||'Profile'}
+          <button className={`nav-btn${page==='profile'?' active':''}`} onClick={()=>setPage('profile')}
+            style={{ display:'flex', alignItems:'center', gap:6 }}>
+            {profile?.goals?.avatar_url ? (
+              <img src={profile.goals.avatar_url} alt="" style={{ width:24, height:24, borderRadius:'50%', objectFit:'cover' }}/>
+            ) : (
+              <div style={{ width:24, height:24, borderRadius:'50%',
+                background:`linear-gradient(135deg, ${rank.color}, ${rank.color}88)`,
+                display:'flex', alignItems:'center', justifyContent:'center',
+                fontSize:11, fontWeight:700, color:'#fff', flexShrink:0 }}>
+                {(profileFullName||'A').charAt(0).toUpperCase()}
+              </div>
+            )}
+            <span className="mob-hide">{profileFullName?.split(' ')[0]||'Profile'}</span>
           </button>
           <button className="btn-ghost mob-hide" style={{ background:'transparent', border:'1px solid rgba(255,255,255,.09)', color:'var(--nav-sub)', fontSize:12 }}
             onClick={()=>supabase.auth.signOut()}>Sign out</button>
@@ -2985,6 +3007,19 @@ function Dashboard({ theme, onToggleTheme }) {
                     fontFamily:"'JetBrains Mono',monospace" }}>{streak}-day streak</span>
                 </div>
               )}
+              {(() => {
+                const slk = profile?.teams?.team_prefs?.slack_url
+                return slk ? (
+                  <a href={slk} target="_blank" rel="noopener noreferrer"
+                    style={{ display:'flex', alignItems:'center', gap:5, padding:'4px 12px',
+                      background:'rgba(97,31,105,.1)', border:'1px solid rgba(97,31,105,.25)', borderRadius:20,
+                      textDecoration:'none', cursor:'pointer', transition:'all .15s' }}>
+                    <span style={{ fontSize:12 }}>💬</span>
+                    <span style={{ fontSize:11, fontWeight:700, color:'#611f69',
+                      fontFamily:"'JetBrains Mono',monospace" }}>Slack</span>
+                  </a>
+                ) : null
+              })()}
             </div>
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:18, flexShrink:0 }}>
@@ -3013,14 +3048,18 @@ function Dashboard({ theme, onToggleTheme }) {
           <StatCard icon="🔑" label="Showings"      value={totalShowings}    color="var(--blue)"
             sub={goals?.showing ? `${totalShowings}/${goals.showing} goal${dailyTargets.showing?.daily ? ` · ${dailyTargets.showing.daily}/day` : ''}` : undefined}
             accent={goals?.showing && totalShowings>=goals.showing ? '#3b82f6' : undefined}/>
-          <StatCard icon="🏡" label="Listed"        value={totalListings}         color="var(--purple)"/>
-          <StatCard icon="🤝" label="Buyer Reps"   value={totalBuyerReps}        color="var(--blue)"/>
+          <StatCard icon="🏡" label="Listed"        value={totalListings}         color="var(--purple)"
+            sub={goals?.listings ? `${totalListings}/${goals.listings} goal` : undefined}
+            accent={goals?.listings && totalListings>=goals.listings ? '#8b5cf6' : undefined}/>
+          <StatCard icon="🤝" label="Buyer Reps"   value={totalBuyerReps}        color="var(--blue)"
+            sub={goals?.buyers ? `${totalBuyerReps}/${goals.buyers} goal` : undefined}
+            accent={goals?.buyers && totalBuyerReps>=goals.buyers ? '#3b82f6' : undefined}/>
           <StatCard icon="📤" label="Offers Made"   value={offersMadeCount}       color="var(--blue)"/>
           <StatCard icon="📥" label="Offers Rec'd"  value={offersReceivedCount}   color="var(--purple)"/>
           <StatCard icon="⏳" label="Went Pending"  value={wentPendingCount}      color="var(--gold2)"/>
-          <StatCard icon="🎉" label="Closed"         value={closedDeals.length}    color="var(--green)"
-            sub={goals?.closed ? `${closedDeals.length}/${goals.closed} goal${closedVol>0?' · '+fmtMoney(closedVol):''}` : closedVol>0?fmtMoney(closedVol):null}
-            accent={goals?.closed && closedDeals.length>=goals.closed ? '#10b981' : undefined}/>
+          <StatCard icon="🎉" label="Closed"         value={closedCount}    color="var(--green)"
+            sub={goals?.closed ? `${closedCount}/${goals.closed} goal${closedVol>0?' · '+fmtMoney(closedVol):''}` : closedVol>0?fmtMoney(closedVol):null}
+            accent={goals?.closed && closedCount>=goals.closed ? '#10b981' : undefined}/>
           {showCommSummary && closedComm>0 && <StatCard icon="💰" label="Commission" value={fmtMoney(closedComm)||'$0'} color="var(--green)" accent="#10b981"/>}
         </div>
 
@@ -4036,7 +4075,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
               <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
                 rows={closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing')} setRows={setClosedDeals} userId={user.id}
-                onRemove={()=>deductPipelineXp('closed')}
+                archiveOnRemove={true}
                 showSource={true}/>
             </>
           ) : (
@@ -4417,7 +4456,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
               <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
                 rows={closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))} setRows={setClosedDeals} userId={user.id}
-                onRemove={()=>deductPipelineXp('closed')}
+                archiveOnRemove={true}
                 showSource={true}/>
             </>
           ) : (

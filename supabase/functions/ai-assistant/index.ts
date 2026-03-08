@@ -416,6 +416,24 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Buyer needs from all team members (including the current user)
+      const buyerNeedLines: string[] = []
+      const allTeamMembers = [...(teamMembers || []), { ...profile, id: user.id }]
+      for (const m of allTeamMembers) {
+        const needs = (m.goals?.buyer_needs || []).filter((n: any) => !n.resolved)
+        for (const need of needs) {
+          const replies = need.replies || []
+          // Also gather external replies from all members
+          const externalReplies: any[] = []
+          for (const rm of allTeamMembers) {
+            const rr = rm.goals?.buyer_replies?.[need.id] || []
+            externalReplies.push(...rr)
+          }
+          const totalReplies = replies.length + externalReplies.length
+          buyerNeedLines.push(`- ${m.full_name || 'Agent'}: "${need.text}"${totalReplies > 0 ? ` (${totalReplies} replies)` : ''}`)
+        }
+      }
+
       teamMemberContext = [
         `\nTEAM ROSTER (${(teamMembers || []).length} agents):`,
         ...memberLines,
@@ -426,6 +444,8 @@ Deno.serve(async (req) => {
         ...challenges.map((c: any) => `- ${c.title} (metric: ${c.metric}, bonus: +${c.bonusXp} XP)`),
         coachingNoteLines.length > 0 ? `\nCOACHING NOTES FOR AGENTS:` : null,
         ...coachingNoteLines,
+        buyerNeedLines.length > 0 ? `\nACTIVE BUYER NEEDS (team members looking for properties):` : null,
+        ...buyerNeedLines,
       ].filter(Boolean).join('\n')
     }
 
@@ -512,6 +532,12 @@ Deno.serve(async (req) => {
         })
         return `\nPENDING DEALS (with checklist):\n${lines.join('\n')}`
       })(),
+      // My buyer needs
+      (() => {
+        const myBuyerNeeds = (goals.buyer_needs || []).filter((n: any) => !n.resolved)
+        if (myBuyerNeeds.length === 0) return null
+        return `\nMY ACTIVE BUYER NEEDS:\n${myBuyerNeeds.map((n: any) => `- "${n.text}" (${(n.replies || []).length} replies, posted ${fmtDate(n.createdAt)})`).join('\n')}`
+      })(),
       `\nACTIVITY THIS MONTH:`,
       ...Object.entries(habitCounts).map(([id, count]) => `- ${id}: ${count} completions`),
       Object.keys(habitCounts).length === 0 ? '- No tracked activity yet' : null,
@@ -560,6 +586,7 @@ YOUR CAPABILITIES:
 10. STANDUP COACHING: If the agent submitted a daily standup, reference their stated priorities and blockers. Help them problem-solve blockers, validate their priorities against their pipeline, and suggest adjustments to their daily plan. For team owners, review the team's standups and flag agents who may need attention — missed standups, repeated blockers, or misaligned priorities.
 11. COACHING NOTE FOLLOW-UP: If coaching notes exist from the team leader, reference them in your advice. Help the agent act on praise (reinforce good habits), work toward goals (track progress), and address concerns (suggest concrete fixes). Keep the coach's guidance central to your recommendations.
 12. TEAM PERFORMANCE (owners/admins only): When team roster data is available, provide team-level insights — identify top performers, agents falling behind on habits or closings, accountability gaps, and opportunities for team challenges. Reference coaching notes and suggest coaching interventions for specific agents based on their stats, standups, listings, pipeline activity, and coaching notes.
+13. BUYER NEEDS MATCHING: When buyer needs are available, proactively cross-reference them with team members' active listings. If a listing matches what a teammate's buyer is looking for (similar area, price range, property type), mention the potential match and suggest the agents connect. This helps the team collaborate and close deals internally.
 
 GUIDELINES:
 - Be specific and actionable. Reference the agent's actual listings, pipeline, standups, coaching notes, and data when giving advice.
@@ -570,7 +597,8 @@ GUIDELINES:
 - When coaching notes exist, weave them naturally into your advice — don't just list them.
 - For team owners asking about their team, proactively highlight agents who need attention based on standups, habit streaks, and pipeline activity.
 - DUAL PERSPECTIVE: Always coach the user as an individual agent first (their own listings, pipeline, habits, goals). For team owners/admins, also provide team-level insights using the roster data — who's performing, who needs attention, and how the team is tracking overall.
-- When an owner asks "how is [name] doing?" or "summarize my team", use the roster data to give concrete answers with XP, streaks, closings, listings, and pipeline stats — not vague generalities.`
+- When an owner asks "how is [name] doing?" or "summarize my team", use the roster data to give concrete answers with XP, streaks, closings, listings, and pipeline stats — not vague generalities.
+- When analyzing listings, proactively check the ACTIVE BUYER NEEDS section — if any teammate's buyer need matches the listing's area, price range, or features, highlight the potential match (e.g., "Sarah posted a buyer need for a 3BR in Westlake under $500k — your listing at 123 Maple might be a fit!").`
 
     // ── 9. Call Claude API with streaming ────────────────────────────────────
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')

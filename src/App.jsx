@@ -2206,7 +2206,12 @@ function Dashboard({ theme, onToggleTheme }) {
   async function handleOfferStatus(row, newStatus, srcSetter) {
     // Infer deal side from context (offers made = buyer side, offers received = seller side)
     const inferredSide = srcSetter === setOffersReceived ? 'seller' : 'buyer'
+    const addr = (row.address||'').toLowerCase()
     if (newStatus === 'pending') {
+      // Guard: don't create duplicate pending record for same address
+      if (addr && pendingDeals.some(d=>(d.address||'').toLowerCase()===addr)) {
+        showToast('This address is already in Pending'); return
+      }
       // Move forward: archive source (preserves stat count), create Went Pending record
       const data = await dbInsert('pending', row, 'Offers', row.dealSide || inferredSide, row.originalLeadSource || row.leadSource || null)
       if (data) {
@@ -2219,6 +2224,10 @@ function Dashboard({ theme, onToggleTheme }) {
       setWentPendingCount(prev => prev + 1)
       await awardPipelineXp('went_pending', '#f59e0b')
     } else if (newStatus === 'closed') {
+      // Guard: don't create duplicate closed record for same address
+      if (addr && closedDeals.some(d=>(d.address||'').toLowerCase()===addr)) {
+        showToast('This address is already in Closed Deals'); return
+      }
       // Move forward: archive source, create Closed record
       const data = await dbInsert('closed', row, 'Offers', row.dealSide || inferredSide, row.originalLeadSource || row.leadSource || null)
       if (data) {
@@ -2246,6 +2255,11 @@ function Dashboard({ theme, onToggleTheme }) {
 
   async function handlePendingStatus(row, newStatus) {
     if (newStatus === 'closed') {
+      // Guard: don't create duplicate closed record for same address
+      const addr = (row.address||'').toLowerCase()
+      if (addr && closedDeals.some(d=>(d.address||'').toLowerCase()===addr)) {
+        showToast('This address is already in Closed Deals'); return
+      }
       // Move forward: archive pending, create Closed record (preserves went-pending count)
       const data = await dbInsert('closed', row, row.closedFrom||'Pending', row.dealSide||null, row.originalLeadSource||row.leadSource||null)
       if (data) {

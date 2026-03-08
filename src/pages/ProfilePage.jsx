@@ -165,25 +165,33 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   async function uploadAvatar(e) {
     const file = e.target.files?.[0]
     if (!file) return
-    if (!file.type.startsWith('image/')) return
+    if (!file.type.startsWith('image/')) { setSaveMsg('Please select an image file'); safeTimeout(()=>setSaveMsg(''),3000); return }
+    if (file.size > 5 * 1024 * 1024) { setSaveMsg('Image must be under 5 MB'); safeTimeout(()=>setSaveMsg(''),3000); return }
     setAvatarUploading(true)
     try {
       const ext = file.name.split('.').pop()
       const path = `${user.id}/avatar.${ext}`
+      // Remove old file first (ignore errors — may not exist yet)
+      await supabase.storage.from('avatars').remove([path])
       const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
       if (upErr) throw upErr
       const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
-      const url = urlData.publicUrl + '?t=' + Date.now()
+      const url = urlData.publicUrl + '?v=' + Date.now()
       // Save to profile.goals
       const { data: current } = await supabase.from('profiles').select('goals').eq('id', user.id).single()
       const merged = { ...(current?.goals || {}), avatar_url: url }
-      await supabase.from('profiles').update({ goals: merged }).eq('id', user.id)
+      const { error: saveErr } = await supabase.from('profiles').update({ goals: merged }).eq('id', user.id)
+      if (saveErr) throw saveErr
       setAvatarUrl(url)
+      setSaveMsg('Photo updated ✓'); safeTimeout(()=>setSaveMsg(''),3000)
       if (refreshProfile) refreshProfile()
     } catch (err) {
       console.error('Avatar upload failed:', err)
+      setSaveMsg('Photo upload failed — check storage bucket'); safeTimeout(()=>setSaveMsg(''),4000)
     } finally {
       setAvatarUploading(false)
+      // Reset file input so same file can be re-selected
+      if (avatarInputRef.current) avatarInputRef.current.value = ''
     }
   }
 

@@ -365,8 +365,11 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
       setAvatarMsg({ text:'Photo updated ✓', type:'success' }); safeTimeout(()=>setAvatarMsg(null),3000)
       if (refreshProfile) refreshProfile()
     } catch (err) {
-      console.error('Avatar upload failed:', err)
-      setAvatarMsg({ text:'Photo upload failed — please try again', type:'error' }); safeTimeout(()=>setAvatarMsg(null),4000)
+      console.error('Avatar upload failed:', err?.message || err)
+      const msg = err?.message?.includes('row-level security')
+        ? 'Upload blocked — run the avatars migration in Supabase SQL Editor'
+        : 'Photo upload failed — please try again'
+      setAvatarMsg({ text:msg, type:'error' }); safeTimeout(()=>setAvatarMsg(null),6000)
     } finally {
       setAvatarUploading(false)
     }

@@ -75,6 +75,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   const [bioMsg,    setBioMsg]   = useState('')
   const [avatarUrl,     setAvatarUrl]     = useState(profile?.goals?.avatar_url || '')
   const [avatarUploading, setAvatarUploading] = useState(false)
+  const [avatarMsg,    setAvatarMsg]    = useState(null) // { text, type: 'success'|'error' }
   const avatarInputRef = useRef(null)
   // Coaching notes (read from team_prefs, replies saved to own profile.goals)
   const [profileReplyForms,   setProfileReplyForms]   = useState({})
@@ -165,8 +166,8 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   async function uploadAvatar(e) {
     const file = e.target.files?.[0]
     if (!file) return
-    if (!file.type.startsWith('image/')) { setSaveMsg('Please select an image file'); safeTimeout(()=>setSaveMsg(''),3000); return }
-    if (file.size > 5 * 1024 * 1024) { setSaveMsg('Image must be under 5 MB'); safeTimeout(()=>setSaveMsg(''),3000); return }
+    if (!file.type.startsWith('image/')) { setAvatarMsg({ text:'Please select an image file', type:'error' }); safeTimeout(()=>setAvatarMsg(null),3000); return }
+    if (file.size > 5 * 1024 * 1024) { setAvatarMsg({ text:'Image must be under 5 MB', type:'error' }); safeTimeout(()=>setAvatarMsg(null),3000); return }
     setAvatarUploading(true)
     try {
       const ext = file.name.split('.').pop()
@@ -183,11 +184,11 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
       const { error: saveErr } = await supabase.from('profiles').update({ goals: merged }).eq('id', user.id)
       if (saveErr) throw saveErr
       setAvatarUrl(url)
-      setSaveMsg('Photo updated ✓'); safeTimeout(()=>setSaveMsg(''),3000)
+      setAvatarMsg({ text:'Photo updated ✓', type:'success' }); safeTimeout(()=>setAvatarMsg(null),3000)
       if (refreshProfile) refreshProfile()
     } catch (err) {
       console.error('Avatar upload failed:', err)
-      setSaveMsg('Photo upload failed — check storage bucket'); safeTimeout(()=>setSaveMsg(''),4000)
+      setAvatarMsg({ text:'Photo upload failed — please try again', type:'error' }); safeTimeout(()=>setAvatarMsg(null),4000)
     } finally {
       setAvatarUploading(false)
       // Reset file input so same file can be re-selected
@@ -583,6 +584,13 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
               </div>
               <input ref={avatarInputRef} type="file" accept="image/*" onChange={uploadAvatar}
                 style={{ display:'none' }}/>
+              {avatarMsg && (
+                <div style={{ position:'absolute', top:'100%', left:'50%', transform:'translateX(-50%)',
+                  marginTop:6, fontSize:11, fontWeight:600, whiteSpace:'nowrap',
+                  color: avatarMsg.type === 'error' ? 'var(--red, #ef4444)' : 'var(--green)' }}>
+                  {avatarMsg.text}
+                </div>
+              )}
             </div>
             <div style={{ flex:1, minWidth:180 }}>
               <div style={{ fontSize:10, color:rank.color, fontFamily:"'JetBrains Mono',monospace", letterSpacing:.8,

@@ -2080,33 +2080,72 @@ function Dashboard({ theme, onToggleTheme }) {
     setCustomTasks(prev => [...prev, { ...task }])
   }
 
-  // ── Google Calendar ────────────────────────────────────────────────────────
+  // ── Google Calendar (persistent auth via server-side refresh tokens) ──────
+
+  // Silently refresh the access token using the server-stored refresh token.
+  // Returns the new access token, or null if not connected / token revoked.
+  async function refreshGcalToken() {
+    try {
+      const { data, error } = await supabase.functions.invoke('google-auth', {
+        body: { action: 'refresh' }
+      })
+      if (error || !data?.access_token) return null
+      if (data.error === 'not_connected' || data.error === 'token_revoked') return null
+      localStorage.setItem('gcal_token', JSON.stringify({
+        token: data.access_token,
+        expiry: Date.now() + (data.expires_in || 3600) * 1000
+      }))
+      setGcalToken(data.access_token)
+      return data.access_token
+    } catch (e) { console.error('refreshGcalToken error:', e); return null }
+  }
+
+  // Auto-refresh Google Calendar token on mount (cross-device persistence)
+  useEffect(() => {
+    if (!user?.id) return
+    const stored = (() => { try { return JSON.parse(localStorage.getItem('gcal_token')) } catch { return null } })()
+    if (stored?.expiry > Date.now()) return // still valid
+    // Expired or missing — try server-side refresh (works across devices)
+    refreshGcalToken()
+  }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function connectGoogleCalendar() {
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
     if (!clientId) { showToast('Set VITE_GOOGLE_CLIENT_ID in .env'); return }
     if (!window.google?.accounts?.oauth2) { showToast('Google API still loading — try again'); return }
-    const client = window.google.accounts.oauth2.initTokenClient({
+    const client = window.google.accounts.oauth2.initCodeClient({
       client_id: clientId,
       scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly',
+      ux_mode: 'popup',
       callback: async (resp) => {
         if (resp.error) { showToast('Google Calendar auth failed'); return }
-        const token = resp.access_token
-        localStorage.setItem('gcal_token', JSON.stringify({ token, expiry: Date.now() + resp.expires_in * 1000 }))
-        setGcalToken(token)
-        await syncGoogleCalendar(token)
+        try {
+          const { data, error } = await supabase.functions.invoke('google-auth', {
+            body: { action: 'exchange', code: resp.code }
+          })
+          if (error || data?.error) { showToast(data?.error || 'Failed to connect Google Calendar'); return }
+          localStorage.setItem('gcal_token', JSON.stringify({
+            token: data.access_token,
+            expiry: Date.now() + (data.expires_in || 3600) * 1000
+          }))
+          setGcalToken(data.access_token)
+          await syncGoogleCalendar(data.access_token)
+        } catch (e) { console.error('Google auth exchange error:', e); showToast('Failed to connect Google Calendar') }
       }
     })
-    client.requestAccessToken()
+    client.requestCode()
   }
 
-  function disconnectGoogleCalendar() {
+  async function disconnectGoogleCalendar() {
     localStorage.removeItem('gcal_token')
     setGcalToken(null)
+    // Revoke + clear server-side refresh token (fire-and-forget)
+    try { await supabase.functions.invoke('google-auth', { body: { action: 'disconnect' } }) }
+    catch (e) { console.error('Google disconnect error:', e) }
     showToast('Google Calendar disconnected')
   }
 
-  async function syncGoogleCalendar(token) {
+  async function syncGoogleCalendar(token, retried = false) {
     if (!token || gcalSyncing) return
     setGcalSyncing(true)
     try {
@@ -2118,8 +2157,15 @@ function Dashboard({ theme, onToggleTheme }) {
         { headers: { Authorization: `Bearer ${token}` } }
       )
       if (!res.ok) {
-        if (res.status === 401) { localStorage.removeItem('gcal_token'); setGcalToken(null); showToast('Session expired — reconnect Google Calendar') }
-        else showToast('Failed to fetch calendar events')
+        if (res.status === 401) {
+          // Try refreshing the token before giving up
+          if (!retried) {
+            const newToken = await refreshGcalToken()
+            if (newToken) { setGcalSyncing(false); return syncGoogleCalendar(newToken, true) }
+          }
+          localStorage.removeItem('gcal_token'); setGcalToken(null)
+          showToast('Google Calendar session expired — please reconnect')
+        } else showToast('Failed to fetch calendar events')
         return
       }
       const data = await res.json()
@@ -2147,17 +2193,28 @@ function Dashboard({ theme, onToggleTheme }) {
   }
 
   async function addToGoogleCalendar(task, dateStr) {
-    const token = gcalToken
+    let token = gcalToken
     if (!token) { connectGoogleCalendar(); return }
     try {
-      const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+      let res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ summary: task.label, start: { date: dateStr }, end: { date: dateStr }, description: `RealtyGrind task — ${task.xp} XP` }),
       })
       if (!res.ok) {
-        if (res.status === 401) { localStorage.removeItem('gcal_token'); setGcalToken(null); showToast('Session expired — reconnect') }
-        else showToast('Failed to add to Google Calendar')
+        if (res.status === 401) {
+          // Try refreshing before giving up
+          const newToken = await refreshGcalToken()
+          if (newToken) {
+            res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${newToken}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ summary: task.label, start: { date: dateStr }, end: { date: dateStr }, description: `RealtyGrind task — ${task.xp} XP` }),
+            })
+            if (res.ok) { showToast(`Added "${task.label}" to Google Calendar`, 'success'); return }
+          }
+          localStorage.removeItem('gcal_token'); setGcalToken(null); showToast('Session expired — please reconnect')
+        } else showToast('Failed to add to Google Calendar')
         return
       }
       showToast(`Added "${task.label}" to Google Calendar`, 'success')

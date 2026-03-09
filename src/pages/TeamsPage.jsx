@@ -52,37 +52,39 @@ function relativeTime(isoStr) {
   return d === 1 ? '1 day ago' : `${d} days ago`
 }
 
+const DEFAULT_RECRUIT_SUBJECT = 'Invitation to join {team_name}'
+const DEFAULT_RECRUIT_BODY = `Hi {recruit_name},
+
+{referrer_name} sent me your information and asked me to reach out.
+
+Here is a bit about what we offer at {team_name}:
+
+- Collaborative team environment focused on agent success
+- Access to cutting-edge tools and resources
+- Ongoing training and professional development
+
+I'd love to set up a time to chat and tell you more about what we're building here.
+
+Best regards`
+
 function buildRecruitMailto(recruit, submitterName, teamName, emailSettings) {
-  const subject = `Invitation to join ${teamName || 'our team'}`
-  let body = `Hi ${recruit.name},\n\n`
-  body += `${submitterName} sent me your information and asked me to reach out.\n\n`
-  const bullets = emailSettings?.bullet_points?.length
-    ? emailSettings.bullet_points
-    : [{ text:'Collaborative team environment focused on agent success' },
-       { text:'Access to cutting-edge tools and resources' },
-       { text:'Ongoing training and professional development' }]
-  body += `Here is a bit about what we offer at ${teamName || 'our team'}:\n\n`
-  bullets.forEach(bp => { body += `- ${bp.text}\n` })
-  body += '\n'
-  body += (emailSettings?.footer?.trim())
-    || "I'd love to set up a time to chat and tell you more about what we're building here.\n\nBest regards"
-  return `mailto:${encodeURIComponent(recruit.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+  const subjectTpl = emailSettings?.subject?.trim() || DEFAULT_RECRUIT_SUBJECT
+  const bodyTpl = emailSettings?.body?.trim() || DEFAULT_RECRUIT_BODY
+  const replace = s => s
+    .replace(/\{recruit_name\}/gi, recruit.name || '')
+    .replace(/\{referrer_name\}/gi, submitterName || '')
+    .replace(/\{team_name\}/gi, teamName || 'our team')
+  return `mailto:${encodeURIComponent(recruit.email)}?subject=${encodeURIComponent(replace(subjectTpl))}&body=${encodeURIComponent(replace(bodyTpl))}`
 }
 
 function buildRecruitMailtoPreview(teamName, emailSettings) {
-  let body = `Hi {Recruit Name},\n\n`
-  body += `{Referring Agent} sent me your information and asked me to reach out.\n\n`
-  const bullets = emailSettings?.bullet_points?.length
-    ? emailSettings.bullet_points
-    : [{ text:'Collaborative team environment focused on agent success' },
-       { text:'Access to cutting-edge tools and resources' },
-       { text:'Ongoing training and professional development' }]
-  body += `Here is a bit about what we offer at ${teamName || '{Team Name}'}:\n\n`
-  bullets.forEach(bp => { body += `- ${bp.text}\n` })
-  body += '\n'
-  body += emailSettings?.footer?.trim()
-    || "I'd love to set up a time to chat and tell you more about what we're building here.\n\nBest regards"
-  return body
+  const subjectTpl = emailSettings?.subject?.trim() || DEFAULT_RECRUIT_SUBJECT
+  const bodyTpl = emailSettings?.body?.trim() || DEFAULT_RECRUIT_BODY
+  const replace = s => s
+    .replace(/\{recruit_name\}/gi, '{Recruit Name}')
+    .replace(/\{referrer_name\}/gi, '{Referring Agent}')
+    .replace(/\{team_name\}/gi, teamName || '{Team Name}')
+  return `Subject: ${replace(subjectTpl)}\n\n${replace(bodyTpl)}`
 }
 
 // Reusable avatar: shows profile photo if available, otherwise initials
@@ -157,9 +159,9 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [recruitFilter,   setRecruitFilter]   = useState('all')  // 'all' | 'submitted' | 'contacted' | 'hired' | 'declined'
   const [recruitNoteEditing, setRecruitNoteEditing] = useState(null) // recruitId being edited
   const [recruitNoteText,    setRecruitNoteText]    = useState('')
-  const [recruitEmailBulletForm, setRecruitEmailBulletForm] = useState('')
-  const [recruitEmailFooter,     setRecruitEmailFooter]     = useState('')
-  const [recruitEmailSaving,     setRecruitEmailSaving]     = useState(false)
+  const [recruitEmailSubject, setRecruitEmailSubject] = useState('')
+  const [recruitEmailBody,    setRecruitEmailBody]    = useState('')
+  const [recruitEmailSaving,  setRecruitEmailSaving]  = useState(false)
   const [slackUrl,        setSlackUrl]        = useState('')      // team Slack workspace URL
   const [slackSaving,     setSlackSaving]     = useState(false)
   const [logoCropSrc,     setLogoCropSrc]     = useState(null)    // object URL for crop modal
@@ -231,7 +233,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     if (seq !== fetchMembersSeqRef.current) return
     setTeamData(team)
     setSlackUrl(team?.team_prefs?.slack_url || '')
-    setRecruitEmailFooter(team?.team_prefs?.recruit_email_settings?.footer || '')
+    setRecruitEmailSubject(team?.team_prefs?.recruit_email_settings?.subject || '')
+    setRecruitEmailBody(team?.team_prefs?.recruit_email_settings?.body || '')
     // Load habit stats for all members
     if (mems?.length) {
       const ids = mems.map(m=>m.id)
@@ -1049,69 +1052,26 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   }
 
   // ── Recruit Email Settings Handlers ─────────────────────────────────────
-  async function addBullet() {
-    const text = recruitEmailBulletForm.trim()
-    if (!text) return
+  async function saveRecruitEmail() {
     setRecruitEmailSaving(true)
     try {
-      const settings = teamData?.team_prefs?.recruit_email_settings || {}
-      const bullets = [...(settings.bullet_points || []), {
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
-        text,
-      }]
-      const newSettings = { ...settings, bullet_points: bullets }
+      const newSettings = {
+        subject: recruitEmailSubject.trim(),
+        body: recruitEmailBody.trim(),
+      }
       const newPrefs = { ...(teamData.team_prefs || {}), recruit_email_settings: newSettings }
       const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', teamData.id)
       if (err) throw err
       setTeamData(prev => ({ ...prev, team_prefs: newPrefs }))
-      setRecruitEmailBulletForm('')
-    } catch (err) { console.error('addBullet error:', err) }
-    finally { setRecruitEmailSaving(false) }
-  }
-
-  async function removeBullet(bulletId) {
-    setRecruitEmailSaving(true)
-    try {
-      const settings = teamData?.team_prefs?.recruit_email_settings || {}
-      const bullets = (settings.bullet_points || []).filter(bp => bp.id !== bulletId)
-      const newSettings = { ...settings, bullet_points: bullets }
-      const newPrefs = { ...(teamData.team_prefs || {}), recruit_email_settings: newSettings }
-      const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', teamData.id)
-      if (err) throw err
-      setTeamData(prev => ({ ...prev, team_prefs: newPrefs }))
-    } catch (err) { console.error('removeBullet error:', err) }
-    finally { setRecruitEmailSaving(false) }
-  }
-
-  async function reorderBullet(fromIdx, toIdx) {
-    setRecruitEmailSaving(true)
-    try {
-      const settings = teamData?.team_prefs?.recruit_email_settings || {}
-      const bullets = [...(settings.bullet_points || [])]
-      const [moved] = bullets.splice(fromIdx, 1)
-      bullets.splice(toIdx, 0, moved)
-      const newSettings = { ...settings, bullet_points: bullets }
-      const newPrefs = { ...(teamData.team_prefs || {}), recruit_email_settings: newSettings }
-      const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', teamData.id)
-      if (err) throw err
-      setTeamData(prev => ({ ...prev, team_prefs: newPrefs }))
-    } catch (err) { console.error('reorderBullet error:', err) }
-    finally { setRecruitEmailSaving(false) }
-  }
-
-  async function saveRecruitFooter() {
-    setRecruitEmailSaving(true)
-    try {
-      const settings = teamData?.team_prefs?.recruit_email_settings || {}
-      const newSettings = { ...settings, footer: recruitEmailFooter.trim() }
-      const newPrefs = { ...(teamData.team_prefs || {}), recruit_email_settings: newSettings }
-      const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', teamData.id)
-      if (err) throw err
-      setTeamData(prev => ({ ...prev, team_prefs: newPrefs }))
-      setSuccess('Email footer saved!')
+      setSuccess('Email template saved!')
       setTimeout(() => setSuccess(''), 2000)
-    } catch (err) { console.error('saveRecruitFooter error:', err) }
+    } catch (err) { console.error('saveRecruitEmail error:', err) }
     finally { setRecruitEmailSaving(false) }
+  }
+
+  function resetRecruitEmail() {
+    setRecruitEmailSubject('')
+    setRecruitEmailBody('')
   }
 
   // ── Team logo ──
@@ -3268,91 +3228,70 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               </span>
                             </div>
 
-                            <div style={{ fontSize:12, color:'var(--muted)', marginBottom:16, lineHeight:1.6 }}>
+                            <div style={{ fontSize:12, color:'var(--muted)', marginBottom:12, lineHeight:1.6 }}>
                               When you click the ✉️ icon on a recruit card, their email client opens
-                              with a pre-filled message. Customize the selling points and footer below.
+                              with this template. Use placeholders to personalize each email:
                             </div>
 
-                            {/* Selling Points / Bullet Points */}
-                            <div style={{ marginBottom:20 }}>
-                              <div style={{ fontSize:12, fontWeight:700, color:'var(--text)', marginBottom:8 }}>
-                                Selling Points
-                              </div>
-                              <div style={{ fontSize:11, color:'var(--muted)', marginBottom:10 }}>
-                                These appear as bullet points in the outreach email.
-                                {!(teamData?.team_prefs?.recruit_email_settings?.bullet_points?.length) &&
-                                  ' Default bullets will be used if none are added.'}
-                              </div>
-
-                              {(teamData?.team_prefs?.recruit_email_settings?.bullet_points || []).map((bp, idx, arr) => (
-                                <div key={bp.id} style={{
-                                  display:'flex', alignItems:'center', gap:8,
-                                  padding:'8px 0', borderBottom:'1px solid var(--b2)',
-                                }}>
-                                  <span style={{ fontSize:12, color:'var(--muted)', width:20, textAlign:'center' }}>
-                                    {idx + 1}.
-                                  </span>
-                                  <div style={{ flex:1, fontSize:12, color:'var(--text)' }}>{bp.text}</div>
-                                  {idx > 0 && (
-                                    <button onClick={()=>reorderBullet(idx, idx - 1)} disabled={recruitEmailSaving} style={{
-                                      background:'none', border:'1px solid var(--b2)', borderRadius:4,
-                                      padding:'2px 6px', fontSize:10, cursor:'pointer', color:'var(--muted)',
-                                    }}>↑</button>
-                                  )}
-                                  {idx < arr.length - 1 && (
-                                    <button onClick={()=>reorderBullet(idx, idx + 1)} disabled={recruitEmailSaving} style={{
-                                      background:'none', border:'1px solid var(--b2)', borderRadius:4,
-                                      padding:'2px 6px', fontSize:10, cursor:'pointer', color:'var(--muted)',
-                                    }}>↓</button>
-                                  )}
-                                  <button onClick={()=>removeBullet(bp.id)} disabled={recruitEmailSaving} style={{
-                                    background:'none', border:'1px solid rgba(220,38,38,.2)', borderRadius:4,
-                                    padding:'2px 6px', fontSize:10, cursor:'pointer', color:'var(--red)',
-                                  }}>✕</button>
-                                </div>
+                            {/* Placeholder tokens */}
+                            <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }}>
+                              {[
+                                { token:'{recruit_name}', desc:'Recruit\'s name' },
+                                { token:'{referrer_name}', desc:'Agent who referred' },
+                                { token:'{team_name}', desc:'Your team name' },
+                              ].map(t => (
+                                <span key={t.token} style={{
+                                  fontSize:10, padding:'3px 8px', borderRadius:6,
+                                  background:'rgba(59,130,246,.08)', color:'#3b82f6',
+                                  border:'1px solid rgba(59,130,246,.2)',
+                                  fontFamily:"'JetBrains Mono',monospace",
+                                }} title={t.desc}>{t.token}</span>
                               ))}
-
-                              <div style={{ display:'flex', gap:8, marginTop:10 }}>
-                                <input className="field-input" value={recruitEmailBulletForm}
-                                  onChange={e => setRecruitEmailBulletForm(e.target.value)}
-                                  onKeyDown={e => e.key === 'Enter' && recruitEmailBulletForm.trim() && addBullet()}
-                                  placeholder="e.g. Industry-leading commission splits"
-                                  style={{ flex:1, fontSize:12 }}/>
-                                <button className="btn-primary" onClick={addBullet}
-                                  disabled={!recruitEmailBulletForm.trim() || recruitEmailSaving}
-                                  style={{ fontSize:12, padding:'8px 16px', whiteSpace:'nowrap' }}>
-                                  + Add
-                                </button>
-                              </div>
                             </div>
 
-                            {/* Footer */}
+                            {/* Subject */}
                             <div style={{ marginBottom:16 }}>
-                              <div style={{ fontSize:12, fontWeight:700, color:'var(--text)', marginBottom:8 }}>
-                                Email Footer
+                              <div style={{ fontSize:12, fontWeight:700, color:'var(--text)', marginBottom:6 }}>
+                                Subject Line
                               </div>
-                              <div style={{ fontSize:11, color:'var(--muted)', marginBottom:8 }}>
-                                Closing text appended to the bottom of every outreach email.
+                              <input className="field-input" value={recruitEmailSubject}
+                                onChange={e => setRecruitEmailSubject(e.target.value)}
+                                placeholder={DEFAULT_RECRUIT_SUBJECT}
+                                style={{ fontSize:12, width:'100%' }}/>
+                            </div>
+
+                            {/* Body */}
+                            <div style={{ marginBottom:16 }}>
+                              <div style={{ fontSize:12, fontWeight:700, color:'var(--text)', marginBottom:6 }}>
+                                Email Body
                               </div>
-                              <textarea className="field-input" value={recruitEmailFooter}
-                                onChange={e => setRecruitEmailFooter(e.target.value)}
-                                placeholder="I'd love to set up a time to chat and tell you more about what we're building here.&#10;&#10;Best regards"
-                                rows={3} style={{ fontSize:12, resize:'vertical', width:'100%' }}/>
-                              <button className="btn-primary" onClick={saveRecruitFooter}
+                              <textarea className="field-input" value={recruitEmailBody}
+                                onChange={e => setRecruitEmailBody(e.target.value)}
+                                placeholder={DEFAULT_RECRUIT_BODY}
+                                rows={12} style={{ fontSize:12, resize:'vertical', width:'100%', lineHeight:1.6 }}/>
+                            </div>
+
+                            {/* Actions */}
+                            <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+                              <button className="btn-primary" onClick={saveRecruitEmail}
                                 disabled={recruitEmailSaving}
-                                style={{ fontSize:12, padding:'8px 16px', marginTop:8 }}>
-                                {recruitEmailSaving ? 'Saving...' : 'Save Footer'}
+                                style={{ fontSize:12, padding:'8px 16px' }}>
+                                {recruitEmailSaving ? 'Saving...' : 'Save Template'}
+                              </button>
+                              <button className="btn-outline" onClick={resetRecruitEmail}
+                                style={{ fontSize:12, padding:'8px 16px' }}>
+                                Reset to Default
                               </button>
                             </div>
 
                             {/* Email preview */}
-                            <div style={{ borderTop:'1px solid var(--b2)', paddingTop:14, marginTop:8 }}>
+                            <div style={{ borderTop:'1px solid var(--b2)', paddingTop:14 }}>
                               <div style={{ fontSize:11, fontWeight:700, color:'var(--muted)', marginBottom:8,
                                 textTransform:'uppercase', letterSpacing:'.5px' }}>Preview</div>
                               <pre style={{ fontSize:11, color:'var(--dim)', whiteSpace:'pre-wrap',
                                 background:'var(--bg2)', padding:12, borderRadius:8, lineHeight:1.5,
                                 border:'1px solid var(--b2)', margin:0, fontFamily:"'Poppins',sans-serif" }}>
-{buildRecruitMailtoPreview(teamData?.name, teamData?.team_prefs?.recruit_email_settings)}
+{buildRecruitMailtoPreview(teamData?.name, { subject: recruitEmailSubject, body: recruitEmailBody })}
                               </pre>
                             </div>
                           </div>

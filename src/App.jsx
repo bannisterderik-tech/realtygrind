@@ -1631,7 +1631,7 @@ function Dashboard({ theme, onToggleTheme }) {
         listDate:l.list_date||'', expiresDate:l.expires_date||''
       })
       const allListings = allL.filter(l => (l.unit_count ?? 1) !== 0)
-      setListings(allListings.filter(l => l.status !== 'potential').map(mapListing))
+      setListings(allListings.filter(l => l.status !== 'potential' && l.status !== 'closed').map(mapListing))
       setPotentialListings(allListings.filter(l => l.status === 'potential').map(mapListing))
       setBuyerReps(allL.filter(l => l.unit_count === 0).map(r => ({
         id:r.id, clientName:r.address||'', status:r.status||'active', monthYear:r.month_year||'',

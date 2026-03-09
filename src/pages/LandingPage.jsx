@@ -259,7 +259,7 @@ function FeatureSection({ reverse, tinted, theme, label, labelColor, num, title,
 }
 
 // ── Main Component ────────────────────────────────────────────────────────
-export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubscribe, onShowTerms }) {
+export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubscribe, onShowTerms, onShowAffiliates }) {
   const gold = theme === 'dark' ? '#d97706' : '#b45309'
   const goldBg = theme === 'dark' ? 'rgba(217,119,6,.12)' : 'rgba(180,83,9,.08)'
 
@@ -1071,6 +1071,9 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
               style={{ fontSize:13, color:gold, fontFamily:'Poppins,sans-serif', fontWeight:600, textDecoration:'none' }}>
               📊 Pitch Deck
             </a>
+            <button onClick={onShowAffiliates} style={{ fontSize:13, color:gold, fontFamily:'Poppins,sans-serif', fontWeight:600, background:'transparent', border:'none', cursor:'pointer' }}>
+              🤝 Affiliates
+            </button>
             <button onClick={onGetStarted} style={{ fontSize:13, color:gold, fontFamily:'Poppins,sans-serif', fontWeight:600, background:'transparent', border:'none', cursor:'pointer' }}>
               Get Started →
             </button>

@@ -4550,6 +4550,7 @@ function Dashboard({ theme, onToggleTheme }) {
       {page==='apod'      && <ErrorBoundary key="apod" onReset={()=>setPage('dashboard')}><APODPage      onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
       {page==='admin'     && <ErrorBoundary key="admin" onReset={()=>setPage('dashboard')}><AdminPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
       {page==='terms'     && <ErrorBoundary key="terms" onReset={()=>setPage('dashboard')}><TermsPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      {page==='affiliates' && <ErrorBoundary key="affiliates" onReset={()=>setPage('dashboard')}><AffiliatesPage onNavigate={()=>setPage('billing')} theme={theme}/></ErrorBoundary>}
       </Suspense>
       )}
       {/* AI Assistant now handled by floating widget — see useEffect redirect below */}
@@ -4840,7 +4841,7 @@ function AppInner() {
   const [theme,       setTheme]       = useState(()=>localStorage.getItem('rg_theme')||'light')
   const [showAuth,       setShowAuth]       = useState(false)
   const [showTerms,      setShowTerms]      = useState(false)
-  const [showAffiliates, setShowAffiliates] = useState(false)
+  const [showAffiliates, setShowAffiliates] = useState(() => window.location.pathname === '/affiliate')
   const [checkoutMsg, setCheckoutMsg] = useState(null) // 'success' | 'cancelled'
   const [checkoutLoading, setCheckoutLoading] = useState(false)
 
@@ -4949,7 +4950,7 @@ function AppInner() {
       <ErrorBoundary key={showAffiliates ? 'affiliates' : showTerms ? 'terms' : showAuth ? 'auth' : 'landing'} onReset={()=>{ setShowAuth(false); setShowTerms(false); setShowAffiliates(false) }}>
         <Suspense fallback={<Loader/>}>
         {showAffiliates
-          ? <AffiliatesPage theme={theme} onNavigate={()=>setShowAffiliates(false)}/>
+          ? <AffiliatesPage theme={theme} onNavigate={()=>{ setShowAffiliates(false); history.replaceState(null,'','/') }}/>
           : showTerms
             ? <TermsPage theme={theme} onNavigate={()=>setShowTerms(false)}/>
             : showAuth
@@ -4958,7 +4959,7 @@ function AppInner() {
                   onGetStarted={()=>setShowAuth(true)}
                   onSubscribe={handleSubscribe}
                   onShowTerms={()=>setShowTerms(true)}
-                  onShowAffiliates={()=>setShowAffiliates(true)}/>
+                  onShowAffiliates={()=>{ setShowAffiliates(true); history.pushState(null,'','/affiliate') }}/>
         }
         </Suspense>
       </ErrorBoundary>

@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { Loader, Wordmark, ThemeToggle, Ring, getRank, fmtMoney, RANKS } from '../design'
 import { HABITS } from '../habits'
+import { isActiveBilling } from '../lib/plans'
 import { ALL_APPS } from './DirectoryPage'
 import AvatarCropModal from '../components/AvatarCropModal'
 

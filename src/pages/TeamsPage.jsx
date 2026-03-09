@@ -3341,12 +3341,17 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 { token:'{referrer_name}', desc:'Agent who referred' },
                                 { token:'{team_name}', desc:'Your team name' },
                               ].map(t => (
-                                <span key={t.token} style={{
+                                <button key={t.token} onClick={()=>{
+                                  navigator.clipboard.writeText(t.token)
+                                  setSuccess(`Copied ${t.token}`)
+                                  setTimeout(()=>setSuccess(''),1500)
+                                }} style={{
                                   fontSize:10, padding:'3px 8px', borderRadius:6,
                                   background:'rgba(59,130,246,.08)', color:'#3b82f6',
                                   border:'1px solid rgba(59,130,246,.2)',
                                   fontFamily:"'JetBrains Mono',monospace",
-                                }} title={t.desc}>{t.token}</span>
+                                  cursor:'pointer', transition:'all .15s',
+                                }} title={`Click to copy ${t.token}`}>{t.token}</button>
                               ))}
                             </div>
 

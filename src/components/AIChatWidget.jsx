@@ -317,7 +317,7 @@ const AIChatWidget = memo(function AIChatWidget({ isOpen, onToggle, onClose, onN
           background:'var(--surface)',
           transition:'all .25s ease',
           ...(isMaximized
-            ? { inset:0, width:'100vw', height:'100vh', maxHeight:'100vh',
+            ? { bottom:0, right:0, width:'100vw', height:'100vh', maxHeight:'100vh',
                 borderRadius:0, border:'none', boxShadow:'none' }
             : { bottom:92, right:24, width:'min(400px, calc(100vw - 48px))', maxHeight:'70vh',
                 borderRadius:16, border:'1px solid var(--b2)',

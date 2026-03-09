@@ -984,16 +984,19 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
 
   async function remove(row) {
     if (!window.confirm(`Remove "${row.address || 'this entry'}"?`)) return
-    const snapshot = rows
     setRows(prev => prev.filter(r => r.id !== row.id))
     if (row.id && !String(row.id).startsWith('tmp-')) {
       if (archiveOnRemove) {
         // Soft-delete: archive the record so it still counts in monthly stats
         const r = await safeDb(supabase.from('transactions').update({status:'archived'}).eq('id', row.id).eq('user_id', userId))
-        if (!r.ok) { setRows(snapshot); return }
+        if (!r.ok) {
+          // Fallback: try hard delete if archive fails (e.g. RLS policy)
+          const r2 = await safeDb(supabase.from('transactions').delete().eq('id', row.id).eq('user_id', userId))
+          if (!r2.ok) { setRows(prev => [...prev, row]); return }
+        }
       } else {
         const r = await safeDb(supabase.from('transactions').delete().eq('id', row.id).eq('user_id', userId))
-        if (!r.ok) { setRows(snapshot); return }
+        if (!r.ok) { setRows(prev => [...prev, row]); return }
       }
     }
     if (!archiveOnRemove && onRemove) onRemove(row)

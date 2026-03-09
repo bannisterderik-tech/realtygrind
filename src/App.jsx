@@ -1741,7 +1741,9 @@ function Dashboard({ theme, onToggleTheme }) {
   const passwordSetVal = profile?.habit_prefs?.password_set
   useEffect(() => {
     if (passwordSetDone.current) return
-    if (!dbLoading && user?.user_metadata?.team_id && !passwordSetVal) {
+    // Skip if user already has an email/password identity (they set it already)
+    const hasEmailIdentity = user?.identities?.some(i => i.provider === 'email')
+    if (!dbLoading && user?.user_metadata?.team_id && !passwordSetVal && !hasEmailIdentity) {
       passwordSetDone.current = true
       setNeedsPassword(true)
     }
@@ -1757,9 +1759,13 @@ function Dashboard({ theme, onToggleTheme }) {
       const { error } = await supabase.auth.updateUser({ password: newPw })
       if (error) throw error
       passwordSetDone.current = true
-      const newPrefs = { ...habitPrefs, password_set: true }
+      // Read current prefs from DB to avoid overwriting with stale local state
+      const { data: freshProfile } = await supabase.from('profiles').select('habit_prefs').eq('id', user.id).single()
+      const currentPrefs = freshProfile?.habit_prefs || habitPrefs || {}
+      const newPrefs = { ...currentPrefs, password_set: true }
       setHabitPrefs(newPrefs)
-      await supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id)
+      const { error: updateError } = await supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id)
+      if (updateError) throw updateError
       setNeedsPassword(false)
     } catch (e) {
       setPwError(e.message || 'Failed to set password.')

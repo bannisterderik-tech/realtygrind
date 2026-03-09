@@ -21,7 +21,10 @@ export default function AffiliatesPage({ theme, onNavigate }) {
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/affiliate-signup`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
           body: JSON.stringify({
             email: email.trim(),
             ...(name.trim()    ? { name: name.trim() }       : {}),

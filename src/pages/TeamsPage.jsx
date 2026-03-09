@@ -1166,12 +1166,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                   border: isLead ? '1px solid rgba(139,92,246,.3)' : '1px solid var(--b2)' }}
                                   onClick={(canViewDetail(m) && !memberDetailLoading && !viewingMember) ? ()=>fetchMemberDetail(m) : undefined}>
                                   <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                                    <div style={{ width:34, height:34, borderRadius:'50%',
-                                      background:`linear-gradient(135deg,${rank.color},${rank.color}99)`,
-                                      display:'flex', alignItems:'center', justifyContent:'center',
-                                      fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
-                                      {(m.full_name||'A').charAt(0).toUpperCase()}
-                                    </div>
+                                    <MemberAvatar member={m} size={34} rank={rank}/>
                                     <div style={{ flex:1, minWidth:0 }}>
                                       <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{m.full_name||'Agent'}</div>
                                       <div style={{ fontSize:10, color:'var(--muted)' }}>{rank.name} · 🔥{m.streak||0}</div>
@@ -1384,12 +1379,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 borderLeft: submitted ? '3px solid var(--green)' : '3px solid var(--b2)',
                                 opacity: submitted ? 1 : 0.65 }}>
                                 <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:submitted?14:0 }}>
-                                  <div style={{ width:34, height:34, borderRadius:'50%',
-                                    background:`linear-gradient(135deg,${rank.color},${rank.color}88)`,
-                                    display:'flex', alignItems:'center', justifyContent:'center',
-                                    fontSize:14, fontWeight:700, color:'#fff', flexShrink:0 }}>
-                                    {(m.full_name||'?').charAt(0).toUpperCase()}
-                                  </div>
+                                  <MemberAvatar member={m} size={34} rank={rank}/>
                                   <div style={{ flex:1, minWidth:0 }}>
                                     <div style={{ fontSize:14, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.full_name||'Agent'}</div>
                                     <div style={{ fontSize:11, color:'var(--muted)' }}>{submitted ? 'Submitted today' : 'Not submitted yet'}</div>
@@ -1991,12 +1981,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                           return (
                                             <div className="card" style={{ padding:14, border:'1px solid rgba(217,119,6,.3)', background:'var(--gold3)' }}>
                                               <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                                                <div style={{ width:34, height:34, borderRadius:'50%',
-                                                  background:`linear-gradient(135deg,${myRank.color},${myRank.color}99)`,
-                                                  display:'flex', alignItems:'center', justifyContent:'center',
-                                                  fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
-                                                  {(me.full_name||'A').charAt(0).toUpperCase()}
-                                                </div>
+                                                <MemberAvatar member={me} size={34} rank={myRank}/>
                                                 <div style={{ flex:1, minWidth:0 }}>
                                                   <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{me.full_name||'Agent'}</div>
                                                   <div style={{ fontSize:10, color:'var(--muted)' }}>{myRank.name} · 🔥 {me.streak||0}</div>
@@ -2026,12 +2011,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                               border: isLeaderMate ? '1px solid rgba(139,92,246,.3)' : '1px solid var(--b2)' }}
                                               onClick={isLeader && !memberDetailLoading && !viewingMember ? ()=>fetchMemberDetail(mate) : undefined}>
                                               <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                                                <div style={{ width:34, height:34, borderRadius:'50%',
-                                                  background:`linear-gradient(135deg,${mateRank.color},${mateRank.color}99)`,
-                                                  display:'flex', alignItems:'center', justifyContent:'center',
-                                                  fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
-                                                  {(mate.full_name||'A').charAt(0).toUpperCase()}
-                                                </div>
+                                                <MemberAvatar member={mate} size={34} rank={mateRank}/>
                                                 <div style={{ flex:1, minWidth:0 }}>
                                                   <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{mate.full_name||'Agent'}</div>
                                                   <div style={{ fontSize:10, color:'var(--muted)' }}>{mateRank.name} · 🔥 {mate.streak||0}</div>
@@ -2111,14 +2091,16 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                   opacity: need.resolved ? 0.7 : 1,
                                 }}>
                                   <div style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
-                                    {/* Avatar circle */}
-                                    <div style={{ width:32, height:32, borderRadius:'50%',
-                                      background: isMe ? 'rgba(217,119,6,.15)' : 'rgba(14,165,233,.12)',
-                                      border: `1.5px solid ${isMe ? 'rgba(217,119,6,.3)' : 'rgba(14,165,233,.25)'}`,
-                                      display:'flex', alignItems:'center', justifyContent:'center',
-                                      fontSize:14, fontWeight:700, color: isMe ? 'var(--gold)' : '#0ea5e9', flexShrink:0 }}>
-                                      {name.charAt(0).toUpperCase()}
-                                    </div>
+                                    {/* Avatar */}
+                                    {(()=>{ const author = members.find(mm=>mm.id===need.authorId); return author ? <MemberAvatar member={author} size={32}/> : (
+                                      <div style={{ width:32, height:32, borderRadius:'50%',
+                                        background: isMe ? 'rgba(217,119,6,.15)' : 'rgba(14,165,233,.12)',
+                                        border: `1.5px solid ${isMe ? 'rgba(217,119,6,.3)' : 'rgba(14,165,233,.25)'}`,
+                                        display:'flex', alignItems:'center', justifyContent:'center',
+                                        fontSize:14, fontWeight:700, color: isMe ? 'var(--gold)' : '#0ea5e9', flexShrink:0 }}>
+                                        {name.charAt(0).toUpperCase()}
+                                      </div>
+                                    )})()}
                                     <div style={{ flex:1, minWidth:0 }}>
                                       {/* Header row */}
                                       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6, flexWrap:'wrap' }}>
@@ -3492,13 +3474,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                         <div style={{ width:32, fontSize:medal?24:16, textAlign:'center', color:'var(--muted)', fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>
                           {medal || (i+1)}
                         </div>
-                        <div style={{ width:42, height:42, borderRadius:'50%',
-                          background:`linear-gradient(135deg, ${rank.color}, ${rank.color}88)`,
-                          display:'flex', alignItems:'center', justifyContent:'center',
-                          fontSize:18, fontWeight:700, color:'#fff', flexShrink:0,
-                          boxShadow:`0 2px 12px ${rank.color}33` }}>
-                          {(m.full_name||'A').charAt(0).toUpperCase()}
-                        </div>
+                        <MemberAvatar member={m} size={42} rank={rank}/>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:16, fontWeight:700, color:'var(--text)' }}>{m.full_name||'Agent'}</div>
                           <div style={{ fontSize:11, color:'var(--muted)' }}>{rank.icon} {rank.name} {(m.streak||0)>0?`· 🔥 ${m.streak}`:''}</div>

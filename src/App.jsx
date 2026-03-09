@@ -15,6 +15,7 @@ const AIAssistantPage = lazy(() => import('./pages/AIAssistantPage'))
 const CoachingPage    = lazy(() => import('./pages/CoachingPage'))
 const AdminPage       = lazy(() => import('./pages/AdminPage'))
 const TermsPage       = lazy(() => import('./pages/TermsPage'))
+const AffiliatesPage  = lazy(() => import('./pages/AffiliatesPage'))
 import AIChatWidget from './components/AIChatWidget'
 import { CSS, Ring, StatCard, Wordmark, Loader, ThemeToggle, getRank, fmtMoney, resolveCommission, RANKS, CAT, formatPrice, stripPrice, daysOnMarket, LEAD_SOURCES, LEAD_SOURCE_COLORS } from './design'
 import { HABITS } from './habits'
@@ -4573,8 +4574,9 @@ function AppInner() {
   useRenderGuard('AppInner')
   const { user, loading } = useAuth()
   const [theme,       setTheme]       = useState(()=>localStorage.getItem('rg_theme')||'light')
-  const [showAuth,    setShowAuth]    = useState(false)
-  const [showTerms,   setShowTerms]   = useState(false)
+  const [showAuth,       setShowAuth]       = useState(false)
+  const [showTerms,      setShowTerms]      = useState(false)
+  const [showAffiliates, setShowAffiliates] = useState(false)
   const [checkoutMsg, setCheckoutMsg] = useState(null) // 'success' | 'cancelled'
   const [checkoutLoading, setCheckoutLoading] = useState(false)
 
@@ -4680,16 +4682,19 @@ function AppInner() {
           <span style={{ color:'#fff', fontFamily:'Poppins,sans-serif', fontWeight:600 }}>Redirecting to checkout…</span>
         </div>
       )}
-      <ErrorBoundary key={showTerms ? 'terms' : showAuth ? 'auth' : 'landing'} onReset={()=>{ setShowAuth(false); setShowTerms(false) }}>
+      <ErrorBoundary key={showAffiliates ? 'affiliates' : showTerms ? 'terms' : showAuth ? 'auth' : 'landing'} onReset={()=>{ setShowAuth(false); setShowTerms(false); setShowAffiliates(false) }}>
         <Suspense fallback={<Loader/>}>
-        {showTerms
-          ? <TermsPage theme={theme} onNavigate={()=>setShowTerms(false)}/>
-          : showAuth
-            ? <AuthPage theme={theme} onToggleTheme={toggleTheme} onBack={()=>setShowAuth(false)} onShowTerms={()=>setShowTerms(true)}/>
-            : <LandingPage theme={theme} onToggleTheme={toggleTheme}
-                onGetStarted={()=>setShowAuth(true)}
-                onSubscribe={handleSubscribe}
-                onShowTerms={()=>setShowTerms(true)}/>
+        {showAffiliates
+          ? <AffiliatesPage theme={theme} onNavigate={()=>setShowAffiliates(false)}/>
+          : showTerms
+            ? <TermsPage theme={theme} onNavigate={()=>setShowTerms(false)}/>
+            : showAuth
+              ? <AuthPage theme={theme} onToggleTheme={toggleTheme} onBack={()=>setShowAuth(false)} onShowTerms={()=>setShowTerms(true)}/>
+              : <LandingPage theme={theme} onToggleTheme={toggleTheme}
+                  onGetStarted={()=>setShowAuth(true)}
+                  onSubscribe={handleSubscribe}
+                  onShowTerms={()=>setShowTerms(true)}
+                  onShowAffiliates={()=>setShowAffiliates(true)}/>
         }
         </Suspense>
       </ErrorBoundary>

@@ -1536,6 +1536,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [clientUpdateListing, setClientUpdateListing] = useState(null)
   const [clientUpdateNotes, setClientUpdateNotes] = useState('')
   const [clientUpdateEmailTo, setClientUpdateEmailTo] = useState('')
+  const [clientUpdateName, setClientUpdateName] = useState('')
   const [reviewRequestDeal, setReviewRequestDeal] = useState(null) // { address } shown after close
   const [reviewRequestName, setReviewRequestName] = useState('')
   const [reviewRequestEmail, setReviewRequestEmail] = useState('')
@@ -4274,7 +4275,7 @@ function Dashboard({ theme, onToggleTheme }) {
                     <span style={{ fontSize:11, color:'var(--dim)', fontStyle:'italic' }}>Deal completed</span>
                   )}
                   <div style={{ flex:1 }}/>
-                  <button className="edit-toggle" title="Email listing update" onClick={()=>{setClientUpdateNotes('');setClientUpdateEmailTo('');setClientUpdateListing(l)}}>✉️</button>
+                  <button className="edit-toggle" title="Email listing update" onClick={()=>{setClientUpdateNotes('');setClientUpdateEmailTo('');setClientUpdateName('');setClientUpdateListing(l)}}>✉️</button>
                   <button className="edit-toggle" title={isEditing ? 'Done editing' : 'Edit listing'} onClick={()=>setEditingListing(isEditing ? null : l.id)}>
                     {isEditing ? '✓' : '✏️'}
                   </button>
@@ -5086,10 +5087,9 @@ function Dashboard({ theme, onToggleTheme }) {
         const statusLabel = cl.status==='closed'?'Closed':cl.status==='pending'?'Pending':'Active'
         const statusColor = cl.status==='closed'?'#10b981':cl.status==='pending'?'#f59e0b':'#8b5cf6'
         const toEmail = clientUpdateEmailTo.trim()
-        const firstName = toEmail ? (toEmail.split('@')[0]?.split(/[._]/)[0] || '') : ''
-        const capFirst = firstName ? firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase() : 'there'
-        const subject = `${capFirst}, here is your listing update for ${cl.address || 'your property'}`
-        let emailBody = `Hi ${capFirst},\n\nHere is your listing update for ${cl.address || 'your property'}:\n\n`
+        const clientFirst = clientUpdateName.trim().split(/\s/)[0] || 'there'
+        const subject = `${clientFirst}, here is your listing update for ${cl.address || 'your property'}`
+        let emailBody = `Hi ${clientFirst},\n\nHere is your listing update for ${cl.address || 'your property'}:\n\n`
         emailBody += `Status: ${statusLabel}\n`
         if (priceNum > 0) emailBody += `List Price: ${formatPrice(cl.price)}\n`
         if (dom !== null) emailBody += `Days on Market: ${dom}\n`
@@ -5121,11 +5121,15 @@ function Dashboard({ theme, onToggleTheme }) {
                 </div>
               </div>
 
-              {/* Client Email Field */}
+              {/* Client Name & Email Fields */}
               <div style={{ padding:'16px 32px', borderBottom:'1px solid #e5e7eb', background:'#fafbfc' }}>
                 <div style={{ fontSize:10, color:'#9ca3af', letterSpacing:.8, fontWeight:600, fontFamily:"'Poppins',sans-serif", marginBottom:6 }}>SEND TO</div>
+                <input type="text" value={clientUpdateName} onChange={e=>setClientUpdateName(e.target.value)}
+                  placeholder="Client name" autoFocus
+                  style={{ width:'100%', padding:'10px 12px', fontSize:14, border:'1.5px solid #d1d5db', borderRadius:8,
+                    fontFamily:"'Poppins',sans-serif", color:'#111', background:'#fff', outline:'none', marginBottom:8 }}/>
                 <input type="email" value={clientUpdateEmailTo} onChange={e=>setClientUpdateEmailTo(e.target.value)}
-                  placeholder="client@email.com" autoFocus
+                  placeholder="client@email.com"
                   style={{ width:'100%', padding:'10px 12px', fontSize:14, border:'1.5px solid #d1d5db', borderRadius:8,
                     fontFamily:"'Poppins',sans-serif", color:'#111', background:'#fff', outline:'none' }}/>
                 {toEmail && (

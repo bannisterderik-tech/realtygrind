@@ -260,6 +260,11 @@ const AIChatWidget = memo(function AIChatWidget({ isOpen, onToggle, onClose, onN
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }
 
+  const [isMaximized, setIsMaximized] = useState(false)
+
+  // Reset maximized when widget closes
+  useEffect(() => { if (!isOpen) setIsMaximized(false) }, [isOpen])
+
   const [copiedIdx, setCopiedIdx] = useState(null)
   const copyTimerRef = useRef(null)
   function copyMessage(text, idx) {
@@ -298,7 +303,7 @@ const AIChatWidget = memo(function AIChatWidget({ isOpen, onToggle, onClose, onN
   return (
     <>
       {/* ── Backdrop (click-outside-to-close) ── */}
-      {isOpen && (
+      {isOpen && !isMaximized && (
         <div onClick={onClose} style={{
           position:'fixed', inset:0, zIndex:100000, background:'transparent',
         }}/>
@@ -307,11 +312,17 @@ const AIChatWidget = memo(function AIChatWidget({ isOpen, onToggle, onClose, onN
       {/* ── Chat Panel ── */}
       {isOpen && (
         <div ref={panelRef} onClick={e => e.stopPropagation()} style={{
-          position:'fixed', bottom:92, right:24, width:'min(400px, calc(100vw - 48px))', maxHeight:'70vh',
-          borderRadius:16, background:'var(--surface)', border:'1px solid var(--b2)',
-          boxShadow:'0 8px 40px rgba(0,0,0,.18), 0 2px 12px rgba(0,0,0,.08)',
-          display:'flex', flexDirection:'column', zIndex:100002,
-          animation:'slideUpWidget .22s ease', overflow:'hidden',
+          position:'fixed', zIndex:100002,
+          display:'flex', flexDirection:'column', overflow:'hidden',
+          background:'var(--surface)',
+          transition:'all .25s ease',
+          ...(isMaximized
+            ? { inset:0, width:'100vw', height:'100vh', maxHeight:'100vh',
+                borderRadius:0, border:'none', boxShadow:'none' }
+            : { bottom:92, right:24, width:'min(400px, calc(100vw - 48px))', maxHeight:'70vh',
+                borderRadius:16, border:'1px solid var(--b2)',
+                boxShadow:'0 8px 40px rgba(0,0,0,.18), 0 2px 12px rgba(0,0,0,.08)',
+                animation:'slideUpWidget .22s ease' }),
         }}>
 
           {/* ── Header ── */}
@@ -346,7 +357,14 @@ const AIChatWidget = memo(function AIChatWidget({ isOpen, onToggle, onClose, onN
                 transition:'all .15s',
               }}>↺</button>
             )}
-            <button onClick={onClose} style={{
+            <button onClick={() => setIsMaximized(prev => !prev)} title={isMaximized ? 'Minimize' : 'Fullscreen'}
+              style={{
+              background:'none', border:'1px solid var(--b2)', borderRadius:7,
+              width:26, height:26, cursor:'pointer', color:'var(--muted)',
+              display:'flex', alignItems:'center', justifyContent:'center', fontSize:13,
+              transition:'all .15s',
+            }}>{isMaximized ? '⊖' : '⛶'}</button>
+            <button onClick={() => { setIsMaximized(false); onClose() }} style={{
               background:'none', border:'1px solid var(--b2)', borderRadius:7,
               width:26, height:26, cursor:'pointer', color:'var(--muted)',
               display:'flex', alignItems:'center', justifyContent:'center', fontSize:13,
@@ -573,6 +591,7 @@ const AIChatWidget = memo(function AIChatWidget({ isOpen, onToggle, onClose, onN
       )}
 
       {/* ── FAB Button ── */}
+      {!isMaximized && (
       <button onClick={onToggle} style={{
         position:'fixed', bottom:24, right:24, width:56, height:56,
         borderRadius:'50%', border:'none', cursor:'pointer',
@@ -603,6 +622,7 @@ const AIChatWidget = memo(function AIChatWidget({ isOpen, onToggle, onClose, onN
           }} />
         )}
       </button>
+      )}
 
       {/* ── Widget-specific styles ── */}
       <style>{`

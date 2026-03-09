@@ -19,6 +19,12 @@ const FAQS = [
     a:'Yes — RealtyGrind is fully responsive and works great on any phone or tablet. No app download needed.' },
   { q:'What is the AI Coaching Assistant?',
     a:'The AI Assistant is a built-in coach powered by Claude that reads your live listings, pipeline, and goals. Ask it anything — listing pricing strategy, comp analysis, goal tracking, prospecting tips. Solo gets 50 credits/mo, Team gets 250 shared, Brokerage gets unlimited. 1 credit = 1 message.' },
+  { q:'How does the pipeline tracker work?',
+    a:'Add offers made and received, move them to pending, then closed. Each deal is a single record that moves between stages — no duplicates, no mess. Commission totals and goal progress update automatically.' },
+  { q:'What are accountability groups?',
+    a:'Team leaders can create sub-groups of agents with a designated group leader. Group leaders can coach their members, run group challenges, and track group performance with ring-based progress tracking.' },
+  { q:'How does the buyer needs board work?',
+    a:'Team members post what their buyers are looking for — area, price range, property type. Teammates reply with matching properties they find. It keeps the whole team working together to close buyer deals faster.' },
 ]
 
 const TESTIMONIALS = [
@@ -41,18 +47,6 @@ const DEMO_HABITS = [
   { id:5, label:'Follow-ups',   icon:'✉️', xp:20, color:'#06b6d4' },
 ]
 
-const FEATURES = [
-  { icon:'🏆', title:'XP & Ranks', desc:'Bronze through Diamond. Every habit and deal earns XP. Gamified accountability that keeps you grinding.', showRanks:true, ai:'AI tracks your XP pace and predicts rank-up dates' },
-  { icon:'⏭️', title:'Skip & Restore', desc:'Skip any habit without breaking your streak. Restore it when you\'re ready. Flexibility without losing momentum.', ai:'AI notices skip patterns and suggests schedule adjustments' },
-  { icon:'🎯', title:'Goals & Metrics', desc:'Set monthly targets for calls, showings, closings, and GCI. Real-time progress tracking with annual production reports and trend analysis.', ai:'AI flags when you\'re behind pace and suggests catch-up plans' },
-  { icon:'🖨️', title:'Print & Offline', desc:'One-click PDF of your daily checklist, weekly listing updates, buyer updates, and pipeline snapshots. No signal needed.' },
-  { icon:'👥', title:'Roster & Standups', desc:'See your entire team ranked by XP. Daily standups, member stats, active listings board, and full visibility into who\'s grinding.', ai:'AI generates team performance summaries for leaders' },
-  { icon:'🏅', title:'Team Challenges', desc:'Leaders create time-limited challenges with XP bonuses. Accountability groups compete live across custom metrics.', ai:'AI suggests challenge targets based on team performance' },
-  { icon:'📋', title:'Coaching Notes', desc:'Private per-agent coaching notes with type tags. Agents reply in-thread. Leaders pin critical feedback.', ai:'AI reads coaching history to personalize advice' },
-  { icon:'🔗', title:'Tool Directory', desc:'Quick-launch links to Follow Up Boss, REDX, SkySlope, Zillow, and 10+ more. Filter by category, toggle per user.' },
-]
-
-// ── Static AI demo conversation (pure data, zero state/effects) ──────────────
 const AI_DEMO = [
   { role:'user', text:'My listing at 142 Maple St has been sitting for 22 days. What should I do?' },
   { role:'ai', text:"Based on your listing data, here's my analysis:\n\n**Why it's sitting:**\n- 22 days is above the area median of 14 DOM\n- Price may be 3-5% above recent comps\n\n**Recommended actions:**\n1. **Price adjustment** — Consider reducing to $470-475K to hit \"new listing\" feeds\n2. **Refresh marketing** — New photos, twilight shots generate 2x engagement\n3. **Open house blitz** — Back-to-back opens this weekend\n4. **Agent outreach** — Top 20 buyer agents, \"price improvement\" email" },
@@ -93,12 +87,6 @@ const LCSS = `
 .lp-habit-row:hover{background:var(--surface);border-color:var(--b2);}
 .lp-habit-row.done{background:var(--surface);border-color:var(--b2);}
 
-/* Print mockup */
-.lp-print-paper{background:#fff;border-radius:12px;box-shadow:0 12px 48px rgba(0,0,0,.18);padding:28px 22px;font-family:'Courier New',monospace;transform:rotate(-0.8deg);max-width:320px;color:#111;}
-.lp-print-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #e5e7eb;}
-.lp-print-box{width:15px;height:15px;border:1.5px solid #374151;border-radius:2px;flex-shrink:0;}
-.lp-print-dots{flex:1;height:1px;border-bottom:1.5px dotted #d1d5db;margin-left:6px;}
-
 /* Pipeline */
 .lp-pipe-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
 .lp-pipe-col{background:var(--surface);border:1px solid var(--b2);border-radius:14px;padding:14px;min-height:120px;}
@@ -107,10 +95,6 @@ const LCSS = `
 /* Rank bar */
 .lp-rank-bar-wrap{background:var(--b1);border-radius:8px;height:12px;overflow:hidden;}
 .lp-rank-bar-fill{height:100%;border-radius:8px;}
-
-/* Feature grid */
-.lp-feat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;}
-.lp-feat-card{background:var(--surface);border:1px solid var(--b2);border-radius:16px;padding:22px;}
 
 /* AI demo chat */
 .lp-ai-chat{background:var(--surface);border:1px solid var(--b2);border-radius:20px;overflow:hidden;max-width:520px;}
@@ -133,22 +117,27 @@ const LCSS = `
 .lp-faq-item{border-bottom:1px solid var(--b2);}
 .lp-faq-q{width:100%;text-align:left;padding:20px 0;background:transparent;border:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:15px;font-weight:600;color:var(--text);font-family:Poppins,sans-serif;gap:12px;}
 .lp-faq-a{font-size:13px;color:var(--muted);line-height:1.8;font-family:Poppins,sans-serif;overflow:hidden;max-height:0;padding-bottom:0;transition:max-height .25s ease,padding-bottom .25s ease;}
-.lp-faq-a.open{max-height:200px;padding-bottom:20px;}
+.lp-faq-a.open{max-height:300px;padding-bottom:20px;}
 
 /* Hero grid */
 .lp-hero-grid{display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center;}
 
+/* Feature showcase mockup */
+.lp-mockup-frame{border-radius:20px;overflow:hidden;box-shadow:0 28px 80px rgba(0,0,0,.18);border:1px solid var(--b2);}
+.lp-mockup-chrome{padding:10px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--b2);}
+.lp-mockup-dot{width:10px;height:10px;border-radius:50%;}
+.lp-mockup-body{padding:18px 20px;font-family:Poppins,sans-serif;}
+
+/* Feature number */
+.lp-feat-num{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;font-family:'JetBrains Mono',monospace;flex-shrink:0;}
+
 /* Responsive */
-@media(max-width:1050px){
-  .lp-feat-grid{grid-template-columns:repeat(2,1fr);}
-}
 @media(max-width:900px){
   .lp-hero-grid{grid-template-columns:1fr;}
   .lp-split{grid-template-columns:1fr;gap:32px;}
   .lp-test-grid{grid-template-columns:1fr;}
   .lp-pricing-grid{grid-template-columns:1fr;}
   .lp-pipe-grid{grid-template-columns:repeat(2,1fr);}
-  .lp-print-paper{transform:none;max-width:100%;}
   .lp-ai-chat{max-width:100%;}
   .lp-nav-links{display:none !important;}
   .lp-nav-ctas{display:none !important;}
@@ -157,17 +146,30 @@ const LCSS = `
 }
 @media(max-width:640px){
   .lp-section{padding:56px 16px;}
-  .lp-feat-grid{grid-template-columns:1fr 1fr;}
   .lp-nav{padding:0 16px;}
 }
 @media(max-width:480px){
-  .lp-feat-grid{grid-template-columns:1fr;}
-  .lp-hero-grid .lp-mockup{display:none;}
+  .lp-hero-grid .lp-mockup-frame{display:none;}
   .lp-pipe-grid{grid-template-columns:1fr;}
 }
 `
 
-// ── Static dashboard mockup (no state, no animations) ─────────────────────
+// ── Mockup wrapper ──────────────────────────────────────────────────────────
+function MockupFrame({ theme, children, title }) {
+  return (
+    <div className="lp-mockup-frame" style={{ background: theme === 'dark' ? '#1a1a1a' : '#fff' }}>
+      <div className="lp-mockup-chrome" style={{ background: theme === 'dark' ? '#111' : '#f5f5f4' }}>
+        <div className="lp-mockup-dot" style={{ background:'#ff5f57' }} />
+        <div className="lp-mockup-dot" style={{ background:'#febc2e' }} />
+        <div className="lp-mockup-dot" style={{ background:'#28c840' }} />
+        <span style={{ marginLeft:8, fontSize:11, color:'var(--muted)', flex:1, textAlign:'center' }}>{title || 'RealtyGrind'}</span>
+      </div>
+      <div className="lp-mockup-body">{children}</div>
+    </div>
+  )
+}
+
+// ── Static dashboard mockup ─────────────────────────────────────────────────
 function DashboardMockup({ theme }) {
   const habits = [
     { label:'Prospecting',  color:'#0ea5e9', done:true },
@@ -177,44 +179,82 @@ function DashboardMockup({ theme }) {
     { label:'Follow-ups',   color:'#f43f5e', done:false },
   ]
   return (
-    <div className="lp-mockup" style={{
-      background: theme === 'dark' ? '#1a1a1a' : '#fff',
-      border:'1px solid var(--b2)', borderRadius:20,
-      boxShadow:'0 28px 80px rgba(0,0,0,.18)', overflow:'hidden',
-      fontFamily:'Poppins,sans-serif',
-    }}>
-      <div style={{ background: theme === 'dark' ? '#111' : '#f5f5f4', padding:'10px 16px', display:'flex', alignItems:'center', gap:8, borderBottom:'1px solid var(--b2)' }}>
-        <div style={{ width:10, height:10, borderRadius:'50%', background:'#ff5f57' }} />
-        <div style={{ width:10, height:10, borderRadius:'50%', background:'#febc2e' }} />
-        <div style={{ width:10, height:10, borderRadius:'50%', background:'#28c840' }} />
-        <span style={{ marginLeft:8, fontSize:11, color:'var(--muted)', flex:1, textAlign:'center' }}>RealtyGrind</span>
-      </div>
-      <div style={{ padding:'18px 20px' }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-          <div>
-            <div style={{ fontSize:11, color:'var(--muted)' }}>Good morning, Alex</div>
-            <div style={{ fontSize:16, fontWeight:700, color:'var(--text)' }}>Tuesday Grind</div>
-          </div>
-          <div style={{ fontSize:22, fontWeight:800, color:'#d97706' }}>72%</div>
+    <MockupFrame theme={theme}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+        <div>
+          <div style={{ fontSize:11, color:'var(--muted)' }}>Good morning, Alex</div>
+          <div style={{ fontSize:16, fontWeight:700, color:'var(--text)' }}>Tuesday Grind</div>
         </div>
-        <div style={{ fontSize:9, fontWeight:700, color:'var(--muted)', letterSpacing:1, marginBottom:8 }}>TODAY'S HABITS</div>
-        {habits.map(h => (
-          <div key={h.label} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:7 }}>
-            <div style={{ width:16, height:16, borderRadius:4, border:`2px solid ${h.done ? h.color : 'var(--b3)'}`, background: h.done ? h.color : 'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-              {h.done && <span style={{ color:'#fff', fontSize:9 }}>✓</span>}
-            </div>
-            <div style={{ fontSize:11, color:'var(--text)', flex:1 }}>{h.label}</div>
+        <div style={{ fontSize:22, fontWeight:800, color:'#d97706' }}>72%</div>
+      </div>
+      <div style={{ fontSize:9, fontWeight:700, color:'var(--muted)', letterSpacing:1, marginBottom:8 }}>TODAY'S HABITS</div>
+      {habits.map(h => (
+        <div key={h.label} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:7 }}>
+          <div style={{ width:16, height:16, borderRadius:4, border:`2px solid ${h.done ? h.color : 'var(--b3)'}`, background: h.done ? h.color : 'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+            {h.done && <span style={{ color:'#fff', fontSize:9 }}>✓</span>}
           </div>
-        ))}
-        <div style={{ marginTop:12, background:'var(--surface)', borderRadius:10, padding:'8px 12px', display:'flex', alignItems:'center', gap:10, border:'1px solid var(--b2)' }}>
-          <span style={{ fontSize:14 }}>🥇</span>
-          <div style={{ flex:1 }}>
-            <div style={{ fontSize:11, fontWeight:700, color:'#d97706' }}>Gold Rank · 2,340 XP</div>
-            <div style={{ fontSize:9, color:'var(--muted)' }}>660 XP to Platinum</div>
-          </div>
+          <div style={{ fontSize:11, color:'var(--text)', flex:1 }}>{h.label}</div>
+        </div>
+      ))}
+      <div style={{ marginTop:12, background:'var(--surface)', borderRadius:10, padding:'8px 12px', display:'flex', alignItems:'center', gap:10, border:'1px solid var(--b2)' }}>
+        <span style={{ fontSize:14 }}>🥇</span>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:11, fontWeight:700, color:'#d97706' }}>Gold Rank · 2,340 XP</div>
+          <div style={{ fontSize:9, color:'var(--muted)' }}>660 XP to Platinum</div>
         </div>
       </div>
+    </MockupFrame>
+  )
+}
+
+// ── Feature section label ───────────────────────────────────────────────────
+function FeatLabel({ color, children, num }) {
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
+      <div className="lp-feat-num" style={{ background:`${color}18`, color, border:`1px solid ${color}30` }}>{num}</div>
+      <div style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color, fontFamily:'Poppins,sans-serif' }}>{children}</div>
     </div>
+  )
+}
+
+// ── Feature section wrapper ─────────────────────────────────────────────────
+function FeatureSection({ reverse, tinted, theme, label, labelColor, num, title, boldWord, desc, bullets, aiNote, children }) {
+  const gold = theme === 'dark' ? '#d97706' : '#b45309'
+  return (
+    <section className="lp-section" style={tinted ? {
+      background: theme === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.02)',
+      borderTop:'1px solid var(--b1)', borderBottom:'1px solid var(--b1)',
+    } : undefined}>
+      <div className="lp-max">
+        <div className="lp-split" style={reverse ? { direction:'rtl' } : undefined}>
+          <div style={reverse ? { direction:'ltr' } : undefined}>
+            <FeatLabel color={labelColor} num={num}>{label}</FeatLabel>
+            <h2 className="serif" style={{ fontSize:'clamp(28px,4vw,46px)', fontWeight:800, lineHeight:1.1, letterSpacing:'-.025em', marginBottom:18 }}>
+              {title} <span style={{ color:gold }}>{boldWord}</span>
+            </h2>
+            <p style={{ fontSize:15, color:'var(--muted)', lineHeight:1.75, marginBottom:24, fontFamily:'Poppins,sans-serif' }}>{desc}</p>
+            {bullets && (
+              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                {bullets.map(([icon, text]) => (
+                  <div key={text} style={{ display:'flex', alignItems:'center', gap:10, fontSize:13, fontFamily:'Poppins,sans-serif', color:'var(--text)' }}>
+                    <span style={{ fontSize:15, flexShrink:0, width:20 }}>{icon}</span>{text}
+                  </div>
+                ))}
+              </div>
+            )}
+            {aiNote && (
+              <div style={{ marginTop:18, display:'flex', alignItems:'flex-start', gap:10, padding:'12px 16px', borderRadius:12, background:'rgba(139,92,246,.06)', border:'1px solid rgba(139,92,246,.15)' }}>
+                <span style={{ fontSize:14, flexShrink:0, lineHeight:1.6 }}>🤖</span>
+                <div style={{ fontSize:12, color:'var(--muted)', lineHeight:1.6, fontFamily:'Poppins,sans-serif' }}>
+                  <strong style={{ color:'#8b5cf6' }}>AI powered</strong> — {aiNote}
+                </div>
+              </div>
+            )}
+          </div>
+          <div style={reverse ? { direction:'ltr' } : undefined}>{children}</div>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -238,13 +278,11 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
   }
   const demoXp = DEMO_HABITS.filter((_, i) => checkedHabits.has(i)).reduce((a, h) => a + h.xp, 0)
 
-  // Lock body scroll when mobile menu open
   useEffect(() => {
     document.body.style.overflow = menuOpen ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
   }, [menuOpen])
 
-  // Inject CSS once
   useEffect(() => {
     const id = 'lcss-landing'
     if (!document.getElementById(id)) {
@@ -310,21 +348,21 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
       </nav>
 
       {/* ═══════════════════════════════════════════════════════════
-          1. HERO
+          HERO
       ═══════════════════════════════════════════════════════════ */}
       <section className="lp-section" style={{ paddingTop:128, paddingBottom:80 }}>
         <div className="lp-max">
           <div className="lp-hero-grid">
             <div>
               <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'5px 14px', borderRadius:24, marginBottom:24, background:goldBg, border:`1px solid ${gold}33`, fontSize:12, fontWeight:700, color:gold, letterSpacing:.5, fontFamily:'Poppins,sans-serif' }}>
-                🏡 Built for Real Estate Agents
+                🏡 13 Tools. One Platform. Built for Agents.
               </div>
               <h1 className="serif" style={{ fontSize:'clamp(40px,6vw,76px)', fontWeight:900, lineHeight:1.04, letterSpacing:'-.03em', marginBottom:22 }}>
                 Outwork Everyone.<br />
                 <span style={{ color:gold }}>Track Everything.</span>
               </h1>
               <p style={{ fontSize:17, color:'var(--muted)', lineHeight:1.75, marginBottom:36, fontFamily:'Poppins,sans-serif', maxWidth:480 }}>
-                The habit tracker, pipeline manager, AI coaching assistant, and team accountability platform built specifically for agents who refuse to wing it.
+                Daily habits, pipeline, listings, buyers, team accountability, coaching, and AI — all in one platform built specifically for real estate agents who refuse to wing it.
               </p>
               <div style={{ display:'flex', gap:14, flexWrap:'wrap', marginBottom:28 }}>
                 <button className="lp-gold-btn" onClick={onGetStarted}>Start for Free →</button>
@@ -339,16 +377,14 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
         </div>
       </section>
 
-      {/* ═══════════════════════════════════════════════════════════
-          2. FEATURE HIGHLIGHTS BAR
-      ═══════════════════════════════════════════════════════════ */}
+      {/* ── Feature count bar ───────────────────────────────────── */}
       <section style={{ padding:'32px 24px', background: theme === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.02)', borderTop:'1px solid var(--b1)', borderBottom:'1px solid var(--b1)' }}>
         <div className="lp-max" style={{ display:'flex', justifyContent:'center', gap:48, flexWrap:'wrap' }}>
           {[
-            { num:'∞', label:'Custom habits', icon:'📞' },
+            { num:'13', label:'Built-in tools', icon:'🛠️' },
             { num:'5', label:'Rank tiers', icon:'🏆' },
-            { num:'AI', label:'Coaching built in', icon:'🤖' },
-            { num:'PDF', label:'Print & go', icon:'🖨️' },
+            { num:'AI', label:'Claude coaching', icon:'🤖' },
+            { num:'∞', label:'Custom habits', icon:'📞' },
           ].map(s => (
             <div key={s.label} style={{ textAlign:'center', minWidth:80 }}>
               <div style={{ fontSize:28, marginBottom:6 }}>{s.icon}</div>
@@ -360,175 +396,204 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
       </section>
 
       {/* ═══════════════════════════════════════════════════════════
-          3. HABIT TRACKER DEMO (interactive — the core product)
+          FEATURE 1: DASHBOARD
       ═══════════════════════════════════════════════════════════ */}
-      <section className="lp-section">
-        <div className="lp-max">
-          <div className="lp-split">
-            <div>
-              <div style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:'#0ea5e9', marginBottom:12, fontFamily:'Poppins,sans-serif' }}>Daily Habit Tracker</div>
-              <h2 className="serif" style={{ fontSize:'clamp(28px,4vw,50px)', fontWeight:800, lineHeight:1.1, letterSpacing:'-.025em', marginBottom:18 }}>
-                Your entire day,<br />organized.
-              </h2>
-              <p style={{ fontSize:15, color:'var(--muted)', lineHeight:1.75, marginBottom:28, fontFamily:'Poppins,sans-serif' }}>
-                Track the core real estate habits every single day. Check off what you did, skip what doesn't apply, and watch your XP climb. Your streak stays intact no matter what.
-              </p>
-              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-                {[
-                  ['✓','Use our defaults or create your own','#0ea5e9'],
-                  ['✕','Skip any habit — streak stays safe','#f43f5e'],
-                  ['✓','Custom tasks with your own XP values','#10b981'],
-                  ['✓','Streak tracking across every habit','#d97706'],
-                ].map(([sym, text, col]) => (
-                  <div key={text} style={{ display:'flex', alignItems:'center', gap:10, fontSize:14, fontFamily:'Poppins,sans-serif' }}>
-                    <span style={{ color:col, fontWeight:800, fontSize:15, width:18, flexShrink:0 }}>{sym}</span>{text}
-                  </div>
-                ))}
+      <FeatureSection theme={theme} num="01" label="Dashboard" labelColor="#d97706"
+        title="Your command center," boldWord="daily."
+        desc="See everything at a glance — today's completion percentage, monthly progress, XP rank, streak, and all your production stats in one view."
+        bullets={[
+          ['⚡','Real-time XP and rank progression'],
+          ['🔥','Streak tracking with daily consistency rewards'],
+          ['📊','Monthly goal progress for calls, showings, and closings'],
+          ['🎯','Auto-redistributing daily targets based on remaining workdays'],
+        ]}
+        aiNote="Reads your dashboard data to give personalized coaching based on your actual production numbers.">
+        <MockupFrame theme={theme} title="Dashboard">
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:14 }}>
+            {[
+              { icon:'⚡', label:'Today', val:'85%', c:'#10b981' },
+              { icon:'📞', label:'Calls', val:'32', c:'#d97706' },
+              { icon:'🎉', label:'Closed', val:'3', c:'#10b981' },
+            ].map(s => (
+              <div key={s.label} style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:10, padding:'10px 12px', textAlign:'center' }}>
+                <div style={{ fontSize:14, marginBottom:4 }}>{s.icon}</div>
+                <div style={{ fontSize:16, fontWeight:800, color:s.c, fontFamily:"'JetBrains Mono',monospace" }}>{s.val}</div>
+                <div style={{ fontSize:9, color:'var(--muted)' }}>{s.label}</div>
               </div>
-              <div style={{ marginTop:20, display:'flex', alignItems:'flex-start', gap:10, padding:'12px 16px', borderRadius:12, background:'rgba(139,92,246,.06)', border:'1px solid rgba(139,92,246,.15)' }}>
-                <span style={{ fontSize:14, flexShrink:0, lineHeight:1.6 }}>🤖</span>
-                <div style={{ fontSize:12, color:'var(--muted)', lineHeight:1.6, fontFamily:'Poppins,sans-serif' }}>
-                  <strong style={{ color:'#8b5cf6' }}>AI knows your habits</strong> — "You've skipped prospecting 3 days straight. Try front-loading it at 8 AM."
-                </div>
-              </div>
+            ))}
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderRadius:12, background:'var(--surface)', border:'1px solid var(--b2)' }}>
+            <div style={{ width:42, height:42, borderRadius:'50%', border:'3px solid #d97706', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:800, color:'#d97706', fontFamily:"'JetBrains Mono',monospace" }}>85%</div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:'#d97706' }}>🥇 Gold · 2,340 XP</div>
+              <div style={{ fontSize:9, color:'var(--muted)' }}>🔥 14-day streak</div>
             </div>
-            <div style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:20, padding:24 }}>
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:18 }}>
-                <div>
-                  <div style={{ fontSize:11, color:'var(--muted)', fontFamily:'Poppins,sans-serif', marginBottom:2 }}>Try it — click to check off</div>
-                  <div style={{ fontSize:13, fontWeight:700, fontFamily:'Poppins,sans-serif' }}>{checkedHabits.size} of {DEMO_HABITS.length} complete</div>
+            <div style={{ display:'flex', gap:4 }}>
+              {RANKS.slice(0,3).map(r => (
+                <span key={r.name} style={{ fontSize:12 }}>{r.icon}</span>
+              ))}
+            </div>
+          </div>
+        </MockupFrame>
+      </FeatureSection>
+
+      {/* ═══════════════════════════════════════════════════════════
+          FEATURE 2: DAILY HABIT VIEW (interactive)
+      ═══════════════════════════════════════════════════════════ */}
+      <FeatureSection theme={theme} reverse tinted num="02" label="Daily Habit Tracker" labelColor="#0ea5e9"
+        title="Your entire day," boldWord="organized."
+        desc="Track the core real estate habits every single day. Check off what you did, skip what doesn't apply, and watch your XP climb."
+        bullets={[
+          ['✅','Use our defaults or create your own habits'],
+          ['⏭️','Skip any habit — streak stays safe'],
+          ['🎮','Custom tasks with your own XP values'],
+          ['📈','Streak tracking across every habit'],
+        ]}
+        aiNote="Notices skip patterns and suggests schedule adjustments based on your actual behavior.">
+        <div style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:20, padding:24 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:18 }}>
+            <div>
+              <div style={{ fontSize:11, color:'var(--muted)', fontFamily:'Poppins,sans-serif', marginBottom:2 }}>Try it — click to check off</div>
+              <div style={{ fontSize:13, fontWeight:700, fontFamily:'Poppins,sans-serif' }}>{checkedHabits.size} of {DEMO_HABITS.length} complete</div>
+            </div>
+            <div style={{ textAlign:'right' }}>
+              <div style={{ fontSize:24, fontWeight:800, color:gold, fontFamily:'Poppins,sans-serif' }}>{demoXp} XP</div>
+              <div style={{ fontSize:10, color:'var(--muted)', fontFamily:'Poppins,sans-serif' }}>earned today</div>
+            </div>
+          </div>
+          {DEMO_HABITS.map((h, idx) => {
+            const done = checkedHabits.has(idx)
+            return (
+              <div key={h.id} className={`lp-habit-row${done ? ' done' : ''}`} onClick={() => toggleHabit(idx)}>
+                <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${done ? h.color : 'var(--b3)'}`, background: done ? h.color : 'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  {done && <span style={{ color:'#fff', fontSize:11, fontWeight:700 }}>✓</span>}
                 </div>
-                <div style={{ textAlign:'right' }}>
-                  <div style={{ fontSize:24, fontWeight:800, color:gold, fontFamily:'Poppins,sans-serif' }}>{demoXp} XP</div>
-                  <div style={{ fontSize:10, color:'var(--muted)', fontFamily:'Poppins,sans-serif' }}>earned today</div>
-                </div>
+                <span style={{ fontSize:17, flexShrink:0 }}>{h.icon}</span>
+                <span style={{ flex:1, fontSize:13, fontFamily:'Poppins,sans-serif', fontWeight: done ? 600 : 400, color: done ? 'var(--text)' : 'var(--muted)' }}>{h.label}</span>
+                <span style={{ fontSize:11, color:h.color, fontWeight:700, fontFamily:'Poppins,sans-serif' }}>+{h.xp} XP</span>
               </div>
-              {DEMO_HABITS.map((h, idx) => {
-                const done = checkedHabits.has(idx)
-                return (
-                  <div key={h.id} className={`lp-habit-row${done ? ' done' : ''}`} onClick={() => toggleHabit(idx)}>
-                    <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${done ? h.color : 'var(--b3)'}`, background: done ? h.color : 'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                      {done && <span style={{ color:'#fff', fontSize:11, fontWeight:700 }}>✓</span>}
+            )
+          })}
+          <div style={{ marginTop:16, background:'var(--b1)', borderRadius:6, height:6, overflow:'hidden' }}>
+            <div style={{ height:'100%', width:`${Math.round(checkedHabits.size / DEMO_HABITS.length * 100)}%`, background:gold, borderRadius:6, transition:'width .3s' }} />
+          </div>
+        </div>
+      </FeatureSection>
+
+      {/* ═══════════════════════════════════════════════════════════
+          FEATURE 3: CALENDAR INTEGRATION
+      ═══════════════════════════════════════════════════════════ */}
+      <FeatureSection theme={theme} num="03" label="Calendar Integration" labelColor="#3b82f6"
+        title="Week view with" boldWord="Google Calendar."
+        desc="See your entire week at a glance with habit completion, custom tasks, and Google Calendar events synced in one unified planner."
+        bullets={[
+          ['📅','Google Calendar sync with one click'],
+          ['📋','Weekly planner with day-by-day habit tracking'],
+          ['🗓️','Heatmap view for long-term consistency patterns'],
+          ['🖨️','Print any view as a PDF for offline use'],
+        ]}>
+        <MockupFrame theme={theme} title="Week View">
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+            <div style={{ fontSize:12, fontWeight:700, color:'var(--text)' }}>This Week</div>
+            <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:10, padding:'4px 10px', borderRadius:6, background:'rgba(66,133,244,.1)', border:'1px solid rgba(66,133,244,.25)', color:'#4285f4', fontWeight:600 }}>
+              📅 Google Calendar
+            </div>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:6 }}>
+            {['Mon','Tue','Wed','Thu','Fri'].map((day,i) => (
+              <div key={day} style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:8, padding:'8px 6px', fontSize:10 }}>
+                <div style={{ fontWeight:700, color: i===1 ? '#3b82f6' : 'var(--muted)', marginBottom:6, textAlign:'center' }}>{day}</div>
+                {['📞','🤝','🏠'].slice(0, i < 3 ? 3 : 2).map((icon,j) => (
+                  <div key={j} style={{ display:'flex', alignItems:'center', gap:4, marginBottom:3 }}>
+                    <div style={{ width:10, height:10, borderRadius:2, border:'1.5px solid', borderColor: (i+j)%2===0 ? '#10b981' : 'var(--b3)', background: (i+j)%2===0 ? '#10b981' : 'transparent', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      {(i+j)%2===0 && <span style={{ color:'#fff', fontSize:6 }}>✓</span>}
                     </div>
-                    <span style={{ fontSize:17, flexShrink:0 }}>{h.icon}</span>
-                    <span style={{ flex:1, fontSize:13, fontFamily:'Poppins,sans-serif', fontWeight: done ? 600 : 400, color: done ? 'var(--text)' : 'var(--muted)' }}>{h.label}</span>
-                    <span style={{ fontSize:11, color:h.color, fontWeight:700, fontFamily:'Poppins,sans-serif' }}>+{h.xp} XP</span>
+                    <span style={{ fontSize:9, color:'var(--muted)' }}>{icon}</span>
                   </div>
-                )
-              })}
-              <div style={{ marginTop:16, background:'var(--b1)', borderRadius:6, height:6, overflow:'hidden' }}>
-                <div style={{ height:'100%', width:`${Math.round(checkedHabits.size / DEMO_HABITS.length * 100)}%`, background:gold, borderRadius:6, transition:'width .3s' }} />
+                ))}
+                {i === 1 && (
+                  <div style={{ marginTop:4, fontSize:8, padding:'3px 4px', borderRadius:4, background:'rgba(66,133,244,.1)', color:'#4285f4', fontWeight:600, textAlign:'center' }}>
+                    10am Showing
+                  </div>
+                )}
               </div>
-            </div>
+            ))}
           </div>
-        </div>
-      </section>
+        </MockupFrame>
+      </FeatureSection>
 
       {/* ═══════════════════════════════════════════════════════════
-          4. AI COACHING ASSISTANT (the differentiator)
+          FEATURE 4: LISTINGS MANAGER
       ═══════════════════════════════════════════════════════════ */}
-      <section className="lp-section" style={{ background: theme === 'dark' ? 'rgba(139,92,246,.04)' : 'rgba(139,92,246,.03)', borderTop:'1px solid var(--b1)', borderBottom:'1px solid var(--b1)' }}>
-        <div className="lp-max">
-          <div className="lp-split">
-            <div>
-              <div style={{ display:'inline-flex', alignItems:'center', gap:8, marginBottom:14 }}>
-                <div style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:'#8b5cf6', fontFamily:'Poppins,sans-serif' }}>AI Coaching Assistant</div>
-                <span style={{ fontSize:9, padding:'3px 10px', borderRadius:20, fontWeight:700, background:'rgba(139,92,246,.12)', color:'#8b5cf6', border:'1px solid rgba(139,92,246,.25)', fontFamily:"'JetBrains Mono',monospace", letterSpacing:.5 }}>NEW</span>
+      <FeatureSection theme={theme} reverse tinted num="04" label="Listings Manager" labelColor="#8b5cf6"
+        title="Every listing," boldWord="tracked."
+        desc="Add your active listings with address, price, and commission. Track status from active to pending to closed — and auto-push deals into your pipeline."
+        bullets={[
+          ['🏡','Track address, price, commission, and lead source'],
+          ['📊','Status pills: Active, Pending, Closed'],
+          ['🔄','Auto-creates pipeline deals when listings go pending or close'],
+          ['🎯','Monthly listing goals with progress tracking'],
+        ]}
+        aiNote="Analyzes your listings for pricing strategy, days on market, and marketing recommendations.">
+        <MockupFrame theme={theme} title="Listings">
+          <div style={{ fontSize:9, fontWeight:700, color:'var(--muted)', letterSpacing:1, marginBottom:10 }}>ACTIVE LISTINGS</div>
+          {[
+            { addr:'142 Maple St', price:'$485,000', status:'Active', color:'#0ea5e9', comm:'2.5%' },
+            { addr:'309 Pine Ave', price:'$620,000', status:'Pending', color:'#f97316', comm:'3%' },
+            { addr:'7 Oak Lane', price:'$395,000', status:'Closed', color:'#10b981', comm:'2.5%' },
+          ].map(l => (
+            <div key={l.addr} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', marginBottom:6, borderRadius:10, border:'1px solid var(--b2)', background:'var(--surface)' }}>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:12, fontWeight:600, color:'var(--text)' }}>{l.addr}</div>
+                <div style={{ fontSize:10, color:'var(--muted)' }}>{l.price} · {l.comm}</div>
               </div>
-              <h2 className="serif" style={{ fontSize:'clamp(28px,4vw,50px)', fontWeight:800, lineHeight:1.1, letterSpacing:'-.025em', marginBottom:18 }}>
-                Your personal<br />listing <span style={{ color:gold }}>strategist.</span>
-              </h2>
-              <p style={{ fontSize:15, color:'var(--muted)', lineHeight:1.75, marginBottom:28, fontFamily:'Poppins,sans-serif' }}>
-                Ask your AI assistant anything about your business. It reads your live listings, pipeline data, and goals — then delivers personalized coaching, pricing strategy, and comp analysis.
-              </p>
-              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-                {[
-                  ['📊','Analyzes your active listings & pipeline','#0ea5e9'],
-                  ['💬','Personalized coaching based on your data','#8b5cf6'],
-                  ['🎯','Goal tracking & accountability insights','#d97706'],
-                  ['🏠','Listing strategy & pricing recommendations','#10b981'],
-                  ['📈','Prospecting tips & time-block suggestions','#f43f5e'],
-                ].map(([icon, text, col]) => (
-                  <div key={text} style={{ display:'flex', alignItems:'center', gap:10, fontSize:14, fontFamily:'Poppins,sans-serif' }}>
-                    <span style={{ fontSize:15, width:18, flexShrink:0 }}>{icon}</span>
-                    <span style={{ color:'var(--text)' }}>{text}</span>
-                  </div>
-                ))}
-              </div>
-              <div style={{ marginTop:24, display:'flex', gap:16, flexWrap:'wrap', alignItems:'center' }}>
-                {[
-                  { plan:'Solo', credits:'50', color:'#94a3b8' },
-                  { plan:'Team', credits:'250', color:'#d97706' },
-                  { plan:'Brokerage', credits:'Unlimited', color:'#8b5cf6' },
-                ].map(p => (
-                  <div key={p.plan} style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, fontFamily:'Poppins,sans-serif' }}>
-                    <div style={{ width:8, height:8, borderRadius:'50%', background:p.color }} />
-                    <span style={{ fontWeight:700, color:p.color }}>{p.plan}:</span>
-                    <span style={{ color:'var(--muted)' }}>{p.credits} credits/mo</span>
-                  </div>
-                ))}
-              </div>
+              <span style={{ fontSize:9, padding:'3px 10px', borderRadius:12, fontWeight:700, background:`${l.color}14`, color:l.color, border:`1px solid ${l.color}30` }}>{l.status}</span>
             </div>
-
-            {/* Static AI chat mockup — zero state, zero effects */}
-            <div className="lp-ai-chat">
-              <div className="lp-ai-header">
-                <div style={{ width:32, height:32, borderRadius:10, background:'rgba(139,92,246,.12)', border:'1px solid rgba(139,92,246,.25)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>
-                  🤖
-                </div>
-                <div>
-                  <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', fontFamily:'Poppins,sans-serif' }}>AI Assistant</div>
-                  <div style={{ fontSize:10, color:'var(--muted)', fontFamily:'Poppins,sans-serif' }}>Powered by Claude</div>
-                </div>
-                <div style={{ marginLeft:'auto', fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:20, background:'rgba(139,92,246,.1)', color:'#8b5cf6', border:'1px solid rgba(139,92,246,.25)', fontFamily:'Poppins,sans-serif' }}>
-                  BETA
-                </div>
-              </div>
-              <div className="lp-ai-messages">
-                {AI_DEMO.map((msg, i) => (
-                  <div key={i} className={`lp-ai-msg ${msg.role}`}>
-                    {msg.text.split('\n').map((line, li) => {
-                      const parts = line.split(/(\*\*[^*]+\*\*)/).map((seg, si) =>
-                        seg.startsWith('**') && seg.endsWith('**')
-                          ? <strong key={si}>{seg.slice(2, -2)}</strong>
-                          : seg
-                      )
-                      const isBullet = line.match(/^(\d+\.\s|-\s)/)
-                      return (
-                        <div key={li} style={{
-                          paddingLeft: isBullet ? 8 : 0,
-                          marginTop: li > 0 && line === '' ? 6 : li > 0 ? 2 : 0,
-                        }}>
-                          {parts}
-                        </div>
-                      )
-                    })}
-                  </div>
-                ))}
-              </div>
-              <div className="lp-ai-input">
-                <div className="lp-ai-input-field">Ask about your listings, pipeline, goals...</div>
-                <div style={{ width:32, height:32, borderRadius:8, background:gold, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, cursor:'default' }}>
-                  <span style={{ color:'#fff', fontSize:14, fontWeight:700 }}>&#8593;</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+          ))}
+        </MockupFrame>
+      </FeatureSection>
 
       {/* ═══════════════════════════════════════════════════════════
-          5. PIPELINE TRACKER
+          FEATURE 5: BUYERS MANAGER
       ═══════════════════════════════════════════════════════════ */}
-      <section className="lp-section">
+      <FeatureSection theme={theme} num="05" label="Buyers Manager" labelColor="#0ea5e9"
+        title="Buyer reps," boldWord="organized."
+        desc="Track every buyer representation agreement with client details, status, and notes. Set monthly goals for buyer reps signed."
+        bullets={[
+          ['🤝','Track client name, status, and agreement details'],
+          ['📋','Notes and buyer preferences per client'],
+          ['🎯','Monthly buyer rep goals with dashboard tracking'],
+          ['📤','Generate weekly buyer updates as PDF'],
+        ]}>
+        <MockupFrame theme={theme} title="Buyer Reps">
+          <div style={{ fontSize:9, fontWeight:700, color:'var(--muted)', letterSpacing:1, marginBottom:10 }}>ACTIVE BUYER REPS</div>
+          {[
+            { name:'James & Lisa P.', area:'Downtown, 3BR+', budget:'$400-500K', status:'Active' },
+            { name:'Maria S.', area:'Suburbs, 4BR', budget:'$550-650K', status:'Searching' },
+          ].map(b => (
+            <div key={b.name} style={{ padding:'12px 14px', marginBottom:8, borderRadius:12, border:'1px solid var(--b2)', background:'var(--surface)' }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
+                <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{b.name}</div>
+                <span style={{ fontSize:9, padding:'3px 10px', borderRadius:12, fontWeight:700, background:'rgba(14,165,233,.12)', color:'#0ea5e9', border:'1px solid rgba(14,165,233,.25)' }}>{b.status}</span>
+              </div>
+              <div style={{ fontSize:10, color:'var(--muted)' }}>🏡 {b.area} · 💰 {b.budget}</div>
+            </div>
+          ))}
+        </MockupFrame>
+      </FeatureSection>
+
+      {/* ═══════════════════════════════════════════════════════════
+          FEATURE 6: PIPELINE TRACKER
+      ═══════════════════════════════════════════════════════════ */}
+      <section className="lp-section" style={{ background: theme === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.02)', borderTop:'1px solid var(--b1)', borderBottom:'1px solid var(--b1)' }}>
         <div className="lp-max">
-          <div style={{ textAlign:'center', marginBottom:56 }}>
-            <div style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:'#10b981', marginBottom:12, fontFamily:'Poppins,sans-serif' }}>Pipeline Tracker</div>
-            <h2 className="serif" style={{ fontSize:'clamp(28px,4vw,48px)', fontWeight:800, lineHeight:1.1, letterSpacing:'-.025em', marginBottom:12 }}>
+          <div style={{ textAlign:'center', marginBottom:48 }}>
+            <FeatLabel color="#10b981" num="06">Pipeline Tracker</FeatLabel>
+            <h2 className="serif" style={{ fontSize:'clamp(28px,4vw,46px)', fontWeight:800, lineHeight:1.1, letterSpacing:'-.025em', marginBottom:12, textAlign:'left' }}>
               Every deal, <span style={{ color:gold }}>at a glance.</span>
             </h2>
-            <p style={{ fontSize:15, color:'var(--muted)', lineHeight:1.75, fontFamily:'Poppins,sans-serif', maxWidth:560, margin:'0 auto' }}>
-              Track offers, pending deals, and closings in a simple board. Commission totals update automatically.
+            <p style={{ fontSize:15, color:'var(--muted)', lineHeight:1.75, fontFamily:'Poppins,sans-serif', textAlign:'left', maxWidth:560 }}>
+              Track offers, pending deals, and closings. Each deal is a single record that moves between stages — no duplicates, no mess. Commission totals update automatically.
             </p>
           </div>
           <div className="lp-pipe-grid">
@@ -553,17 +618,15 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
               </div>
             ))}
           </div>
-          <div style={{ textAlign:'center', marginTop:32 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:24, flexWrap:'wrap', gap:12 }}>
             <div style={{ display:'inline-flex', alignItems:'center', gap:12, background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:14, padding:'14px 28px' }}>
               <span style={{ fontSize:11, color:'var(--muted)', fontFamily:'Poppins,sans-serif', fontWeight:600 }}>Total Commission Tracked</span>
               <span className="serif" style={{ fontSize:28, fontWeight:800, color:gold }}>$62,000</span>
             </div>
-          </div>
-          <div style={{ display:'flex', justifyContent:'center', marginTop:16 }}>
             <div style={{ display:'inline-flex', alignItems:'center', gap:10, padding:'10px 20px', borderRadius:12, background:'rgba(139,92,246,.06)', border:'1px solid rgba(139,92,246,.15)' }}>
               <span style={{ fontSize:14 }}>🤖</span>
               <span style={{ fontSize:12, color:'var(--muted)', fontFamily:'Poppins,sans-serif' }}>
-                <strong style={{ color:'#8b5cf6' }}>AI reads your pipeline</strong> — pricing strategy, comp analysis, and deal prioritization
+                <strong style={{ color:'#8b5cf6' }}>AI reads your pipeline</strong> — pricing strategy and deal prioritization
               </span>
             </div>
           </div>
@@ -571,46 +634,295 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
       </section>
 
       {/* ═══════════════════════════════════════════════════════════
-          6. ALL FEATURES (compact grid — complete coverage)
+          FEATURE 7: BUILT FOR TEAMS
       ═══════════════════════════════════════════════════════════ */}
-      <section id="features" className="lp-section" style={{ background: theme === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.02)', borderTop:'1px solid var(--b1)', borderBottom:'1px solid var(--b1)' }}>
-        <div className="lp-max">
-          <div style={{ textAlign:'center', marginBottom:56 }}>
-            <div style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:gold, marginBottom:12, fontFamily:'Poppins,sans-serif' }}>Everything You Need</div>
-            <h2 className="serif" style={{ fontSize:'clamp(28px,4vw,48px)', fontWeight:800, lineHeight:1.1, letterSpacing:'-.025em' }}>
-              Built for the <span style={{ color:gold }}>grind.</span>
-            </h2>
-          </div>
-          <div className="lp-feat-grid">
-            {FEATURES.map(f => (
-              <div key={f.title} className="lp-feat-card">
-                <div style={{ fontSize:28, marginBottom:12 }}>{f.icon}</div>
-                <div style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginBottom:6, fontFamily:'Poppins,sans-serif' }}>{f.title}</div>
-                <div style={{ fontSize:12, color:'var(--muted)', lineHeight:1.7, fontFamily:'Poppins,sans-serif' }}>{f.desc}</div>
-                {f.showRanks && (
-                  <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:10 }}>
-                    {RANKS.map(r => (
-                      <span key={r.name} style={{ fontSize:10, padding:'2px 8px', borderRadius:12, background:`${r.color}18`, color:r.color, fontWeight:700, fontFamily:'Poppins,sans-serif', border:`1px solid ${r.color}30` }}>
-                        {r.icon} {r.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {f.ai && (
-                  <div style={{ marginTop:10, display:'flex', alignItems:'center', gap:6, fontSize:10, color:'#8b5cf6', fontFamily:'Poppins,sans-serif', fontStyle:'italic' }}>
-                    <span style={{ fontStyle:'normal' }}>🤖</span> {f.ai}
-                  </div>
-                )}
+      <FeatureSection theme={theme} num="07" label="Built for Teams" labelColor="#d97706"
+        title="Full team" boldWord="visibility."
+        desc="See your entire team ranked by XP. Daily standups, member stats, active listings, and full visibility into who's grinding — and who's not."
+        bullets={[
+          ['👥','Roster with XP leaderboard and rank badges'],
+          ['📝','Daily standups feed from every agent'],
+          ['📊','Click any member to see their full stats and habits'],
+          ['🏡','Shared active listings board across the team'],
+        ]}
+        aiNote="Generates team performance summaries and highlights coaching opportunities for leaders.">
+        <MockupFrame theme={theme} title="Team Roster">
+          <div style={{ fontSize:9, fontWeight:700, color:'var(--muted)', letterSpacing:1, marginBottom:10 }}>LEADERBOARD</div>
+          {[
+            { name:'Alex R.', xp:'3,240', rank:'🥇', color:'#d97706', pct:82 },
+            { name:'Sarah K.', xp:'2,890', rank:'🥇', color:'#d97706', pct:73 },
+            { name:'Mike T.', xp:'1,650', rank:'🥈', color:'#94a3b8', pct:42 },
+          ].map((m,i) => (
+            <div key={m.name} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', marginBottom:6, borderRadius:10, border:'1px solid var(--b2)', background:'var(--surface)' }}>
+              <div style={{ fontSize:12, fontWeight:800, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", width:18, textAlign:'center' }}>{i+1}</div>
+              <div style={{ width:30, height:30, borderRadius:'50%', background:`linear-gradient(135deg,${m.color},${m.color}88)`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, color:'#fff' }}>
+                {m.name.charAt(0)}
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:11, fontWeight:600, color:'var(--text)' }}>{m.name}</div>
+                <div style={{ height:4, borderRadius:2, background:'var(--b1)', marginTop:4 }}>
+                  <div style={{ width:`${m.pct}%`, height:'100%', borderRadius:2, background:m.color }} />
+                </div>
+              </div>
+              <div style={{ textAlign:'right' }}>
+                <div style={{ fontSize:10, fontWeight:700, color:m.color, fontFamily:"'JetBrains Mono',monospace" }}>{m.xp} XP</div>
+                <div style={{ fontSize:12 }}>{m.rank}</div>
+              </div>
+            </div>
+          ))}
+        </MockupFrame>
+      </FeatureSection>
+
+      {/* ═══════════════════════════════════════════════════════════
+          FEATURE 8: TEAM CHALLENGES
+      ═══════════════════════════════════════════════════════════ */}
+      <FeatureSection theme={theme} reverse tinted num="08" label="Team Challenges" labelColor="#f97316"
+        title="Compete to" boldWord="win."
+        desc="Leaders create time-limited challenges with XP bonuses. Push your team to outperform with leaderboard-driven competitions across any metric."
+        bullets={[
+          ['🏅','Create challenges for calls, showings, closings, or XP'],
+          ['🎁','Bonus XP rewards for challenge winners'],
+          ['📊','Live leaderboard tracking during challenges'],
+          ['⏱️','Time-limited for urgency and accountability'],
+        ]}
+        aiNote="Suggests challenge targets based on team performance trends and historical data.">
+        <MockupFrame theme={theme} title="Challenges">
+          <div style={{ border:'2px solid rgba(249,115,22,.3)', borderRadius:14, padding:16, background:'rgba(249,115,22,.04)' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+              <div>
+                <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>🏅 March Prospecting Blitz</div>
+                <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>Most Prospecting Calls · +500 XP Bonus</div>
+              </div>
+              <span style={{ fontSize:9, padding:'3px 10px', borderRadius:12, fontWeight:700, background:'rgba(249,115,22,.12)', color:'#f97316', border:'1px solid rgba(249,115,22,.25)' }}>ACTIVE</span>
+            </div>
+            {[
+              { name:'Alex R.', val:'47 calls', pos:'1st' },
+              { name:'Sarah K.', val:'38 calls', pos:'2nd' },
+              { name:'Mike T.', val:'24 calls', pos:'3rd' },
+            ].map((p,i) => (
+              <div key={p.name} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 0', borderTop: i > 0 ? '1px solid var(--b2)' : 'none' }}>
+                <div style={{ fontSize:11, fontWeight:800, color: i === 0 ? '#f97316' : 'var(--dim)', width:24, fontFamily:"'JetBrains Mono',monospace" }}>{p.pos}</div>
+                <div style={{ fontSize:11, fontWeight:600, color:'var(--text)', flex:1 }}>{p.name}</div>
+                <div style={{ fontSize:10, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace" }}>{p.val}</div>
               </div>
             ))}
           </div>
-        </div>
-      </section>
+        </MockupFrame>
+      </FeatureSection>
 
       {/* ═══════════════════════════════════════════════════════════
-          7. TESTIMONIALS
+          FEATURE 9: TEAM LISTINGS BOARD
       ═══════════════════════════════════════════════════════════ */}
-      <section className="lp-section">
+      <FeatureSection theme={theme} num="09" label="Team Listings Board" labelColor="#8b5cf6"
+        title="Every listing," boldWord="team-wide."
+        desc="See every active listing across your entire team in one shared board. Filter by agent, track days on market, and coordinate showing coverage."
+        bullets={[
+          ['🏡','All team listings in one consolidated view'],
+          ['👤','Filter by agent to see individual portfolios'],
+          ['📅','Days on market tracking for every listing'],
+          ['💰','Commission breakdown by agent and listing'],
+        ]}>
+        <MockupFrame theme={theme} title="Team Listings">
+          {[
+            { addr:'142 Maple St', agent:'Alex R.', price:'$485K', dom:'22d', color:'#8b5cf6' },
+            { addr:'309 Pine Ave', agent:'Sarah K.', price:'$620K', dom:'8d', color:'#0ea5e9' },
+            { addr:'88 River Rd', agent:'Mike T.', price:'$395K', dom:'4d', color:'#10b981' },
+          ].map(l => (
+            <div key={l.addr} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', marginBottom:6, borderRadius:10, border:'1px solid var(--b2)', background:'var(--surface)' }}>
+              <div style={{ width:26, height:26, borderRadius:'50%', background:`${l.color}20`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:700, color:l.color }}>
+                {l.agent.charAt(0)}
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:11, fontWeight:600, color:'var(--text)' }}>{l.addr}</div>
+                <div style={{ fontSize:9, color:'var(--muted)' }}>{l.agent} · {l.price}</div>
+              </div>
+              <span style={{ fontSize:9, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace" }}>{l.dom}</span>
+            </div>
+          ))}
+        </MockupFrame>
+      </FeatureSection>
+
+      {/* ═══════════════════════════════════════════════════════════
+          FEATURE 10: BUYER NEEDS
+      ═══════════════════════════════════════════════════════════ */}
+      <FeatureSection theme={theme} reverse tinted num="10" label="Buyer Needs Board" labelColor="#06b6d4"
+        title="Match buyers," boldWord="together."
+        desc="Team members post what their buyers are looking for. Teammates reply with matching properties — keeping the whole team working together to close buyer deals faster."
+        bullets={[
+          ['📝','Post buyer needs with area, price range, and requirements'],
+          ['💬','Threaded replies when teammates find matching properties'],
+          ['✅','Mark as matched when a buyer finds their home'],
+          ['🔍','Filter by team member to see all active buyer needs'],
+        ]}>
+        <MockupFrame theme={theme} title="Buyer Needs">
+          <div style={{ padding:'14px', borderRadius:12, border:'1px solid var(--b2)', background:'var(--surface)', marginBottom:10 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+              <div style={{ width:24, height:24, borderRadius:'50%', background:'#06b6d420', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:700, color:'#06b6d4' }}>S</div>
+              <div style={{ fontSize:11, fontWeight:600, color:'var(--text)' }}>Sarah K.</div>
+              <div style={{ fontSize:9, color:'var(--muted)', marginLeft:'auto' }}>2h ago</div>
+            </div>
+            <div style={{ fontSize:11, color:'var(--text)', lineHeight:1.6, marginBottom:10 }}>
+              Looking for 3BR+ in Downtown area, $400-500K range. Must have garage. Buyer is pre-approved and ready to move fast.
+            </div>
+            <div style={{ borderLeft:'2px solid #06b6d440', paddingLeft:12, marginLeft:8 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
+                <div style={{ width:18, height:18, borderRadius:'50%', background:'#d9770620', display:'flex', alignItems:'center', justifyContent:'center', fontSize:8, fontWeight:700, color:'#d97706' }}>A</div>
+                <div style={{ fontSize:10, fontWeight:600, color:'var(--text)' }}>Alex R.</div>
+                <div style={{ fontSize:8, color:'var(--muted)' }}>1h ago</div>
+              </div>
+              <div style={{ fontSize:10, color:'var(--muted)', lineHeight:1.5 }}>
+                142 Maple St just got a price reduction to $470K. 3BR, 2BA with attached garage. Could be a match!
+              </div>
+            </div>
+          </div>
+        </MockupFrame>
+      </FeatureSection>
+
+      {/* ═══════════════════════════════════════════════════════════
+          FEATURE 11: ACCOUNTABILITY GROUPS
+      ═══════════════════════════════════════════════════════════ */}
+      <FeatureSection theme={theme} num="11" label="Accountability Groups" labelColor="#f43f5e"
+        title="Small groups," boldWord="big results."
+        desc="Create sub-groups within your team with designated leaders. Group leaders can coach, run challenges, and track progress with ring-based completion tracking."
+        bullets={[
+          ['🫂','Create groups with assigned leaders and members'],
+          ['📊','Group-level habit completion rings'],
+          ['🏅','Group-specific challenges and competitions'],
+          ['📝','Group leaders can write coaching notes for their members'],
+        ]}>
+        <MockupFrame theme={theme} title="Groups">
+          <div style={{ fontSize:11, fontWeight:700, color:'var(--text)', marginBottom:12 }}>🫂 Downtown Team</div>
+          <div style={{ display:'flex', gap:16, justifyContent:'center', marginBottom:16 }}>
+            {[
+              { name:'Alex', pct:85, color:'#10b981' },
+              { name:'Sarah', pct:72, color:'#d97706' },
+              { name:'Mike', pct:45, color:'#f43f5e' },
+            ].map(m => (
+              <div key={m.name} style={{ textAlign:'center' }}>
+                <div style={{ width:48, height:48, borderRadius:'50%', border:`3px solid ${m.color}`, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 6px' }}>
+                  <div style={{ width:36, height:36, borderRadius:'50%', background:`${m.color}18`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:800, color:m.color, fontFamily:"'JetBrains Mono',monospace" }}>
+                    {m.pct}%
+                  </div>
+                </div>
+                <div style={{ fontSize:10, color:'var(--text)', fontWeight:600 }}>{m.name}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ textAlign:'center', fontSize:10, color:'var(--muted)', padding:'8px 0', borderTop:'1px solid var(--b2)' }}>
+            Group Average: <strong style={{ color:'#d97706' }}>67%</strong> daily completion
+          </div>
+        </MockupFrame>
+      </FeatureSection>
+
+      {/* ═══════════════════════════════════════════════════════════
+          FEATURE 12: COACHING NOTES
+      ═══════════════════════════════════════════════════════════ */}
+      <FeatureSection theme={theme} reverse tinted num="12" label="Coaching Notes" labelColor="#f59e0b"
+        title="Private coaching," boldWord="threaded."
+        desc="Leaders write private coaching notes per agent with type tags. Agents reply in-thread. A coaching history that builds over time and never gets lost."
+        bullets={[
+          ['📋','Type-tagged notes: Strategy, Mindset, Accountability, Skill'],
+          ['💬','In-thread replies between coach and agent'],
+          ['📌','Pin critical feedback so it stays visible'],
+          ['🔒','Private between leader and agent — team can\'t see'],
+        ]}
+        aiNote="Reads your coaching history to personalize advice and track improvement patterns over time.">
+        <MockupFrame theme={theme} title="Coaching">
+          <div style={{ padding:'14px', borderRadius:12, border:'1px solid var(--b2)', borderLeft:'3px solid #f59e0b', background:'var(--surface)' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+              <span style={{ fontSize:9, padding:'2px 8px', borderRadius:10, fontWeight:700, background:'rgba(245,158,11,.1)', color:'#f59e0b', border:'1px solid rgba(245,158,11,.25)' }}>STRATEGY</span>
+              <div style={{ fontSize:9, color:'var(--muted)', marginLeft:'auto' }}>Mar 5, 2026</div>
+            </div>
+            <div style={{ fontSize:11, color:'var(--text)', lineHeight:1.6, marginBottom:10 }}>
+              Great job getting 3 listings this month. Next step: focus on converting more showings to offers. Try asking for feedback after every showing.
+            </div>
+            <div style={{ borderLeft:'2px solid #f59e0b40', paddingLeft:12, marginLeft:8 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
+                <div style={{ fontSize:10, fontWeight:600, color:'var(--text)' }}>Agent reply:</div>
+                <div style={{ fontSize:8, color:'var(--muted)' }}>Mar 6</div>
+              </div>
+              <div style={{ fontSize:10, color:'var(--muted)', lineHeight:1.5 }}>
+                Thanks! Started doing follow-up calls after every showing. Already got better feedback on the Oak Lane listing.
+              </div>
+            </div>
+          </div>
+        </MockupFrame>
+      </FeatureSection>
+
+      {/* ═══════════════════════════════════════════════════════════
+          FEATURE 13: AI ASSISTANT
+      ═══════════════════════════════════════════════════════════ */}
+      <FeatureSection theme={theme} num="13" label="AI Coaching Assistant" labelColor="#a855f7"
+        title="Your personal" boldWord="strategist."
+        desc="Ask your AI assistant anything about your business. It reads your live listings, pipeline data, habits, and goals — then delivers personalized coaching powered by Anthropic's Claude."
+        bullets={[
+          ['📊','Analyzes your active listings and pipeline data'],
+          ['💬','Personalized coaching based on your production numbers'],
+          ['🎯','Goal tracking and accountability insights'],
+          ['🏠','Listing strategy, pricing, and comp analysis'],
+          ['📈','Prospecting tips and time-block suggestions'],
+        ]}>
+        <div className="lp-ai-chat">
+          <div className="lp-ai-header">
+            <div style={{ width:32, height:32, borderRadius:10, background:'rgba(168,85,247,.12)', border:'1px solid rgba(168,85,247,.25)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>
+              🤖
+            </div>
+            <div>
+              <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', fontFamily:'Poppins,sans-serif' }}>AI Assistant</div>
+              <div style={{ fontSize:10, color:'var(--muted)', fontFamily:'Poppins,sans-serif' }}>Powered by Claude</div>
+            </div>
+            <div style={{ marginLeft:'auto', fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:20, background:'rgba(168,85,247,.1)', color:'#a855f7', border:'1px solid rgba(168,85,247,.25)', fontFamily:'Poppins,sans-serif' }}>
+              LIVE
+            </div>
+          </div>
+          <div className="lp-ai-messages">
+            {AI_DEMO.map((msg, i) => (
+              <div key={i} className={`lp-ai-msg ${msg.role}`}>
+                {msg.text.split('\n').map((line, li) => {
+                  const parts = line.split(/(\*\*[^*]+\*\*)/).map((seg, si) =>
+                    seg.startsWith('**') && seg.endsWith('**')
+                      ? <strong key={si}>{seg.slice(2, -2)}</strong>
+                      : seg
+                  )
+                  const isBullet = line.match(/^(\d+\.\s|-\s)/)
+                  return (
+                    <div key={li} style={{
+                      paddingLeft: isBullet ? 8 : 0,
+                      marginTop: li > 0 && line === '' ? 6 : li > 0 ? 2 : 0,
+                    }}>
+                      {parts}
+                    </div>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+          <div className="lp-ai-input">
+            <div className="lp-ai-input-field">Ask about your listings, pipeline, goals...</div>
+            <div style={{ width:32, height:32, borderRadius:8, background:gold, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, cursor:'default' }}>
+              <span style={{ color:'#fff', fontSize:14, fontWeight:700 }}>&#8593;</span>
+            </div>
+          </div>
+        </div>
+        <div style={{ marginTop:20, display:'flex', gap:16, flexWrap:'wrap', alignItems:'center' }}>
+          {[
+            { plan:'Solo', credits:'50', color:'#94a3b8' },
+            { plan:'Team', credits:'250', color:'#d97706' },
+            { plan:'Brokerage', credits:'500', color:'#8b5cf6' },
+          ].map(p => (
+            <div key={p.plan} style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, fontFamily:'Poppins,sans-serif' }}>
+              <div style={{ width:8, height:8, borderRadius:'50%', background:p.color }} />
+              <span style={{ fontWeight:700, color:p.color }}>{p.plan}:</span>
+              <span style={{ color:'var(--muted)' }}>{p.credits} credits/mo</span>
+            </div>
+          ))}
+        </div>
+      </FeatureSection>
+
+      {/* ═══════════════════════════════════════════════════════════
+          TESTIMONIALS
+      ═══════════════════════════════════════════════════════════ */}
+      <section id="features" className="lp-section">
         <div className="lp-max">
           <div style={{ textAlign:'center', marginBottom:56 }}>
             <div style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:gold, marginBottom:12, fontFamily:'Poppins,sans-serif' }}>Testimonials</div>
@@ -637,7 +949,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
       </section>
 
       {/* ═══════════════════════════════════════════════════════════
-          8. PRICING
+          PRICING
       ═══════════════════════════════════════════════════════════ */}
       <section id="pricing" className="lp-section" style={{ background: theme === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.02)', borderTop:'1px solid var(--b1)', borderBottom:'1px solid var(--b1)' }}>
         <div className="lp-max">
@@ -684,10 +996,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
               )
             })}
           </div>
-
-          {/* White-label callout */}
-          <div style={{ marginTop:36, textAlign:'center', padding:'24px 20px', background:'var(--surface)',
-            border:'1px solid var(--b2)', borderRadius:14 }}>
+          <div style={{ marginTop:36, textAlign:'center', padding:'24px 20px', background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:14 }}>
             <div style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginBottom:6, fontFamily:"'Poppins',sans-serif" }}>
               Want a white-label version for your brokerage or team?
             </div>
@@ -700,7 +1009,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
       </section>
 
       {/* ═══════════════════════════════════════════════════════════
-          9. FAQ
+          FAQ
       ═══════════════════════════════════════════════════════════ */}
       <section id="faq" className="lp-section">
         <div className="lp-max" style={{ maxWidth:700 }}>
@@ -723,7 +1032,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
       </section>
 
       {/* ═══════════════════════════════════════════════════════════
-          10. FINAL CTA
+          FINAL CTA
       ═══════════════════════════════════════════════════════════ */}
       <section style={{ padding:'104px 24px', textAlign:'center' }}>
         <div style={{ maxWidth:600, margin:'0 auto' }}>
@@ -733,7 +1042,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
             <span style={{ color:gold }}>Start grinding.</span>
           </h2>
           <p style={{ fontSize:16, color:'var(--muted)', lineHeight:1.75, marginBottom:38, fontFamily:'Poppins,sans-serif' }}>
-            Join agents who track every habit, get AI-powered coaching, and actually hit their production goals.
+            Join agents who track every habit, manage every deal, get AI-powered coaching, and actually hit their production goals.
           </p>
           <button className="lp-gold-btn" style={{ fontSize:17, padding:'17px 44px' }} onClick={onGetStarted}>
             Start Free Trial →

@@ -5,6 +5,7 @@ import { Loader, Wordmark, ThemeToggle, Ring, getRank, CAT, StatCard, fmtMoney, 
 import { HABITS } from '../habits'
 import { canUseTeams, getMaxMembers, getPlan, isActiveBilling } from '../lib/plans'
 import { ALL_APPS } from './DirectoryPage'
+import AvatarCropModal from '../components/AvatarCropModal'
 
 const HABITS_FOR_DISPLAY = [
   { id:'prospecting', label:'Prospecting', cat:'leads' },
@@ -51,6 +52,23 @@ function relativeTime(isoStr) {
   return d === 1 ? '1 day ago' : `${d} days ago`
 }
 
+// Reusable avatar: shows profile photo if available, otherwise initials
+function MemberAvatar({ member, size=38, rank }) {
+  const r = rank || getRank(member?.xp||0)
+  const url = member?.goals?.avatar_url
+  return (
+    <div style={{ width:size, height:size, borderRadius:'50%',
+      background: url ? 'transparent' : `linear-gradient(135deg, ${r.color}, ${r.color}99)`,
+      display:'flex', alignItems:'center', justifyContent:'center',
+      fontSize:Math.round(size*0.4), fontWeight:700, color:'#fff', flexShrink:0, letterSpacing:0,
+      boxShadow:`0 2px 8px ${r.color}44`, overflow:'hidden' }}>
+      {url ? (
+        <img src={url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+      ) : (member?.full_name||'A').charAt(0).toUpperCase()}
+    </div>
+  )
+}
+
 export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const { user, profile, refreshProfile } = useAuth()
   const [mode,       setMode]       = useState('menu')
@@ -64,7 +82,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [memberStats,setMemberStats]= useState({})
   const [challengeForm, setChallengeForm] = useState(null) // null | { title, metric, bonusXp }
   const [challengeSaving, setChallengeSaving] = useState(false)
-  const [teamsTab,       setTeamsTab]       = useState('roster') // 'roster' | 'groups' | 'challenges' | 'listings' | 'settings'
+  const [teamsTab,       setTeamsTab]       = useState('roster') // 'roster' | 'groups' | 'challenges' | 'listings' | 'buyers' | 'settings'
   const [settingsSubTab, setSettingsSubTab] = useState('invites') // 'invites' | 'admins' | 'groups' | 'ai' | 'directory' | 'danger'
   const [groupForm,      setGroupForm]      = useState(null)     // null | { name, leaderId, memberIds, editingId }
   const [groupSaving,    setGroupSaving]    = useState(false)
@@ -96,6 +114,16 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [editingToolId,   setEditingToolId]   = useState(null)    // tool id whose URL is being edited
   const [editingToolUrl,  setEditingToolUrl]  = useState('')      // URL being typed
   const [customToolForm,  setCustomToolForm]  = useState(null)    // null | { name, url, icon, category }
+  const [buyerNeedForm,   setBuyerNeedForm]   = useState(null)    // null | { text }
+  const [buyerNeedSaving, setBuyerNeedSaving] = useState(false)
+  const [buyerFilter,     setBuyerFilter]     = useState('all')   // 'all' | memberId
+  const [buyerReplyForms, setBuyerReplyForms] = useState({})      // { [needId]: string }
+  const [buyerReplySaving,setBuyerReplySaving]= useState(null)    // needId being saved, or null
+  const [slackUrl,        setSlackUrl]        = useState('')      // team Slack workspace URL
+  const [slackSaving,     setSlackSaving]     = useState(false)
+  const [logoCropSrc,     setLogoCropSrc]     = useState(null)    // object URL for crop modal
+  const [logoSaving,      setLogoSaving]      = useState(false)
+  const logoInputRef      = useRef(null)
 
   // Depend only on team_id — prevents re-fetching every time the profile object
   // is recreated (e.g. on token refresh) while nothing meaningful has changed.
@@ -161,6 +189,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     const {data:team} = await supabase.from('teams').select('*').eq('id',tid).single()
     if (seq !== fetchMembersSeqRef.current) return
     setTeamData(team)
+    setSlackUrl(team?.team_prefs?.slack_url || '')
     // Load habit stats for all members
     if (mems?.length) {
       const ids = mems.map(m=>m.id)
@@ -817,11 +846,114 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     }
   }
 
+  // ── Buyer Needs Handlers ─────────────────────────────────────────────────
+  async function saveBuyerNeed() {
+    if (!buyerNeedForm?.text?.trim() || !user?.id) return
+    const trimmed = buyerNeedForm.text.trim().slice(0, MAX_NOTE_LEN)
+    setBuyerNeedSaving(true)
+    try {
+      const myMember = members.find(m => m.id === user.id)
+      const currentGoals = myMember?.goals || profile?.goals || {}
+      const existing = currentGoals.buyer_needs || []
+      const newNeed = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+        authorId: user.id,
+        text: trimmed,
+        replies: [],
+        resolved: false,
+        createdAt: new Date().toISOString(),
+      }
+      const updatedGoals = { ...currentGoals, buyer_needs: [...existing, newNeed] }
+      const { error } = await supabase.from('profiles').update({ goals: updatedGoals }).eq('id', user.id)
+      if (error) throw error
+      setMembers(ms => ms.map(m => m.id === user.id ? { ...m, goals: updatedGoals } : m))
+      setBuyerNeedForm(null)
+    } catch (err) {
+      setError('Failed to save buyer need. Please try again.')
+      console.error('saveBuyerNeed error:', err)
+    } finally {
+      setBuyerNeedSaving(false)
+    }
+  }
+
+  async function deleteBuyerNeed(needId) {
+    const myMember = members.find(m => m.id === user.id)
+    const currentGoals = myMember?.goals || profile?.goals || {}
+    const updated = (currentGoals.buyer_needs || []).filter(n => n.id !== needId)
+    const updatedGoals = { ...currentGoals, buyer_needs: updated }
+    try {
+      const { error } = await supabase.from('profiles').update({ goals: updatedGoals }).eq('id', user.id)
+      if (error) throw error
+      setMembers(ms => ms.map(m => m.id === user.id ? { ...m, goals: updatedGoals } : m))
+    } catch (err) { console.error('deleteBuyerNeed error:', err) }
+  }
+
+  async function toggleBuyerNeedResolved(needId) {
+    const myMember = members.find(m => m.id === user.id)
+    const currentGoals = myMember?.goals || profile?.goals || {}
+    const updated = (currentGoals.buyer_needs || []).map(n =>
+      n.id === needId ? { ...n, resolved: !n.resolved } : n)
+    const updatedGoals = { ...currentGoals, buyer_needs: updated }
+    try {
+      const { error } = await supabase.from('profiles').update({ goals: updatedGoals }).eq('id', user.id)
+      if (error) throw error
+      setMembers(ms => ms.map(m => m.id === user.id ? { ...m, goals: updatedGoals } : m))
+    } catch (err) { console.error('toggleBuyerNeedResolved error:', err) }
+  }
+
+  async function saveBuyerReply(needId) {
+    const text = (buyerReplyForms[needId] || '').trim()
+    if (!text) return
+    setBuyerReplySaving(needId)
+    const newReply = { id: Date.now().toString(36), authorId: user.id, text, createdAt: new Date().toISOString() }
+    try {
+      const myMember = members.find(m => m.id === user.id)
+      const currentGoals = myMember?.goals || profile?.goals || {}
+      const existingReplies = currentGoals.buyer_replies || {}
+      const needReplies = existingReplies[needId] || []
+      const updatedGoals = { ...currentGoals, buyer_replies: { ...existingReplies, [needId]: [...needReplies, newReply] } }
+      const { error } = await supabase.from('profiles').update({ goals: updatedGoals }).eq('id', user.id)
+      if (error) throw error
+      setMembers(ms => ms.map(m => m.id === user.id ? { ...m, goals: updatedGoals } : m))
+      setBuyerReplyForms(f => ({ ...f, [needId]: '' }))
+    } catch (err) { console.error('saveBuyerReply error:', err) }
+    finally { setBuyerReplySaving(null) }
+  }
+
+  // ── Team logo ──
+  function handleLogoSelect(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) return
+    if (file.size > 5 * 1024 * 1024) return
+    setLogoCropSrc(URL.createObjectURL(file))
+    if (logoInputRef.current) logoInputRef.current.value = ''
+  }
+  function cancelLogoCrop() {
+    if (logoCropSrc) URL.revokeObjectURL(logoCropSrc)
+    setLogoCropSrc(null)
+  }
+  async function saveTeamLogo(dataUrl) {
+    if (logoCropSrc) URL.revokeObjectURL(logoCropSrc)
+    setLogoCropSrc(null)
+    setLogoSaving(true)
+    try {
+      const prefs = { ...(teamData.team_prefs || {}), logo_url: dataUrl }
+      const { error: err } = await supabase.from('teams').update({ team_prefs: prefs }).eq('id', teamData.id)
+      if (err) throw err
+      setTeamData(prev => ({ ...prev, team_prefs: prefs }))
+    } catch (err) {
+      console.error('Logo save failed:', err)
+    } finally {
+      setLogoSaving(false)
+    }
+  }
+
   // ── Derived values (memoized to avoid recomputing on every render) ────────
   const {
     isTeamOwner, teamAdmins, isAdmin, allGroups, myLedGroup,
     isGroupLeader, myGroupMembers, isAdminOrOwner, coachableMembers,
-    allCoachingNotes, myCoachingNotes, pendingInvites,
+    allCoachingNotes, myCoachingNotes, pendingInvites, allBuyerNeeds,
   } = useMemo(() => {
     const _isSuperAdmin     = profile?.app_role === 'admin'
     const _isTeamOwner      = !!(teamData?.created_by === user?.id) || _isSuperAdmin
@@ -838,12 +970,21 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     const _allCoachingNotes = teamData?.team_prefs?.coaching_notes || []
     const _myCoachingNotes  = _allCoachingNotes.filter(n => n.agentId === user?.id)
     const _pendingInvites   = teamData?.team_prefs?.pending_invites || []
+    // Buyer Needs: merge from all members' profiles.goals.buyer_needs
+    const _allBuyerNeeds = members.flatMap(m => (m.goals?.buyer_needs || []).map(n => ({ ...n, _authorName: m.full_name || 'Agent' })))
+    // Merge replies from all members' profiles.goals.buyer_replies
+    _allBuyerNeeds.forEach(need => {
+      const externalReplies = members.flatMap(m => (m.goals?.buyer_replies?.[need.id] || []))
+      need._allReplies = [...(need.replies || []), ...externalReplies]
+        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+    })
     return {
       isTeamOwner: _isTeamOwner, teamAdmins: _teamAdmins, isAdmin: _isAdmin,
       allGroups: _allGroups, myLedGroup: _myLedGroup, isGroupLeader: _isGroupLeader,
       myGroupMembers: _myGroupMembers, isAdminOrOwner: _isAdminOrOwner,
       coachableMembers: _coachableMembers, allCoachingNotes: _allCoachingNotes,
       myCoachingNotes: _myCoachingNotes, pendingInvites: _pendingInvites,
+      allBuyerNeeds: _allBuyerNeeds,
     }
   }, [teamData, user?.id, members])
   const canViewDetail = (m) => isTeamOwner || isAdmin || (isGroupLeader && myLedGroup?.memberIds.includes(m.id))
@@ -1025,12 +1166,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                   border: isLead ? '1px solid rgba(139,92,246,.3)' : '1px solid var(--b2)' }}
                                   onClick={(canViewDetail(m) && !memberDetailLoading && !viewingMember) ? ()=>fetchMemberDetail(m) : undefined}>
                                   <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                                    <div style={{ width:34, height:34, borderRadius:'50%',
-                                      background:`linear-gradient(135deg,${rank.color},${rank.color}99)`,
-                                      display:'flex', alignItems:'center', justifyContent:'center',
-                                      fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
-                                      {(m.full_name||'A').charAt(0).toUpperCase()}
-                                    </div>
+                                    <MemberAvatar member={m} size={34} rank={rank}/>
                                     <div style={{ flex:1, minWidth:0 }}>
                                       <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{m.full_name||'Agent'}</div>
                                       <div style={{ fontSize:10, color:'var(--muted)' }}>{rank.name} · 🔥{m.streak||0}</div>
@@ -1243,12 +1379,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 borderLeft: submitted ? '3px solid var(--green)' : '3px solid var(--b2)',
                                 opacity: submitted ? 1 : 0.65 }}>
                                 <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:submitted?14:0 }}>
-                                  <div style={{ width:34, height:34, borderRadius:'50%',
-                                    background:`linear-gradient(135deg,${rank.color},${rank.color}88)`,
-                                    display:'flex', alignItems:'center', justifyContent:'center',
-                                    fontSize:14, fontWeight:700, color:'#fff', flexShrink:0 }}>
-                                    {(m.full_name||'?').charAt(0).toUpperCase()}
-                                  </div>
+                                  <MemberAvatar member={m} size={34} rank={rank}/>
                                   <div style={{ flex:1, minWidth:0 }}>
                                     <div style={{ fontSize:14, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.full_name||'Agent'}</div>
                                     <div style={{ fontSize:11, color:'var(--muted)' }}>{submitted ? 'Submitted today' : 'Not submitted yet'}</div>
@@ -1314,11 +1445,46 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                   {teamData && (
                     <div className="card" style={{ padding:22, marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:14,
                       background:'linear-gradient(135deg, rgba(217,119,6,.04) 0%, var(--surface) 60%)', borderTop:'2px solid rgba(217,119,6,.3)' }}>
-                      <div>
-                        <div className="serif" style={{ fontSize:28, color:'var(--text)', marginBottom:4, letterSpacing:'-.01em' }}>{teamData.name}</div>
-                        <div style={{ fontSize:12, color:'var(--muted)' }}>
-                          {members.length} member{members.length!==1?'s':''}
-                          {teamData.max_members ? ` · ${members.length}/${teamData.max_members} seats` : ''}
+                      <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+                        {/* Team logo */}
+                        <div style={{ position:'relative', flexShrink:0, cursor: isTeamOwner ? 'pointer' : 'default' }}
+                          onClick={() => isTeamOwner && logoInputRef.current?.click()}
+                          title={isTeamOwner ? 'Change team logo' : ''}>
+                          {teamData.team_prefs?.logo_url ? (
+                            <img src={teamData.team_prefs.logo_url} alt="" style={{
+                              width:56, height:56, borderRadius:12, objectFit:'cover',
+                              border:'2px solid var(--b2)' }}/>
+                          ) : (
+                            <div style={{ width:56, height:56, borderRadius:12,
+                              background:'linear-gradient(135deg, var(--gold), #92400e)',
+                              display:'flex', alignItems:'center', justifyContent:'center',
+                              fontSize:24, fontWeight:800, color:'#fff', letterSpacing:0,
+                              border:'2px solid rgba(217,119,6,.3)' }}>
+                              {(teamData.name||'T').charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          {isTeamOwner && (
+                            <div style={{ position:'absolute', bottom:-3, right:-3, width:20, height:20, borderRadius:'50%',
+                              background:'var(--surface)', border:'2px solid var(--b2)',
+                              display:'flex', alignItems:'center', justifyContent:'center', fontSize:10 }}>
+                              📷
+                            </div>
+                          )}
+                          {logoSaving && (
+                            <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center',
+                              justifyContent:'center', background:'rgba(0,0,0,.5)', borderRadius:12 }}>
+                              <Loader/>
+                            </div>
+                          )}
+                          <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoSelect}
+                            style={{ display:'none' }}/>
+                        </div>
+                        <div>
+                          <div className="serif" style={{ fontSize:28, color:'var(--text)', marginBottom:4, letterSpacing:'-.01em' }}>{teamData.name}</div>
+                          <div style={{ fontSize:12, color:'var(--muted)' }}>
+                            {members.length} member{members.length!==1?'s':''}
+                            {teamData.max_members ? ` · ${members.length}/${teamData.max_members} seats` : ''}
+                          </div>
                         </div>
                       </div>
                       <div style={{ display:'flex', gap:12, alignItems:'center' }}>
@@ -1364,6 +1530,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       style={{ fontSize:14, padding:'10px 18px', fontWeight:600 }}>🏆 Challenges</button>
                     <button className={`tab-item${teamsTab==='listings'?' on':''}`} onClick={()=>setTeamsTab('listings')}
                       style={{ fontSize:14, padding:'10px 18px', fontWeight:600 }}>🏠 Listings</button>
+                    <button className={`tab-item${teamsTab==='buyers'?' on':''}`} onClick={()=>setTeamsTab('buyers')}
+                      style={{ fontSize:14, padding:'10px 18px', fontWeight:600 }}>🏡 Buyers</button>
                     <button className={`tab-item${teamsTab==='groups'?' on':''}`} onClick={()=>setTeamsTab('groups')}
                       style={{ fontSize:14, padding:'10px 18px', fontWeight:600 }}>🫂 Groups</button>
                     {isTeamOwner && (
@@ -1409,13 +1577,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                             <div className="mono" style={{ width:26, fontSize:12, color:'var(--dim)', textAlign:'center', fontWeight:700 }}>
                               {i+1}
                             </div>
-                            <div style={{ width:38, height:38, borderRadius:'50%',
-                              background:`linear-gradient(135deg, ${rank.color}, ${rank.color}99)`,
-                              display:'flex', alignItems:'center', justifyContent:'center',
-                              fontSize:15, fontWeight:700, color:'#fff', flexShrink:0, letterSpacing:0,
-                              boxShadow:`0 2px 8px ${rank.color}44` }}>
-                              {(m.full_name||'A').charAt(0).toUpperCase()}
-                            </div>
+                            <MemberAvatar member={m} size={38} rank={rank}/>
                             <div style={{ flex:1, minWidth:0 }}>
                               <div style={{ display:'flex', alignItems:'center', gap:7, flexWrap:'wrap' }}>
                                 <span style={{ fontSize:14, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'100%' }}>{m.full_name||'Agent'}</span>
@@ -1819,12 +1981,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                           return (
                                             <div className="card" style={{ padding:14, border:'1px solid rgba(217,119,6,.3)', background:'var(--gold3)' }}>
                                               <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                                                <div style={{ width:34, height:34, borderRadius:'50%',
-                                                  background:`linear-gradient(135deg,${myRank.color},${myRank.color}99)`,
-                                                  display:'flex', alignItems:'center', justifyContent:'center',
-                                                  fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
-                                                  {(me.full_name||'A').charAt(0).toUpperCase()}
-                                                </div>
+                                                <MemberAvatar member={me} size={34} rank={myRank}/>
                                                 <div style={{ flex:1, minWidth:0 }}>
                                                   <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{me.full_name||'Agent'}</div>
                                                   <div style={{ fontSize:10, color:'var(--muted)' }}>{myRank.name} · 🔥 {me.streak||0}</div>
@@ -1854,12 +2011,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                               border: isLeaderMate ? '1px solid rgba(139,92,246,.3)' : '1px solid var(--b2)' }}
                                               onClick={isLeader && !memberDetailLoading && !viewingMember ? ()=>fetchMemberDetail(mate) : undefined}>
                                               <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                                                <div style={{ width:34, height:34, borderRadius:'50%',
-                                                  background:`linear-gradient(135deg,${mateRank.color},${mateRank.color}99)`,
-                                                  display:'flex', alignItems:'center', justifyContent:'center',
-                                                  fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 }}>
-                                                  {(mate.full_name||'A').charAt(0).toUpperCase()}
-                                                </div>
+                                                <MemberAvatar member={mate} size={34} rank={mateRank}/>
                                                 <div style={{ flex:1, minWidth:0 }}>
                                                   <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{mate.full_name||'Agent'}</div>
                                                   <div style={{ fontSize:10, color:'var(--muted)' }}>{mateRank.name} · 🔥 {mate.streak||0}</div>
@@ -1890,6 +2042,175 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                         </div>
                   )} {/* end groups tab */}
 
+                  {/* ════════ BUYERS TAB ════════ */}
+                  {teamsTab==='buyers' && (
+                    <div>
+                      {/* Header */}
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20, flexWrap:'wrap', gap:10 }}>
+                        <div>
+                          <div className="serif" style={{ fontSize:22, color:'var(--text)', marginBottom:2 }}>🏡 Buyer Needs</div>
+                          <div style={{ fontSize:12, color:'var(--muted)' }}>Post what your buyers are looking for. Teammates can reply with matching properties.</div>
+                        </div>
+                      </div>
+
+                      {/* Filter pills */}
+                      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:20 }}>
+                        {[{id:'all',label:'All Members'}, ...members.map(m=>({id:m.id,label:m.full_name||'Agent'}))].map(opt=>(
+                          <button key={opt.id} onClick={()=>setBuyerFilter(opt.id)} style={{
+                            padding:'5px 14px', borderRadius:20, fontSize:12, fontWeight:600, cursor:'pointer',
+                            border: buyerFilter===opt.id ? 'none' : '1px solid var(--b2)',
+                            background: buyerFilter===opt.id ? 'var(--text)' : 'transparent',
+                            color: buyerFilter===opt.id ? 'var(--bg)' : 'var(--text2)',
+                            transition:'all .15s', fontFamily:'Poppins,sans-serif',
+                          }}>{opt.label}{opt.id===user?.id ? ' (You)' : ''}</button>
+                        ))}
+                      </div>
+
+                      {/* Needs feed */}
+                      {(()=>{
+                        const visible = [...allBuyerNeeds]
+                          .filter(n => buyerFilter==='all' || n.authorId===buyerFilter)
+                          .sort((a,b) => (a.resolved?1:0)-(b.resolved?1:0) || new Date(b.createdAt)-new Date(a.createdAt))
+                        return (
+                          <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:20 }}>
+                            {visible.length===0 && (
+                              <div style={{ border:'1.5px dashed var(--b2)', borderRadius:12, padding:'32px 20px',
+                                fontSize:14, color:'var(--muted)', textAlign:'center' }}>
+                                No buyer needs posted yet. Add one below!
+                              </div>
+                            )}
+                            {visible.map(need=>{
+                              const name = need._authorName || 'Agent'
+                              const isMe = need.authorId===user?.id
+                              const canManage = need.authorId===user?.id || isTeamOwner
+                              return (
+                                <div key={need.id} className="card" style={{
+                                  padding:'14px 16px',
+                                  border: need.resolved ? '1px solid rgba(16,185,129,.4)' : isMe ? '1px solid rgba(217,119,6,.3)' : '1px solid var(--b2)',
+                                  background: need.resolved ? 'rgba(16,185,129,.04)' : isMe ? 'var(--gold3)' : 'var(--surface)',
+                                  opacity: need.resolved ? 0.7 : 1,
+                                }}>
+                                  <div style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
+                                    {/* Avatar */}
+                                    {(()=>{ const author = members.find(mm=>mm.id===need.authorId); return author ? <MemberAvatar member={author} size={32}/> : (
+                                      <div style={{ width:32, height:32, borderRadius:'50%',
+                                        background: isMe ? 'rgba(217,119,6,.15)' : 'rgba(14,165,233,.12)',
+                                        border: `1.5px solid ${isMe ? 'rgba(217,119,6,.3)' : 'rgba(14,165,233,.25)'}`,
+                                        display:'flex', alignItems:'center', justifyContent:'center',
+                                        fontSize:14, fontWeight:700, color: isMe ? 'var(--gold)' : '#0ea5e9', flexShrink:0 }}>
+                                        {name.charAt(0).toUpperCase()}
+                                      </div>
+                                    )})()}
+                                    <div style={{ flex:1, minWidth:0 }}>
+                                      {/* Header row */}
+                                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6, flexWrap:'wrap' }}>
+                                        <span style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{name}</span>
+                                        {isMe && <span style={{ fontSize:9, padding:'2px 5px', borderRadius:3, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>YOU</span>}
+                                        {need.resolved && <span style={{ fontSize:9, padding:'2px 6px', borderRadius:4, fontWeight:700, background:'rgba(16,185,129,.12)', color:'#10b981', border:'1px solid rgba(16,185,129,.25)' }}>MATCHED</span>}
+                                        <span style={{ marginLeft:'auto', fontSize:11, color:'var(--dim)' }}>{relativeTime(need.createdAt)}</span>
+                                      </div>
+                                      {/* Need text */}
+                                      <div style={{ fontSize:13, color:'var(--text)', lineHeight:1.6, marginBottom:8, whiteSpace:'pre-wrap' }}>{need.text}</div>
+
+                                      {/* Replies thread */}
+                                      {(need._allReplies||[]).length > 0 && (
+                                        <div style={{ borderLeft:'2px solid var(--b2)', paddingLeft:10, marginBottom:10, display:'flex', flexDirection:'column', gap:8 }}>
+                                          {(need._allReplies||[]).map(r=>{
+                                            const rAuthor = members.find(m=>m.id===r.authorId)
+                                            const rName = rAuthor?.full_name || (r.authorId===user?.id ? 'You' : 'Agent')
+                                            const rIsMe = r.authorId===user?.id
+                                            return (
+                                              <div key={r.id}>
+                                                <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
+                                                  <span style={{ fontSize:11, fontWeight:600, color: rIsMe ? 'var(--gold)' : 'var(--text)' }}>{rName}</span>
+                                                  {rIsMe && <span style={{ fontSize:8, padding:'1px 5px', borderRadius:3, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>YOU</span>}
+                                                  <span style={{ fontSize:10, color:'var(--dim)' }}>{relativeTime(r.createdAt)}</span>
+                                                </div>
+                                                <div style={{ fontSize:12, color:'var(--text2)', lineHeight:1.5, whiteSpace:'pre-wrap' }}>{r.text}</div>
+                                              </div>
+                                            )
+                                          })}
+                                        </div>
+                                      )}
+
+                                      {/* Reply input */}
+                                      {!need.resolved && (
+                                        <div style={{ display:'flex', gap:6, marginBottom:8 }}>
+                                          <input className="field-input" value={buyerReplyForms[need.id]||''}
+                                            onChange={e=>setBuyerReplyForms(f=>({...f,[need.id]:e.target.value.slice(0,500)}))}
+                                            onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&saveBuyerReply(need.id)}
+                                            placeholder="Reply with a matching property..."
+                                            style={{ flex:1, padding:'6px 10px', fontSize:12 }}/>
+                                          <button onClick={()=>saveBuyerReply(need.id)}
+                                            disabled={buyerReplySaving===need.id||!(buyerReplyForms[need.id]||'').trim()}
+                                            style={{ fontSize:11, padding:'6px 12px', borderRadius:6, cursor:'pointer',
+                                              background:'var(--text)', border:'none', color:'var(--bg)', fontWeight:600, flexShrink:0,
+                                              opacity: buyerReplySaving===need.id||!(buyerReplyForms[need.id]||'').trim() ? 0.4 : 1 }}>
+                                            {buyerReplySaving===need.id ? '...' : 'Send'}
+                                          </button>
+                                        </div>
+                                      )}
+
+                                      {/* Resolve / Delete actions */}
+                                      {canManage && (
+                                        <div style={{ display:'flex', gap:6 }}>
+                                          <button onClick={()=>toggleBuyerNeedResolved(need.id)} style={{
+                                            fontSize:11, padding:'4px 10px', borderRadius:6, cursor:'pointer',
+                                            background: need.resolved ? 'rgba(16,185,129,.12)' : 'var(--bg2)',
+                                            border: need.resolved ? '1px solid rgba(16,185,129,.3)' : '1px solid var(--b2)',
+                                            color: need.resolved ? '#10b981' : 'var(--muted)', fontWeight:600 }}>
+                                            {need.resolved ? 'Reopen' : 'Mark Matched'}
+                                          </button>
+                                          <button onClick={()=>setConfirmModal({ message:'Delete this buyer need and all its replies?', label:'Delete', onConfirm:()=>deleteBuyerNeed(need.id) })} style={{
+                                            fontSize:11, padding:'4px 10px', borderRadius:6, cursor:'pointer',
+                                            background:'rgba(220,38,38,.06)', border:'1px solid rgba(220,38,38,.2)',
+                                            color:'var(--red)', fontWeight:600 }}>
+                                            Delete
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )
+                      })()}
+
+                      {/* Add buyer need form / button */}
+                      {buyerNeedForm ? (
+                        <div className="card" style={{ padding:20, border:'1px solid rgba(14,165,233,.25)', background:'rgba(14,165,233,.04)' }}>
+                          <div className="serif" style={{ fontSize:15, color:'var(--text)', marginBottom:14 }}>Post a Buyer Need</div>
+                          <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                            <div>
+                              <div style={{ fontSize:12, color:'var(--muted)', marginBottom:5 }}>What is your buyer looking for?</div>
+                              <textarea className="field-input" value={buyerNeedForm.text}
+                                onChange={e=>setBuyerNeedForm(f=>({...f,text:e.target.value.slice(0,UI_NOTE_LIMIT)}))}
+                                placeholder="e.g. 3BR/2BA in Westlake area, $400-500k range, needs good schools nearby..."
+                                rows={4} style={{ width:'100%', resize:'vertical', minHeight:90 }}/>
+                              <div style={{ fontSize:10, color:'var(--dim)', textAlign:'right', marginTop:3 }}>
+                                {(buyerNeedForm.text||'').length}/{UI_NOTE_LIMIT}
+                              </div>
+                            </div>
+                            <div style={{ display:'flex', gap:8 }}>
+                              <button className="btn-primary" onClick={saveBuyerNeed}
+                                disabled={buyerNeedSaving||!buyerNeedForm.text?.trim()}
+                                style={{ fontSize:13, padding:'9px 22px' }}>
+                                {buyerNeedSaving ? 'Posting...' : 'Post Need'}
+                              </button>
+                              <button className="btn-outline" onClick={()=>setBuyerNeedForm(null)} style={{ fontSize:13 }}>Cancel</button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <button className="btn-outline"
+                          onClick={()=>setBuyerNeedForm({ text:'' })}
+                          style={{ fontSize:13 }}>+ Post a Buyer Need</button>
+                      )}
+                    </div>
+                  )} {/* end buyers tab */}
+
                   {/* ════════ SETTINGS TAB (owner only) ════════ */}
                   {teamsTab==='settings' && isTeamOwner && (
                         <div>
@@ -1901,6 +2222,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               { id:'groups',  label:'🫂 Groups' },
                               { id:'ai',      label:'🤖 AI Tools' },
                               { id:'directory', label:'🔗 Directory' },
+                              { id:'integrations', label:'🔌 Integrations' },
                               { id:'danger',  label:'⚠️ Danger Zone' },
                             ].map(t=>(
                               <button key={t.id} onClick={()=>setSettingsSubTab(t.id)} style={{
@@ -1975,12 +2297,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 const rank = getRank(m.xp||0)
                                 return (
                                   <div key={m.id} className="card" style={{ padding:'12px 16px', display:'flex', alignItems:'center', gap:12 }}>
-                                    <div style={{ width:32, height:32, borderRadius:'50%', flexShrink:0,
-                                      background:`linear-gradient(135deg,${rank.color},${rank.color}99)`,
-                                      display:'flex', alignItems:'center', justifyContent:'center',
-                                      fontSize:13, fontWeight:700, color:'#fff' }}>
-                                      {(m.full_name||'A').charAt(0).toUpperCase()}
-                                    </div>
+                                    <MemberAvatar member={m} size={32} rank={rank}/>
                                     <div style={{ flex:1, minWidth:0 }}>
                                       <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.full_name||'Agent'}</div>
                                       <div style={{ fontSize:11, color:'var(--muted)' }}>{rank.name}</div>
@@ -2528,6 +2845,48 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                           )}
 
                           {/* ── Danger Zone sub-tab ── */}
+                          {/* ── Integrations sub-tab ── */}
+                          {settingsSubTab==='integrations' && (
+                          <div className="card" style={{
+                            padding:'18px 20px',
+                            borderLeft:'3px solid #611f69',
+                            background:'linear-gradient(135deg, rgba(97,31,105,.06) 0%, var(--surface) 55%)',
+                          }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+                              <span style={{ fontSize:16 }}>💬</span>
+                              <span className="serif" style={{ fontSize:15, color:'var(--text)', fontWeight:600 }}>Slack Workspace</span>
+                              <span style={{ fontSize:11, color:'var(--muted)', marginLeft:'auto' }}>Shows a join button on member dashboards</span>
+                            </div>
+                            <div style={{ fontSize:12, color:'var(--muted)', marginBottom:12, lineHeight:1.6 }}>
+                              Paste your Slack workspace URL (e.g. https://yourteam.slack.com) and a Slack button will appear on every team member's dashboard.
+                            </div>
+                            <div style={{ display:'flex', gap:8, marginBottom: 0 }}>
+                              <input className="field-input" type="url" value={slackUrl}
+                                onChange={e=>setSlackUrl(e.target.value)}
+                                placeholder="https://yourteam.slack.com" style={{ flex:1 }}/>
+                              <button type="button" className="btn-primary" onClick={async()=>{
+                                setSlackSaving(true)
+                                try {
+                                  const newPrefs = { ...(teamData.team_prefs||{}), slack_url: slackUrl.trim() }
+                                  const { error: e } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                  if (e) throw e
+                                  setTeamData(td=>({ ...td, team_prefs: newPrefs }))
+                                } catch(e) { console.error(e) }
+                                setSlackSaving(false)
+                              }}
+                                disabled={slackSaving}
+                                style={{ fontSize:13, padding:'9px 20px', whiteSpace:'nowrap' }}>
+                                {slackSaving ? 'Saving…' : 'Save'}
+                              </button>
+                            </div>
+                            {slackUrl.trim() && (
+                              <div style={{ marginTop:12, fontSize:12, color:'var(--green)' }}>
+                                ✓ Slack button will appear on team member dashboards
+                              </div>
+                            )}
+                          </div>
+                          )}
+
                           {settingsSubTab==='danger' && (
                           <div style={{ border:'1px solid rgba(220,38,38,.25)', borderRadius:12, padding:24 }}>
                             <div className="serif" style={{ fontSize:18, color:'var(--red)', marginBottom:8 }}>⚠️ Transfer Ownership</div>
@@ -2626,13 +2985,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                 background:`linear-gradient(135deg,${rank.color}0c 0%,var(--surface) 60%)`,
                 borderTop:`3px solid ${rank.color}` }}>
                 <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-                  <div style={{ width:52, height:52, borderRadius:'50%', flexShrink:0,
-                    background:`linear-gradient(135deg,${rank.color},${rank.color}99)`,
-                    display:'flex', alignItems:'center', justifyContent:'center',
-                    fontSize:22, fontWeight:700, color:'#fff',
-                    boxShadow:`0 4px 16px ${rank.color}44` }}>
-                    {(viewingMember.full_name||'A').charAt(0).toUpperCase()}
-                  </div>
+                  <MemberAvatar member={viewingMember} size={52} rank={rank}/>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{viewingMember.full_name||'Agent'}</div>
                     <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>{rank.icon} {rank.name} · 🔥 {viewingMember.streak||0} day streak</div>
@@ -3121,13 +3474,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                         <div style={{ width:32, fontSize:medal?24:16, textAlign:'center', color:'var(--muted)', fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>
                           {medal || (i+1)}
                         </div>
-                        <div style={{ width:42, height:42, borderRadius:'50%',
-                          background:`linear-gradient(135deg, ${rank.color}, ${rank.color}88)`,
-                          display:'flex', alignItems:'center', justifyContent:'center',
-                          fontSize:18, fontWeight:700, color:'#fff', flexShrink:0,
-                          boxShadow:`0 2px 12px ${rank.color}33` }}>
-                          {(m.full_name||'A').charAt(0).toUpperCase()}
-                        </div>
+                        <MemberAvatar member={m} size={42} rank={rank}/>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:16, fontWeight:700, color:'var(--text)' }}>{m.full_name||'Agent'}</div>
                           <div style={{ fontSize:11, color:'var(--muted)' }}>{rank.icon} {rank.name} {(m.streak||0)>0?`· 🔥 ${m.streak}`:''}</div>
@@ -3286,6 +3633,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
           </div>
         </div>
       )})()}
+
+      {/* Team logo crop modal */}
+      {logoCropSrc && (
+        <AvatarCropModal src={logoCropSrc} onConfirm={saveTeamLogo} onCancel={cancelLogoCrop}
+          title="Crop Team Logo" round={false}/>
+      )}
     </>
   )
 }

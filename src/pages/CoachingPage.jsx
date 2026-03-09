@@ -305,11 +305,15 @@ export default function CoachingPage({ onNavigate, theme, onToggleTheme }) {
                           background: note.pinned ? 'var(--gold3)' : 'var(--surface)',
                         }}>
                           <div style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
-                            <div style={{ width:32, height:32, borderRadius:'50%', background:`${c}18`,
-                              border:`1.5px solid ${c}33`, display:'flex', alignItems:'center',
-                              justifyContent:'center', fontSize:14, fontWeight:700, color:c, flexShrink:0 }}>
-                              {name.charAt(0).toUpperCase()}
-                            </div>
+                            {agent?.goals?.avatar_url ? (
+                              <img src={agent.goals.avatar_url} alt="" style={{ width:32, height:32, borderRadius:'50%', objectFit:'cover', flexShrink:0 }}/>
+                            ) : (
+                              <div style={{ width:32, height:32, borderRadius:'50%', background:`${c}18`,
+                                border:`1.5px solid ${c}33`, display:'flex', alignItems:'center',
+                                justifyContent:'center', fontSize:14, fontWeight:700, color:c, flexShrink:0 }}>
+                                {name.charAt(0).toUpperCase()}
+                              </div>
+                            )}
                             <div style={{ flex:1, minWidth:0 }}>
                               <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6, flexWrap:'wrap' }}>
                                 <span style={{ fontSize:10, padding:'2px 7px', borderRadius:4, fontWeight:700,
@@ -466,12 +470,16 @@ export default function CoachingPage({ onNavigate, theme, onToggleTheme }) {
                       borderLeft: submitted ? '3px solid var(--green)' : '3px solid var(--b2)',
                       opacity: submitted ? 1 : 0.65 }}>
                       <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom: submitted?14:0 }}>
-                        <div style={{ width:34, height:34, borderRadius:'50%',
-                          background:`linear-gradient(135deg,${rank.color},${rank.color}88)`,
-                          display:'flex', alignItems:'center', justifyContent:'center',
-                          fontSize:14, fontWeight:700, color:'#fff', flexShrink:0 }}>
-                          {(m.full_name||'?').charAt(0).toUpperCase()}
-                        </div>
+                        {m.goals?.avatar_url ? (
+                          <img src={m.goals.avatar_url} alt="" style={{ width:34, height:34, borderRadius:'50%', objectFit:'cover', flexShrink:0 }}/>
+                        ) : (
+                          <div style={{ width:34, height:34, borderRadius:'50%',
+                            background:`linear-gradient(135deg,${rank.color},${rank.color}88)`,
+                            display:'flex', alignItems:'center', justifyContent:'center',
+                            fontSize:14, fontWeight:700, color:'#fff', flexShrink:0 }}>
+                            {(m.full_name||'?').charAt(0).toUpperCase()}
+                          </div>
+                        )}
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:14, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.full_name||'Agent'}</div>
                           <div style={{ fontSize:11, color:'var(--muted)' }}>{submitted ? `Submitted ${new Date(sd.date).toLocaleDateString()}` : 'Not submitted yet'}</div>

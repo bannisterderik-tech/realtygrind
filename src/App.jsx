@@ -165,6 +165,25 @@ function fmtShortDate(dateStr) {
   return `${MONTHS[d.getMonth()]} ${d.getDate()}`
 }
 
+// Maps goals keys to habit IDs for daily target computation
+const GOAL_HABIT_MAP = {
+  prospecting:  'prospecting',
+  appointments: 'appointments',
+  showing:      'showing',
+}
+
+// Count remaining weekdays (Mon-Fri) from fromDate to end of month, inclusive
+function workingDaysRemaining(fromDate) {
+  const year = fromDate.getFullYear(), month = fromDate.getMonth()
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  let count = 0
+  for (let d = fromDate.getDate(); d <= lastDay; d++) {
+    const dow = new Date(year, month, d).getDay()
+    if (dow >= 1 && dow <= 5) count++
+  }
+  return Math.max(count, 1)
+}
+
 function getToday()  { const d=new Date(); return { week:Math.min(Math.floor((d.getDate()-1)/7),WEEKS-1), day:d.getDay() } }
 
 // Returns "YYYY-MM-DD" for a given (week_index, day_index) in the current month
@@ -945,7 +964,7 @@ function BuyersWeeklyModal({ buyerReps, offersMade, onClose }) {
 // ─── Pipeline section ─────────────────────────────────────────────────────────
 
 function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onStatusChange, showSource, statusOpts, onAdd, onRemove, userId,
-  expandedChecklist, setExpandedChecklist, onToggleChecklistItem, onAddChecklistItem, onRemoveChecklistItem, onUpdateChecklistDueDate }) {
+  expandedChecklist, setExpandedChecklist, onToggleChecklistItem, onAddChecklistItem, onRemoveChecklistItem, onUpdateChecklistDueDate, archiveOnRemove }) {
   const [addr,  setAddr]  = useState('')
   const [price, setPrice] = useState('')
   const [comm,  setComm]  = useState('')
@@ -968,10 +987,16 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
     const snapshot = rows
     setRows(prev => prev.filter(r => r.id !== row.id))
     if (row.id && !String(row.id).startsWith('tmp-')) {
-      const r = await safeDb(supabase.from('transactions').delete().eq('id', row.id).eq('user_id', userId))
-      if (!r.ok) { setRows(snapshot); return }
+      if (archiveOnRemove) {
+        // Soft-delete: archive the record so it still counts in monthly stats
+        const r = await safeDb(supabase.from('transactions').update({status:'archived'}).eq('id', row.id).eq('user_id', userId))
+        if (!r.ok) { setRows(snapshot); return }
+      } else {
+        const r = await safeDb(supabase.from('transactions').delete().eq('id', row.id).eq('user_id', userId))
+        if (!r.ok) { setRows(snapshot); return }
+      }
     }
-    if (onRemove) onRemove(row)
+    if (!archiveOnRemove && onRemove) onRemove(row)
   }
 
   function update(id, f, v) { setRows(prev => prev.map(r => r.id===id ? {...r,[f]:v} : r)) }
@@ -1390,6 +1415,7 @@ function Dashboard({ theme, onToggleTheme }) {
     _setPage(p)
     requestAnimationFrame(() => { navigatingRef.current = false })
   }, [])
+  const [primaryTab, setPrimaryTab] = useState('calendar')
   const [tab,  setTab]  = useState('today')
   const [dbLoading, setDbLoading] = useState(true)
   const [dbError,   setDbError]   = useState(null)
@@ -1462,6 +1488,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [wentPendingCount, setWentPendingCount] = useState(0) // historical — includes archived
   const [offersMadeCount, setOffersMadeCount] = useState(0) // historical — includes archived
   const [offersReceivedCount, setOffersReceivedCount] = useState(0) // historical — includes archived
+  const [closedCount,    setClosedCount]    = useState(0) // historical — includes archived (for goal tracking)
 
   const [showCommSummary, setShowCommSummary] = useState(false)
   const [showPrint,        setShowPrint]        = useState(false)
@@ -1481,16 +1508,16 @@ function Dashboard({ theme, onToggleTheme }) {
   const [plannerTaskForm,     setPlannerTaskForm]     = useState(null)  // { wi, di } | null
   const [plannerForm,         setPlannerForm]         = useState({ label:'', icon:'🏠', xp:15 })
   const [plannerDeletedTasks, setPlannerDeletedTasks] = useState([])    // day-specific tasks deleted this session
-  // Google Calendar
-  const [gcalToken, setGcalToken] = useState(() => {
-    try { const s = JSON.parse(localStorage.getItem('gcal_token')); if (s?.expiry > Date.now()) return s.token } catch {} return null
-  })
+  // Google Calendar — server-side token management (no localStorage)
+  const [gcalConnected, setGcalConnected] = useState(false)
   const [gcalSyncing, setGcalSyncing] = useState(false)
 
   const [standup,       setStandup]       = useState({ q1:'', q2:'', q3:'' })
   const [standupDone,   setStandupDone]   = useState(false)
   const [standupSaving, setStandupSaving] = useState(false)
   const [pipelineView, setPipelineView] = useState('list')   // 'list' | 'board'
+  const [listingsPipelineView, setListingsPipelineView] = useState('list')
+  const [buyersPipelineView, setBuyersPipelineView] = useState('list')
   const [showGci, setShowGci] = useState(false)
   const [clientUpdateListing, setClientUpdateListing] = useState(null)
   const [clientUpdateNotes, setClientUpdateNotes] = useState('')
@@ -1616,11 +1643,13 @@ function Dashboard({ theme, onToggleTheme }) {
         return row
       })
       setPendingDeals(pendingRows)
-      setClosedDeals(   txRes.data.filter(t=>t.type==='closed').map(m))
-      // Historical counts — include archived rows so stats survive forward moves
-      setOffersMadeCount(txRes.data.filter(t=>t.type==='offer_made').length)
-      setOffersReceivedCount(txRes.data.filter(t=>t.type==='offer_received').length)
-      setWentPendingCount(txRes.data.filter(t=>t.type==='pending').length)
+      setClosedDeals(   txRes.data.filter(t=>t.type==='closed' && active(t)).map(m))
+      setClosedCount(txRes.data.filter(t=>t.type==='closed').length)
+      // Historical counts — a deal that moved forward still counts toward its earlier stage
+      // closedFrom='Offers' means the deal was once an offer; checklist presence means it was pending
+      setOffersMadeCount(txRes.data.filter(t=>t.type==='offer_made'||(t.closed_from==='Offers'&&(t.deal_side==='buyer'||(!t.deal_side&&t.closed_from!=='Listing')))).length)
+      setOffersReceivedCount(txRes.data.filter(t=>t.type==='offer_received'||(t.closed_from==='Offers'&&(t.deal_side==='seller'||!t.deal_side))).length)
+      setWentPendingCount(txRes.data.filter(t=>t.type==='pending'||(t.type==='closed'&&Array.isArray(t.checklist)&&t.checklist.length>0)).length)
     }
 
     if (profRes.data) {
@@ -1790,6 +1819,37 @@ function Dashboard({ theme, onToggleTheme }) {
   async function saveProfileHabitPrefs(newPrefs) {
     setHabitPrefs(newPrefs)
     await safeDb(supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id))
+  }
+
+  // ── Task reordering ────────────────────────────────────────────────────────
+  function getOrderedTasksForDate(dateStr, recHabits, daySpecific) {
+    const all = [...recHabits, ...daySpecific.map(t => ({ ...t, isDaySpecific: true }))]
+    const dayOrder = habitPrefs.dayOrder?.[dateStr]
+    if (dayOrder?.length) {
+      const idx = {}; dayOrder.forEach((id, i) => idx[id] = i)
+      all.sort((a, b) => (idx[a.id] ?? 999) - (idx[b.id] ?? 999))
+    }
+    return all
+  }
+
+  function moveTask(dateStr, orderedList, taskId, direction) {
+    const ids = orderedList.map(t => t.id)
+    const i = ids.indexOf(taskId)
+    if (i < 0) return
+    const j = i + direction
+    if (j < 0 || j >= ids.length) return
+    ;[ids[i], ids[j]] = [ids[j], ids[i]]
+    // Also update the global recurring order for non-day-specific items
+    const recurringIds = ids.filter(id => {
+      const t = orderedList.find(x => x.id === id)
+      return t && !t.isDaySpecific
+    })
+    const newPrefs = {
+      ...habitPrefs,
+      order: recurringIds,
+      dayOrder: { ...(habitPrefs.dayOrder || {}), [dateStr]: ids }
+    }
+    saveProfileHabitPrefs(newPrefs)
   }
 
   function skipHabitToday(hid) {
@@ -2028,62 +2088,73 @@ function Dashboard({ theme, onToggleTheme }) {
     setCustomTasks(prev => [...prev, { ...task }])
   }
 
-  // ── Google Calendar ────────────────────────────────────────────────────────
+  // ── Google Calendar (fully server-side — no client tokens) ────────────────
+
+  // Check connection status on mount and auto-sync if connected
+  useEffect(() => {
+    if (!user?.id) return
+    supabase.functions.invoke('google-auth', { body: { action: 'status' } })
+      .then(({ data }) => {
+        if (data?.connected) { setGcalConnected(true); syncGoogleCalendar() }
+      })
+      .catch(e => console.error('gcal status check error:', e))
+  }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function connectGoogleCalendar() {
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
     if (!clientId) { showToast('Set VITE_GOOGLE_CLIENT_ID in .env'); return }
     if (!window.google?.accounts?.oauth2) { showToast('Google API still loading — try again'); return }
-    const client = window.google.accounts.oauth2.initTokenClient({
+    const client = window.google.accounts.oauth2.initCodeClient({
       client_id: clientId,
       scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly',
+      ux_mode: 'popup',
       callback: async (resp) => {
         if (resp.error) { showToast('Google Calendar auth failed'); return }
-        const token = resp.access_token
-        localStorage.setItem('gcal_token', JSON.stringify({ token, expiry: Date.now() + resp.expires_in * 1000 }))
-        setGcalToken(token)
-        await syncGoogleCalendar(token)
+        try {
+          const { data, error } = await supabase.functions.invoke('google-auth', {
+            body: { action: 'exchange', code: resp.code }
+          })
+          if (error) { showToast('Failed to connect Google Calendar'); return }
+          if (data?.error === 'no_refresh_token') {
+            showToast('Please disconnect Google Calendar first, then reconnect'); return
+          }
+          if (data?.error) { showToast(data.error); return }
+          setGcalConnected(true)
+          await syncGoogleCalendar()
+        } catch (e) { console.error('Google auth exchange error:', e); showToast('Failed to connect Google Calendar') }
       }
     })
-    client.requestAccessToken()
+    client.requestCode()
   }
 
-  function disconnectGoogleCalendar() {
-    localStorage.removeItem('gcal_token')
-    setGcalToken(null)
+  async function disconnectGoogleCalendar() {
+    setGcalConnected(false)
+    try { await supabase.functions.invoke('google-auth', { body: { action: 'disconnect' } }) }
+    catch (e) { console.error('Google disconnect error:', e) }
     showToast('Google Calendar disconnected')
   }
 
-  async function syncGoogleCalendar(token) {
-    if (!token || gcalSyncing) return
+  async function syncGoogleCalendar() {
+    if (gcalSyncing) return
     setGcalSyncing(true)
     try {
-      const now = new Date()
-      const timeMin = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-      const timeMax = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString()
-      const res = await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime&maxResults=250`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
-      if (!res.ok) {
-        if (res.status === 401) { localStorage.removeItem('gcal_token'); setGcalToken(null); showToast('Session expired — reconnect Google Calendar') }
-        else showToast('Failed to fetch calendar events')
+      const { data, error } = await supabase.functions.invoke('google-auth', { body: { action: 'sync' } })
+      if (error || data?.error) {
+        if (data?.error === 'not_connected' || data?.error === 'token_revoked') {
+          setGcalConnected(false)
+          showToast('Google Calendar disconnected — please reconnect')
+        } else { showToast('Failed to sync calendar') }
         return
       }
-      const data = await res.json()
-      const events = data.items || []
+      const events = data.events || []
       console.log('[GCal] Fetched', events.length, 'events from Google Calendar')
-      // Build batch of events to sync via RPC (bypasses PostgREST schema cache)
-      const batch = []
-      for (const event of events) {
-        if (!event.summary) continue
-        const dateStr = event.start?.date || (event.start?.dateTime ? event.start.dateTime.slice(0, 10) : null)
-        if (!dateStr) continue
-        const timeStr = event.start?.dateTime ? new Date(event.start.dateTime).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }) : null
-        batch.push({ label: timeStr ? `${timeStr} — ${event.summary}` : event.summary, specific_date: dateStr, google_event_id: event.id })
-      }
-      const { data: inserted, error } = await supabase.rpc('sync_gcal_events', { events: batch })
-      if (error) { console.error('[GCal] RPC error:', error.message); showToast('Sync failed: ' + error.message); return }
+      const batch = events.map(e => ({
+        label: e.time ? `${e.time} — ${e.summary}` : e.summary,
+        specific_date: e.date,
+        google_event_id: e.google_event_id,
+      }))
+      const { data: inserted, error: rpcErr } = await supabase.rpc('sync_gcal_events', { events: batch })
+      if (rpcErr) { console.error('[GCal] RPC error:', rpcErr.message); showToast('Sync failed: ' + rpcErr.message); return }
       const rows = inserted || []
       if (rows.length > 0) {
         setCustomTasks(prev => [...prev, ...rows.map(r => ({ id:r.id, label:r.label, icon:r.icon, xp:r.xp, isDefault:false, specificDate:r.specific_date, googleEventId:r.google_event_id }))])
@@ -2095,18 +2166,14 @@ function Dashboard({ theme, onToggleTheme }) {
   }
 
   async function addToGoogleCalendar(task, dateStr) {
-    const token = gcalToken
-    if (!token) { connectGoogleCalendar(); return }
+    if (!gcalConnected) { connectGoogleCalendar(); return }
     try {
-      const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ summary: task.label, start: { date: dateStr }, end: { date: dateStr }, description: `RealtyGrind task — ${task.xp} XP` }),
+      const { data, error } = await supabase.functions.invoke('google-auth', {
+        body: { action: 'add_event', summary: task.label, date: dateStr, description: `RealtyGrind task — ${task.xp} XP` }
       })
-      if (!res.ok) {
-        if (res.status === 401) { localStorage.removeItem('gcal_token'); setGcalToken(null); showToast('Session expired — reconnect') }
-        else showToast('Failed to add to Google Calendar')
-        return
+      if (error || data?.error) {
+        if (data?.error === 'not_connected') { setGcalConnected(false); showToast('Please reconnect Google Calendar'); return }
+        showToast('Failed to add to Google Calendar'); return
       }
       showToast(`Added "${task.label}" to Google Calendar`, 'success')
     } catch (e) { console.error('addToGoogleCalendar error:', e); showToast('Failed to add to calendar') }
@@ -2146,40 +2213,50 @@ function Dashboard({ theme, onToggleTheme }) {
     }
   }
 
+  // ── Pipeline transition helpers ──────────────────────────────────────────
+  // Single-record model: each deal is ONE row in the transactions table whose
+  // `type` field is updated as it moves through stages.  No duplicate records,
+  // no archiving, no ghost data.
+
+  function markListingClosed(address) {
+    const addr = (address||'').toLowerCase()
+    if (!addr) return
+    const listing = listings.find(l=>l.status!=='closed'&&(l.address||'').toLowerCase()===addr)
+    if (listing) updateListing(listing.id, 'status', 'closed')
+  }
+
   async function handleOfferStatus(row, newStatus, srcSetter) {
-    // Infer deal side from context (offers made = buyer side, offers received = seller side)
     const inferredSide = srcSetter === setOffersReceived ? 'seller' : 'buyer'
     if (newStatus === 'pending') {
-      // Move forward: archive source (preserves stat count), create Went Pending record
-      const data = await dbInsert('pending', row, 'Offers', row.dealSide || inferredSide, row.originalLeadSource || row.leadSource || null)
-      if (data) {
-        const cl = DEFAULT_CHECKLIST.map(i=>({...i}))
-        setPendingDeals(prev=>[...prev,{...row,id:data.id,status:'active',closedFrom:'Offers',dealSide:row.dealSide||inferredSide,originalLeadSource:row.originalLeadSource||row.leadSource||'',checklist:cl}])
-        safeDb(supabase.from('transactions').update({checklist:cl}).eq('id',data.id))
-        srcSetter(prev => prev.filter(r => r.id !== row.id))
-        await dbArchive(row.id)
+      const cl = DEFAULT_CHECKLIST.map(i=>({...i}))
+      const updateObj = { type:'pending', closed_from:'Offers', checklist:cl }
+      if (row.id && !String(row.id).startsWith('tmp-')) {
+        const {error} = await supabase.from('transactions').update(updateObj).eq('id',row.id).eq('user_id',user.id)
+        if (error) { console.error('transition error:', error.message); showToast('Failed to update deal'); return }
       }
+      srcSetter(prev => prev.filter(r => r.id !== row.id))
+      setPendingDeals(prev=>[...prev,{...row,closedFrom:'Offers',dealSide:row.dealSide||inferredSide,checklist:cl}])
       setWentPendingCount(prev => prev + 1)
       await awardPipelineXp('went_pending', '#f59e0b')
     } else if (newStatus === 'closed') {
-      // Move forward: archive source, create Closed record
-      const data = await dbInsert('closed', row, 'Offers', row.dealSide || inferredSide, row.originalLeadSource || row.leadSource || null)
-      if (data) {
-        setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:'Offers',dealSide:row.dealSide||inferredSide,originalLeadSource:row.originalLeadSource||row.leadSource||''}])
-        srcSetter(prev => prev.filter(r => r.id !== row.id))
-        await dbArchive(row.id)
-        const comm = resolveCommission(row.commission, row.price)
-        setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
+      const updateObj = { type:'closed', status:'closed', closed_from:row.closedFrom||'Offers' }
+      if (row.id && !String(row.id).startsWith('tmp-')) {
+        const {error} = await supabase.from('transactions').update(updateObj).eq('id',row.id).eq('user_id',user.id)
+        if (error) { console.error('transition error:', error.message); showToast('Failed to update deal'); return }
       }
+      srcSetter(prev => prev.filter(r => r.id !== row.id))
+      setClosedDeals(prev=>[...prev,{...row,status:'closed',closedFrom:row.closedFrom||'Offers',dealSide:row.dealSide||inferredSide}])
+      setClosedCount(prev => prev + 1)
+      markListingClosed(row.address)
+      const comm = resolveCommission(row.commission, row.price)
+      setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
       await awardPipelineXp('closed', '#10b981')
     } else if (newStatus === 'declined') {
-      // Decline offer: fully delete (not a forward move)
       srcSetter(prev => prev.filter(r => r.id !== row.id))
       await dbDelete(row.id)
     } else if (newStatus === 'countered') {
-      // Counter: prompt for new price, update in place
       const newPrice = window.prompt('Enter counter-offer price:', row.price || '')
-      if (newPrice === null) return // cancelled
+      if (newPrice === null) return
       srcSetter(prev => prev.map(r => r.id === row.id ? {...r, price: newPrice} : r))
       if (row.id && !String(row.id).startsWith('tmp-')) {
         await safeDb(supabase.from('transactions').update({ price: newPrice }).eq('id', row.id).eq('user_id', user.id))
@@ -2189,15 +2266,17 @@ function Dashboard({ theme, onToggleTheme }) {
 
   async function handlePendingStatus(row, newStatus) {
     if (newStatus === 'closed') {
-      // Move forward: archive pending, create Closed record (preserves went-pending count)
-      const data = await dbInsert('closed', row, row.closedFrom||'Pending', row.dealSide||null, row.originalLeadSource||row.leadSource||null)
-      if (data) {
-        setClosedDeals(prev=>[...prev,{...row,id:data.id,status:'closed',closedFrom:row.closedFrom||'Pending',dealSide:row.dealSide||'',originalLeadSource:row.originalLeadSource||row.leadSource||''}])
-        setPendingDeals(prev => prev.filter(r => r.id !== row.id))
-        await dbArchive(row.id)
-        const comm = resolveCommission(row.commission, row.price)
-        setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
+      const updateObj = { type:'closed', status:'closed' }
+      if (row.id && !String(row.id).startsWith('tmp-')) {
+        const {error} = await supabase.from('transactions').update(updateObj).eq('id',row.id).eq('user_id',user.id)
+        if (error) { console.error('transition error:', error.message); showToast('Failed to update deal'); return }
       }
+      setPendingDeals(prev => prev.filter(r => r.id !== row.id))
+      setClosedDeals(prev=>[...prev,{...row,status:'closed'}])
+      setClosedCount(prev => prev + 1)
+      markListingClosed(row.address)
+      const comm = resolveCommission(row.commission, row.price)
+      setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
       await awardPipelineXp('closed', '#10b981')
     }
   }
@@ -2330,26 +2409,51 @@ function Dashboard({ theme, onToggleTheme }) {
     const lPrice = listing.price||''
     const lComm  = listing.commission||''
     const lSource = listing.leadSource||null
+    const addr = (listing.address||'').toLowerCase()
     if (newStatus === 'pending') {
-      // Listing stays with status change, Went Pending entry created
       await updateListing(listing.id, 'status', 'pending')
-      const data = await dbInsert('pending', {address:listing.address, price:lPrice, commission:lComm}, 'Listing', 'seller', lSource)
-      if (data) {
+      // If an offer_received already exists for this address, promote it
+      const existingOffer = offersReceived.find(d=>(d.address||'').toLowerCase()===addr)
+      if (existingOffer) {
         const cl = DEFAULT_CHECKLIST.map(i=>({...i}))
-        setPendingDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'active',closedFrom:'Listing',dealSide:'seller',originalLeadSource:lSource||'',checklist:cl}])
-        safeDb(supabase.from('transactions').update({checklist:cl}).eq('id',data.id))
+        await supabase.from('transactions').update({type:'pending',closed_from:'Listing',checklist:cl}).eq('id',existingOffer.id).eq('user_id',user.id)
+        setOffersReceived(prev=>prev.filter(r=>r.id!==existingOffer.id))
+        setPendingDeals(prev=>[...prev,{...existingOffer,closedFrom:'Listing',checklist:cl}])
+      } else {
+        const data = await dbInsert('pending', {address:listing.address, price:lPrice, commission:lComm}, 'Listing', 'seller', lSource)
+        if (data) {
+          const cl = DEFAULT_CHECKLIST.map(i=>({...i}))
+          setPendingDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'active',closedFrom:'Listing',dealSide:'seller',originalLeadSource:lSource||'',checklist:cl}])
+          safeDb(supabase.from('transactions').update({checklist:cl}).eq('id',data.id))
+        }
       }
       setWentPendingCount(prev => prev + 1)
       await awardPipelineXp('went_pending', '#f59e0b')
     } else if (newStatus === 'closed') {
-      // Listing stays with 'closed' status, Closed entry created
       await updateListing(listing.id, 'status', 'closed')
-      const data = await dbInsert('closed', {address:listing.address, price:lPrice, commission:lComm}, 'Listing', 'seller', lSource)
-      if (data) {
-        setClosedDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'closed',closedFrom:'Listing',dealSide:'seller',originalLeadSource:lSource||''}])
-        const comm = resolveCommission(lComm, lPrice)
-        setCelebration({ address:listing.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (lComm||''), newComm:comm })
+      // If a pending deal exists for this address, promote it to closed
+      const existingPending = pendingDeals.find(d=>(d.address||'').toLowerCase()===addr)
+      if (existingPending) {
+        await supabase.from('transactions').update({type:'closed',status:'closed'}).eq('id',existingPending.id).eq('user_id',user.id)
+        setPendingDeals(prev=>prev.filter(r=>r.id!==existingPending.id))
+        setClosedDeals(prev=>[...prev,{...existingPending,status:'closed'}])
+      } else {
+        // Check offers too
+        const existingOffer = offersReceived.find(d=>(d.address||'').toLowerCase()===addr)
+        if (existingOffer) {
+          await supabase.from('transactions').update({type:'closed',status:'closed',closed_from:'Listing'}).eq('id',existingOffer.id).eq('user_id',user.id)
+          setOffersReceived(prev=>prev.filter(r=>r.id!==existingOffer.id))
+          setClosedDeals(prev=>[...prev,{...existingOffer,status:'closed',closedFrom:'Listing'}])
+        } else {
+          const data = await dbInsert('closed', {address:listing.address, price:lPrice, commission:lComm}, 'Listing', 'seller', lSource)
+          if (data) {
+            setClosedDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'closed',closedFrom:'Listing',dealSide:'seller',originalLeadSource:lSource||''}])
+          }
+        }
       }
+      setClosedCount(prev => prev + 1)
+      const comm = resolveCommission(lComm, lPrice)
+      setCelebration({ address:listing.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (lComm||''), newComm:comm })
       await awardPipelineXp('closed', '#10b981')
     }
   }
@@ -2511,6 +2615,36 @@ function Dashboard({ theme, onToggleTheme }) {
     return { totalHabitChecks, totalPossible, monthPct, viewChecks, viewPct, totalProspecting, totalAppts, totalShowings, totalListings, totalBuyerReps, closedVol, closedComm, viewHabitXp, sessionPipelineXp, viewXp: viewHabitXp + sessionPipelineXp }
   }, [habits, counters, builtInEffective, viewBuiltInActive, viewWeek, viewDayIdx, listings, buyerReps, closedDeals, sessionPipeline, lastDayOfMonth])
   const { totalHabitChecks, monthPct, viewChecks: todayChecks, viewPct: todayPct, totalProspecting, totalAppts, totalShowings, totalListings, totalBuyerReps, closedVol, closedComm, viewHabitXp: todayHabitXp, sessionPipelineXp, viewXp: todayXp } = dashStats
+
+  // ── Daily targets from monthly goals (auto-redistributing) ─────────────
+  // Uses start-of-day totals so the daily target stays stable as you log today.
+  // If you skip a habit for today, today is excluded from remaining days so the
+  // quota redistributes immediately across future working days.
+  const dailyTargets = useMemo(() => {
+    const targets = {}
+    const remaining = workingDaysRemaining(new Date())
+    const skippedToday = (habitPrefs.skipped || {})[todayDate] || []
+    const totals = { prospecting: totalProspecting, appointments: totalAppts, showing: totalShowings }
+    Object.entries(GOAL_HABIT_MAP).forEach(([goalKey, habitId]) => {
+      const monthlyGoal = parseInt(goals?.[goalKey])
+      if (!monthlyGoal || monthlyGoal <= 0) return
+      const totalNow = totals[goalKey] || 0
+      const todayCount = counters[`${habitId}-${todayWeek}-${todayDay}`] || 0
+      const soFarBeforeToday = totalNow - todayCount
+      // Monthly goal already met (including today's work)?
+      if (totalNow >= monthlyGoal) {
+        targets[habitId] = { daily: 0, done: true, monthlyGoal, soFar: totalNow }
+      } else {
+        // If this habit is skipped for today, exclude today from remaining days
+        const isSkippedToday = skippedToday.includes(String(habitId))
+        const effectiveRemaining = isSkippedToday ? Math.max(remaining - 1, 1) : remaining
+        // Daily target based on what was left at START of today (stable as you log)
+        const leftAtStartOfDay = Math.max(0, monthlyGoal - soFarBeforeToday)
+        targets[habitId] = { daily: Math.ceil(leftAtStartOfDay / effectiveRemaining), done: false, monthlyGoal, soFar: totalNow }
+      }
+    })
+    return targets
+  }, [goals, totalProspecting, totalAppts, totalShowings, counters, todayWeek, todayDay, habitPrefs.skipped, todayDate])
 
   // ── GCI Dashboard stats ──────────────────────────────────────────────────
   const gciStats = useMemo(() => {
@@ -2718,8 +2852,19 @@ function Dashboard({ theme, onToggleTheme }) {
             style={{ fontSize:11, fontWeight:700, color:planBadge.color, letterSpacing:.4 }}>
             {planBadge.label}
           </button>
-          <button className={`nav-btn${page==='profile'?' active':''}`} onClick={()=>setPage('profile')}>
-            {profileFullName?.split(' ')[0]||'Profile'}
+          <button className={`nav-btn${page==='profile'?' active':''}`} onClick={()=>setPage('profile')}
+            style={{ display:'flex', alignItems:'center', gap:6 }}>
+            {profile?.goals?.avatar_url ? (
+              <img src={profile.goals.avatar_url} alt="" style={{ width:24, height:24, borderRadius:'50%', objectFit:'cover' }}/>
+            ) : (
+              <div style={{ width:24, height:24, borderRadius:'50%',
+                background:`linear-gradient(135deg, ${rank.color}, ${rank.color}88)`,
+                display:'flex', alignItems:'center', justifyContent:'center',
+                fontSize:11, fontWeight:700, color:'#fff', flexShrink:0 }}>
+                {(profileFullName||'A').charAt(0).toUpperCase()}
+              </div>
+            )}
+            <span className="mob-hide">{profileFullName?.split(' ')[0]||'Profile'}</span>
           </button>
           <button className="btn-ghost mob-hide" style={{ background:'transparent', border:'1px solid rgba(255,255,255,.09)', color:'var(--nav-sub)', fontSize:12 }}
             onClick={()=>supabase.auth.signOut()}>Sign out</button>
@@ -2863,6 +3008,19 @@ function Dashboard({ theme, onToggleTheme }) {
                     fontFamily:"'JetBrains Mono',monospace" }}>{streak}-day streak</span>
                 </div>
               )}
+              {(() => {
+                const slk = profile?.teams?.team_prefs?.slack_url
+                return slk ? (
+                  <a href={slk} target="_blank" rel="noopener noreferrer"
+                    style={{ display:'flex', alignItems:'center', gap:5, padding:'4px 12px',
+                      background:'rgba(97,31,105,.1)', border:'1px solid rgba(97,31,105,.25)', borderRadius:20,
+                      textDecoration:'none', cursor:'pointer', transition:'all .15s' }}>
+                    <span style={{ fontSize:12 }}>💬</span>
+                    <span style={{ fontSize:11, fontWeight:700, color:'#611f69',
+                      fontFamily:"'JetBrains Mono',monospace" }}>Slack</span>
+                  </a>
+                ) : null
+              })()}
             </div>
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:18, flexShrink:0 }}>
@@ -2883,35 +3041,51 @@ function Dashboard({ theme, onToggleTheme }) {
             accent={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'}/>
           <StatCard icon="📅" label="Month"        value={`${monthPct}%`}   color="var(--gold)"  sub={`${totalHabitChecks} checks`}/>
           <StatCard icon="📞" label="Calls"         value={totalProspecting} color="var(--gold)"
-            sub={goals?.prospecting ? `${totalProspecting}/${goals.prospecting} goal` : 'this month'}
+            sub={goals?.prospecting ? `${totalProspecting}/${goals.prospecting} goal${dailyTargets.prospecting?.daily ? ` · ${dailyTargets.prospecting.daily}/day` : ''}` : 'this month'}
             accent={goals?.prospecting && totalProspecting>=goals.prospecting ? '#10b981' : undefined}/>
           <StatCard icon="📅" label="Appointments" value={totalAppts}        color="var(--green)"
-            sub={goals?.appointments ? `${totalAppts}/${goals.appointments} goal` : 'this month'}
+            sub={goals?.appointments ? `${totalAppts}/${goals.appointments} goal${dailyTargets.appointments?.daily ? ` · ${dailyTargets.appointments.daily}/day` : ''}` : 'this month'}
             accent={goals?.appointments && totalAppts>=goals.appointments ? '#10b981' : undefined}/>
           <StatCard icon="🔑" label="Showings"      value={totalShowings}    color="var(--blue)"
-            sub={goals?.showing ? `${totalShowings}/${goals.showing} goal` : undefined}
+            sub={goals?.showing ? `${totalShowings}/${goals.showing} goal${dailyTargets.showing?.daily ? ` · ${dailyTargets.showing.daily}/day` : ''}` : undefined}
             accent={goals?.showing && totalShowings>=goals.showing ? '#3b82f6' : undefined}/>
-          <StatCard icon="🏡" label="Listed"        value={totalListings}         color="var(--purple)"/>
-          <StatCard icon="🤝" label="Buyer Reps"   value={totalBuyerReps}        color="var(--blue)"/>
+          <StatCard icon="🏡" label="Listed"        value={totalListings}         color="var(--purple)"
+            sub={goals?.listings ? `${totalListings}/${goals.listings} goal` : undefined}
+            accent={goals?.listings && totalListings>=goals.listings ? '#8b5cf6' : undefined}/>
+          <StatCard icon="🤝" label="Buyer Reps"   value={totalBuyerReps}        color="var(--blue)"
+            sub={goals?.buyers ? `${totalBuyerReps}/${goals.buyers} goal` : undefined}
+            accent={goals?.buyers && totalBuyerReps>=goals.buyers ? '#3b82f6' : undefined}/>
           <StatCard icon="📤" label="Offers Made"   value={offersMadeCount}       color="var(--blue)"/>
           <StatCard icon="📥" label="Offers Rec'd"  value={offersReceivedCount}   color="var(--purple)"/>
           <StatCard icon="⏳" label="Went Pending"  value={wentPendingCount}      color="var(--gold2)"/>
-          <StatCard icon="🎉" label="Closed"         value={closedDeals.length}    color="var(--green)"
-            sub={goals?.closed ? `${closedDeals.length}/${goals.closed} goal${closedVol>0?' · '+fmtMoney(closedVol):''}` : closedVol>0?fmtMoney(closedVol):null}
-            accent={goals?.closed && closedDeals.length>=goals.closed ? '#10b981' : undefined}/>
+          <StatCard icon="🎉" label="Closed"         value={closedCount}    color="var(--green)"
+            sub={goals?.closed ? `${closedCount}/${goals.closed} goal${closedVol>0?' · '+fmtMoney(closedVol):''}` : closedVol>0?fmtMoney(closedVol):null}
+            accent={goals?.closed && closedCount>=goals.closed ? '#10b981' : undefined}/>
           {showCommSummary && closedComm>0 && <StatCard icon="💰" label="Commission" value={fmtMoney(closedComm)||'$0'} color="var(--green)" accent="#10b981"/>}
         </div>
 
-        {/* ── Tabs ──────────────────────────────────────────── */}
+        {/* ── Primary Tabs ────────────────────────────────── */}
+        <div className="primary-tabs">
+          {[{id:'calendar',l:'📅 Calendar'},{id:'listings',l:'🏡 Listings',count:listings.length},{id:'buyers',l:'🤝 Buyers',count:buyerReps.length}].map(t=>(
+            <button key={t.id} className={`primary-tab${primaryTab===t.id?' on':''}`} onClick={()=>setPrimaryTab(t.id)}>
+              {t.l}{t.count!=null && <span className="ptab-count">{t.count}</span>}
+            </button>
+          ))}
+        </div>
+
+        {/* ══ CALENDAR TAB ═════════════════════════════════════ */}
+        {primaryTab==='calendar' && (<>
+
+        {/* ── Sub-Tabs ─────────────────────────────────────── */}
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
           <div className="tabs" style={{ flex:1 }}>
             {[{id:'today',l:'Today'},{id:'weekly',l:'Week View'},{id:'heatmap',l:'Heatmap'}].map(t=>(
               <button key={t.id} className={`tab-item${tab===t.id?' on':''}`} onClick={()=>setTab(t.id)}>{t.l}</button>
             ))}
           </div>
-          {gcalToken ? (
+          {gcalConnected ? (
             <div style={{ display:'flex', gap:5 }}>
-              <button onClick={() => syncGoogleCalendar(gcalToken)} disabled={gcalSyncing}
+              <button onClick={() => syncGoogleCalendar()} disabled={gcalSyncing}
                 title="Sync Google Calendar"
                 style={{ background:'rgba(66,133,244,.1)', color:'#4285f4', border:'1px solid rgba(66,133,244,.3)',
                   borderRadius:7, cursor:gcalSyncing?'wait':'pointer', fontSize:11, fontWeight:600,
@@ -3040,9 +3214,14 @@ function Dashboard({ theme, onToggleTheme }) {
                 </div>
               </div>
 
-              {/* ── Unified task list: built-ins + custom defaults (ordered) ── */}
+              {/* ── Unified ordered task list (all types) ──── */}
+              {(()=>{
+                const daySpecific = customTasks.filter(t => !t.isDefault && t.specificDate === viewDateStr)
+                const unifiedList = getOrderedTasksForDate(viewDateStr, effectiveView, daySpecific)
+                return (
+                  <>
               <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
-                {effectiveView.map(h => {
+                {unifiedList.map((h, idx) => {
                   if (h.isBuiltIn) {
                     const done = habits[h.id][viewWeek]?.[viewDayIdx]
                     const cs   = CAT[h.cat]
@@ -3050,6 +3229,10 @@ function Dashboard({ theme, onToggleTheme }) {
                     const cnt  = counters[ckey]||0
                     return (
                       <div key={h.id} className={`habit-row${done?' done':''}`}>
+                        <div className="reorder-arrows">
+                          <button className="reorder-btn" disabled={idx===0} onClick={()=>moveTask(viewDateStr,unifiedList,h.id,-1)}>▲</button>
+                          <button className="reorder-btn" disabled={idx===unifiedList.length-1} onClick={()=>moveTask(viewDateStr,unifiedList,h.id,1)}>▼</button>
+                        </div>
                         <button className="chk" onClick={()=>toggleHabit(h.id,viewWeek,viewDayIdx)}
                           style={done?{background:cs.light,borderColor:cs.color}:{}}>
                           {done && (
@@ -3060,8 +3243,18 @@ function Dashboard({ theme, onToggleTheme }) {
                         </button>
                         <span style={{ fontSize:15, flexShrink:0 }}>{h.icon}</span>
                         <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
-                            textDecoration:done?'line-through':'none', transition:'all .15s' }}>{h.label}</div>
+                          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                            <span style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
+                              textDecoration:done?'line-through':'none', transition:'all .15s',
+                              overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1, minWidth:0 }}>{h.label}</span>
+                            {dailyTargets[h.id] && !dailyTargets[h.id].done && (
+                              <span style={{ fontSize:10, fontWeight:700, color:'var(--gold2)', flexShrink:0,
+                                fontFamily:"'JetBrains Mono',monospace" }}>{cnt||0}/{dailyTargets[h.id].daily}</span>
+                            )}
+                            {dailyTargets[h.id]?.done && (
+                              <span style={{ fontSize:9, fontWeight:700, color:'var(--green)', flexShrink:0 }}>✓ goal</span>
+                            )}
+                          </div>
                           <div style={{ fontSize:10, color:'var(--dim)' }}>
                             +{h.xp} XP{h.xpEach?` · +${h.xpEach} per ${h.unit||'extra'}`:''}
                           </div>
@@ -3094,7 +3287,7 @@ function Dashboard({ theme, onToggleTheme }) {
                         {h.counter && !done && (
                           <span style={{ fontSize:10, color:'var(--dim)', opacity:.45, flexShrink:0 }}>0 {h.unit||'×'}</span>
                         )}
-                        {gcalToken && !done && (
+                        {gcalConnected && !done && (
                           <button onClick={()=>addToGoogleCalendar(h, viewDateStr)} title="Add to Google Calendar"
                             style={{ background:'none', border:'none', cursor:'pointer', color:'#4285f4',
                               fontSize:13, padding:'2px 4px', lineHeight:1, flexShrink:0, opacity:.7 }}>📅</button>
@@ -3106,12 +3299,16 @@ function Dashboard({ theme, onToggleTheme }) {
                         )}
                       </div>
                     )
-                  } else {
-                    // Custom default task (in unified order)
+                  } else if (h.isDaySpecific) {
+                    // Day-specific task (today only / gcal event)
                     const ckey = `${h.id}-${viewWeek}-${viewDayIdx}`
                     const done = !!customDone[ckey]
                     return (
                       <div key={h.id} className={`habit-row${done?' done':''}`}>
+                        <div className="reorder-arrows">
+                          <button className="reorder-btn" disabled={idx===0} onClick={()=>moveTask(viewDateStr,unifiedList,h.id,-1)}>▲</button>
+                          <button className="reorder-btn" disabled={idx===unifiedList.length-1} onClick={()=>moveTask(viewDateStr,unifiedList,h.id,1)}>▼</button>
+                        </div>
                         <button className="chk" onClick={()=>toggleCustomTask(h.id,viewWeek,viewDayIdx)}
                           style={done?{background:'rgba(6,182,212,.12)',borderColor:'#06b6d4'}:{}}>
                           {done && (
@@ -3123,14 +3320,54 @@ function Dashboard({ theme, onToggleTheme }) {
                         <span style={{ fontSize:15, flexShrink:0 }}>{h.icon}</span>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
-                            textDecoration:done?'line-through':'none', transition:'all .15s' }}>{h.label}</div>
+                            textDecoration:done?'line-through':'none', transition:'all .15s',
+                            overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{h.label}</div>
+                          <div style={{ fontSize:10, color:'var(--dim)' }}>+{h.xp} XP</div>
+                        </div>
+                        <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:500, flexShrink:0,
+                          background: h.googleEventId ? 'rgba(66,133,244,.1)' : 'rgba(245,158,11,.1)',
+                          color: h.googleEventId ? '#4285f4' : 'var(--gold2)',
+                          border: `1px solid ${h.googleEventId ? 'rgba(66,133,244,.25)' : 'rgba(245,158,11,.25)'}` }}>
+                          {h.googleEventId ? 'gcal' : 'today'}
+                        </span>
+                        {gcalConnected && !h.googleEventId && !done && (
+                          <button onClick={()=>addToGoogleCalendar(h, viewDateStr)} title="Add to Google Calendar"
+                            style={{ background:'none', border:'none', cursor:'pointer', color:'#4285f4',
+                              fontSize:13, padding:'2px 4px', lineHeight:1, flexShrink:0, opacity:.7 }}>📅</button>
+                        )}
+                        <button className="btn-del" onClick={()=>deleteCustomTask(h.id)}>✕</button>
+                      </div>
+                    )
+                  } else {
+                    // Custom default task
+                    const ckey = `${h.id}-${viewWeek}-${viewDayIdx}`
+                    const done = !!customDone[ckey]
+                    return (
+                      <div key={h.id} className={`habit-row${done?' done':''}`}>
+                        <div className="reorder-arrows">
+                          <button className="reorder-btn" disabled={idx===0} onClick={()=>moveTask(viewDateStr,unifiedList,h.id,-1)}>▲</button>
+                          <button className="reorder-btn" disabled={idx===unifiedList.length-1} onClick={()=>moveTask(viewDateStr,unifiedList,h.id,1)}>▼</button>
+                        </div>
+                        <button className="chk" onClick={()=>toggleCustomTask(h.id,viewWeek,viewDayIdx)}
+                          style={done?{background:'rgba(6,182,212,.12)',borderColor:'#06b6d4'}:{}}>
+                          {done && (
+                            <svg width="11" height="8" viewBox="0 0 11 8" fill="none">
+                              <path d="M1 4L4 7L10 1" stroke="#06b6d4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          )}
+                        </button>
+                        <span style={{ fontSize:15, flexShrink:0 }}>{h.icon}</span>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
+                            textDecoration:done?'line-through':'none', transition:'all .15s',
+                            overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{h.label}</div>
                           <div style={{ fontSize:10, color:'var(--dim)' }}>+{h.xp} XP</div>
                         </div>
                         <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:500, flexShrink:0,
                           background:'rgba(6,182,212,.12)', color:'#06b6d4', border:'1px solid rgba(6,182,212,.22)' }}>
                           custom
                         </span>
-                        {gcalToken && !done && (
+                        {gcalConnected && !done && (
                           <button onClick={()=>addToGoogleCalendar(h, viewDateStr)} title="Add to Google Calendar"
                             style={{ background:'none', border:'none', cursor:'pointer', color:'#4285f4',
                               fontSize:13, padding:'2px 4px', lineHeight:1, flexShrink:0, opacity:.7 }}>📅</button>
@@ -3146,51 +3383,6 @@ function Dashboard({ theme, onToggleTheme }) {
                 })}
               </div>
 
-              {/* ── Day-specific tasks (today only) ─────────── */}
-              {(()=>{
-                const dayTasks = customTasks.filter(t => !t.isDefault && t.specificDate === viewDateStr)
-                return (
-                  <>
-                    {dayTasks.length > 0 && (
-                      <div style={{ borderTop:'1px solid var(--b1)', marginTop:14, paddingTop:12,
-                        display:'flex', flexDirection:'column', gap:2 }}>
-                        <div className="label" style={{ marginBottom:6, fontSize:11 }}>{isViewingToday ? 'Today Only' : `${FULL_DAYS[viewDayIdx]} Only`}</div>
-                        {dayTasks.map(t => {
-                          const ckey = `${t.id}-${viewWeek}-${viewDayIdx}`
-                          const done = !!customDone[ckey]
-                          return (
-                            <div key={t.id} className={`habit-row${done?' done':''}`}>
-                              <button className="chk" onClick={()=>toggleCustomTask(t.id,viewWeek,viewDayIdx)}
-                                style={done?{background:'rgba(6,182,212,.12)',borderColor:'#06b6d4'}:{}}>
-                                {done && (
-                                  <svg width="11" height="8" viewBox="0 0 11 8" fill="none">
-                                    <path d="M1 4L4 7L10 1" stroke="#06b6d4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                  </svg>
-                                )}
-                              </button>
-                              <span style={{ fontSize:15, flexShrink:0 }}>{t.icon}</span>
-                              <div style={{ flex:1, minWidth:0 }}>
-                                <div style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
-                                  textDecoration:done?'line-through':'none', transition:'all .15s' }}>{t.label}</div>
-                                <div style={{ fontSize:10, color:'var(--dim)' }}>+{t.xp} XP</div>
-                              </div>
-                              <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:500, flexShrink:0,
-                                background: t.googleEventId ? 'rgba(66,133,244,.1)' : 'rgba(245,158,11,.1)',
-                                color: t.googleEventId ? '#4285f4' : 'var(--gold2)',
-                                border: `1px solid ${t.googleEventId ? 'rgba(66,133,244,.25)' : 'rgba(245,158,11,.25)'}` }}>
-                                {t.googleEventId ? 'gcal' : 'today'}
-                              </span>
-                              {gcalToken && !t.googleEventId && !done && (
-                                <button onClick={()=>addToGoogleCalendar(t, viewDateStr)} title="Add to Google Calendar"
-                                  style={{ background:'none', border:'none', cursor:'pointer', color:'#4285f4',
-                                    fontSize:13, padding:'2px 4px', lineHeight:1, flexShrink:0, opacity:.7 }}>📅</button>
-                              )}
-                              <button className="btn-del" onClick={()=>deleteCustomTask(t.id)}>✕</button>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
                     <button className="btn-outline" onClick={()=>setAddTaskModal(true)}
                       style={{ marginTop:12, fontSize:12, width:'100%', justifyContent:'center' }}>
                       + Add task for {isViewingToday ? 'today' : FULL_DAYS[viewDayIdx]}
@@ -3472,67 +3664,76 @@ function Dashboard({ theme, onToggleTheme }) {
                       <Ring pct={pct} size={42} color={dc} sw={4}/>
                     </div>
 
-                    {/* Built-in habits */}
+                    {/* Unified ordered task list */}
+                    {(()=>{
+                      const recHabits = [...activeBuiltIn.map(h=>({...h,isBuiltIn:true})), ...activeDefaults.map(t=>({...t,isBuiltIn:false}))]
+                      const weekUnified = getOrderedTasksForDate(dateStr, recHabits, activeDayTasks)
+                      return (
                     <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
-                      {activeBuiltIn.map(h=>{
-                        const checked = habits[h.id][wi][di]
-                        const cs = CAT[h.cat]
-                        return (
-                          <div key={h.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
-                            <button onClick={()=>toggleHabit(h.id,wi,di)} style={weekRowStyle(checked,cs)}>
-                              {weekCheckBox(checked, cs.color)}
-                              <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
-                                textDecoration:checked?'line-through':'none' }}>{h.icon} {h.label}</span>
-                              <span className="mono" style={{ fontSize:9, color:cs.color }}>+{h.xp}</span>
-                            </button>
-                            {weekRemoveBtn(()=>dateStr && skipHabitForDate(h.id, dateStr))}
-                          </div>
-                        )
-                      })}
-                    </div>
-
-                    {/* Default custom tasks */}
-                    {activeDefaults.length > 0 && (
-                      <div style={{ marginTop:6, display:'flex', flexDirection:'column', gap:3 }}>
-                        {activeDefaults.map(t=>{
-                          const checked = !!(customDone[`${t.id}-${wi}-${di}`])
-                          const cs = { light:'rgba(6,182,212,.1)', color:'#06b6d4', border:'rgba(6,182,212,.3)' }
+                      {weekUnified.map((h, idx)=>{
+                        if (h.isBuiltIn) {
+                          const checked = habits[h.id][wi][di]
+                          const cs = CAT[h.cat]
                           return (
-                            <div key={t.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
-                              <button onClick={()=>toggleCustomTask(t.id,wi,di)} style={weekRowStyle(checked,cs)}>
-                                {weekCheckBox(checked,'#06b6d4')}
-                                <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
-                                  textDecoration:checked?'line-through':'none' }}>{t.icon} {t.label}</span>
+                            <div key={h.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
+                              <div className="week-reorder">
+                                <button className="reorder-btn" disabled={idx===0} onClick={()=>moveTask(dateStr,weekUnified,h.id,-1)}>▲</button>
+                                <button className="reorder-btn" disabled={idx===weekUnified.length-1} onClick={()=>moveTask(dateStr,weekUnified,h.id,1)}>▼</button>
+                              </div>
+                              <button onClick={()=>toggleHabit(h.id,wi,di)} style={{...weekRowStyle(checked,cs),flex:1,minWidth:0}}>
+                                {weekCheckBox(checked, cs.color)}
+                                <span style={{ fontSize:10, flex:1, minWidth:0, color:checked?'var(--muted)':'var(--text2)',
+                                  textDecoration:checked?'line-through':'none',
+                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{h.icon} {h.label}</span>
+                                <span className="mono" style={{ fontSize:9, color:cs.color, flexShrink:0 }}>+{h.xp}</span>
                               </button>
-                              {weekRemoveBtn(()=>dateStr && skipHabitForDate(t.id, dateStr))}
+                              {weekRemoveBtn(()=>dateStr && skipHabitForDate(h.id, dateStr))}
                             </div>
                           )
-                        })}
-                      </div>
-                    )}
-
-                    {/* Day-specific custom tasks */}
-                    {activeDayTasks.length > 0 && (
-                      <div style={{ marginTop:6, paddingTop:6, borderTop:'1px solid var(--b1)', display:'flex', flexDirection:'column', gap:3 }}>
-                        {activeDayTasks.map(t=>{
-                          const checked = !!(customDone[`${t.id}-${wi}-${di}`])
-                          const gcal = !!t.googleEventId
+                        } else if (h.isDaySpecific) {
+                          const checked = !!(customDone[`${h.id}-${wi}-${di}`])
+                          const gcal = !!h.googleEventId
                           const cs = gcal
                             ? { light:'rgba(66,133,244,.1)', color:'#4285f4', border:'rgba(66,133,244,.3)' }
                             : { light:'rgba(139,92,246,.1)', color:'#8b5cf6', border:'rgba(139,92,246,.3)' }
                           return (
-                            <div key={t.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
-                              <button onClick={()=>toggleCustomTask(t.id,wi,di)} style={weekRowStyle(checked,cs)}>
+                            <div key={h.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
+                              <div className="week-reorder">
+                                <button className="reorder-btn" disabled={idx===0} onClick={()=>moveTask(dateStr,weekUnified,h.id,-1)}>▲</button>
+                                <button className="reorder-btn" disabled={idx===weekUnified.length-1} onClick={()=>moveTask(dateStr,weekUnified,h.id,1)}>▼</button>
+                              </div>
+                              <button onClick={()=>toggleCustomTask(h.id,wi,di)} style={{...weekRowStyle(checked,cs),flex:1,minWidth:0}}>
                                 {weekCheckBox(checked, cs.color)}
-                                <span style={{ fontSize:10, flex:1, color:checked?'var(--muted)':'var(--text2)',
-                                  textDecoration:checked?'line-through':'none' }}>{t.icon} {t.label}</span>
+                                <span style={{ fontSize:10, flex:1, minWidth:0, color:checked?'var(--muted)':'var(--text2)',
+                                  textDecoration:checked?'line-through':'none',
+                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{h.icon} {h.label}</span>
                               </button>
-                              {weekRemoveBtn(()=>deleteDayTask(t))}
+                              {weekRemoveBtn(()=>deleteDayTask(h))}
                             </div>
                           )
-                        })}
-                      </div>
-                    )}
+                        } else {
+                          const checked = !!(customDone[`${h.id}-${wi}-${di}`])
+                          const cs = { light:'rgba(6,182,212,.1)', color:'#06b6d4', border:'rgba(6,182,212,.3)' }
+                          return (
+                            <div key={h.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
+                              <div className="week-reorder">
+                                <button className="reorder-btn" disabled={idx===0} onClick={()=>moveTask(dateStr,weekUnified,h.id,-1)}>▲</button>
+                                <button className="reorder-btn" disabled={idx===weekUnified.length-1} onClick={()=>moveTask(dateStr,weekUnified,h.id,1)}>▼</button>
+                              </div>
+                              <button onClick={()=>toggleCustomTask(h.id,wi,di)} style={{...weekRowStyle(checked,cs),flex:1,minWidth:0}}>
+                                {weekCheckBox(checked,'#06b6d4')}
+                                <span style={{ fontSize:10, flex:1, minWidth:0, color:checked?'var(--muted)':'var(--text2)',
+                                  textDecoration:checked?'line-through':'none',
+                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{h.icon} {h.label}</span>
+                              </button>
+                              {weekRemoveBtn(()=>dateStr && skipHabitForDate(h.id, dateStr))}
+                            </div>
+                          )
+                        }
+                      })}
+                    </div>
+                      )
+                    })()}
 
                     {/* Restore strip — hidden tasks */}
                     {hasHidden && (
@@ -3618,6 +3819,10 @@ function Dashboard({ theme, onToggleTheme }) {
           </div>
         )}
 
+        </>)}
+
+        {/* ══ LISTINGS TAB ═════════════════════════════════════ */}
+        {primaryTab==='listings' && (<>
 
         {/* ══ LISTINGS ════════════════════════════════════════ */}
         <div style={{ marginTop:36 }}>
@@ -3832,6 +4037,118 @@ function Dashboard({ theme, onToggleTheme }) {
             )}
           </div>
         </div>
+
+        {/* ══ LISTINGS PIPELINE ══════════════════════════════ */}
+        <div style={{ marginTop:36 }}>
+          <div className="section-divider"/>
+          <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:16, flexWrap:'wrap' }}>
+            <span style={{ fontSize:20 }}>📊</span>
+            <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>Listings Pipeline</span>
+            <span style={{ fontSize:11, color:'var(--muted)', paddingLeft:4 }} className="mob-hide">
+              Seller-side transactions
+            </span>
+            <div style={{ marginLeft:'auto', display:'flex', gap:0, border:'1px solid var(--b2)', borderRadius:8, overflow:'hidden' }}>
+              {[{v:'list',l:'☰ List'},{v:'board',l:'▦ Board'}].map(v=>(
+                <button key={v.v} onClick={()=>setListingsPipelineView(v.v)} style={{
+                  padding:'5px 12px', fontSize:11, fontWeight:listingsPipelineView===v.v?700:500, border:'none', cursor:'pointer',
+                  background:listingsPipelineView===v.v?'var(--gold2)':'var(--surface)', color:listingsPipelineView===v.v?'#fff':'var(--muted)',
+                  transition:'all .15s', fontFamily:'Poppins,sans-serif',
+                }}>{v.l}</button>
+              ))}
+            </div>
+          </div>
+
+          {listingsPipelineView === 'list' ? (
+            <>
+              <PipelineSection title="Offers Received" icon="📥" accentColor="#8b5cf6" xpLabel={PIPELINE_XP.offer_received}
+                rows={offersReceived} setRows={setOffersReceived} userId={user.id}
+                onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersReceived)}
+                onAdd={handleOfferReceivedAdd}
+                onRemove={()=>deductPipelineXp('offer_received')}
+                statusOpts={[{v:'pending',l:'✓ Accepted'},{v:'countered',l:'↩ Counter'},{v:'declined',l:'✕ Decline',variant:'red'},{v:'closed',l:'Mark Closed'}]}/>
+              <PipelineSection title="Went Pending" icon="⏳" accentColor="#f59e0b" xpLabel={PIPELINE_XP.went_pending}
+                rows={pendingDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing')} setRows={setPendingDeals} userId={user.id}
+                onStatusChange={(r,s)=>handlePendingStatus(r,s)}
+                onRemove={()=>deductPipelineXp('went_pending')}
+                statusOpts={[{v:'active',l:'Active'},{v:'closed',l:'Mark Closed'}]}
+                expandedChecklist={expandedChecklist} setExpandedChecklist={setExpandedChecklist}
+                onToggleChecklistItem={toggleChecklistItem} onAddChecklistItem={addChecklistItem}
+                onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
+              <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
+                rows={closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing')} setRows={setClosedDeals} userId={user.id}
+                archiveOnRemove={true}
+                showSource={true}/>
+            </>
+          ) : (
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, minHeight:200 }}>
+              {[
+                { title:'Offers Rec\'d', icon:'📥', color:'#8b5cf6', rows:offersReceived },
+                { title:'Pending', icon:'⏳', color:'#f59e0b', rows:pendingDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing') },
+                { title:'Closed', icon:'🎉', color:'#10b981', rows:closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing') },
+              ].map(col => (
+                <div key={col.title} style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:12, overflow:'hidden' }}>
+                  <div style={{ padding:'10px 12px', background:`${col.color}11`, borderBottom:`2px solid ${col.color}33`, display:'flex', alignItems:'center', gap:6 }}>
+                    <span style={{ fontSize:14 }}>{col.icon}</span>
+                    <span style={{ fontSize:12, fontWeight:700, color:'var(--text)' }}>{col.title}</span>
+                    <span className="mono" style={{ marginLeft:'auto', fontSize:11, color:col.color, fontWeight:700 }}>{col.rows.length}</span>
+                  </div>
+                  <div style={{ padding:8, display:'flex', flexDirection:'column', gap:6, maxHeight:400, overflowY:'auto' }}>
+                    {col.rows.length === 0 && (
+                      <div style={{ padding:'20px 8px', textAlign:'center', fontSize:11, color:'var(--dim)' }}>No entries</div>
+                    )}
+                    {col.rows.map(r => {
+                      const comm = resolveCommission(r.commission, r.price)
+                      const pn = parseFloat(String(r.price||'').replace(/[^0-9.]/g,''))
+                      return (
+                        <div key={r.id} style={{ padding:'10px 12px', borderRadius:8, background:'var(--bg)', border:'1px solid var(--b1)', transition:'box-shadow .15s' }}>
+                          <div style={{ fontFamily:"'Fraunces',serif", fontSize:12, fontWeight:600, color:'var(--text)', marginBottom:4, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                            {r.address || 'Untitled'}
+                          </div>
+                          <div style={{ display:'flex', gap:8, fontSize:10, color:'var(--muted)', alignItems:'center' }}>
+                            {pn > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color:col.color }}>{formatPrice(r.price)}</span>}
+                            {comm > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", color:'var(--green)', fontWeight:700 }}>{fmtMoney(comm)}</span>}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ══ LISTINGS GCI ══════════════════════════════════════ */}
+        {closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing').length > 0 && (() => {
+          const sellerClosed = closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing')
+          const sellerComm = sellerClosed.reduce((s,d)=>s+resolveCommission(d.commission,d.price),0)
+          const sellerVol = sellerClosed.reduce((s,d)=>s+parseFloat(String(d.price||'').replace(/[^0-9.]/g,'')||0),0)
+          return (
+            <div style={{ marginTop:24 }}>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:10 }}>
+                <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid #10b981' }}>
+                  <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>SELLER GCI</div>
+                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700, color:'#10b981' }}>{fmtMoney(sellerComm)}</div>
+                </div>
+                <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid var(--purple)' }}>
+                  <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>DEALS CLOSED</div>
+                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700, color:'var(--purple)' }}>{sellerClosed.length}</div>
+                </div>
+                {sellerVol > 0 && (
+                  <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid var(--blue)' }}>
+                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>VOLUME</div>
+                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700, color:'var(--blue)' }}>{fmtMoney(sellerVol)}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })()}
+
+        </>)}
+
+        {/* ══ BUYERS TAB ═══════════════════════════════════════ */}
+        {primaryTab==='buyers' && (<>
 
         {/* ══ BUYER REP AGREEMENTS ════════════════════════════ */}
         <div style={{ marginTop:36 }}>
@@ -4102,27 +4419,27 @@ function Dashboard({ theme, onToggleTheme }) {
           </div>
         </div>
 
-        {/* ══ PIPELINE ════════════════════════════════════════ */}
+        {/* ══ BUYERS PIPELINE ═════════════════════════════════ */}
         <div style={{ marginTop:36 }}>
           <div className="section-divider"/>
           <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:16, flexWrap:'wrap' }}>
             <span style={{ fontSize:20 }}>📊</span>
-            <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>Transaction Pipeline</span>
+            <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>Buyers Pipeline</span>
             <span style={{ fontSize:11, color:'var(--muted)', paddingLeft:4 }} className="mob-hide">
-              Historical counts preserved · Commission is per-deal
+              Buyer-side transactions
             </span>
             <div style={{ marginLeft:'auto', display:'flex', gap:0, border:'1px solid var(--b2)', borderRadius:8, overflow:'hidden' }}>
               {[{v:'list',l:'☰ List'},{v:'board',l:'▦ Board'}].map(v=>(
-                <button key={v.v} onClick={()=>setPipelineView(v.v)} style={{
-                  padding:'5px 12px', fontSize:11, fontWeight:pipelineView===v.v?700:500, border:'none', cursor:'pointer',
-                  background:pipelineView===v.v?'var(--gold2)':'var(--surface)', color:pipelineView===v.v?'#fff':'var(--muted)',
+                <button key={v.v} onClick={()=>setBuyersPipelineView(v.v)} style={{
+                  padding:'5px 12px', fontSize:11, fontWeight:buyersPipelineView===v.v?700:500, border:'none', cursor:'pointer',
+                  background:buyersPipelineView===v.v?'var(--gold2)':'var(--surface)', color:buyersPipelineView===v.v?'#fff':'var(--muted)',
                   transition:'all .15s', fontFamily:'Poppins,sans-serif',
                 }}>{v.l}</button>
               ))}
             </div>
           </div>
 
-          {pipelineView === 'list' ? (
+          {buyersPipelineView === 'list' ? (
             <>
               <PipelineSection title="Offers Made" icon="📤" accentColor="#0ea5e9" xpLabel={PIPELINE_XP.offer_made}
                 rows={offersMade} setRows={setOffersMade} userId={user.id}
@@ -4130,36 +4447,25 @@ function Dashboard({ theme, onToggleTheme }) {
                 onAdd={handleOfferMadeAdd}
                 onRemove={()=>deductPipelineXp('offer_made')}
                 statusOpts={[{v:'active',l:'Active'},{v:'pending',l:'Move to Pending'},{v:'closed',l:'Mark Closed'}]}/>
-
-              <PipelineSection title="Offers Received" icon="📥" accentColor="#8b5cf6" xpLabel={PIPELINE_XP.offer_received}
-                rows={offersReceived} setRows={setOffersReceived} userId={user.id}
-                onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersReceived)}
-                onAdd={handleOfferReceivedAdd}
-                onRemove={()=>deductPipelineXp('offer_received')}
-                statusOpts={[{v:'pending',l:'✓ Accepted'},{v:'countered',l:'↩ Counter'},{v:'declined',l:'✕ Decline',variant:'red'},{v:'closed',l:'Mark Closed'}]}/>
-
               <PipelineSection title="Went Pending" icon="⏳" accentColor="#f59e0b" xpLabel={PIPELINE_XP.went_pending}
-                rows={pendingDeals} setRows={setPendingDeals} userId={user.id}
+                rows={pendingDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))} setRows={setPendingDeals} userId={user.id}
                 onStatusChange={(r,s)=>handlePendingStatus(r,s)}
                 onRemove={()=>deductPipelineXp('went_pending')}
                 statusOpts={[{v:'active',l:'Active'},{v:'closed',l:'Mark Closed'}]}
                 expandedChecklist={expandedChecklist} setExpandedChecklist={setExpandedChecklist}
                 onToggleChecklistItem={toggleChecklistItem} onAddChecklistItem={addChecklistItem}
                 onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
-
               <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
-                rows={closedDeals} setRows={setClosedDeals} userId={user.id}
-                onRemove={()=>deductPipelineXp('closed')}
+                rows={closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))} setRows={setClosedDeals} userId={user.id}
+                archiveOnRemove={true}
                 showSource={true}/>
             </>
           ) : (
-            /* ── Kanban Board View ──────────────────────────── */
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, minHeight:200 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, minHeight:200 }}>
               {[
                 { title:'Offers Made', icon:'📤', color:'#0ea5e9', rows:offersMade },
-                { title:'Offers Rec\'d', icon:'📥', color:'#8b5cf6', rows:offersReceived },
-                { title:'Pending', icon:'⏳', color:'#f59e0b', rows:pendingDeals },
-                { title:'Closed', icon:'🎉', color:'#10b981', rows:closedDeals },
+                { title:'Pending', icon:'⏳', color:'#f59e0b', rows:pendingDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing')) },
+                { title:'Closed', icon:'🎉', color:'#10b981', rows:closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing')) },
               ].map(col => (
                 <div key={col.title} style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:12, overflow:'hidden' }}>
                   <div style={{ padding:'10px 12px', background:`${col.color}11`, borderBottom:`2px solid ${col.color}33`, display:'flex', alignItems:'center', gap:6 }}>
@@ -4183,14 +4489,6 @@ function Dashboard({ theme, onToggleTheme }) {
                             {pn > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color:col.color }}>{formatPrice(r.price)}</span>}
                             {comm > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", color:'var(--green)', fontWeight:700 }}>{fmtMoney(comm)}</span>}
                           </div>
-                          {(r.closedFrom || r.dealSide) && (
-                            <div style={{ marginTop:4, fontSize:9, color:'var(--dim)' }}>
-                              {r.closedFrom && <>via {r.closedFrom}</>}
-                              {r.closedFrom && r.dealSide && ' · '}
-                              {r.dealSide && <span style={{ textTransform:'capitalize', color: r.dealSide==='seller'?'#8b5cf6':'#0ea5e9' }}>{r.dealSide}</span>}
-                              {r.originalLeadSource && <> · {r.originalLeadSource}</>}
-                            </div>
-                          )}
                         </div>
                       )
                     })}
@@ -4201,70 +4499,34 @@ function Dashboard({ theme, onToggleTheme }) {
           )}
         </div>
 
-        {/* ══ GCI DASHBOARD ═══════════════════════════════════ */}
-        {closedDeals.length > 0 && (
-          <div style={{ marginTop:36 }}>
-            <div className="section-divider"/>
-            <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:16, cursor:'pointer' }}
-              onClick={()=>setShowGci(p=>!p)}>
-              <span style={{ fontSize:20 }}>💰</span>
-              <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>GCI Dashboard</span>
-              <span style={{ fontSize:11, color:'var(--muted)', paddingLeft:4 }}>{MONTH_YEAR}</span>
-              <span style={{ marginLeft:'auto', fontSize:14, color:'var(--muted)', transition:'transform .2s', transform:showGci?'rotate(180deg)':'rotate(0)' }}>▾</span>
-            </div>
-            {showGci && (
-              <div>
-                {/* GCI stat cards */}
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:10, marginBottom:18 }}>
-                  <div className="card" style={{ padding:16, textAlign:'center', borderTop:'2.5px solid #10b981' }}>
-                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:6 }}>TOTAL GCI</div>
-                    <div className="serif" style={{ fontSize:28, color:'#10b981', fontWeight:700, letterSpacing:'-.02em' }}>{fmtMoney(closedComm)||'$0'}</div>
-                  </div>
-                  <div className="card" style={{ padding:16, textAlign:'center', borderTop:'2.5px solid var(--gold)' }}>
-                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:6 }}>AVG / DEAL</div>
-                    <div className="serif" style={{ fontSize:28, color:'var(--gold2)', fontWeight:700, letterSpacing:'-.02em' }}>{fmtMoney(gciStats.avgDeal)||'$0'}</div>
-                  </div>
-                  <div className="card" style={{ padding:16, textAlign:'center', borderTop:'2.5px solid var(--blue)' }}>
-                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:6 }}>DEALS CLOSED</div>
-                    <div className="serif" style={{ fontSize:28, color:'var(--blue)', fontWeight:700 }}>{closedDeals.length}</div>
-                  </div>
-                  <div className="card" style={{ padding:16, textAlign:'center', borderTop:'2.5px solid #8b5cf6' }}>
-                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:6 }}>ANNUAL PACE</div>
-                    <div className="serif" style={{ fontSize:28, color:'#8b5cf6', fontWeight:700, letterSpacing:'-.02em' }}>{fmtMoney(gciStats.annualPace)||'$0'}</div>
-                  </div>
+        {/* ══ BUYERS GCI ════════════════════════════════════════ */}
+        {closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing')).length > 0 && (() => {
+          const buyerClosed = closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))
+          const buyerComm = buyerClosed.reduce((s,d)=>s+resolveCommission(d.commission,d.price),0)
+          const buyerVol = buyerClosed.reduce((s,d)=>s+parseFloat(String(d.price||'').replace(/[^0-9.]/g,'')||0),0)
+          return (
+            <div style={{ marginTop:24 }}>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:10 }}>
+                <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid #10b981' }}>
+                  <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>BUYER GCI</div>
+                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700, color:'#10b981' }}>{fmtMoney(buyerComm)}</div>
                 </div>
-                {/* GCI by source breakdown */}
-                {gciStats.bySource.length > 0 && (
-                  <div className="card" style={{ padding:18 }}>
-                    <div className="label" style={{ marginBottom:12 }}>Commission by Source</div>
-                    {gciStats.bySource.map(s => {
-                      const pct = closedComm > 0 ? Math.round(s.amount / closedComm * 100) : 0
-                      const colors = { Listing:'#10b981', Offers:'#0ea5e9', Pending:'#f59e0b', Direct:'#8b5cf6' }
-                      const c = colors[s.name] || '#6b7280'
-                      return (
-                        <div key={s.name} style={{ marginBottom:10 }}>
-                          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                            <span style={{ fontSize:12, color:'var(--text2)', fontWeight:600 }}>{s.name}</span>
-                            <span className="mono" style={{ fontSize:12, color:c, fontWeight:700 }}>{fmtMoney(s.amount)} ({pct}%)</span>
-                          </div>
-                          <div className="progress-track">
-                            <div className="progress-fill" style={{ width:`${pct}%`, background:c }}/>
-                          </div>
-                        </div>
-                      )
-                    })}
-                    {closedVol > 0 && (
-                      <div style={{ marginTop:12, paddingTop:10, borderTop:'1px solid var(--b1)', display:'flex', justifyContent:'space-between', fontSize:11, color:'var(--muted)' }}>
-                        <span>Total Volume</span>
-                        <span className="mono" style={{ fontWeight:700, color:'var(--text)' }}>{fmtMoney(closedVol)}</span>
-                      </div>
-                    )}
+                <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid var(--blue)' }}>
+                  <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>DEALS CLOSED</div>
+                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700, color:'var(--blue)' }}>{buyerClosed.length}</div>
+                </div>
+                {buyerVol > 0 && (
+                  <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid var(--purple)' }}>
+                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>VOLUME</div>
+                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700, color:'var(--purple)' }}>{fmtMoney(buyerVol)}</div>
                   </div>
                 )}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )
+        })()}
+
+        </>)}
 
         <div style={{ height:48 }}/>
         <div style={{ textAlign:'center', fontSize:10, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace",

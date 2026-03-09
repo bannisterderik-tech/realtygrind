@@ -666,6 +666,39 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     }
   }
 
+  async function deleteChallenge(challengeId) {
+    const challenge = (teamData?.team_prefs?.challenges||[]).find(c=>c.id===challengeId)
+    if (!challenge) return
+    try {
+      // Deduct bonus XP from winner if challenge was ended and XP was awarded
+      if (challenge.status === 'ended' && challenge.winnerId && challenge.bonusXp > 0) {
+        const winner = members.find(m=>m.id===challenge.winnerId)
+        if (winner) {
+          const newXp = Math.max((winner.xp||0) - challenge.bonusXp, 0)
+          const { error: xpErr } = await supabase.from('profiles').update({ xp: newXp }).eq('id', winner.id)
+          if (xpErr) throw xpErr
+          setMembers(ms => ms.map(m => m.id===winner.id ? {...m, xp:newXp} : m))
+          if (winner.id === user.id) refreshProfile()
+        }
+      }
+      // Remove challenge from team_prefs
+      const updated = {
+        ...(teamData?.team_prefs||{}),
+        challenges: (teamData.team_prefs?.challenges||[]).filter(c=>c.id!==challengeId)
+      }
+      const { error } = await supabase.from('teams').update({ team_prefs: updated }).eq('id', profile.team_id)
+      if (error) throw error
+      setTeamData(td => ({ ...td, team_prefs: updated }))
+      setSuccess(challenge.bonusXp > 0 && challenge.winnerId
+        ? `Challenge deleted. ${challenge.bonusXp} XP removed from winner.`
+        : 'Challenge deleted.')
+      setTimeout(() => setSuccess(''), 3000)
+    } catch (err) {
+      setError('Failed to delete challenge.')
+      console.error('deleteChallenge error:', err)
+    }
+  }
+
   // ── Accountability Groups ─────────────────────────────────────────────────
   async function saveGroup() {
     if (!groupForm?.name?.trim()) return
@@ -794,6 +827,41 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     } catch (err) {
       setError('Failed to end group challenge. Please try again.')
       console.error('endGroupChallenge error:', err)
+    }
+  }
+
+  async function deleteGroupChallenge(groupId, challengeId) {
+    const groups = teamData?.team_prefs?.groups || []
+    const group = groups.find(g => g.id === groupId)
+    if (!group) return
+    const challenge = (group.challenges||[]).find(c => c.id === challengeId)
+    if (!challenge) return
+    try {
+      // Deduct bonus XP from winner if challenge was ended and XP was awarded
+      if (challenge.status === 'ended' && challenge.winnerId && challenge.bonusXp > 0) {
+        const winner = members.find(m=>m.id===challenge.winnerId)
+        if (winner) {
+          const newXp = Math.max((winner.xp||0) - challenge.bonusXp, 0)
+          const { error: xpErr } = await supabase.from('profiles').update({ xp: newXp }).eq('id', winner.id)
+          if (xpErr) throw xpErr
+          setMembers(ms => ms.map(m => m.id===winner.id ? {...m, xp:newXp} : m))
+          if (winner.id === user.id) refreshProfile()
+        }
+      }
+      // Remove challenge from group
+      const updatedGroups = groups.map(g => g.id === groupId
+        ? { ...g, challenges: (g.challenges||[]).filter(c=>c.id!==challengeId) } : g)
+      const newPrefs = { ...(teamData.team_prefs||{}), groups: updatedGroups }
+      const { error } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+      if (error) throw error
+      setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+      setSuccess(challenge.bonusXp > 0 && challenge.winnerId
+        ? `Challenge deleted. ${challenge.bonusXp} XP removed from winner.`
+        : 'Challenge deleted.')
+      setTimeout(() => setSuccess(''), 3000)
+    } catch (err) {
+      setError('Failed to delete group challenge.')
+      console.error('deleteGroupChallenge error:', err)
     }
   }
 
@@ -1445,9 +1513,22 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 {endedChallenges.map(c=>{
                                   const winner = groupMems.find(m=>m.id===c.winnerId)
                                   return (
-                                    <div key={c.id} style={{ padding:'10px 14px', borderRadius:9, background:'var(--bg2)', border:'1px solid var(--b1)', fontSize:12, color:'var(--muted)' }}>
-                                      <span style={{ fontWeight:600, color:'var(--text)' }}>{c.title}</span>
-                                      {winner && <span> — 🏆 {winner.full_name||'Agent'} won {c.bonusXp>0?`+${c.bonusXp} XP`:''}</span>}
+                                    <div key={c.id} style={{ padding:'10px 14px', borderRadius:9, background:'var(--bg2)', border:'1px solid var(--b1)', fontSize:12, color:'var(--muted)',
+                                      display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                                      <div>
+                                        <span style={{ fontWeight:600, color:'var(--text)' }}>{c.title}</span>
+                                        {winner && <span> — 🏆 {winner.full_name||'Agent'} won {c.bonusXp>0?`+${c.bonusXp} XP`:''}</span>}
+                                      </div>
+                                      {isAdminOrOwner && (
+                                        <button onClick={()=>setConfirmModal({
+                                          message:`Delete "${c.title}"?${c.bonusXp>0 && c.winnerId ? ` This will remove ${c.bonusXp} XP from the winner.` : ''}`,
+                                          label:'Delete & Remove XP',
+                                          onConfirm:()=>deleteGroupChallenge(group.id, c.id),
+                                        })} style={{
+                                          background:'none', border:'1px solid rgba(220,38,38,.2)', borderRadius:6,
+                                          padding:'3px 8px', fontSize:10, cursor:'pointer', color:'var(--red)', flexShrink:0,
+                                        }}>🗑</button>
+                                      )}
                                     </div>
                                   )
                                 })}
@@ -1897,11 +1978,18 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                   </div>
                                 </div>
                                 {isOwner && (
-                                  <button onClick={()=>setConfirmModal({ message:'Award XP to the current leader and end this challenge?', label:'End & Award', onConfirm:()=>endChallenge(c.id) })}
-                                    style={{ background:'rgba(220,38,38,.08)', border:'1px solid rgba(220,38,38,.2)',
-                                      color:'var(--red)', borderRadius:7, padding:'6px 12px', fontSize:11, cursor:'pointer', fontWeight:600, whiteSpace:'nowrap' }}>
-                                    End & Award
-                                  </button>
+                                  <div style={{ display:'flex', gap:6 }}>
+                                    <button onClick={()=>setConfirmModal({ message:'Award XP to the current leader and end this challenge?', label:'End & Award', onConfirm:()=>endChallenge(c.id) })}
+                                      style={{ background:'rgba(220,38,38,.08)', border:'1px solid rgba(220,38,38,.2)',
+                                        color:'var(--red)', borderRadius:7, padding:'6px 12px', fontSize:11, cursor:'pointer', fontWeight:600, whiteSpace:'nowrap' }}>
+                                      End & Award
+                                    </button>
+                                    <button onClick={()=>setConfirmModal({ message:`Delete "${c.title}" without awarding XP?`, label:'Delete', onConfirm:()=>deleteChallenge(c.id) })}
+                                      style={{ background:'none', border:'1px solid rgba(220,38,38,.2)', borderRadius:7,
+                                        padding:'6px 10px', fontSize:11, cursor:'pointer', color:'var(--red)', whiteSpace:'nowrap' }}>
+                                      🗑
+                                    </button>
+                                  </div>
                                 )}
                               </div>
                               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
@@ -1936,9 +2024,22 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 const winner = members.find(m=>m.id===c.winnerId)
                                 return (
                                   <div key={c.id} style={{ padding:'10px 14px', borderRadius:9, background:'var(--bg2)',
-                                    border:'1px solid var(--b1)', fontSize:12, color:'var(--muted)' }}>
-                                    <span style={{ fontWeight:600, color:'var(--text)' }}>{c.title}</span>
-                                    {winner && <span> — 🏆 {winner.full_name||'Agent'} won {c.bonusXp>0?`+${c.bonusXp} XP`:''}</span>}
+                                    border:'1px solid var(--b1)', fontSize:12, color:'var(--muted)',
+                                    display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                                    <div>
+                                      <span style={{ fontWeight:600, color:'var(--text)' }}>{c.title}</span>
+                                      {winner && <span> — 🏆 {winner.full_name||'Agent'} won {c.bonusXp>0?`+${c.bonusXp} XP`:''}</span>}
+                                    </div>
+                                    {isTeamOwner && (
+                                      <button onClick={()=>setConfirmModal({
+                                        message:`Delete "${c.title}"?${c.bonusXp>0 && c.winnerId ? ` This will remove ${c.bonusXp} XP from the winner.` : ''}`,
+                                        label:'Delete & Remove XP',
+                                        onConfirm:()=>deleteChallenge(c.id),
+                                      })} style={{
+                                        background:'none', border:'1px solid rgba(220,38,38,.2)', borderRadius:6,
+                                        padding:'3px 8px', fontSize:10, cursor:'pointer', color:'var(--red)', flexShrink:0,
+                                      }}>🗑</button>
+                                    )}
                                   </div>
                                 )
                               })}

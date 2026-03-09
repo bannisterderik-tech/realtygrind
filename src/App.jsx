@@ -1631,7 +1631,7 @@ function Dashboard({ theme, onToggleTheme }) {
         listDate:l.list_date||'', expiresDate:l.expires_date||''
       })
       const allListings = allL.filter(l => (l.unit_count ?? 1) !== 0)
-      setListings(allListings.filter(l => l.status !== 'potential').map(mapListing))
+      setListings(allListings.filter(l => l.status !== 'potential' && l.status !== 'closed').map(mapListing))
       setPotentialListings(allListings.filter(l => l.status === 'potential').map(mapListing))
       setBuyerReps(allL.filter(l => l.unit_count === 0).map(r => ({
         id:r.id, clientName:r.address||'', status:r.status||'active', monthYear:r.month_year||'',
@@ -2242,7 +2242,11 @@ function Dashboard({ theme, onToggleTheme }) {
     const addr = (address||'').toLowerCase()
     if (!addr) return
     const listing = listings.find(l=>l.status!=='closed'&&(l.address||'').toLowerCase()===addr)
-    if (listing) updateListing(listing.id, 'status', 'closed')
+    if (listing) {
+      // Update status in DB, then remove from listings state so it no longer shows in Listings tab
+      safeDb(supabase.from('listings').update({ status:'closed' }).eq('id',listing.id).eq('user_id',user.id))
+      setListings(prev => prev.filter(l => l.id !== listing.id))
+    }
   }
 
   async function handleOfferStatus(row, newStatus, srcSetter) {

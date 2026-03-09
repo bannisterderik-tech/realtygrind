@@ -1488,7 +1488,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                         </div>
                       </div>
                       <div style={{ display:'flex', gap:12, alignItems:'center' }}>
-                        {isAdminOrOwner && (
+                        {(isTeamOwner || isAdmin) && (
                         <div className="card-inset" style={{ padding:'10px 20px', textAlign:'center', position:'relative' }}>
                           <div className="label" style={{ marginBottom:4 }}>Invite Code</div>
                           <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>

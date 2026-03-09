@@ -119,6 +119,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [buyerFilter,     setBuyerFilter]     = useState('all')   // 'all' | memberId
   const [buyerReplyForms, setBuyerReplyForms] = useState({})      // { [needId]: string }
   const [buyerReplySaving,setBuyerReplySaving]= useState(null)    // needId being saved, or null
+  const [recruitForm,     setRecruitForm]     = useState(null)    // null | { name, email, phone }
+  const [recruitSaving,   setRecruitSaving]   = useState(false)
+  const [recruitFilter,   setRecruitFilter]   = useState('all')  // 'all' | 'submitted' | 'contacted' | 'hired' | 'declined'
+  const [recruitNoteEditing, setRecruitNoteEditing] = useState(null) // recruitId being edited
+  const [recruitNoteText,    setRecruitNoteText]    = useState('')
   const [slackUrl,        setSlackUrl]        = useState('')      // team Slack workspace URL
   const [slackSaving,     setSlackSaving]     = useState(false)
   const [logoCropSrc,     setLogoCropSrc]     = useState(null)    // object URL for crop modal
@@ -920,6 +925,92 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     finally { setBuyerReplySaving(null) }
   }
 
+  // ── Recruit Handlers ────────────────────────────────────────────────────
+  async function saveRecruit() {
+    if (!recruitForm?.name?.trim() || !recruitForm?.email?.trim()) return
+    setRecruitSaving(true)
+    try {
+      const existing = teamData?.team_prefs?.recruits || []
+      const newRecruit = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+        name: recruitForm.name.trim(),
+        email: recruitForm.email.trim(),
+        phone: (recruitForm.phone || '').trim(),
+        submittedBy: user.id,
+        submitterName: profile?.full_name || 'Agent',
+        status: 'submitted',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        mgmtNotes: '',
+      }
+      const newPrefs = { ...(teamData.team_prefs || {}), recruits: [...existing, newRecruit] }
+      const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', teamData.id)
+      if (err) throw err
+      setTeamData(prev => ({ ...prev, team_prefs: newPrefs }))
+      setRecruitForm(null)
+      // Award 25 XP
+      const currentXp = profile?.xp || 0
+      await supabase.from('profiles').update({ xp: currentXp + 25 }).eq('id', user.id)
+      refreshProfile()
+      setSuccess('Recruit submitted! +25 XP')
+      setTimeout(() => setSuccess(''), 3000)
+    } catch (err) {
+      setError('Failed to submit recruit.')
+      console.error('saveRecruit error:', err)
+    } finally {
+      setRecruitSaving(false)
+    }
+  }
+
+  async function updateRecruitStatus(recruitId, newStatus) {
+    const recruits = teamData?.team_prefs?.recruits || []
+    const recruit = recruits.find(r => r.id === recruitId)
+    if (!recruit) return
+    const wasHired = recruit.status === 'hired'
+    const updated = recruits.map(r => r.id === recruitId
+      ? { ...r, status: newStatus, updatedAt: new Date().toISOString() } : r)
+    const newPrefs = { ...(teamData.team_prefs || {}), recruits: updated }
+    try {
+      const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', teamData.id)
+      if (err) throw err
+      setTeamData(prev => ({ ...prev, team_prefs: newPrefs }))
+      // Award 100 XP bonus to submitter when newly marked as hired
+      if (newStatus === 'hired' && !wasHired) {
+        const submitter = members.find(m => m.id === recruit.submittedBy)
+        if (submitter) {
+          const subXp = submitter.xp || 0
+          await supabase.from('profiles').update({ xp: subXp + 100 }).eq('id', submitter.id)
+          if (submitter.id === user.id) refreshProfile()
+          setSuccess(`${recruit.name} marked as hired! ${recruit.submitterName} earned +100 XP`)
+          setTimeout(() => setSuccess(''), 3000)
+        }
+      }
+    } catch (err) { console.error('updateRecruitStatus error:', err) }
+  }
+
+  async function updateRecruitNotes(recruitId) {
+    const updated = (teamData?.team_prefs?.recruits || []).map(r =>
+      r.id === recruitId ? { ...r, mgmtNotes: recruitNoteText, updatedAt: new Date().toISOString() } : r)
+    const newPrefs = { ...(teamData.team_prefs || {}), recruits: updated }
+    try {
+      const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', teamData.id)
+      if (err) throw err
+      setTeamData(prev => ({ ...prev, team_prefs: newPrefs }))
+      setRecruitNoteEditing(null)
+      setRecruitNoteText('')
+    } catch (err) { console.error('updateRecruitNotes error:', err) }
+  }
+
+  async function deleteRecruit(recruitId) {
+    const updated = (teamData?.team_prefs?.recruits || []).filter(r => r.id !== recruitId)
+    const newPrefs = { ...(teamData.team_prefs || {}), recruits: updated }
+    try {
+      const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', teamData.id)
+      if (err) throw err
+      setTeamData(prev => ({ ...prev, team_prefs: newPrefs }))
+    } catch (err) { console.error('deleteRecruit error:', err) }
+  }
+
   // ── Team logo ──
   function handleLogoSelect(e) {
     const file = e.target.files?.[0]
@@ -953,7 +1044,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const {
     isTeamOwner, teamAdmins, isAdmin, allGroups, myLedGroup,
     isGroupLeader, myGroupMembers, isAdminOrOwner, coachableMembers,
-    allCoachingNotes, myCoachingNotes, pendingInvites, allBuyerNeeds,
+    allCoachingNotes, myCoachingNotes, pendingInvites, allBuyerNeeds, allRecruits,
   } = useMemo(() => {
     const _isSuperAdmin     = profile?.app_role === 'admin'
     const _isTeamOwner      = !!(teamData?.created_by === user?.id) || _isSuperAdmin
@@ -978,13 +1069,14 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       need._allReplies = [...(need.replies || []), ...externalReplies]
         .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
     })
+    const _allRecruits = teamData?.team_prefs?.recruits || []
     return {
       isTeamOwner: _isTeamOwner, teamAdmins: _teamAdmins, isAdmin: _isAdmin,
       allGroups: _allGroups, myLedGroup: _myLedGroup, isGroupLeader: _isGroupLeader,
       myGroupMembers: _myGroupMembers, isAdminOrOwner: _isAdminOrOwner,
       coachableMembers: _coachableMembers, allCoachingNotes: _allCoachingNotes,
       myCoachingNotes: _myCoachingNotes, pendingInvites: _pendingInvites,
-      allBuyerNeeds: _allBuyerNeeds,
+      allBuyerNeeds: _allBuyerNeeds, allRecruits: _allRecruits,
     }
   }, [teamData, user?.id, members])
   const canViewDetail = (m) => isTeamOwner || isAdmin || (isGroupLeader && myLedGroup?.memberIds.includes(m.id))
@@ -1485,6 +1577,16 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                             {members.length} member{members.length!==1?'s':''}
                             {teamData.max_members ? ` · ${members.length}/${teamData.max_members} seats` : ''}
                           </div>
+                          {members.length > 0 && (
+                            <button onClick={()=>setTvMode(true)}
+                              style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'4px 12px',
+                                marginTop:6, background:'rgba(59,130,246,.08)', border:'1px solid rgba(59,130,246,.2)',
+                                borderRadius:20, cursor:'pointer', transition:'all .15s',
+                                fontSize:11, fontWeight:700, color:'#3b82f6',
+                                fontFamily:"'JetBrains Mono',monospace" }}>
+                              <span style={{ fontSize:12 }}>📺</span> TV Mode
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div style={{ display:'flex', gap:12, alignItems:'center' }}>
@@ -1534,20 +1636,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       style={{ fontSize:14, padding:'10px 18px', fontWeight:600 }}>🏡 Buyers</button>
                     <button className={`tab-item${teamsTab==='groups'?' on':''}`} onClick={()=>setTeamsTab('groups')}
                       style={{ fontSize:14, padding:'10px 18px', fontWeight:600 }}>🫂 Groups</button>
+                    <button className={`tab-item${teamsTab==='recruit'?' on':''}`} onClick={()=>setTeamsTab('recruit')}
+                      style={{ fontSize:14, padding:'10px 18px', fontWeight:600 }}>🎯 Recruit</button>
                     {isTeamOwner && (
                       <button className={`tab-item${teamsTab==='settings'?' on':''}`} onClick={()=>setTeamsTab('settings')}
                         style={{ fontSize:14, padding:'10px 18px', fontWeight:600 }}>⚙️ Settings</button>
-                    )}
-                    {members.length > 0 && (
-                      <button onClick={()=>setTvMode(true)} style={{
-                        marginLeft:'auto', background:'none', border:'1px solid var(--b2)', borderRadius:8,
-                        padding:'5px 12px', fontSize:11, cursor:'pointer', color:'var(--muted)',
-                        fontFamily:'Poppins,sans-serif', fontWeight:600, display:'flex', alignItems:'center', gap:5,
-                        transition:'all .15s',
-                      }} onMouseEnter={e=>{e.target.style.background='var(--gold2)';e.target.style.color='#fff';e.target.style.borderColor='var(--gold2)'}}
-                        onMouseLeave={e=>{e.target.style.background='none';e.target.style.color='var(--muted)';e.target.style.borderColor='var(--b2)'}}>
-                        📺 TV Mode
-                      </button>
                     )}
                   </div>
 
@@ -2210,6 +2303,167 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       )}
                     </div>
                   )} {/* end buyers tab */}
+
+                  {/* ════════ RECRUIT TAB ════════ */}
+                  {teamsTab==='recruit' && (
+                    <div>
+                      {/* Summary stat cards */}
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:10, marginBottom:20 }}>
+                        <StatCard label="Total Submitted" value={allRecruits.length} color="#3b82f6"/>
+                        <StatCard label="Contacted" value={allRecruits.filter(r=>r.status==='contacted').length} color="#d97706"/>
+                        <StatCard label="Hired" value={allRecruits.filter(r=>r.status==='hired').length} color="#10b981"/>
+                        <StatCard label="Declined" value={allRecruits.filter(r=>r.status==='declined').length} color="var(--muted)"/>
+                      </div>
+
+                      {/* Filter pills */}
+                      <div style={{ display:'flex', gap:6, marginBottom:18, flexWrap:'wrap' }}>
+                        {['all','submitted','contacted','hired','declined'].map(f => (
+                          <button key={f} onClick={()=>setRecruitFilter(f)}
+                            style={{
+                              padding:'5px 14px', borderRadius:20, fontSize:11, fontWeight:700,
+                              fontFamily:"'JetBrains Mono',monospace", cursor:'pointer', transition:'all .15s',
+                              textTransform:'capitalize',
+                              background: recruitFilter===f ? 'var(--gold2)' : 'var(--bg2)',
+                              color: recruitFilter===f ? '#fff' : 'var(--muted)',
+                              border: recruitFilter===f ? '1px solid var(--gold2)' : '1px solid var(--b2)',
+                            }}>
+                            {f === 'all' ? `All (${allRecruits.length})` : `${f} (${allRecruits.filter(r=>r.status===f).length})`}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Submit form */}
+                      {recruitForm ? (
+                        <div className="card" style={{ padding:18, marginBottom:20 }}>
+                          <div style={{ fontSize:14, fontWeight:700, marginBottom:12, color:'var(--text)' }}>🎯 Submit a Recruit</div>
+                          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                            <input className="field-input" placeholder="Agent Name *" value={recruitForm.name}
+                              onChange={e=>setRecruitForm(f=>({...f, name:e.target.value}))}
+                              style={{ fontSize:13 }}/>
+                            <input className="field-input" placeholder="Email *" type="email" value={recruitForm.email}
+                              onChange={e=>setRecruitForm(f=>({...f, email:e.target.value}))}
+                              style={{ fontSize:13 }}/>
+                            <input className="field-input" placeholder="Phone" type="tel" value={recruitForm.phone}
+                              onChange={e=>setRecruitForm(f=>({...f, phone:e.target.value}))}
+                              style={{ fontSize:13 }}/>
+                            <div style={{ display:'flex', gap:8 }}>
+                              <button className="btn-primary" onClick={saveRecruit}
+                                disabled={recruitSaving || !recruitForm.name?.trim() || !recruitForm.email?.trim()}
+                                style={{ fontSize:12, padding:'8px 18px' }}>
+                                {recruitSaving ? 'Submitting...' : 'Submit (+25 XP)'}
+                              </button>
+                              <button className="btn-outline" onClick={()=>setRecruitForm(null)}
+                                style={{ fontSize:12, padding:'8px 14px' }}>Cancel</button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <button className="btn-outline" onClick={()=>setRecruitForm({ name:'', email:'', phone:'' })}
+                          style={{ fontSize:13, marginBottom:20 }}>🎯 Submit a Recruit</button>
+                      )}
+
+                      {/* Recruit cards */}
+                      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                        {(() => {
+                          const STATUS_COLORS = { submitted:'#3b82f6', contacted:'#d97706', hired:'#10b981', declined:'#dc2626' }
+                          const filtered = allRecruits
+                            .filter(r => recruitFilter === 'all' || r.status === recruitFilter)
+                            .filter(r => isAdminOrOwner || r.submittedBy === user.id)
+                            .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt))
+                          if (filtered.length === 0) return (
+                            <div style={{ textAlign:'center', padding:40, color:'var(--muted)', fontSize:13 }}>
+                              {allRecruits.length === 0 ? 'No recruits submitted yet. Be the first!' : 'No recruits match this filter.'}
+                            </div>
+                          )
+                          return filtered.map(r => {
+                            const col = STATUS_COLORS[r.status] || '#3b82f6'
+                            const submitter = members.find(m => m.id === r.submittedBy)
+                            return (
+                              <div key={r.id} className="card" style={{ padding:16 }}>
+                                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12, flexWrap:'wrap' }}>
+                                  <div style={{ flex:1, minWidth:180 }}>
+                                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
+                                      {submitter && <MemberAvatar member={submitter} size={28}/>}
+                                      <div>
+                                        <div style={{ fontSize:15, fontWeight:700, color:'var(--text)' }}>{r.name}</div>
+                                        <div style={{ fontSize:11, color:'var(--muted)' }}>
+                                          by {r.submitterName} · {relativeTime(r.createdAt)}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div style={{ display:'flex', flexDirection:'column', gap:3, marginTop:8, fontSize:12 }}>
+                                      <div style={{ color:'var(--dim)' }}>📧 <span style={{ color:'var(--text)' }}>{r.email}</span></div>
+                                      {r.phone && <div style={{ color:'var(--dim)' }}>📞 <span style={{ color:'var(--text)' }}>{r.phone}</span></div>}
+                                    </div>
+                                  </div>
+                                  <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:8 }}>
+                                    {/* Status badge */}
+                                    <span style={{
+                                      padding:'3px 10px', borderRadius:12, fontSize:10, fontWeight:700,
+                                      textTransform:'uppercase', letterSpacing:'.5px',
+                                      background:`${col}18`, color:col, border:`1px solid ${col}33`,
+                                    }}>{r.status}</span>
+                                    {/* Management controls */}
+                                    {isAdminOrOwner && (
+                                      <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                                        <select value={r.status} onChange={e=>updateRecruitStatus(r.id, e.target.value)}
+                                          style={{
+                                            fontSize:11, padding:'4px 8px', borderRadius:6,
+                                            border:'1px solid var(--b2)', background:'var(--bg2)',
+                                            color:'var(--text)', cursor:'pointer',
+                                          }}>
+                                          <option value="submitted">Submitted</option>
+                                          <option value="contacted">Contacted</option>
+                                          <option value="hired">Hired</option>
+                                          <option value="declined">Declined</option>
+                                        </select>
+                                        <button onClick={()=>{
+                                          if (recruitNoteEditing === r.id) { setRecruitNoteEditing(null); setRecruitNoteText('') }
+                                          else { setRecruitNoteEditing(r.id); setRecruitNoteText(r.mgmtNotes || '') }
+                                        }} style={{
+                                          background:'none', border:'1px solid var(--b2)', borderRadius:6,
+                                          padding:'3px 8px', fontSize:11, cursor:'pointer', color:'var(--muted)',
+                                        }}>📝</button>
+                                        <button onClick={()=>setConfirmModal({
+                                          message:`Remove recruit "${r.name}"?`,
+                                          label:'Delete',
+                                          onConfirm:()=>deleteRecruit(r.id),
+                                        })} style={{
+                                          background:'none', border:'1px solid rgba(220,38,38,.2)', borderRadius:6,
+                                          padding:'3px 8px', fontSize:11, cursor:'pointer', color:'var(--red)',
+                                        }}>✕</button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                {/* Management notes (expandable) */}
+                                {isAdminOrOwner && recruitNoteEditing === r.id && (
+                                  <div style={{ marginTop:10, borderTop:'1px solid var(--b2)', paddingTop:10 }}>
+                                    <textarea className="field-input" value={recruitNoteText}
+                                      onChange={e=>setRecruitNoteText(e.target.value)}
+                                      placeholder="Management notes..."
+                                      rows={2} style={{ fontSize:12, resize:'vertical' }}/>
+                                    <div style={{ display:'flex', gap:6, marginTop:6 }}>
+                                      <button className="btn-primary" onClick={()=>updateRecruitNotes(r.id)}
+                                        style={{ fontSize:11, padding:'5px 12px' }}>Save Note</button>
+                                      <button className="btn-outline" onClick={()=>{setRecruitNoteEditing(null);setRecruitNoteText('')}}
+                                        style={{ fontSize:11, padding:'5px 12px' }}>Cancel</button>
+                                    </div>
+                                  </div>
+                                )}
+                                {isAdminOrOwner && r.mgmtNotes && recruitNoteEditing !== r.id && (
+                                  <div style={{ marginTop:8, fontSize:11, color:'var(--dim)', fontStyle:'italic',
+                                    borderTop:'1px solid var(--b2)', paddingTop:8 }}>
+                                    📝 {r.mgmtNotes}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })
+                        })()}
+                      </div>
+                    </div>
+                  )} {/* end recruit tab */}
 
                   {/* ════════ SETTINGS TAB (owner only) ════════ */}
                   {teamsTab==='settings' && isTeamOwner && (

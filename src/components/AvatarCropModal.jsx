@@ -14,6 +14,8 @@ export default function AvatarCropModal({ src, onConfirm, onCancel, title='Crop 
   const [scale,      setScale]      = useState(1)
   const [baseScale,  setBaseScale]  = useState(1)
 
+  const [loadError, setLoadError] = useState(false)
+
   // Load image and compute initial scale/position
   useEffect(() => {
     const img = new Image()
@@ -25,6 +27,7 @@ export default function AvatarCropModal({ src, onConfirm, onCancel, title='Crop 
       setOffset({ x:(CROP_SIZE - img.naturalWidth*fit)/2, y:(CROP_SIZE - img.naturalHeight*fit)/2 })
       setImgLoaded(true)
     }
+    img.onerror = () => setLoadError(true)
     img.src = src
   }, [src])
 
@@ -136,7 +139,9 @@ export default function AvatarCropModal({ src, onConfirm, onCancel, title='Crop 
           )}
           {!imgLoaded && (
             <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center',
-              justifyContent:'center', color:'var(--muted)', fontSize:12 }}>Loading…</div>
+              justifyContent:'center', color: loadError ? 'var(--red, #ef4444)' : 'var(--muted)', fontSize:12, textAlign:'center', padding:20 }}>
+              {loadError ? 'Could not load image — try a JPG or PNG file' : 'Loading…'}
+            </div>
           )}
         </div>
 

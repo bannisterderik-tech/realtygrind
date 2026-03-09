@@ -590,7 +590,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                 display:'flex', alignItems:'center', justifyContent:'center', fontSize:11 }}>
                 📷
               </div>
-              <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleFileSelect}
+              <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" onChange={handleFileSelect}
                 style={{ display:'none' }}/>
               {avatarMsg && (
                 <div style={{ position:'absolute', top:'100%', left:'50%', transform:'translateX(-50%)',

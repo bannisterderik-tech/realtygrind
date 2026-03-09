@@ -1535,6 +1535,8 @@ function Dashboard({ theme, onToggleTheme }) {
   const [showGci, setShowGci] = useState(false)
   const [clientUpdateListing, setClientUpdateListing] = useState(null)
   const [clientUpdateNotes, setClientUpdateNotes] = useState('')
+  const [listingEmailListing, setListingEmailListing] = useState(null) // listing being emailed
+  const [listingEmailTo, setListingEmailTo] = useState('')
   const [todayDate] = useState(() => new Date().toLocaleDateString('en-CA')) // YYYY-MM-DD, stable across re-renders
 
   // Track mount status for async safety — prevents stale setState calls after unmount
@@ -4264,6 +4266,7 @@ function Dashboard({ theme, onToggleTheme }) {
                     <span style={{ fontSize:11, color:'var(--dim)', fontStyle:'italic' }}>Deal completed</span>
                   )}
                   <div style={{ flex:1 }}/>
+                  <button className="edit-toggle" title="Email listing update" onClick={()=>{setListingEmailTo('');setListingEmailListing(l)}}>✉️</button>
                   <button className="edit-toggle" title="Generate client update" onClick={()=>{setClientUpdateNotes('');setClientUpdateListing(l)}}>📋</button>
                   <button className="edit-toggle" title={isEditing ? 'Done editing' : 'Edit listing'} onClick={()=>setEditingListing(isEditing ? null : l.id)}>
                     {isEditing ? '✓' : '✏️'}
@@ -5063,6 +5066,81 @@ function Dashboard({ theme, onToggleTheme }) {
           onClose={() => setShowBuyersUpdate(false)}
         />
       )}
+
+      {/* ── Listing Email Modal ──────────────────────────── */}
+      {listingEmailListing && (() => {
+        const el = listingEmailListing
+        const priceNum = parseFloat(String(el.price||'').replace(/[^0-9.]/g,''))
+        const dom = daysOnMarket(el.listDate, el.createdAt)
+        const comm = resolveCommission(el.commission, el.price)
+        const firstName = listingEmailTo.split('@')[0]?.split(/[._]/)[0] || ''
+        const capFirst = firstName ? firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase() : 'there'
+        const statusLabel = el.status==='closed'?'Closed':el.status==='pending'?'Pending':'Active'
+        const agentName = profileFullName || 'Your Agent'
+        const agentPhone = profilePhone
+        const subject = `${capFirst}, here is your listing update for ${el.address || 'your property'}`
+        let body = `Hi ${capFirst},\n\nHere is your listing update for ${el.address || 'your property'}:\n\n`
+        body += `Status: ${statusLabel}\n`
+        if (priceNum > 0) body += `List Price: ${formatPrice(el.price)}\n`
+        if (dom !== null) body += `Days on Market: ${dom}\n`
+        if (el.listDate) body += `Listed: ${fmtShortDate(el.listDate)}\n`
+        if (el.expiresDate) body += `Expires: ${fmtShortDate(el.expiresDate)}\n`
+        if (el.leadSource) body += `Lead Source: ${el.leadSource}\n`
+        body += `\nPlease let me know if you have any questions.\n\nBest regards,\n${agentName}`
+        if (agentPhone) body += `\n${agentPhone}`
+        const mailto = `mailto:${encodeURIComponent(listingEmailTo)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+        return (
+          <div style={{ position:'fixed', inset:0, zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.55)' }}
+            onClick={()=>setListingEmailListing(null)}>
+            <div onClick={e=>e.stopPropagation()} style={{ background:'var(--surface)', borderRadius:14, width:420, maxWidth:'92vw', padding:24, boxShadow:'0 25px 60px rgba(0,0,0,.3)' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
+                <span style={{ fontSize:20 }}>✉️</span>
+                <span className="serif" style={{ fontSize:16, fontWeight:700, color:'var(--text)' }}>Email Listing Update</span>
+                <div style={{ flex:1 }}/>
+                <button onClick={()=>setListingEmailListing(null)} style={{ background:'none', border:'none', fontSize:18, cursor:'pointer', color:'var(--muted)' }}>✕</button>
+              </div>
+
+              <div style={{ fontSize:12, color:'var(--muted)', marginBottom:12 }}>
+                <strong style={{ color:'var(--text)' }}>{el.address}</strong> · {statusLabel} · {priceNum > 0 ? formatPrice(el.price) : '—'}
+              </div>
+
+              <div style={{ marginBottom:12 }}>
+                <label style={{ fontSize:11, fontWeight:700, color:'var(--muted)', display:'block', marginBottom:4 }}>To (client email)</label>
+                <input className="field-input" type="email" value={listingEmailTo}
+                  onChange={e=>setListingEmailTo(e.target.value)}
+                  placeholder="client@email.com"
+                  autoFocus
+                  style={{ fontSize:13, width:'100%' }}/>
+              </div>
+
+              <div style={{ marginBottom:12 }}>
+                <label style={{ fontSize:11, fontWeight:700, color:'var(--muted)', display:'block', marginBottom:4 }}>Subject</label>
+                <div style={{ fontSize:12, color:'var(--dim)', padding:'8px 10px', background:'var(--bg2)', borderRadius:6, border:'1px solid var(--b2)' }}>
+                  {listingEmailTo.trim() ? subject : `{firstname}, here is your listing update for ${el.address || 'your property'}`}
+                </div>
+              </div>
+
+              <div style={{ marginBottom:16 }}>
+                <label style={{ fontSize:11, fontWeight:700, color:'var(--muted)', display:'block', marginBottom:4 }}>Preview</label>
+                <pre style={{ fontSize:11, color:'var(--dim)', whiteSpace:'pre-wrap', background:'var(--bg2)', padding:10, borderRadius:6, border:'1px solid var(--b2)', margin:0, lineHeight:1.5, maxHeight:200, overflow:'auto' }}>
+{body}
+                </pre>
+              </div>
+
+              <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+                <button className="btn-outline" onClick={()=>setListingEmailListing(null)} style={{ fontSize:12, padding:'8px 16px' }}>Cancel</button>
+                <a href={listingEmailTo.trim() ? mailto : '#'} onClick={e=>{
+                  if (!listingEmailTo.trim()) { e.preventDefault(); return }
+                  setTimeout(()=>setListingEmailListing(null), 300)
+                }} className="btn-primary" style={{ fontSize:12, padding:'8px 20px', textDecoration:'none', display:'inline-flex', alignItems:'center', gap:6,
+                  opacity: listingEmailTo.trim() ? 1 : 0.5, pointerEvents: listingEmailTo.trim() ? 'auto' : 'none' }}>
+                  Open in Email Client
+                </a>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── Client Update Modal ──────────────────────────── */}
       {clientUpdateListing && (() => {

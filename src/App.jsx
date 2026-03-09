@@ -2823,6 +2823,7 @@ function Dashboard({ theme, onToggleTheme }) {
           <button className={`nav-btn mob-hide${page==='coaching'?' active':''}`} onClick={()=>setPage('coaching')}>📝 Coaching</button>
 
           <button className={`nav-btn mob-hide${(page==='directory'||page==='apod'||page==='ai-assistant')?' active':''}`} onClick={()=>setPage('directory')}>🔗 Tools</button>
+          <button className={`nav-btn mob-hide${page==='affiliates'?' active':''}`} onClick={()=>setPage('affiliates')}>💰 Affiliates</button>
 
           {profileAppRole === 'admin' && (
             <button className={`nav-btn mob-hide${page==='admin'?' active':''}`} onClick={()=>setPage('admin')} style={{ fontSize:11, letterSpacing:'.03em' }}>⚙️ Admin</button>
@@ -2895,6 +2896,7 @@ function Dashboard({ theme, onToggleTheme }) {
             { p:'teams',     icon:'👥', label:'Teams' },
             { p:'coaching',  icon:'📝', label:'Coaching' },
             { p:'directory', icon:'🔗', label:'Tools' },
+            { p:'affiliates', icon:'💰', label:'Affiliates' },
             { p:'billing',   icon:'💳', label:'Billing' },
             { p:'profile',   icon:'👤', label:'Profile' },
             ...(profileAppRole === 'admin' ? [{ p:'admin', icon:'⚙️', label:'Admin' }] : []),

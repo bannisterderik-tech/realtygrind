@@ -677,23 +677,21 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
               </div>
 
               {/* ── Refer & Earn CTA ─────────────────────────────── */}
-              {isActiveBilling(profile?.billing_status) && (
-                <div className="card" style={{ padding:24, borderTop:`3px solid ${theme === 'dark' ? '#d97706' : '#b45309'}`,
-                  background:`linear-gradient(135deg, ${theme === 'dark' ? '#d97706' : '#b45309'}08 0%, var(--surface) 60%)` }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
-                    <span style={{ fontSize:20 }}>💰</span>
-                    <span className="serif" style={{ fontSize:18, fontWeight:700, color:'var(--text)' }}>Refer & Earn</span>
-                  </div>
-                  <p style={{ fontSize:13, color:'var(--muted)', lineHeight:1.6, marginBottom:14,
-                    fontFamily:"'Poppins',sans-serif" }}>
-                    Earn 20% on every referral's subscription for 12 months. No cap on earnings.
-                  </p>
-                  <button className="btn-gold" onClick={() => onNavigate('affiliates')}
-                    style={{ fontSize:13, padding:'9px 22px' }}>
-                    Learn More →
-                  </button>
+              <div className="card" style={{ padding:24, borderTop:`3px solid ${theme === 'dark' ? '#d97706' : '#b45309'}`,
+                background:`linear-gradient(135deg, ${theme === 'dark' ? '#d97706' : '#b45309'}08 0%, var(--surface) 60%)` }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+                  <span style={{ fontSize:20 }}>💰</span>
+                  <span className="serif" style={{ fontSize:18, fontWeight:700, color:'var(--text)' }}>Refer & Earn</span>
                 </div>
-              )}
+                <p style={{ fontSize:13, color:'var(--muted)', lineHeight:1.6, marginBottom:14,
+                  fontFamily:"'Poppins',sans-serif" }}>
+                  Earn 20% on every referral's subscription for 12 months. No cap on earnings.
+                </p>
+                <button className="btn-gold" onClick={() => onNavigate('affiliates')}
+                  style={{ fontSize:13, padding:'9px 22px' }}>
+                  Learn More →
+                </button>
+              </div>
 
               {/* Professional Info */}
               <div className="card" style={{ padding:24 }}>

@@ -98,7 +98,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   const [gciTarget,     setGciTarget]     = useState('')
   const [avgCommission, setAvgCommission] = useState('')
   const [calcResult,    setCalcResult]    = useState(null)
-  const [bio,      setBio]      = useState({ phone:'', license:'', specialty:'', about:'' })
+  const [bio,      setBio]      = useState({ phone:'', license:'', specialty:'', about:'', review_link:'' })
   const [bioSaving, setBioSaving] = useState(false)
   const [bioMsg,    setBioMsg]   = useState('')
   const [avatarUrl,     setAvatarUrl]     = useState(profile?.goals?.avatar_url || '')
@@ -794,6 +794,14 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                   <input className="field-input" value={bio.about} maxLength={100}
                     onChange={e => setBio(b => ({ ...b, about: e.target.value }))}
                     placeholder="Helping families find home in the GTA since 2015" />
+                </div>
+                <div style={{ marginTop:14 }}>
+                  <div className="label" style={{ marginBottom:4 }}>
+                    Review Link <span style={{ color:'var(--dim)', fontWeight:400 }}>(Google, Zillow, etc.)</span>
+                  </div>
+                  <input className="field-input" value={bio.review_link}
+                    onChange={e => setBio(b => ({ ...b, review_link: e.target.value }))}
+                    placeholder="https://g.page/r/your-business/review" />
                 </div>
                 <div style={{ marginTop:16, display:'flex', alignItems:'center', gap:12 }}>
                   <button className="btn-primary" onClick={saveBio} disabled={bioSaving} style={{ fontSize:13 }}>

@@ -52,6 +52,39 @@ function relativeTime(isoStr) {
   return d === 1 ? '1 day ago' : `${d} days ago`
 }
 
+function buildRecruitMailto(recruit, submitterName, teamName, emailSettings) {
+  const subject = `Invitation to join ${teamName || 'our team'}`
+  let body = `Hi ${recruit.name},\n\n`
+  body += `${submitterName} sent me your information and asked me to reach out.\n\n`
+  const bullets = emailSettings?.bullet_points?.length
+    ? emailSettings.bullet_points
+    : [{ text:'Collaborative team environment focused on agent success' },
+       { text:'Access to cutting-edge tools and resources' },
+       { text:'Ongoing training and professional development' }]
+  body += `Here is a bit about what we offer at ${teamName || 'our team'}:\n\n`
+  bullets.forEach(bp => { body += `- ${bp.text}\n` })
+  body += '\n'
+  body += (emailSettings?.footer?.trim())
+    || "I'd love to set up a time to chat and tell you more about what we're building here.\n\nBest regards"
+  return `mailto:${encodeURIComponent(recruit.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+}
+
+function buildRecruitMailtoPreview(teamName, emailSettings) {
+  let body = `Hi {Recruit Name},\n\n`
+  body += `{Referring Agent} sent me your information and asked me to reach out.\n\n`
+  const bullets = emailSettings?.bullet_points?.length
+    ? emailSettings.bullet_points
+    : [{ text:'Collaborative team environment focused on agent success' },
+       { text:'Access to cutting-edge tools and resources' },
+       { text:'Ongoing training and professional development' }]
+  body += `Here is a bit about what we offer at ${teamName || '{Team Name}'}:\n\n`
+  bullets.forEach(bp => { body += `- ${bp.text}\n` })
+  body += '\n'
+  body += emailSettings?.footer?.trim()
+    || "I'd love to set up a time to chat and tell you more about what we're building here.\n\nBest regards"
+  return body
+}
+
 // Reusable avatar: shows profile photo if available, otherwise initials
 function MemberAvatar({ member, size=38, rank }) {
   const r = rank || getRank(member?.xp||0)
@@ -124,6 +157,9 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [recruitFilter,   setRecruitFilter]   = useState('all')  // 'all' | 'submitted' | 'contacted' | 'hired' | 'declined'
   const [recruitNoteEditing, setRecruitNoteEditing] = useState(null) // recruitId being edited
   const [recruitNoteText,    setRecruitNoteText]    = useState('')
+  const [recruitEmailBulletForm, setRecruitEmailBulletForm] = useState('')
+  const [recruitEmailFooter,     setRecruitEmailFooter]     = useState('')
+  const [recruitEmailSaving,     setRecruitEmailSaving]     = useState(false)
   const [slackUrl,        setSlackUrl]        = useState('')      // team Slack workspace URL
   const [slackSaving,     setSlackSaving]     = useState(false)
   const [logoCropSrc,     setLogoCropSrc]     = useState(null)    // object URL for crop modal
@@ -195,6 +231,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     if (seq !== fetchMembersSeqRef.current) return
     setTeamData(team)
     setSlackUrl(team?.team_prefs?.slack_url || '')
+    setRecruitEmailFooter(team?.team_prefs?.recruit_email_settings?.footer || '')
     // Load habit stats for all members
     if (mems?.length) {
       const ids = mems.map(m=>m.id)
@@ -1009,6 +1046,72 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       if (err) throw err
       setTeamData(prev => ({ ...prev, team_prefs: newPrefs }))
     } catch (err) { console.error('deleteRecruit error:', err) }
+  }
+
+  // ── Recruit Email Settings Handlers ─────────────────────────────────────
+  async function addBullet() {
+    const text = recruitEmailBulletForm.trim()
+    if (!text) return
+    setRecruitEmailSaving(true)
+    try {
+      const settings = teamData?.team_prefs?.recruit_email_settings || {}
+      const bullets = [...(settings.bullet_points || []), {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+        text,
+      }]
+      const newSettings = { ...settings, bullet_points: bullets }
+      const newPrefs = { ...(teamData.team_prefs || {}), recruit_email_settings: newSettings }
+      const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', teamData.id)
+      if (err) throw err
+      setTeamData(prev => ({ ...prev, team_prefs: newPrefs }))
+      setRecruitEmailBulletForm('')
+    } catch (err) { console.error('addBullet error:', err) }
+    finally { setRecruitEmailSaving(false) }
+  }
+
+  async function removeBullet(bulletId) {
+    setRecruitEmailSaving(true)
+    try {
+      const settings = teamData?.team_prefs?.recruit_email_settings || {}
+      const bullets = (settings.bullet_points || []).filter(bp => bp.id !== bulletId)
+      const newSettings = { ...settings, bullet_points: bullets }
+      const newPrefs = { ...(teamData.team_prefs || {}), recruit_email_settings: newSettings }
+      const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', teamData.id)
+      if (err) throw err
+      setTeamData(prev => ({ ...prev, team_prefs: newPrefs }))
+    } catch (err) { console.error('removeBullet error:', err) }
+    finally { setRecruitEmailSaving(false) }
+  }
+
+  async function reorderBullet(fromIdx, toIdx) {
+    setRecruitEmailSaving(true)
+    try {
+      const settings = teamData?.team_prefs?.recruit_email_settings || {}
+      const bullets = [...(settings.bullet_points || [])]
+      const [moved] = bullets.splice(fromIdx, 1)
+      bullets.splice(toIdx, 0, moved)
+      const newSettings = { ...settings, bullet_points: bullets }
+      const newPrefs = { ...(teamData.team_prefs || {}), recruit_email_settings: newSettings }
+      const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', teamData.id)
+      if (err) throw err
+      setTeamData(prev => ({ ...prev, team_prefs: newPrefs }))
+    } catch (err) { console.error('reorderBullet error:', err) }
+    finally { setRecruitEmailSaving(false) }
+  }
+
+  async function saveRecruitFooter() {
+    setRecruitEmailSaving(true)
+    try {
+      const settings = teamData?.team_prefs?.recruit_email_settings || {}
+      const newSettings = { ...settings, footer: recruitEmailFooter.trim() }
+      const newPrefs = { ...(teamData.team_prefs || {}), recruit_email_settings: newSettings }
+      const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', teamData.id)
+      if (err) throw err
+      setTeamData(prev => ({ ...prev, team_prefs: newPrefs }))
+      setSuccess('Email footer saved!')
+      setTimeout(() => setSuccess(''), 2000)
+    } catch (err) { console.error('saveRecruitFooter error:', err) }
+    finally { setRecruitEmailSaving(false) }
   }
 
   // ── Team logo ──
@@ -2417,6 +2520,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                           <option value="hired">Hired</option>
                                           <option value="declined">Declined</option>
                                         </select>
+                                        <a href={buildRecruitMailto(r, r.submitterName, teamData?.name, teamData?.team_prefs?.recruit_email_settings)}
+                                          title={`Email ${r.name}`} style={{
+                                          background:'none', border:'1px solid var(--b2)', borderRadius:6,
+                                          padding:'3px 8px', fontSize:11, cursor:'pointer', color:'var(--muted)',
+                                          textDecoration:'none', display:'inline-flex', alignItems:'center',
+                                        }}>✉️</a>
                                         <button onClick={()=>{
                                           if (recruitNoteEditing === r.id) { setRecruitNoteEditing(null); setRecruitNoteText('') }
                                           else { setRecruitNoteEditing(r.id); setRecruitNoteText(r.mgmtNotes || '') }
@@ -2477,6 +2586,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               { id:'ai',      label:'🤖 AI Tools' },
                               { id:'directory', label:'🔗 Directory' },
                               { id:'integrations', label:'🔌 Integrations' },
+                              { id:'recruit',  label:'🎯 Recruit Email' },
                               { id:'danger',  label:'⚠️ Danger Zone' },
                             ].map(t=>(
                               <button key={t.id} onClick={()=>setSettingsSubTab(t.id)} style={{
@@ -3138,6 +3248,113 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 ✓ Slack button will appear on team member dashboards
                               </div>
                             )}
+                          </div>
+                          )}
+
+                          {/* ── Recruit Email sub-tab ── */}
+                          {settingsSubTab==='recruit' && (
+                          <div className="card" style={{
+                            padding:'18px 20px',
+                            borderLeft:'3px solid #3b82f6',
+                            background:'linear-gradient(135deg, rgba(59,130,246,.06) 0%, var(--surface) 55%)',
+                          }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+                              <span style={{ fontSize:16 }}>🎯</span>
+                              <span className="serif" style={{ fontSize:15, color:'var(--text)', fontWeight:600 }}>
+                                Recruit Outreach Email
+                              </span>
+                              <span style={{ fontSize:11, color:'var(--muted)', marginLeft:'auto' }}>
+                                Customize the email sent to recruits
+                              </span>
+                            </div>
+
+                            <div style={{ fontSize:12, color:'var(--muted)', marginBottom:16, lineHeight:1.6 }}>
+                              When you click the ✉️ icon on a recruit card, their email client opens
+                              with a pre-filled message. Customize the selling points and footer below.
+                            </div>
+
+                            {/* Selling Points / Bullet Points */}
+                            <div style={{ marginBottom:20 }}>
+                              <div style={{ fontSize:12, fontWeight:700, color:'var(--text)', marginBottom:8 }}>
+                                Selling Points
+                              </div>
+                              <div style={{ fontSize:11, color:'var(--muted)', marginBottom:10 }}>
+                                These appear as bullet points in the outreach email.
+                                {!(teamData?.team_prefs?.recruit_email_settings?.bullet_points?.length) &&
+                                  ' Default bullets will be used if none are added.'}
+                              </div>
+
+                              {(teamData?.team_prefs?.recruit_email_settings?.bullet_points || []).map((bp, idx, arr) => (
+                                <div key={bp.id} style={{
+                                  display:'flex', alignItems:'center', gap:8,
+                                  padding:'8px 0', borderBottom:'1px solid var(--b2)',
+                                }}>
+                                  <span style={{ fontSize:12, color:'var(--muted)', width:20, textAlign:'center' }}>
+                                    {idx + 1}.
+                                  </span>
+                                  <div style={{ flex:1, fontSize:12, color:'var(--text)' }}>{bp.text}</div>
+                                  {idx > 0 && (
+                                    <button onClick={()=>reorderBullet(idx, idx - 1)} disabled={recruitEmailSaving} style={{
+                                      background:'none', border:'1px solid var(--b2)', borderRadius:4,
+                                      padding:'2px 6px', fontSize:10, cursor:'pointer', color:'var(--muted)',
+                                    }}>↑</button>
+                                  )}
+                                  {idx < arr.length - 1 && (
+                                    <button onClick={()=>reorderBullet(idx, idx + 1)} disabled={recruitEmailSaving} style={{
+                                      background:'none', border:'1px solid var(--b2)', borderRadius:4,
+                                      padding:'2px 6px', fontSize:10, cursor:'pointer', color:'var(--muted)',
+                                    }}>↓</button>
+                                  )}
+                                  <button onClick={()=>removeBullet(bp.id)} disabled={recruitEmailSaving} style={{
+                                    background:'none', border:'1px solid rgba(220,38,38,.2)', borderRadius:4,
+                                    padding:'2px 6px', fontSize:10, cursor:'pointer', color:'var(--red)',
+                                  }}>✕</button>
+                                </div>
+                              ))}
+
+                              <div style={{ display:'flex', gap:8, marginTop:10 }}>
+                                <input className="field-input" value={recruitEmailBulletForm}
+                                  onChange={e => setRecruitEmailBulletForm(e.target.value)}
+                                  onKeyDown={e => e.key === 'Enter' && recruitEmailBulletForm.trim() && addBullet()}
+                                  placeholder="e.g. Industry-leading commission splits"
+                                  style={{ flex:1, fontSize:12 }}/>
+                                <button className="btn-primary" onClick={addBullet}
+                                  disabled={!recruitEmailBulletForm.trim() || recruitEmailSaving}
+                                  style={{ fontSize:12, padding:'8px 16px', whiteSpace:'nowrap' }}>
+                                  + Add
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Footer */}
+                            <div style={{ marginBottom:16 }}>
+                              <div style={{ fontSize:12, fontWeight:700, color:'var(--text)', marginBottom:8 }}>
+                                Email Footer
+                              </div>
+                              <div style={{ fontSize:11, color:'var(--muted)', marginBottom:8 }}>
+                                Closing text appended to the bottom of every outreach email.
+                              </div>
+                              <textarea className="field-input" value={recruitEmailFooter}
+                                onChange={e => setRecruitEmailFooter(e.target.value)}
+                                placeholder="I'd love to set up a time to chat and tell you more about what we're building here.&#10;&#10;Best regards"
+                                rows={3} style={{ fontSize:12, resize:'vertical', width:'100%' }}/>
+                              <button className="btn-primary" onClick={saveRecruitFooter}
+                                disabled={recruitEmailSaving}
+                                style={{ fontSize:12, padding:'8px 16px', marginTop:8 }}>
+                                {recruitEmailSaving ? 'Saving...' : 'Save Footer'}
+                              </button>
+                            </div>
+
+                            {/* Email preview */}
+                            <div style={{ borderTop:'1px solid var(--b2)', paddingTop:14, marginTop:8 }}>
+                              <div style={{ fontSize:11, fontWeight:700, color:'var(--muted)', marginBottom:8,
+                                textTransform:'uppercase', letterSpacing:'.5px' }}>Preview</div>
+                              <pre style={{ fontSize:11, color:'var(--dim)', whiteSpace:'pre-wrap',
+                                background:'var(--bg2)', padding:12, borderRadius:8, lineHeight:1.5,
+                                border:'1px solid var(--b2)', margin:0, fontFamily:"'Poppins',sans-serif" }}>
+{buildRecruitMailtoPreview(teamData?.name, teamData?.team_prefs?.recruit_email_settings)}
+                              </pre>
+                            </div>
                           </div>
                           )}
 

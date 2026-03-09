@@ -10,6 +10,28 @@ import AvatarCropModal from '../components/AvatarCropModal'
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 const CUR_YEAR = new Date().getFullYear()
 
+function AffLinkCopy({ link, gold }) {
+  const [copied, setCopied] = useState(false)
+  async function handleCopy() {
+    try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(()=>setCopied(false),2000) }
+    catch { /* fallback: user can manually select */ }
+  }
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:8,
+      background:'var(--bg2)', border:'1.5px solid var(--b2)', borderRadius:10, padding:'10px 14px' }}>
+      <input readOnly value={link} style={{
+        flex:1, background:'transparent', border:'none', color:gold,
+        fontSize:12, fontWeight:600, fontFamily:"'JetBrains Mono',monospace",
+        outline:'none', minWidth:0,
+      }}/>
+      <button onClick={handleCopy} className="btn-gold"
+        style={{ padding:'6px 14px', fontSize:11, flexShrink:0 }}>
+        {copied ? 'Copied!' : 'Copy'}
+      </button>
+    </div>
+  )
+}
+
 export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDeleted, onTaskRestored }) {
   const { user, profile, refreshProfile } = useAuth()
   const rank     = getRank(profile?.xp||0)
@@ -58,6 +80,9 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   const [history,    setHistory]    = useState([])
   const [histLoad,   setHistLoad]   = useState(false)
   const [histFetched,setHistFetched]= useState(false)
+  const [closedHistory, setClosedHistory] = useState([])
+  const [closedHistLoad, setClosedHistLoad] = useState(false)
+  const [closedHistFetched, setClosedHistFetched] = useState(false)
 
   // Custom tasks
   const [customTasks,   setCustomTasks]  = useState([])
@@ -92,6 +117,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
 
   useEffect(()=>{ if (user?.id) fetchAnnual(year) },[year, user?.id])
   useEffect(()=>{ if(activeTab==='history' && !histFetched) fetchHistory() },[activeTab, histFetched])
+  useEffect(()=>{ if(activeTab==='closed-history' && !closedHistFetched) fetchClosedHistory() },[activeTab, closedHistFetched])
   useEffect(()=>{
     if (!user?.id || ctLoaded) return
     supabase.from('custom_tasks').select('*')
@@ -280,6 +306,32 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
     } finally {
       setHistFetched(true)
       setHistLoad(false)
+    }
+  }
+
+  async function fetchClosedHistory() {
+    setClosedHistLoad(true)
+    try {
+      const {data} = await supabase.from('transactions')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('type', 'closed')
+        .order('month_year', {ascending:false})
+      if (data) {
+        const order = []
+        const map   = {}
+        data.forEach(t => {
+          const mk = t.month_year || 'Unknown'
+          if (!map[mk]) { map[mk] = []; order.push(mk) }
+          map[mk].push(t)
+        })
+        setClosedHistory(order.map(mk => ({ mk, items: map[mk] })))
+      }
+    } catch (err) {
+      console.error('fetchClosedHistory error:', err)
+    } finally {
+      setClosedHistFetched(true)
+      setClosedHistLoad(false)
     }
   }
 
@@ -481,7 +533,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   }
 
   const curMonth = new Date().toISOString().slice(0,7)
-  const tabs = [{id:'profile',l:'Profile'},{id:'goals',l:'Goals'},{id:'annual',l:'Annual Summary'},{id:'history',l:'Offer History'},{id:'settings',l:'Settings'}]
+  const tabs = [{id:'profile',l:'Profile'},{id:'goals',l:'Goals'},{id:'annual',l:'Annual Summary'},{id:'history',l:'Offer History'},{id:'closed-history',l:'Closed Deals'},{id:'settings',l:'Settings'}]
 
   // Team role
   const isOnTeam    = !!profile?.team_id
@@ -676,22 +728,40 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                 </div>
               </div>
 
-              {/* ── Refer & Earn CTA ─────────────────────────────── */}
-              <div className="card" style={{ padding:24, borderTop:`3px solid ${theme === 'dark' ? '#d97706' : '#b45309'}`,
-                background:`linear-gradient(135deg, ${theme === 'dark' ? '#d97706' : '#b45309'}08 0%, var(--surface) 60%)` }}>
-                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
-                  <span style={{ fontSize:20 }}>💰</span>
-                  <span className="serif" style={{ fontSize:18, fontWeight:700, color:'var(--text)' }}>Refer & Earn</span>
-                </div>
-                <p style={{ fontSize:13, color:'var(--muted)', lineHeight:1.6, marginBottom:14,
-                  fontFamily:"'Poppins',sans-serif" }}>
-                  Earn 20% on every referral's subscription for 12 months. No cap on earnings.
-                </p>
-                <button className="btn-gold" onClick={() => onNavigate('affiliates')}
-                  style={{ fontSize:13, padding:'9px 22px' }}>
-                  Learn More →
-                </button>
-              </div>
+              {/* ── Refer & Earn / Affiliate Link ─────────────────── */}
+              {(() => {
+                const affLink = profile?.habit_prefs?.affiliate_link
+                const gold = theme === 'dark' ? '#d97706' : '#b45309'
+                return (
+                  <div className="card" style={{ padding:24, borderTop:`3px solid ${gold}`,
+                    background:`linear-gradient(135deg, ${gold}08 0%, var(--surface) 60%)` }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+                      <span style={{ fontSize:20 }}>💰</span>
+                      <span className="serif" style={{ fontSize:18, fontWeight:700, color:'var(--text)' }}>Refer & Earn</span>
+                    </div>
+                    {affLink ? (
+                      <>
+                        <p style={{ fontSize:13, color:'var(--muted)', lineHeight:1.6, marginBottom:12,
+                          fontFamily:"'Poppins',sans-serif" }}>
+                          Share your link — earn 20% on every referral for 12 months.
+                        </p>
+                        <AffLinkCopy link={affLink} gold={gold} />
+                      </>
+                    ) : (
+                      <>
+                        <p style={{ fontSize:13, color:'var(--muted)', lineHeight:1.6, marginBottom:14,
+                          fontFamily:"'Poppins',sans-serif" }}>
+                          Earn 20% on every referral's subscription for 12 months. No cap on earnings.
+                        </p>
+                        <button className="btn-gold" onClick={() => onNavigate('affiliates')}
+                          style={{ fontSize:13, padding:'9px 22px' }}>
+                          Learn More →
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )
+              })()}
 
               {/* Professional Info */}
               <div className="card" style={{ padding:24 }}>
@@ -1350,6 +1420,124 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                                     <div style={{ fontSize:10, color:color, fontFamily:"'JetBrains Mono',monospace",
                                       fontWeight:700, marginTop:2, letterSpacing:.4 }}>
                                       {isMade ? 'OFFER MADE' : 'OFFER RECEIVED'}
+                                    </div>
+                                  </div>
+                                  {t.price ? (
+                                    <div style={{ fontSize:12, fontWeight:700, color:'var(--gold2)',
+                                      fontFamily:"'JetBrains Mono',monospace", whiteSpace:'nowrap' }}>
+                                      {t.price}
+                                    </div>
+                                  ) : <div/>}
+                                  {t.commission ? (
+                                    <div style={{ fontSize:12, fontWeight:700, color:'var(--green)',
+                                      fontFamily:"'JetBrains Mono',monospace", whiteSpace:'nowrap' }}>
+                                      {t.commission}
+                                    </div>
+                                  ) : <div/>}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── Closed History tab ── */}
+          {activeTab==='closed-history' && (
+            <div>
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20, flexWrap:'wrap' }}>
+                <div className="serif" style={{ fontSize:18, color:'var(--text)' }}>Closed Deals</div>
+                <div style={{ fontSize:13, color:'var(--muted)' }}>All-time closed transactions across every month</div>
+              </div>
+
+              {closedHistLoad ? <Loader/> : closedHistory.length === 0 ? (
+                <div className="card" style={{ padding:48, textAlign:'center', color:'var(--dim)', fontSize:13 }}>
+                  No closed deals yet — deals you close will appear here.
+                </div>
+              ) : (
+                <>
+                  {/* Lifetime summary */}
+                  {(()=>{
+                    const allItems = closedHistory.flatMap(g => g.items)
+                    const sellers  = allItems.filter(t => t.deal_side==='seller' || t.closed_from==='Listing')
+                    const buyers   = allItems.filter(t => t.deal_side==='buyer' || (t.deal_side!=='seller' && t.closed_from!=='Listing'))
+                    const vol = allItems.reduce((a,t)=>{ const n=parseFloat(String(t.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
+                    const comm = allItems.reduce((a,t)=>{ const n=parseFloat(String(t.commission||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
+                    return (
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))', gap:10, marginBottom:24 }}>
+                        {[
+                          {l:'Deals Closed', v:allItems.length,              c:'#10b981'},
+                          {l:'Seller Side',  v:sellers.length,               c:'#8b5cf6'},
+                          {l:'Buyer Side',   v:buyers.length,                c:'#0ea5e9'},
+                          {l:'Total Volume', v:vol>0?fmtMoney(vol):'—',      c:'var(--gold2)'},
+                          {l:'Total Comm.',  v:comm>0?fmtMoney(comm):'—',    c:'var(--green)'},
+                        ].map((s,i) => (
+                          <div key={i} className="card-inset" style={{ padding:'12px 14px', textAlign:'center' }}>
+                            <div className="label" style={{ marginBottom:4 }}>{s.l}</div>
+                            <div className="serif" style={{ fontSize:22, color:s.c, fontWeight:700 }}>{s.v}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
+
+                  {/* Timeline grouped by month */}
+                  <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+                    {closedHistory.map(group => {
+                      const [y, m] = group.mk.split('-')
+                      const mName  = MONTHS[parseInt(m)-1]
+                      const label  = mName ? `${mName} '${(y||'').slice(2)}` : group.mk
+                      const sellerCount = group.items.filter(t => t.deal_side==='seller' || t.closed_from==='Listing').length
+                      const buyerCount = group.items.length - sellerCount
+                      return (
+                        <div key={group.mk} className="card" style={{ padding:20 }}>
+                          {/* Month header */}
+                          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14, flexWrap:'wrap' }}>
+                            <div className="serif" style={{ fontSize:17, color:'var(--text)', fontWeight:600 }}>{label}</div>
+                            {sellerCount > 0 && (
+                              <span style={{ fontSize:10, padding:'2px 9px', borderRadius:20, fontWeight:700,
+                                background:'rgba(139,92,246,.1)', color:'#8b5cf6', border:'1px solid rgba(139,92,246,.25)',
+                                fontFamily:"'JetBrains Mono',monospace" }}>
+                                🏡 {sellerCount} SELLER
+                              </span>
+                            )}
+                            {buyerCount > 0 && (
+                              <span style={{ fontSize:10, padding:'2px 9px', borderRadius:20, fontWeight:700,
+                                background:'rgba(14,165,233,.1)', color:'#0ea5e9', border:'1px solid rgba(14,165,233,.25)',
+                                fontFamily:"'JetBrains Mono',monospace" }}>
+                                🤝 {buyerCount} BUYER
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Entries */}
+                          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                            {group.items.map(t => {
+                              const isSeller = t.deal_side === 'seller' || t.closed_from === 'Listing'
+                              const color  = isSeller ? '#8b5cf6' : '#0ea5e9'
+                              const bg     = isSeller ? 'rgba(139,92,246,.06)' : 'rgba(14,165,233,.06)'
+                              const border = isSeller ? 'rgba(139,92,246,.18)' : 'rgba(14,165,233,.18)'
+                              return (
+                                <div key={t.id} style={{
+                                  display:'grid',
+                                  gridTemplateColumns:'auto 1fr auto auto',
+                                  gap:10, alignItems:'center',
+                                  padding:'10px 14px', borderRadius:9, background:bg, border:`1px solid ${border}`,
+                                }}>
+                                  <div style={{ fontSize:16 }}>{isSeller ? '🏡' : '🤝'}</div>
+                                  <div style={{ minWidth:0 }}>
+                                    <div style={{ fontSize:13, fontWeight:600, color:'var(--text)',
+                                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                                      {t.address || 'No address'}
+                                    </div>
+                                    <div style={{ fontSize:10, color:color, fontFamily:"'JetBrains Mono',monospace",
+                                      fontWeight:700, marginTop:2, letterSpacing:.4 }}>
+                                      {isSeller ? 'SELLER' : 'BUYER'}
                                     </div>
                                   </div>
                                   {t.price ? (

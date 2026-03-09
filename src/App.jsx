@@ -1458,6 +1458,17 @@ function Dashboard({ theme, onToggleTheme }) {
   const [newListDate, setNewListDate] = useState('')
   const [newExpiresDate, setNewExpiresDate] = useState('')
   const [editingListing, setEditingListing] = useState(null) // listing id in edit mode
+
+  // Potential Listings
+  const [potentialListings, setPotentialListings] = useState([])
+  const [newPotAddr, setNewPotAddr] = useState('')
+  const [newPotPrice, setNewPotPrice] = useState('')
+  const [newPotComm, setNewPotComm] = useState('')
+  const [newPotLeadSource, setNewPotLeadSource] = useState('')
+  const [newPotListDate, setNewPotListDate] = useState('')
+  const [newPotExpiresDate, setNewPotExpiresDate] = useState('')
+  const [addPotExpanded, setAddPotExpanded] = useState(false)
+  const [editingPotential, setEditingPotential] = useState(null)
   const [editingRep, setEditingRep] = useState(null) // buyer rep id in edit mode
   const [addListingExpanded, setAddListingExpanded] = useState(false)
   const [offerReceivedModal, setOfferReceivedModal] = useState(null) // null | { listing, offerPrice, offerNotes }
@@ -1613,12 +1624,15 @@ function Dashboard({ theme, onToggleTheme }) {
 
     if (listRes.data) {
       const allL = listRes.data
-      setListings(allL.filter(l => (l.unit_count ?? 1) !== 0).map(l => ({
+      const mapListing = l => ({
         id:l.id, address:l.address, status:l.status||'active',
         price:l.price||'', commission:l.commission||'', monthYear:l.month_year||'',
         createdAt:l.created_at||null, leadSource:l.lead_source||'', notes:l.notes||[],
         listDate:l.list_date||'', expiresDate:l.expires_date||''
-      })))
+      })
+      const allListings = allL.filter(l => (l.unit_count ?? 1) !== 0)
+      setListings(allListings.filter(l => l.status !== 'potential').map(mapListing))
+      setPotentialListings(allListings.filter(l => l.status === 'potential').map(mapListing))
       setBuyerReps(allL.filter(l => l.unit_count === 0).map(r => ({
         id:r.id, clientName:r.address||'', status:r.status||'active', monthYear:r.month_year||'',
         buyerDetails:r.buyer_details||{}, createdAt:r.created_at||null
@@ -2393,6 +2407,80 @@ function Dashboard({ theme, onToggleTheme }) {
     }
   }
 
+  // ── Potential Listings CRUD ────────────────────────────────────────────────
+  async function addPotentialListing() {
+    if (!newPotAddr.trim()) return
+    const rawComm = newPotComm.trim()
+    const commVal = rawComm && !rawComm.endsWith('%') ? rawComm + '%' : rawComm
+    try {
+      const insertObj = { user_id:user.id, address:newPotAddr.trim(), unit_count:1,
+        price:newPotPrice.trim(), commission:commVal, status:'potential', month_year:MONTH_YEAR }
+      if (newPotLeadSource) insertObj.lead_source = newPotLeadSource
+      if (newPotListDate) insertObj.list_date = newPotListDate
+      if (newPotExpiresDate) insertObj.expires_date = newPotExpiresDate
+      let {data, error} = await supabase.from('listings').insert(insertObj).select().single()
+      if (error && (error.message?.includes('lead_source') || error.message?.includes('list_date') || error.message?.includes('expires_date') || error.message?.includes('column'))) {
+        delete insertObj.lead_source; delete insertObj.list_date; delete insertObj.expires_date
+        const retry = await supabase.from('listings').insert(insertObj).select().single()
+        data = retry.data; error = retry.error
+      }
+      if (error) throw error
+      if (data) {
+        setPotentialListings(prev=>[...prev,{id:data.id,address:data.address,status:'potential',price:data.price||'',commission:data.commission||'',monthYear:data.month_year||MONTH_YEAR,createdAt:data.created_at||null,leadSource:data.lead_source||'',notes:[],listDate:data.list_date||'',expiresDate:data.expires_date||''}])
+        setNewPotAddr(''); setNewPotPrice(''); setNewPotComm(''); setNewPotLeadSource(''); setNewPotListDate(''); setNewPotExpiresDate('')
+        setAddPotExpanded(false)
+      }
+    } catch (err) {
+      console.error('addPotentialListing error:', err)
+      showToast('Failed to add potential listing: ' + (err.message || 'unknown error'))
+    }
+  }
+
+  async function removePotentialListing(listing) {
+    if (!window.confirm(`Remove potential listing "${listing.address}"?`)) return
+    const snapshot = potentialListings
+    setPotentialListings(prev=>prev.filter(l=>l.id!==listing.id))
+    const r = await safeDb(supabase.from('listings').delete().eq('id',listing.id).eq('user_id',user.id))
+    if (!r.ok) { setPotentialListings(snapshot); showToast('Failed to remove potential listing') }
+  }
+
+  function updatePotentialLocal(id, field, val) {
+    setPotentialListings(prev=>prev.map(l=>l.id===id?{...l,[field]:val}:l))
+  }
+  async function updatePotentialListing(id, field, val) {
+    setPotentialListings(prev=>prev.map(l=>l.id===id?{...l,[field]:val}:l))
+    const dbField = listingFieldMap[field] || field
+    const r = await safeDb(supabase.from('listings').update({[dbField]:val}).eq('id',id).eq('user_id',user.id))
+    if (!r.ok) {
+      if (NEW_LISTING_COLS.has(dbField)) { console.warn(`Column ${dbField} not found — run migration to enable.`); return }
+      showToast('Failed to save potential listing change')
+    }
+  }
+  function togglePotentialCommType(id) {
+    setPotentialListings(prev => prev.map(l => {
+      if (l.id !== id) return l
+      const raw = String(l.commission || '').trim()
+      const isPercent = raw.endsWith('%')
+      const newComm = isPercent ? raw.replace(/%$/, '') : (raw ? raw + '%' : '%')
+      return { ...l, commission: newComm }
+    }))
+    const row = potentialListings.find(l => l.id === id)
+    if (row) {
+      const raw = String(row.commission || '').trim()
+      const isPercent = raw.endsWith('%')
+      const newComm = isPercent ? raw.replace(/%$/, '') : (raw ? raw + '%' : '%')
+      safeDb(supabase.from('listings').update({ commission: newComm }).eq('id', id).eq('user_id', user.id))
+    }
+  }
+
+  async function promotePotential(listing) {
+    const r = await safeDb(supabase.from('listings').update({status:'active'}).eq('id',listing.id).eq('user_id',user.id))
+    if (!r.ok) { showToast('Failed to promote listing'); return }
+    setPotentialListings(prev=>prev.filter(l=>l.id!==listing.id))
+    setListings(prev=>[...prev,{...listing, status:'active'}])
+    showToast(`"${listing.address}" promoted to active listing`, 'success')
+  }
+
   // Open the Offer Received modal for a listing (offer came in on your listing)
   function handleListingOfferReceived(listing) {
     setOfferReceivedModal({ listing, offerPrice: listing.price || '', offerNotes: '' })
@@ -3074,7 +3162,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
         {/* ── Primary Tabs ────────────────────────────────── */}
         <div className="primary-tabs">
-          {[{id:'calendar',l:'📅 Calendar'},{id:'listings',l:'🏡 Listings',count:listings.length},{id:'buyers',l:'🤝 Buyers',count:buyerReps.length}].map(t=>(
+          {[{id:'calendar',l:'📅 Calendar'},{id:'potential',l:'💡 Potential',count:potentialListings.length},{id:'listings',l:'🏡 Listings',count:listings.length},{id:'buyers',l:'🤝 Buyers',count:buyerReps.length},{id:'closed',l:'✅ Closed',count:closedDeals.filter(d=>(d.month_year||d.monthYear)===MONTH_YEAR).length}].map(t=>(
             <button key={t.id} className={`primary-tab${primaryTab===t.id?' on':''}`} onClick={()=>setPrimaryTab(t.id)}>
               {t.l}{t.count!=null && <span className="ptab-count">{t.count}</span>}
             </button>
@@ -3829,6 +3917,196 @@ function Dashboard({ theme, onToggleTheme }) {
 
         </>)}
 
+        {/* ══ POTENTIAL LISTINGS TAB ═════════════════════════════ */}
+        {primaryTab==='potential' && (<>
+        <div style={{ marginTop:36 }}>
+          <div className="section-divider"/>
+          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14, gap:12, flexWrap:'wrap' }}>
+            <div>
+              <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:4 }}>
+                <div style={{ width:36, height:36, borderRadius:10, background:'rgba(245,158,11,.1)', border:'1px solid rgba(245,158,11,.25)',
+                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:17, flexShrink:0 }}>💡</div>
+                <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>Potential Listings</span>
+                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, fontSize:20, color:'#d97706', lineHeight:1 }}>{potentialListings.length}</span>
+              </div>
+              <div className="section-sub" style={{ marginBottom:0 }}>
+                Properties you're prospecting · <strong>Promote to Listing</strong> when signed
+              </div>
+            </div>
+          </div>
+
+          {/* Potential listing cards */}
+          <div className="deal-card-grid">
+            {potentialListings.length === 0 && (
+              <div className="deal-card" style={{ textAlign:'center', padding:'28px 20px', color:'var(--dim)', fontSize:13 }}>
+                No potential listings yet — add one below
+              </div>
+            )}
+
+            {potentialListings.map(l => {
+              const isP = String(l.commission||'').trim().endsWith('%')
+              const comm = resolveCommission(l.commission, l.price)
+              const priceNum = parseFloat(String(l.price||'').replace(/[^0-9.]/g,''))
+              const isEditing = editingPotential === l.id
+              const metaParts = []
+              if (l.commission) metaParts.push(isP && comm > 0 ? `${l.commission} = ${fmtMoney(comm)}` : (isP ? l.commission : formatPrice(l.commission)))
+              if (l.listDate) metaParts.push(`Listed ${fmtShortDate(l.listDate)}`)
+              if (l.expiresDate) metaParts.push(`Exp ${fmtShortDate(l.expiresDate)}`)
+              if (l.leadSource) metaParts.push(l.leadSource)
+              if (l.monthYear && l.monthYear !== MONTH_YEAR) metaParts.push(fmtMonth(l.monthYear))
+              return (
+              <div key={l.id} className="deal-card">
+                {/* Status — top right */}
+                <div className="deal-status">
+                  <span className="status-pill-lg" style={{
+                    background:'rgba(245,158,11,.1)', color:'#d97706',
+                    border:'1px solid rgba(245,158,11,.25)',
+                  }}>POTENTIAL</span>
+                </div>
+
+                {/* Address */}
+                {isEditing ? (
+                  <div className="deal-title">
+                    <input value={l.address||''}
+                      onChange={e=>updatePotentialLocal(l.id,'address',e.target.value)}
+                      onBlur={e=>updatePotentialListing(l.id,'address',e.target.value)} placeholder="Property address…"/>
+                  </div>
+                ) : (
+                  <div className="deal-title" style={{ paddingRight:100 }}>{l.address || 'Untitled listing'}</div>
+                )}
+
+                {/* Price */}
+                <div className="deal-price">{priceNum > 0 ? formatPrice(l.price) : '—'}</div>
+
+                {/* Metadata line */}
+                {metaParts.length > 0 && (
+                  <div className="deal-meta-line">
+                    {metaParts.map((part, i) => (
+                      <span key={i}>{i > 0 && <span className="sep" style={{ display:'inline-block', marginRight:10 }}/>}{part}</span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Edit fields */}
+                {isEditing && (
+                  <div style={{ marginTop:14, paddingTop:14, borderTop:'1px solid var(--b1)', animation:'slideDown .2s ease' }}>
+                    <div className="listing-edit-row">
+                      <div>
+                        <span className="label">Price</span>
+                        <input className="field-input" value={l.price||''}
+                          onChange={e=>updatePotentialLocal(l.id,'price',e.target.value)}
+                          onBlur={e=>updatePotentialListing(l.id,'price',e.target.value)}
+                          placeholder="450000"
+                          style={{ padding:'8px 12px', marginTop:4, width:'100%', boxSizing:'border-box', color:'var(--gold2)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
+                      </div>
+                      <div>
+                        <span className="label">Commission</span>
+                        <div style={{ display:'flex', gap:4, marginTop:4 }}>
+                          <input className="field-input"
+                            value={isP ? String(l.commission||'').replace(/%$/,'') : (l.commission||'')}
+                            onChange={e => updatePotentialLocal(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)}
+                            onBlur={e => updatePotentialListing(l.id, 'commission', isP ? e.target.value + '%' : e.target.value)}
+                            placeholder={isP ? '3' : '5000'}
+                            style={{ padding:'8px 12px', flex:1, minWidth:0, color: isP ? 'var(--muted)' : 'var(--green)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace" }}/>
+                          <button onClick={()=>togglePotentialCommType(l.id)} style={{
+                            background:'var(--bg2)', border:'1px solid var(--b2)', borderRadius:6, cursor:'pointer', padding:'6px 10px',
+                            fontSize:10, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600, whiteSpace:'nowrap',
+                          }}>{isP ? '$ Flat' : '% Rate'}</button>
+                        </div>
+                      </div>
+                      <div>
+                        <span className="label">Lead Source</span>
+                        <select className="field-input" value={l.leadSource||''}
+                          onChange={e=>updatePotentialListing(l.id,'leadSource',e.target.value)}
+                          style={{ padding:'8px 12px', marginTop:4, width:'100%', boxSizing:'border-box' }}>
+                          <option value="">None</option>
+                          {LEAD_SOURCES.map(s=><option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="listing-edit-row" style={{ marginTop:10, borderTop:'none', paddingTop:0 }}>
+                      <div>
+                        <span className="label">List Date</span>
+                        <input className="field-input" type="date" value={l.listDate||''}
+                          onChange={e=>updatePotentialListing(l.id,'listDate',e.target.value)}
+                          style={{ padding:'8px 12px', marginTop:4, width:'100%', boxSizing:'border-box' }}/>
+                      </div>
+                      <div>
+                        <span className="label">Expiration Date</span>
+                        <input className="field-input" type="date" value={l.expiresDate||''}
+                          onChange={e=>updatePotentialListing(l.id,'expiresDate',e.target.value)}
+                          style={{ padding:'8px 12px', marginTop:4, width:'100%', boxSizing:'border-box' }}/>
+                      </div>
+                      <div/>
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="deal-actions">
+                  <button className="btn-gold" style={{ padding:'6px 14px', fontSize:12 }} onClick={()=>promotePotential(l)}>🏡 Promote to Listing</button>
+                  <div style={{ flex:1 }}/>
+                  <button className="edit-toggle" title={isEditing ? 'Done editing' : 'Edit listing'} onClick={()=>setEditingPotential(isEditing ? null : l.id)}>
+                    {isEditing ? '✓' : '✏️'}
+                  </button>
+                  <button className="edit-toggle" title="Remove" onClick={()=>removePotentialListing(l)} style={{ color:'var(--dim)' }}>✕</button>
+                </div>
+              </div>
+              )
+            })}
+          </div>
+
+          {/* Add potential listing bar */}
+          <div style={{ marginTop:14 }}>
+            <div className="add-bar" onClick={() => document.getElementById('add-potential-input')?.focus()}>
+              <span style={{ fontSize:16, color:'var(--dim)', flexShrink:0 }}>+</span>
+              <input id="add-potential-input" value={newPotAddr} onChange={e=>setNewPotAddr(e.target.value)}
+                onFocus={()=>setAddPotExpanded(true)}
+                onKeyDown={e=>e.key==='Enter'&&addPotentialListing()}
+                placeholder="Add a potential listing address…"/>
+              {newPotAddr.trim() && (
+                <button onClick={e=>{e.stopPropagation();addPotentialListing()}} className="btn-gold" style={{ flexShrink:0, padding:'6px 14px', whiteSpace:'nowrap' }}>
+                  + Add
+                </button>
+              )}
+            </div>
+            {addPotExpanded && newPotAddr.trim() && (
+              <>
+                <div className="add-bar-fields" style={{ borderRadius:0 }}>
+                  <input className="field-input" value={newPotPrice} onChange={e=>setNewPotPrice(e.target.value)}
+                    onKeyDown={e=>e.key==='Enter'&&addPotentialListing()} placeholder="Est. price"
+                    style={{ padding:'8px 12px', color:'var(--gold2)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
+                  <input className="field-input" value={newPotComm} onChange={e=>setNewPotComm(e.target.value)}
+                    onKeyDown={e=>e.key==='Enter'&&addPotentialListing()} placeholder="Commission (3%)"
+                    style={{ padding:'8px 12px', color:'var(--green)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}/>
+                  <select className="field-input" value={newPotLeadSource} onChange={e=>setNewPotLeadSource(e.target.value)}
+                    style={{ padding:'8px 12px' }}>
+                    <option value="">Lead source…</option>
+                    {LEAD_SOURCES.map(s=><option key={s} value={s}>{s}</option>)}
+                  </select>
+                  <button onClick={()=>{setAddPotExpanded(false);setNewPotAddr('');setNewPotPrice('');setNewPotComm('');setNewPotLeadSource('');setNewPotListDate('');setNewPotExpiresDate('')}}
+                    style={{ background:'none', border:'none', color:'var(--dim)', cursor:'pointer', fontSize:12, fontWeight:600, whiteSpace:'nowrap' }}>Cancel</button>
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, padding:'10px 20px',
+                  background:'var(--surface)', border:'1.5px solid var(--b3)', borderTop:'none',
+                  borderRadius:'0 0 var(--r) var(--r)' }}>
+                  <div>
+                    <span className="label" style={{ fontSize:10 }}>List Date</span>
+                    <input className="field-input" type="date" value={newPotListDate} onChange={e=>setNewPotListDate(e.target.value)}
+                      style={{ padding:'6px 10px', marginTop:3, width:'100%', boxSizing:'border-box', fontSize:12 }}/>
+                  </div>
+                  <div>
+                    <span className="label" style={{ fontSize:10 }}>Expiration</span>
+                    <input className="field-input" type="date" value={newPotExpiresDate} onChange={e=>setNewPotExpiresDate(e.target.value)}
+                      style={{ padding:'6px 10px', marginTop:3, width:'100%', boxSizing:'border-box', fontSize:12 }}/>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+        </>)}
+
         {/* ══ LISTINGS TAB ═════════════════════════════════════ */}
         {primaryTab==='listings' && (<>
 
@@ -3974,13 +4252,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 {/* Actions */}
                 <div className="deal-actions">
                   {l.status !== 'closed' ? (
-                    <>
-                      <button className="act-btn act-btn-blue" onClick={()=>handleListingOfferReceived(l)}>Offer Rec'd</button>
-                      {(l.status==='active' || !l.status) && (
-                        <button className="act-btn act-btn-amber" onClick={()=>handleListingStatus(l,'pending')}>→ Pending</button>
-                      )}
-                      <button className="act-btn act-btn-green" onClick={()=>handleListingStatus(l,'closed')}>✓ Closed</button>
-                    </>
+                    <button className="act-btn act-btn-blue" onClick={()=>handleListingOfferReceived(l)}>Offer Rec'd</button>
                   ) : (
                     <span style={{ fontSize:11, color:'var(--dim)', fontStyle:'italic' }}>Deal completed</span>
                   )}
@@ -4263,15 +4535,10 @@ function Dashboard({ theme, onToggleTheme }) {
                 {/* Actions row */}
                 <div className="deal-actions">
                   {rep.status !== 'closed' ? (
-                    <>
-                      <button className="act-btn act-btn-blue"
-                        onClick={() => setOfferModal({ repId:rep.id, repName:rep.clientName||'Buyer' })}>
-                        📤 Offer Made
-                      </button>
-                      <button className="act-btn act-btn-amber" onClick={() => closeBuyerRep(rep)}>
-                        ✓ Close Rep
-                      </button>
-                    </>
+                    <button className="act-btn act-btn-blue"
+                      onClick={() => setOfferModal({ repId:rep.id, repName:rep.clientName||'Buyer' })}>
+                      📤 Offer Made
+                    </button>
                   ) : (
                     <span style={{ fontSize:11, color:'var(--dim)', fontStyle:'italic' }}>Agreement closed</span>
                   )}
@@ -4534,6 +4801,112 @@ function Dashboard({ theme, onToggleTheme }) {
           )
         })()}
 
+        </>)}
+
+        {/* ══ CLOSED TAB ═══════════════════════════════════════ */}
+        {primaryTab==='closed' && (<>
+        <div style={{ marginTop:36 }}>
+          <div className="section-divider"/>
+          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14, gap:12, flexWrap:'wrap' }}>
+            <div>
+              <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:4 }}>
+                <div style={{ width:36, height:36, borderRadius:10, background:'rgba(16,185,129,.1)', border:'1px solid rgba(16,185,129,.25)',
+                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:17, flexShrink:0 }}>🎉</div>
+                <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>Closed This Month</span>
+                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, fontSize:20, color:'#10b981', lineHeight:1 }}>
+                  {closedDeals.filter(d=>(d.month_year||d.monthYear)===MONTH_YEAR).length}
+                </span>
+              </div>
+              <div className="section-sub" style={{ marginBottom:0 }}>
+                Deals closed in {MONTH_YEAR} · labeled by side
+              </div>
+            </div>
+          </div>
+
+          <div className="deal-card-grid">
+            {closedDeals.filter(d=>(d.month_year||d.monthYear)===MONTH_YEAR).length === 0 && (
+              <div className="deal-card" style={{ textAlign:'center', padding:'28px 20px', color:'var(--dim)', fontSize:13 }}>
+                No closed deals this month yet
+              </div>
+            )}
+
+            {closedDeals.filter(d=>(d.month_year||d.monthYear)===MONTH_YEAR).map(d => {
+              const isSeller = d.dealSide === 'seller' || d.closedFrom === 'Listing'
+              const sideLabel = isSeller ? 'SELLER' : 'BUYER'
+              const sideIcon = isSeller ? '🏡' : '🤝'
+              const sideColor = isSeller ? '#8b5cf6' : '#0ea5e9'
+              const sideBg = isSeller ? 'rgba(139,92,246,.08)' : 'rgba(14,165,233,.08)'
+              const sideBorder = isSeller ? 'rgba(139,92,246,.2)' : 'rgba(14,165,233,.2)'
+              const comm = resolveCommission(d.commission, d.price)
+              const priceNum = parseFloat(String(d.price||'').replace(/[^0-9.]/g,''))
+              return (
+                <div key={d.id} className="deal-card">
+                  {/* Side badge — top right */}
+                  <div className="deal-status">
+                    <span className="status-pill-lg" style={{
+                      background: sideBg, color: sideColor,
+                      border: `1px solid ${sideBorder}`,
+                    }}>
+                      {sideIcon} {sideLabel}
+                    </span>
+                  </div>
+
+                  {/* Address */}
+                  <div className="deal-title" style={{ paddingRight:100 }}>{d.address || 'Untitled deal'}</div>
+
+                  {/* Price */}
+                  <div className="deal-price">{priceNum > 0 ? formatPrice(d.price) : '—'}</div>
+
+                  {/* Meta */}
+                  <div className="deal-meta-line">
+                    {comm > 0 && <span style={{ color:'var(--green)', fontWeight:700 }}>Commission: {fmtMoney(comm)}</span>}
+                    {d.closedFrom && <><span className="sep"/><span>From: {d.closedFrom}</span></>}
+                    {d.originalLeadSource && <><span className="sep"/><span>{d.originalLeadSource}</span></>}
+                  </div>
+
+                  {/* Closed label */}
+                  <div className="deal-actions">
+                    <span style={{ fontSize:11, color:'var(--green)', fontWeight:600 }}>✓ Closed</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Summary cards */}
+          {(() => {
+            const monthClosed = closedDeals.filter(d=>(d.month_year||d.monthYear)===MONTH_YEAR)
+            if (monthClosed.length === 0) return null
+            const sellerCount = monthClosed.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing').length
+            const buyerCount = monthClosed.length - sellerCount
+            const totalComm = monthClosed.reduce((s,d)=>s+resolveCommission(d.commission,d.price),0)
+            const totalVol = monthClosed.reduce((s,d)=>s+parseFloat(String(d.price||'').replace(/[^0-9.]/g,'')||0),0)
+            return (
+              <div style={{ marginTop:24 }}>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))', gap:10 }}>
+                  <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid #10b981' }}>
+                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>TOTAL GCI</div>
+                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700, color:'#10b981' }}>{fmtMoney(totalComm)}</div>
+                  </div>
+                  {totalVol > 0 && (
+                    <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid var(--gold2)' }}>
+                      <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>VOLUME</div>
+                      <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700, color:'var(--gold2)' }}>{fmtMoney(totalVol)}</div>
+                    </div>
+                  )}
+                  <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid #8b5cf6' }}>
+                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>SELLER</div>
+                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700, color:'#8b5cf6' }}>{sellerCount}</div>
+                  </div>
+                  <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid #0ea5e9' }}>
+                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>BUYER</div>
+                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700, color:'#0ea5e9' }}>{buyerCount}</div>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+        </div>
         </>)}
 
         <div style={{ height:48 }}/>

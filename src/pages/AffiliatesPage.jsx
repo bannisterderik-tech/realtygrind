@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { CSS } from '../design'
 import { PLANS } from '../lib/plans'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/AuthContext'
 
 const STEPS = [
   { emoji:'1️⃣', title:'Sign Up', desc:'Fill out the form below and get your unique referral link instantly.' },
@@ -32,13 +34,14 @@ const AFF_FAQS = [
 
 export default function AffiliatesPage({ theme, onNavigate }) {
   const gold = theme === 'dark' ? '#d97706' : '#b45309'
+  const { user, profile } = useAuth()
 
   const [name, setName]             = useState('')
   const [email, setEmail]           = useState('')
   const [website, setWebsite]       = useState('')
   const [loading, setLoading]       = useState(false)
   const [error, setError]           = useState('')
-  const [referralLink, setReferralLink] = useState('')
+  const [referralLink, setReferralLink] = useState(() => profile?.habit_prefs?.affiliate_link || '')
   const [copied, setCopied]         = useState(false)
   const [openFaq, setOpenFaq]       = useState(null)
 
@@ -65,6 +68,17 @@ export default function AffiliatesPage({ theme, onNavigate }) {
       const data = await resp.json()
       if (!resp.ok) throw new Error(data.error || 'Something went wrong.')
       setReferralLink(data.referral_link)
+
+      // Persist affiliate link to user's profile so it shows on ProfilePage
+      if (user?.id && supabase && data.referral_link) {
+        try {
+          const { data: freshProfile } = await supabase.from('profiles').select('habit_prefs').eq('id', user.id).single()
+          const currentPrefs = freshProfile?.habit_prefs || {}
+          await supabase.from('profiles').update({
+            habit_prefs: { ...currentPrefs, affiliate_link: data.referral_link }
+          }).eq('id', user.id)
+        } catch (e) { console.warn('Failed to persist affiliate link:', e) }
+      }
     } catch (err) {
       setError(err.message)
     } finally {

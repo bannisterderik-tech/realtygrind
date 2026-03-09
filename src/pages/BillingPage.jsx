@@ -202,6 +202,68 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
                 </div>
               )}
 
+              {/* ── Refer & Earn CTA ── */}
+              {hasSubscription && (() => {
+                const gold = theme === 'dark' ? '#d97706' : '#b45309'
+                const perRef = (currentPlan.price * 0.2).toFixed(2)
+                return (
+                  <div className="card" style={{
+                    padding:28, marginBottom:24, borderTop:`3px solid ${gold}`,
+                    background:`linear-gradient(135deg, ${gold}0d 0%, var(--surface) 55%)`,
+                    position:'relative', overflow:'hidden',
+                  }}>
+                    <div style={{ position:'absolute', top:-10, right:-10, fontSize:80, opacity:0.04,
+                      transform:'rotate(-15deg)', pointerEvents:'none' }}>💰</div>
+
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                      <span style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace",
+                        letterSpacing:.8, textTransform:'uppercase', fontWeight:700, color:gold }}>
+                        REFER & EARN
+                      </span>
+                      <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20,
+                        background:`${gold}18`, color:gold, border:`1px solid ${gold}30` }}>
+                        💰 20% for 12 Months
+                      </span>
+                    </div>
+
+                    <div className="serif" style={{ fontSize:22, color:'var(--text)', marginBottom:6 }}>
+                      Level up your income
+                    </div>
+                    <div style={{ fontSize:13, color:'var(--muted)', lineHeight:1.6, marginBottom:14,
+                      fontFamily:"'Poppins',sans-serif" }}>
+                      Refer agents to RealtyGrind and earn{' '}
+                      <strong style={{ color:gold }}>${perRef}/mo</strong>{' '}
+                      for every {currentPlan.name} referral — for 12 months, no cap.
+                    </div>
+
+                    <div style={{ display:'flex', gap:12, marginBottom:16, flexWrap:'wrap' }}>
+                      {[
+                        { count:3,  emoji:'🥉' },
+                        { count:10, emoji:'🥇' },
+                        { count:25, emoji:'💎' },
+                      ].map(m => (
+                        <div key={m.count} style={{
+                          display:'flex', alignItems:'center', gap:6, padding:'6px 12px',
+                          background:'var(--bg2)', border:'1px solid var(--b2)', borderRadius:8,
+                          fontSize:12, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace",
+                        }}>
+                          <span>{m.emoji}</span>
+                          <span>{m.count} refs</span>
+                          <span style={{ color:gold, fontWeight:700 }}>
+                            ${(currentPlan.price * 0.2 * m.count).toFixed(0)}/mo
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <button className="btn-gold" onClick={() => onNavigate('affiliates')}
+                      style={{ fontSize:14, padding:'11px 28px' }}>
+                      Start Earning →
+                    </button>
+                  </div>
+                )
+              })()}
+
               {/* Plan comparison / upgrade section */}
               <div style={{ marginBottom:12 }}>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:12, marginBottom:18 }}>

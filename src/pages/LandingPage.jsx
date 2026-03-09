@@ -315,6 +315,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
           {['Features','Pricing','FAQ'].map(l => (
             <div key={l} className="lp-mobile-link" onClick={() => scrollTo(l.toLowerCase())}>{l}</div>
           ))}
+          <div className="lp-mobile-link" onClick={() => { onShowAffiliates(); setMenuOpen(false) }}>Affiliates</div>
           <div style={{ marginTop:40, display:'flex', flexDirection:'column', gap:12 }}>
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
               <span style={{ fontSize:13, color:'var(--muted)', fontFamily:'Poppins,sans-serif' }}>Theme</span>
@@ -336,6 +337,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
           {['Features','Pricing','FAQ'].map(l => (
             <span key={l} className="lp-nav-link" onClick={() => scrollTo(l.toLowerCase())}>{l}</span>
           ))}
+          <span className="lp-nav-link" onClick={onShowAffiliates}>Affiliates</span>
         </div>
         <div className="lp-nav-ctas" style={{ display:'flex', alignItems:'center', gap:14 }}>
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />

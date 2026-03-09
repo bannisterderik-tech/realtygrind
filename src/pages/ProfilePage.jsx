@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { Loader, Wordmark, ThemeToggle, Ring, getRank, fmtMoney, RANKS } from '../design'
 import { HABITS } from '../habits'
+import { isActiveBilling } from '../lib/plans'
 import { ALL_APPS } from './DirectoryPage'
 import AvatarCropModal from '../components/AvatarCropModal'
 
@@ -14,6 +15,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   const rank     = getRank(profile?.xp||0)
   const nextRank = RANKS.find(r => r.min > (profile?.xp||0))
   const rankPct  = nextRank ? Math.round(((profile?.xp||0)-rank.min)/(nextRank.min-rank.min)*100) : 100
+  const hasPasswordIdentity = user?.identities?.some(i => i.provider === 'email')
 
   // Unmount safety — prevent state updates after component unmounts
   const mountedRef = useRef(true)
@@ -661,10 +663,10 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
 
                 {/* Password row */}
                 <div>
-                  <div className="label" style={{ marginBottom:7 }}>Change Password</div>
+                  <div className="label" style={{ marginBottom:7 }}>{hasPasswordIdentity ? 'Change Password' : 'Set Password'}</div>
                   <div style={{ display:'flex', gap:8 }}>
                     <input className="field-input" type="password" value={pw} onChange={e=>setPw(e.target.value)}
-                      placeholder="New password — min 6 characters" style={{ flex:1 }}/>
+                      placeholder={hasPasswordIdentity ? "New password — min 6 characters" : "Create a password — min 6 characters"} style={{ flex:1 }}/>
                     <button className="btn-primary" onClick={savePassword} disabled={pwSaving||pw.length<6}
                       style={{ padding:'0 18px', whiteSpace:'nowrap' }}>
                       {pwSaving ? 'Saving…' : 'Update'}
@@ -673,6 +675,25 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                   {pwMsg && <div style={{ fontSize:12, color:pwMsg.includes('Error')?'var(--red)':'var(--green)', marginTop:7 }}>{pwMsg}</div>}
                 </div>
               </div>
+
+              {/* ── Refer & Earn CTA ─────────────────────────────── */}
+              {isActiveBilling(profile?.billing_status) && (
+                <div className="card" style={{ padding:24, borderTop:`3px solid ${theme === 'dark' ? '#d97706' : '#b45309'}`,
+                  background:`linear-gradient(135deg, ${theme === 'dark' ? '#d97706' : '#b45309'}08 0%, var(--surface) 60%)` }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+                    <span style={{ fontSize:20 }}>💰</span>
+                    <span className="serif" style={{ fontSize:18, fontWeight:700, color:'var(--text)' }}>Refer & Earn</span>
+                  </div>
+                  <p style={{ fontSize:13, color:'var(--muted)', lineHeight:1.6, marginBottom:14,
+                    fontFamily:"'Poppins',sans-serif" }}>
+                    Earn 20% on every referral's subscription for 12 months. No cap on earnings.
+                  </p>
+                  <button className="btn-gold" onClick={() => onNavigate('affiliates')}
+                    style={{ fontSize:13, padding:'9px 22px' }}>
+                    Learn More →
+                  </button>
+                </div>
+              )}
 
               {/* Professional Info */}
               <div className="card" style={{ padding:24 }}>

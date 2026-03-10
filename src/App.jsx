@@ -965,7 +965,7 @@ function BuyersWeeklyModal({ buyerReps, offersMade, onClose }) {
 // ─── Pipeline section ─────────────────────────────────────────────────────────
 
 function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onStatusChange, showSource, statusOpts, onAdd, onRemove, userId,
-  expandedChecklist, setExpandedChecklist, onToggleChecklistItem, onAddChecklistItem, onRemoveChecklistItem, onUpdateChecklistDueDate, archiveOnRemove }) {
+  expandedChecklist, setExpandedChecklist, onToggleChecklistItem, onAddChecklistItem, onRemoveChecklistItem, onUpdateChecklistDueDate, archiveOnRemove, onArchiveToClosed }) {
   const [addr,  setAddr]  = useState('')
   const [price, setPrice] = useState('')
   const [comm,  setComm]  = useState('')
@@ -985,16 +985,19 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
 
   async function remove(row) {
     if (!window.confirm(`Remove "${row.address || 'this entry'}"?`)) return
-    const snapshot = rows
     setRows(prev => prev.filter(r => r.id !== row.id))
     if (row.id && !String(row.id).startsWith('tmp-')) {
       if (archiveOnRemove) {
         // Soft-delete: archive the record so it still counts in monthly stats
         const r = await safeDb(supabase.from('transactions').update({status:'archived'}).eq('id', row.id).eq('user_id', userId))
-        if (!r.ok) { setRows(snapshot); return }
+        if (!r.ok) {
+          // Fallback: try hard delete if archive fails (e.g. RLS policy)
+          const r2 = await safeDb(supabase.from('transactions').delete().eq('id', row.id).eq('user_id', userId))
+          if (!r2.ok) { setRows(prev => [...prev, row]); return }
+        }
       } else {
         const r = await safeDb(supabase.from('transactions').delete().eq('id', row.id).eq('user_id', userId))
-        if (!r.ok) { setRows(snapshot); return }
+        if (!r.ok) { setRows(prev => [...prev, row]); return }
       }
     }
     if (!archiveOnRemove && onRemove) onRemove(row)
@@ -1157,7 +1160,16 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
             {/* Actions */}
             <div className="deal-actions">
               {showSource ? (
-                <span style={{ fontSize:11, color:'var(--dim)', fontStyle:'italic' }}>Closed</span>
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  <span style={{ fontSize:11, color:'var(--dim)', fontStyle:'italic' }}>Closed</span>
+                  {onArchiveToClosed && (
+                    <button className="act-btn act-btn-green" title="Archive to Closed tab"
+                      onClick={()=>onArchiveToClosed(r.id)}
+                      style={{ fontSize:10, padding:'2px 8px' }}>
+                      ✅ Archive
+                    </button>
+                  )}
+                </div>
               ) : (
                 <>
                   {r.checklist?.length > 0 && setExpandedChecklist && (
@@ -1497,6 +1509,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [offersReceived,   setOffersReceived]   = useState([])
   const [pendingDeals,     setPendingDeals]     = useState([])
   const [closedDeals,      setClosedDeals]      = useState([])
+  const [archivedDeals,    setArchivedDeals]    = useState([]) // closed deals archived from pipeline
   const [wentPendingCount, setWentPendingCount] = useState(0) // historical — includes archived
   const [offersMadeCount, setOffersMadeCount] = useState(0) // historical — includes archived
   const [offersReceivedCount, setOffersReceivedCount] = useState(0) // historical — includes archived
@@ -1533,6 +1546,12 @@ function Dashboard({ theme, onToggleTheme }) {
   const [showGci, setShowGci] = useState(false)
   const [clientUpdateListing, setClientUpdateListing] = useState(null)
   const [clientUpdateNotes, setClientUpdateNotes] = useState('')
+  const [clientUpdateEmailTo, setClientUpdateEmailTo] = useState('')
+  const [clientUpdateName, setClientUpdateName] = useState('')
+  const [reviewRequestDeal, setReviewRequestDeal] = useState(null) // { address } shown after close
+  const [pendingReviewAddress, setPendingReviewAddress] = useState(null) // queued until celebration dismissed
+  const [reviewRequestName, setReviewRequestName] = useState('')
+  const [reviewRequestEmail, setReviewRequestEmail] = useState('')
   const [todayDate] = useState(() => new Date().toLocaleDateString('en-CA')) // YYYY-MM-DD, stable across re-renders
 
   // Track mount status for async safety — prevents stale setState calls after unmount
@@ -1632,7 +1651,7 @@ function Dashboard({ theme, onToggleTheme }) {
         listDate:l.list_date||'', expiresDate:l.expires_date||''
       })
       const allListings = allL.filter(l => (l.unit_count ?? 1) !== 0)
-      setListings(allListings.filter(l => l.status !== 'potential').map(mapListing))
+      setListings(allListings.filter(l => l.status !== 'potential' && l.status !== 'closed').map(mapListing))
       setPotentialListings(allListings.filter(l => l.status === 'potential').map(mapListing))
       setBuyerReps(allL.filter(l => l.unit_count === 0).map(r => ({
         id:r.id, clientName:r.address||'', status:r.status||'active', monthYear:r.month_year||'',
@@ -1659,6 +1678,7 @@ function Dashboard({ theme, onToggleTheme }) {
       })
       setPendingDeals(pendingRows)
       setClosedDeals(   txRes.data.filter(t=>t.type==='closed' && active(t)).map(m))
+      setArchivedDeals( txRes.data.filter(t=>t.type==='closed' && t.status==='archived').map(m))
       setClosedCount(txRes.data.filter(t=>t.type==='closed').length)
       // Historical counts — a deal that moved forward still counts toward its earlier stage
       // closedFrom='Offers' means the deal was once an offer; checklist presence means it was pending
@@ -2243,7 +2263,11 @@ function Dashboard({ theme, onToggleTheme }) {
     const addr = (address||'').toLowerCase()
     if (!addr) return
     const listing = listings.find(l=>l.status!=='closed'&&(l.address||'').toLowerCase()===addr)
-    if (listing) updateListing(listing.id, 'status', 'closed')
+    if (listing) {
+      // Update status in DB, then remove from listings state so it no longer shows in Listings tab
+      safeDb(supabase.from('listings').update({ status:'closed' }).eq('id',listing.id).eq('user_id',user.id))
+      setListings(prev => prev.filter(l => l.id !== listing.id))
+    }
   }
 
   async function handleOfferStatus(row, newStatus, srcSetter) {
@@ -2271,6 +2295,7 @@ function Dashboard({ theme, onToggleTheme }) {
       markListingClosed(row.address)
       const comm = resolveCommission(row.commission, row.price)
       setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
+      setPendingReviewAddress(row.address || 'your property')
       await awardPipelineXp('closed', '#10b981')
     } else if (newStatus === 'declined') {
       srcSetter(prev => prev.filter(r => r.id !== row.id))
@@ -2298,8 +2323,18 @@ function Dashboard({ theme, onToggleTheme }) {
       markListingClosed(row.address)
       const comm = resolveCommission(row.commission, row.price)
       setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
+      setPendingReviewAddress(row.address || 'your property')
       await awardPipelineXp('closed', '#10b981')
     }
+  }
+
+  // ── Archive closed deal from pipeline (moves it to Archived tab) ─────────
+  async function archiveDealFromPipeline(dealId) {
+    const deal = closedDeals.find(d => d.id === dealId)
+    if (!deal) return
+    setClosedDeals(prev => prev.filter(d => d.id !== dealId))
+    setArchivedDeals(prev => [...prev, {...deal, status:'archived'}])
+    await safeDb(supabase.from('transactions').update({status:'archived'}).eq('id', dealId).eq('user_id', user.id))
   }
 
   // ── Checklist handlers ────────────────────────────────────────────────────
@@ -2549,6 +2584,7 @@ function Dashboard({ theme, onToggleTheme }) {
       setClosedCount(prev => prev + 1)
       const comm = resolveCommission(lComm, lPrice)
       setCelebration({ address:listing.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (lComm||''), newComm:comm })
+      setPendingReviewAddress(listing.address || 'your property')
       await awardPipelineXp('closed', '#10b981')
     }
   }
@@ -2694,8 +2730,9 @@ function Dashboard({ theme, onToggleTheme }) {
     const totalShowings    = Object.entries(counters).filter(([k])=>k.startsWith('showing')).reduce((a,[,v])=>a+v,0)
     const totalListings    = listings.filter(l => l.status !== 'closed').length
     const totalBuyerReps   = buyerReps.filter(r => r.status !== 'closed').length
-    const closedVol        = closedDeals.reduce((a,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
-    const closedComm       = closedDeals.reduce((a,r) => a + resolveCommission(r.commission, r.price), 0)
+    const allClosed        = [...closedDeals, ...archivedDeals]
+    const closedVol        = allClosed.reduce((a,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
+    const closedComm       = allClosed.reduce((a,r) => a + resolveCommission(r.commission, r.price), 0)
     const viewHabitXp      = builtInEffective.reduce((acc,h)=>{
       if(!habits[h.id][viewWeek]?.[viewDayIdx]) return acc
       const ckey=`${h.id}-${viewWeek}-${viewDayIdx}`
@@ -2708,7 +2745,7 @@ function Dashboard({ theme, onToggleTheme }) {
       sessionPipeline.went_pending  * PIPELINE_XP.went_pending  +
       sessionPipeline.closed        * PIPELINE_XP.closed
     return { totalHabitChecks, totalPossible, monthPct, viewChecks, viewPct, totalProspecting, totalAppts, totalShowings, totalListings, totalBuyerReps, closedVol, closedComm, viewHabitXp, sessionPipelineXp, viewXp: viewHabitXp + sessionPipelineXp }
-  }, [habits, counters, builtInEffective, viewBuiltInActive, viewWeek, viewDayIdx, listings, buyerReps, closedDeals, sessionPipeline, lastDayOfMonth])
+  }, [habits, counters, builtInEffective, viewBuiltInActive, viewWeek, viewDayIdx, listings, buyerReps, closedDeals, archivedDeals, sessionPipeline, lastDayOfMonth])
   const { totalHabitChecks, monthPct, viewChecks: todayChecks, viewPct: todayPct, totalProspecting, totalAppts, totalShowings, totalListings, totalBuyerReps, closedVol, closedComm, viewHabitXp: todayHabitXp, sessionPipelineXp, viewXp: todayXp } = dashStats
 
   // ── Daily targets from monthly goals (auto-redistributing) ─────────────
@@ -2743,18 +2780,19 @@ function Dashboard({ theme, onToggleTheme }) {
 
   // ── GCI Dashboard stats ──────────────────────────────────────────────────
   const gciStats = useMemo(() => {
-    if (!closedDeals.length) return { bySource: [], avgDeal: 0, annualPace: 0 }
+    const all = [...closedDeals, ...archivedDeals]
+    if (!all.length) return { bySource: [], avgDeal: 0, annualPace: 0 }
     const sourceMap = {}
-    closedDeals.forEach(d => {
+    all.forEach(d => {
       const src = d.closedFrom || 'Direct'
       const comm = resolveCommission(d.commission, d.price)
       sourceMap[src] = (sourceMap[src] || 0) + comm
     })
     const bySource = Object.entries(sourceMap).map(([name, amount]) => ({ name, amount })).sort((a, b) => b.amount - a.amount)
-    const avgDeal = closedComm / closedDeals.length
+    const avgDeal = closedComm / all.length
     const annualPace = closedComm * 12
     return { bySource, avgDeal, annualPace }
-  }, [closedDeals, closedComm])
+  }, [closedDeals, archivedDeals, closedComm])
 
   // ── Personal Records ─────────────────────────────────────────────────────
   const personalRecords = useMemo(() => {
@@ -2821,7 +2859,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
       {/* ── Deal Celebration ───────────────────────────────── */}
       {celebration && (() => {
-        const ytd = closedDeals.reduce((a,r) => a + resolveCommission(r.commission, r.price), 0)
+        const ytd = [...closedDeals,...archivedDeals].reduce((a,r) => a + resolveCommission(r.commission, r.price), 0)
         const year = new Date().getFullYear()
         const confettiColors = ['#10b981','#f59e0b','#3b82f6','#f43f5e','#8b5cf6','#fb923c','#06b6d4','#d97706']
         const pieces = Array.from({length:22},(_,i)=>({
@@ -2832,7 +2870,16 @@ function Dashboard({ theme, onToggleTheme }) {
         return (
           <div style={{ position:'fixed',inset:0,zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center',
             background:'rgba(0,0,0,.72)', backdropFilter:'blur(6px)' }}
-            onClick={()=>setCelebration(null)}>
+            onClick={()=>{
+              setCelebration(null)
+              if (pendingReviewAddress) {
+                setTimeout(()=>{
+                  setReviewRequestName(''); setReviewRequestEmail('')
+                  setReviewRequestDeal({ address: pendingReviewAddress })
+                  setPendingReviewAddress(null)
+                }, 350)
+              }
+            }}>
             {/* Confetti */}
             <style>{`
               @keyframes fallConfetti {
@@ -2880,7 +2927,16 @@ function Dashboard({ theme, onToggleTheme }) {
                 fontFamily:"'Fraunces',serif", letterSpacing:.5 }}>
                 ✨ +300 XP
               </div>
-              <button onClick={()=>setCelebration(null)} style={{ marginTop:24, padding:'11px 32px',
+              <button onClick={()=>{
+                setCelebration(null)
+                if (pendingReviewAddress) {
+                  setTimeout(()=>{
+                    setReviewRequestName(''); setReviewRequestEmail('')
+                    setReviewRequestDeal({ address: pendingReviewAddress })
+                    setPendingReviewAddress(null)
+                  }, 350)
+                }
+              }} style={{ marginTop:24, padding:'11px 32px',
                 background:'#10b981', border:'none', color:'#fff', borderRadius:10,
                 fontWeight:700, fontSize:14, cursor:'pointer', letterSpacing:.3 }}>
                 🚀 Keep Going!
@@ -3163,7 +3219,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
         {/* ── Primary Tabs ────────────────────────────────── */}
         <div className="primary-tabs">
-          {[{id:'calendar',l:'📅 Calendar'},{id:'potential',l:'💡 Potential',count:potentialListings.length},{id:'listings',l:'🏡 Listings',count:listings.length},{id:'buyers',l:'🤝 Buyers',count:buyerReps.length},{id:'closed',l:'✅ Closed',count:closedDeals.filter(d=>(d.month_year||d.monthYear)===MONTH_YEAR).length}].map(t=>(
+          {[{id:'calendar',l:'📅 Calendar'},{id:'potential',l:'💡 Potential',count:potentialListings.length},{id:'listings',l:'🏡 Listings',count:listings.length},{id:'buyers',l:'🤝 Buyers',count:buyerReps.length},{id:'closed',l:'📦 Archived',count:archivedDeals.length}].map(t=>(
             <button key={t.id} className={`primary-tab${primaryTab===t.id?' on':''}`} onClick={()=>setPrimaryTab(t.id)}>
               {t.l}{t.count!=null && <span className="ptab-count">{t.count}</span>}
             </button>
@@ -3629,7 +3685,7 @@ function Dashboard({ theme, onToggleTheme }) {
               </div>
 
               {/* ── Personal Records Card ────────────────────── */}
-              {(personalRecords.activeDays > 0 || closedDeals.length > 0) && (
+              {(personalRecords.activeDays > 0 || closedDeals.length > 0 || archivedDeals.length > 0) && (
                 <div className="card" style={{ padding:16, background:'linear-gradient(160deg, rgba(139,92,246,.08) 0%, var(--surface) 100%)', border:'1px solid rgba(139,92,246,.15)', borderTop:'2.5px solid #8b5cf6' }}>
                   <div className="label" style={{ marginBottom:10, color:'#8b5cf6', textAlign:'center', letterSpacing:.8 }}>🏅 Personal Records</div>
                   <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
@@ -3653,7 +3709,7 @@ function Dashboard({ theme, onToggleTheme }) {
                       <span style={{ fontSize:11, color:'var(--text2)' }}>Active Days</span>
                       <span className="mono" style={{ fontSize:13, fontWeight:700, color:'#8b5cf6' }}>{personalRecords.activeDays}/{personalRecords.daysInMonth}</span>
                     </div>
-                    {closedDeals.length > 0 && (
+                    {(closedDeals.length > 0 || archivedDeals.length > 0) && (
                       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 8px', borderRadius:7, background:'rgba(16,185,129,.06)' }}>
                         <span style={{ fontSize:11, color:'var(--text2)' }}>Month GCI</span>
                         <span className="mono" style={{ fontSize:13, fontWeight:700, color:'#10b981' }}>{fmtMoney(closedComm)||'$0'}</span>
@@ -4258,7 +4314,7 @@ function Dashboard({ theme, onToggleTheme }) {
                     <span style={{ fontSize:11, color:'var(--dim)', fontStyle:'italic' }}>Deal completed</span>
                   )}
                   <div style={{ flex:1 }}/>
-                  <button className="edit-toggle" title="Generate client update" onClick={()=>{setClientUpdateNotes('');setClientUpdateListing(l)}}>📋</button>
+                  <button className="edit-toggle" title="Email listing update" onClick={()=>{setClientUpdateNotes('');setClientUpdateEmailTo('');setClientUpdateName('');setClientUpdateListing(l)}}>✉️</button>
                   <button className="edit-toggle" title={isEditing ? 'Done editing' : 'Edit listing'} onClick={()=>setEditingListing(isEditing ? null : l.id)}>
                     {isEditing ? '✓' : '✏️'}
                   </button>
@@ -4357,7 +4413,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
               <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
                 rows={closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing')} setRows={setClosedDeals} userId={user.id}
-                archiveOnRemove={true}
+                archiveOnRemove={true} onArchiveToClosed={archiveDealFromPipeline}
                 showSource={true}/>
             </>
           ) : (
@@ -4400,8 +4456,8 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
 
         {/* ══ LISTINGS GCI ══════════════════════════════════════ */}
-        {closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing').length > 0 && (() => {
-          const sellerClosed = closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing')
+        {[...closedDeals,...archivedDeals].filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing').length > 0 && (() => {
+          const sellerClosed = [...closedDeals,...archivedDeals].filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing')
           const sellerComm = sellerClosed.reduce((s,d)=>s+resolveCommission(d.commission,d.price),0)
           const sellerVol = sellerClosed.reduce((s,d)=>s+parseFloat(String(d.price||'').replace(/[^0-9.]/g,'')||0),0)
           return (
@@ -4733,7 +4789,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
               <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
                 rows={closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))} setRows={setClosedDeals} userId={user.id}
-                archiveOnRemove={true}
+                archiveOnRemove={true} onArchiveToClosed={archiveDealFromPipeline}
                 showSource={true}/>
             </>
           ) : (
@@ -4776,8 +4832,8 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
 
         {/* ══ BUYERS GCI ════════════════════════════════════════ */}
-        {closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing')).length > 0 && (() => {
-          const buyerClosed = closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))
+        {[...closedDeals,...archivedDeals].filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing')).length > 0 && (() => {
+          const buyerClosed = [...closedDeals,...archivedDeals].filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))
           const buyerComm = buyerClosed.reduce((s,d)=>s+resolveCommission(d.commission,d.price),0)
           const buyerVol = buyerClosed.reduce((s,d)=>s+parseFloat(String(d.price||'').replace(/[^0-9.]/g,'')||0),0)
           return (
@@ -4804,7 +4860,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
         </>)}
 
-        {/* ══ CLOSED TAB ═══════════════════════════════════════ */}
+        {/* ══ ARCHIVED TAB ═══════════════════════════════════════ */}
         {primaryTab==='closed' && (<>
         <div style={{ marginTop:36 }}>
           <div className="section-divider"/>
@@ -4812,26 +4868,26 @@ function Dashboard({ theme, onToggleTheme }) {
             <div>
               <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:4 }}>
                 <div style={{ width:36, height:36, borderRadius:10, background:'rgba(16,185,129,.1)', border:'1px solid rgba(16,185,129,.25)',
-                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:17, flexShrink:0 }}>🎉</div>
-                <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>Closed This Month</span>
+                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:17, flexShrink:0 }}>📦</div>
+                <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>Archived Deals</span>
                 <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, fontSize:20, color:'#10b981', lineHeight:1 }}>
-                  {closedDeals.filter(d=>(d.month_year||d.monthYear)===MONTH_YEAR).length}
+                  {archivedDeals.length}
                 </span>
               </div>
               <div className="section-sub" style={{ marginBottom:0 }}>
-                Deals closed in {MONTH_YEAR} · labeled by side
+                Closed deals archived from pipeline · {MONTH_YEAR}
               </div>
             </div>
           </div>
 
           <div className="deal-card-grid">
-            {closedDeals.filter(d=>(d.month_year||d.monthYear)===MONTH_YEAR).length === 0 && (
+            {archivedDeals.length === 0 && (
               <div className="deal-card" style={{ textAlign:'center', padding:'28px 20px', color:'var(--dim)', fontSize:13 }}>
-                No closed deals this month yet
+                No archived deals yet — archive closed deals from the pipeline
               </div>
             )}
 
-            {closedDeals.filter(d=>(d.month_year||d.monthYear)===MONTH_YEAR).map(d => {
+            {archivedDeals.map(d => {
               const isSeller = d.dealSide === 'seller' || d.closedFrom === 'Listing'
               const sideLabel = isSeller ? 'SELLER' : 'BUYER'
               const sideIcon = isSeller ? '🏡' : '🤝'
@@ -4865,7 +4921,7 @@ function Dashboard({ theme, onToggleTheme }) {
                     {d.originalLeadSource && <><span className="sep"/><span>{d.originalLeadSource}</span></>}
                   </div>
 
-                  {/* Closed label */}
+                  {/* Archived label */}
                   <div className="deal-actions">
                     <span style={{ fontSize:11, color:'var(--green)', fontWeight:600 }}>✓ Closed</span>
                   </div>
@@ -4876,12 +4932,11 @@ function Dashboard({ theme, onToggleTheme }) {
 
           {/* Summary cards */}
           {(() => {
-            const monthClosed = closedDeals.filter(d=>(d.month_year||d.monthYear)===MONTH_YEAR)
-            if (monthClosed.length === 0) return null
-            const sellerCount = monthClosed.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing').length
-            const buyerCount = monthClosed.length - sellerCount
-            const totalComm = monthClosed.reduce((s,d)=>s+resolveCommission(d.commission,d.price),0)
-            const totalVol = monthClosed.reduce((s,d)=>s+parseFloat(String(d.price||'').replace(/[^0-9.]/g,'')||0),0)
+            if (archivedDeals.length === 0) return null
+            const sellerCount = archivedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing').length
+            const buyerCount = archivedDeals.length - sellerCount
+            const totalComm = archivedDeals.reduce((s,d)=>s+resolveCommission(d.commission,d.price),0)
+            const totalVol = archivedDeals.reduce((s,d)=>s+parseFloat(String(d.price||'').replace(/[^0-9.]/g,'')||0),0)
             return (
               <div style={{ marginTop:24 }}>
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))', gap:10 }}>
@@ -5008,7 +5063,7 @@ function Dashboard({ theme, onToggleTheme }) {
           offersMade={offersMade}
           offersReceived={offersReceived}
           pendingDeals={pendingDeals}
-          closedDeals={closedDeals}
+          closedDeals={[...closedDeals,...archivedDeals]}
           buyerReps={buyerReps}
           onClose={() => setShowPrint(false)}
           target={isViewingToday ? undefined : { wi: viewWeek, di: viewDayIdx, dateStr: viewDateStr }}
@@ -5031,7 +5086,7 @@ function Dashboard({ theme, onToggleTheme }) {
             offersMade={offersMade}
             offersReceived={offersReceived}
             pendingDeals={pendingDeals}
-            closedDeals={closedDeals}
+            closedDeals={[...closedDeals,...archivedDeals]}
             buyerReps={buyerReps}
             target={plannerPrint}
             onClose={() => setPlannerPrint(null)}
@@ -5045,7 +5100,7 @@ function Dashboard({ theme, onToggleTheme }) {
           listings={listings}
           offersReceived={offersReceived}
           pendingDeals={pendingDeals}
-          closedDeals={closedDeals}
+          closedDeals={[...closedDeals,...archivedDeals]}
           onClose={() => setShowWeeklyUpdate(false)}
         />
       )}
@@ -5059,7 +5114,7 @@ function Dashboard({ theme, onToggleTheme }) {
         />
       )}
 
-      {/* ── Client Update Modal ──────────────────────────── */}
+      {/* ── Listing Email Update Modal ────────────────────── */}
       {clientUpdateListing && (() => {
         const cl = clientUpdateListing
         const comm = resolveCommission(cl.commission, cl.price)
@@ -5070,6 +5125,21 @@ function Dashboard({ theme, onToggleTheme }) {
         const agentEmail = user?.email || ''
         const statusLabel = cl.status==='closed'?'Closed':cl.status==='pending'?'Pending':'Active'
         const statusColor = cl.status==='closed'?'#10b981':cl.status==='pending'?'#f59e0b':'#8b5cf6'
+        const toEmail = clientUpdateEmailTo.trim()
+        const clientFirst = clientUpdateName.trim().split(/\s/)[0] || 'there'
+        const subject = `${clientFirst}, here is your listing update for ${cl.address || 'your property'}`
+        let emailBody = `Hi ${clientFirst},\n\nHere is your listing update for ${cl.address || 'your property'}:\n\n`
+        emailBody += `Status: ${statusLabel}\n`
+        if (priceNum > 0) emailBody += `List Price: ${formatPrice(cl.price)}\n`
+        if (dom !== null) emailBody += `Days on Market: ${dom}\n`
+        if (cl.listDate) emailBody += `Listed: ${fmtShortDate(cl.listDate)}\n`
+        if (cl.expiresDate) emailBody += `Expires: ${fmtShortDate(cl.expiresDate)}\n`
+        if (cl.leadSource) emailBody += `Lead Source: ${cl.leadSource}\n`
+        if (clientUpdateNotes.trim()) emailBody += `\nNotes:\n${clientUpdateNotes.trim()}\n`
+        emailBody += `\nPlease let me know if you have any questions.\n\nBest regards,\n${agentName}`
+        if (agentPhone) emailBody += `\n${agentPhone}`
+        if (agentEmail) emailBody += `\n${agentEmail}`
+        const mailto = `mailto:${encodeURIComponent(toEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`
         return (
           <div style={{ position:'fixed', inset:0, zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.55)' }}
             onClick={()=>setClientUpdateListing(null)}>
@@ -5078,7 +5148,7 @@ function Dashboard({ theme, onToggleTheme }) {
               <div style={{ padding:'28px 32px 20px', borderBottom:'2px solid #111' }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
                   <div>
-                    <div style={{ fontSize:10, letterSpacing:1.5, color:'#9ca3af', fontWeight:700, fontFamily:"'Poppins',sans-serif", marginBottom:6 }}>LISTING STATUS UPDATE</div>
+                    <div style={{ fontSize:10, letterSpacing:1.5, color:'#9ca3af', fontWeight:700, fontFamily:"'Poppins',sans-serif", marginBottom:6 }}>✉️ LISTING EMAIL UPDATE</div>
                     <div style={{ fontSize:22, fontWeight:700, color:'#111', fontFamily:"'Fraunces',serif", lineHeight:1.2 }}>{cl.address || 'Untitled'}</div>
                   </div>
                   <div style={{ textAlign:'right' }}>
@@ -5088,6 +5158,24 @@ function Dashboard({ theme, onToggleTheme }) {
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Client Name & Email Fields */}
+              <div style={{ padding:'16px 32px', borderBottom:'1px solid #e5e7eb', background:'#fafbfc' }}>
+                <div style={{ fontSize:10, color:'#9ca3af', letterSpacing:.8, fontWeight:600, fontFamily:"'Poppins',sans-serif", marginBottom:6 }}>SEND TO</div>
+                <input type="text" value={clientUpdateName} onChange={e=>setClientUpdateName(e.target.value)}
+                  placeholder="Client name" autoFocus
+                  style={{ width:'100%', padding:'10px 12px', fontSize:14, border:'1.5px solid #d1d5db', borderRadius:8,
+                    fontFamily:"'Poppins',sans-serif", color:'#111', background:'#fff', outline:'none', marginBottom:8 }}/>
+                <input type="email" value={clientUpdateEmailTo} onChange={e=>setClientUpdateEmailTo(e.target.value)}
+                  placeholder="client@email.com"
+                  style={{ width:'100%', padding:'10px 12px', fontSize:14, border:'1.5px solid #d1d5db', borderRadius:8,
+                    fontFamily:"'Poppins',sans-serif", color:'#111', background:'#fff', outline:'none' }}/>
+                {toEmail && (
+                  <div style={{ fontSize:11, color:'#6b7280', fontFamily:"'Poppins',sans-serif", marginTop:6 }}>
+                    Subject: <strong style={{ color:'#111' }}>{subject}</strong>
+                  </div>
+                )}
               </div>
 
               {/* Key Metrics Grid */}
@@ -5140,12 +5228,12 @@ function Dashboard({ theme, onToggleTheme }) {
                 )}
               </div>
 
-              {/* Notes Area — editable, shows on print */}
+              {/* Notes Area */}
               <div style={{ padding:'18px 32px 8px' }}>
-                <div style={{ fontSize:10, color:'#9ca3af', letterSpacing:.8, fontWeight:600, fontFamily:"'Poppins',sans-serif", marginBottom:8 }}>NOTES</div>
+                <div style={{ fontSize:10, color:'#9ca3af', letterSpacing:.8, fontWeight:600, fontFamily:"'Poppins',sans-serif", marginBottom:8 }}>NOTES (included in email)</div>
                 <textarea value={clientUpdateNotes} onChange={e=>setClientUpdateNotes(e.target.value)}
-                  placeholder="Type notes here — they will appear on the printed page…"
-                  style={{ width:'100%', minHeight:90, resize:'vertical', padding:'10px 12px', fontSize:13, lineHeight:1.7,
+                  placeholder="Add any notes for the client…"
+                  style={{ width:'100%', minHeight:70, resize:'vertical', padding:'10px 12px', fontSize:13, lineHeight:1.7,
                     border:'1px solid #e5e7eb', borderRadius:8, fontFamily:"Georgia, 'Times New Roman', serif",
                     color:'#111', background:'#fafafa', outline:'none' }}/>
               </div>
@@ -5158,16 +5246,91 @@ function Dashboard({ theme, onToggleTheme }) {
                   {agentPhone && <> · {agentPhone}</>}
                   <br/>{new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}
                 </div>
-                <div style={{ display:'flex', gap:8 }} className="no-print">
-                  <button onClick={()=>window.print()} style={{
-                    background:'#111', color:'#fff', border:'none', borderRadius:8, padding:'8px 18px',
-                    fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:"'Poppins',sans-serif"
-                  }}>🖨️ Print</button>
+                <div style={{ display:'flex', gap:8 }}>
+                  <a href={toEmail ? mailto : '#'} onClick={e=>{
+                    if (!toEmail) { e.preventDefault(); return }
+                    setTimeout(()=>setClientUpdateListing(null), 300)
+                  }} style={{
+                    background: toEmail ? '#111' : '#d1d5db', color:'#fff', border:'none', borderRadius:8, padding:'8px 18px',
+                    fontSize:12, fontWeight:700, cursor: toEmail ? 'pointer' : 'default', fontFamily:"'Poppins',sans-serif",
+                    textDecoration:'none', display:'inline-flex', alignItems:'center', gap:6,
+                  }}>✉️ Send Update</a>
                   <button onClick={()=>setClientUpdateListing(null)} style={{
                     background:'#f3f4f6', color:'#6b7280', border:'none', borderRadius:8, padding:'8px 18px',
                     fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:"'Poppins',sans-serif"
                   }}>Close</button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ── Review Request Modal (after deal close) ──── */}
+      {reviewRequestDeal && (() => {
+        const agentName = profileFullName || 'Your Agent'
+        const reviewLink = habitPrefs?.bio?.review_link || ''
+        const toEmail = reviewRequestEmail.trim()
+        const clientName = reviewRequestName.trim() || 'there'
+        const subject = `Thank you for choosing ${agentName}!`
+        let body = `Hi ${clientName},\n\nCongratulations on your ${reviewRequestDeal.address} closing! It was a pleasure working with you.\n\n`
+        if (reviewLink) {
+          body += `If you had a great experience, I would truly appreciate a quick review:\n${reviewLink}\n\n`
+        } else {
+          body += `If you had a great experience, I would truly appreciate a review — it helps more than you know!\n\n`
+        }
+        body += `Thank you so much, and please don't hesitate to reach out if you ever need anything.\n\nWarm regards,\n${agentName}`
+        const mailto = `mailto:${encodeURIComponent(toEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+        return (
+          <div style={{ position:'fixed', inset:0, zIndex:10000, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,.55)' }}
+            onClick={()=>setReviewRequestDeal(null)}>
+            <div onClick={e=>e.stopPropagation()} style={{ background:'var(--surface)', borderRadius:14, width:440, maxWidth:'92vw', padding:24, boxShadow:'0 25px 60px rgba(0,0,0,.3)' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
+                <span style={{ fontSize:24 }}>⭐</span>
+                <div>
+                  <div className="serif" style={{ fontSize:16, fontWeight:700, color:'var(--text)' }}>Request a Review</div>
+                  <div style={{ fontSize:11, color:'var(--muted)' }}>Send a review request for {reviewRequestDeal.address}</div>
+                </div>
+                <div style={{ flex:1 }}/>
+                <button onClick={()=>setReviewRequestDeal(null)} style={{ background:'none', border:'none', fontSize:18, cursor:'pointer', color:'var(--muted)' }}>✕</button>
+              </div>
+
+              {!reviewLink && (
+                <div style={{ padding:'8px 12px', borderRadius:8, background:'rgba(245,158,11,.08)', border:'1px solid rgba(245,158,11,.2)', marginBottom:14, fontSize:11, color:'#d97706' }}>
+                  No review link set. Add one in <strong>Profile → Review Link</strong> to include it in the email.
+                </div>
+              )}
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:12 }}>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:700, color:'var(--muted)', display:'block', marginBottom:4 }}>Client Name</label>
+                  <input className="field-input" value={reviewRequestName}
+                    onChange={e=>setReviewRequestName(e.target.value)}
+                    placeholder="John Smith" autoFocus
+                    style={{ fontSize:13, width:'100%' }}/>
+                </div>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:700, color:'var(--muted)', display:'block', marginBottom:4 }}>Client Email</label>
+                  <input className="field-input" type="email" value={reviewRequestEmail}
+                    onChange={e=>setReviewRequestEmail(e.target.value)}
+                    placeholder="client@email.com"
+                    style={{ fontSize:13, width:'100%' }}/>
+                </div>
+              </div>
+
+              <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+                <button onClick={()=>setReviewRequestDeal(null)} style={{
+                  background:'var(--bg2)', color:'var(--muted)', border:'1px solid var(--b2)', borderRadius:8, padding:'8px 16px',
+                  fontSize:12, fontWeight:600, cursor:'pointer',
+                }}>Skip</button>
+                <a href={toEmail ? mailto : '#'} onClick={e=>{
+                  if (!toEmail) { e.preventDefault(); return }
+                  setTimeout(()=>setReviewRequestDeal(null), 300)
+                }} style={{
+                  background: toEmail ? '#10b981' : '#d1d5db', color:'#fff', border:'none', borderRadius:8, padding:'8px 18px',
+                  fontSize:12, fontWeight:700, cursor: toEmail ? 'pointer' : 'default',
+                  textDecoration:'none', display:'inline-flex', alignItems:'center', gap:6,
+                }}>⭐ Send Review Request</a>
               </div>
             </div>
           </div>

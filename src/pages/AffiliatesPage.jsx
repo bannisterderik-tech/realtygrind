@@ -117,6 +117,24 @@ export default function AffiliatesPage({ theme, onNavigate }) {
           </span>
         </div>
 
+        {/* ── Already a member? ── */}
+        <div style={{ textAlign:'center', padding:'16px 24px 0' }}>
+          <a href="https://realtygrind.partneroapp.com/login" target="_blank" rel="noopener noreferrer"
+            style={{
+              display:'inline-flex', alignItems:'center', gap:8,
+              padding:'10px 24px', borderRadius:10,
+              background:`${gold}10`, border:`1.5px solid ${gold}30`,
+              color:gold, fontSize:14, fontWeight:600,
+              fontFamily:"'Poppins',sans-serif", textDecoration:'none',
+              cursor:'pointer', transition:'all .15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = `${gold}20` }}
+            onMouseLeave={e => { e.currentTarget.style.background = `${gold}10` }}
+          >
+            Already a member? Log in to the Affiliate Dashboard →
+          </a>
+        </div>
+
         <div style={{ maxWidth:780, margin:'0 auto' }}>
 
           {/* ═══════════════════════════════════════════════════════

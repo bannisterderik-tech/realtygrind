@@ -52,6 +52,41 @@ function relativeTime(isoStr) {
   return d === 1 ? '1 day ago' : `${d} days ago`
 }
 
+const DEFAULT_RECRUIT_SUBJECT = 'Invitation to join {team_name}'
+const DEFAULT_RECRUIT_BODY = `Hi {recruit_name},
+
+{referrer_name} sent me your information and asked me to reach out.
+
+Here is a bit about what we offer at {team_name}:
+
+- Collaborative team environment focused on agent success
+- Access to cutting-edge tools and resources
+- Ongoing training and professional development
+
+I'd love to set up a time to chat and tell you more about what we're building here.
+
+Best regards`
+
+function buildRecruitMailto(recruit, submitterName, teamName, emailSettings) {
+  const subjectTpl = emailSettings?.subject?.trim() || DEFAULT_RECRUIT_SUBJECT
+  const bodyTpl = emailSettings?.body?.trim() || DEFAULT_RECRUIT_BODY
+  const replace = s => s
+    .replace(/\{recruit_name\}/gi, recruit.name || '')
+    .replace(/\{referrer_name\}/gi, submitterName || '')
+    .replace(/\{team_name\}/gi, teamName || 'our team')
+  return `mailto:${encodeURIComponent(recruit.email)}?subject=${encodeURIComponent(replace(subjectTpl))}&body=${encodeURIComponent(replace(bodyTpl))}`
+}
+
+function buildRecruitMailtoPreview(teamName, emailSettings) {
+  const subjectTpl = emailSettings?.subject?.trim() || DEFAULT_RECRUIT_SUBJECT
+  const bodyTpl = emailSettings?.body?.trim() || DEFAULT_RECRUIT_BODY
+  const replace = s => s
+    .replace(/\{recruit_name\}/gi, '{Recruit Name}')
+    .replace(/\{referrer_name\}/gi, '{Referring Agent}')
+    .replace(/\{team_name\}/gi, teamName || '{Team Name}')
+  return `Subject: ${replace(subjectTpl)}\n\n${replace(bodyTpl)}`
+}
+
 // Reusable avatar: shows profile photo if available, otherwise initials
 function MemberAvatar({ member, size=38, rank }) {
   const r = rank || getRank(member?.xp||0)
@@ -119,6 +154,14 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [buyerFilter,     setBuyerFilter]     = useState('all')   // 'all' | memberId
   const [buyerReplyForms, setBuyerReplyForms] = useState({})      // { [needId]: string }
   const [buyerReplySaving,setBuyerReplySaving]= useState(null)    // needId being saved, or null
+  const [recruitForm,     setRecruitForm]     = useState(null)    // null | { name, email, phone }
+  const [recruitSaving,   setRecruitSaving]   = useState(false)
+  const [recruitFilter,   setRecruitFilter]   = useState('all')  // 'all' | 'submitted' | 'contacted' | 'hired' | 'declined'
+  const [recruitNoteEditing, setRecruitNoteEditing] = useState(null) // recruitId being edited
+  const [recruitNoteText,    setRecruitNoteText]    = useState('')
+  const [recruitEmailSubject, setRecruitEmailSubject] = useState('')
+  const [recruitEmailBody,    setRecruitEmailBody]    = useState('')
+  const [recruitEmailSaving,  setRecruitEmailSaving]  = useState(false)
   const [slackUrl,        setSlackUrl]        = useState('')      // team Slack workspace URL
   const [slackSaving,     setSlackSaving]     = useState(false)
   const [logoCropSrc,     setLogoCropSrc]     = useState(null)    // object URL for crop modal
@@ -190,6 +233,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     if (seq !== fetchMembersSeqRef.current) return
     setTeamData(team)
     setSlackUrl(team?.team_prefs?.slack_url || '')
+    setRecruitEmailSubject(team?.team_prefs?.recruit_email_settings?.subject || '')
+    setRecruitEmailBody(team?.team_prefs?.recruit_email_settings?.body || '')
     // Load habit stats for all members
     if (mems?.length) {
       const ids = mems.map(m=>m.id)
@@ -621,6 +666,39 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     }
   }
 
+  async function deleteChallenge(challengeId) {
+    const challenge = (teamData?.team_prefs?.challenges||[]).find(c=>c.id===challengeId)
+    if (!challenge) return
+    try {
+      // Deduct bonus XP from winner if challenge was ended and XP was awarded
+      if (challenge.status === 'ended' && challenge.winnerId && challenge.bonusXp > 0) {
+        const winner = members.find(m=>m.id===challenge.winnerId)
+        if (winner) {
+          const newXp = Math.max((winner.xp||0) - challenge.bonusXp, 0)
+          const { error: xpErr } = await supabase.from('profiles').update({ xp: newXp }).eq('id', winner.id)
+          if (xpErr) throw xpErr
+          setMembers(ms => ms.map(m => m.id===winner.id ? {...m, xp:newXp} : m))
+          if (winner.id === user.id) refreshProfile()
+        }
+      }
+      // Remove challenge from team_prefs
+      const updated = {
+        ...(teamData?.team_prefs||{}),
+        challenges: (teamData.team_prefs?.challenges||[]).filter(c=>c.id!==challengeId)
+      }
+      const { error } = await supabase.from('teams').update({ team_prefs: updated }).eq('id', profile.team_id)
+      if (error) throw error
+      setTeamData(td => ({ ...td, team_prefs: updated }))
+      setSuccess(challenge.bonusXp > 0 && challenge.winnerId
+        ? `Challenge deleted. ${challenge.bonusXp} XP removed from winner.`
+        : 'Challenge deleted.')
+      setTimeout(() => setSuccess(''), 3000)
+    } catch (err) {
+      setError('Failed to delete challenge.')
+      console.error('deleteChallenge error:', err)
+    }
+  }
+
   // ── Accountability Groups ─────────────────────────────────────────────────
   async function saveGroup() {
     if (!groupForm?.name?.trim()) return
@@ -749,6 +827,41 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     } catch (err) {
       setError('Failed to end group challenge. Please try again.')
       console.error('endGroupChallenge error:', err)
+    }
+  }
+
+  async function deleteGroupChallenge(groupId, challengeId) {
+    const groups = teamData?.team_prefs?.groups || []
+    const group = groups.find(g => g.id === groupId)
+    if (!group) return
+    const challenge = (group.challenges||[]).find(c => c.id === challengeId)
+    if (!challenge) return
+    try {
+      // Deduct bonus XP from winner if challenge was ended and XP was awarded
+      if (challenge.status === 'ended' && challenge.winnerId && challenge.bonusXp > 0) {
+        const winner = members.find(m=>m.id===challenge.winnerId)
+        if (winner) {
+          const newXp = Math.max((winner.xp||0) - challenge.bonusXp, 0)
+          const { error: xpErr } = await supabase.from('profiles').update({ xp: newXp }).eq('id', winner.id)
+          if (xpErr) throw xpErr
+          setMembers(ms => ms.map(m => m.id===winner.id ? {...m, xp:newXp} : m))
+          if (winner.id === user.id) refreshProfile()
+        }
+      }
+      // Remove challenge from group
+      const updatedGroups = groups.map(g => g.id === groupId
+        ? { ...g, challenges: (g.challenges||[]).filter(c=>c.id!==challengeId) } : g)
+      const newPrefs = { ...(teamData.team_prefs||{}), groups: updatedGroups }
+      const { error } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+      if (error) throw error
+      setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+      setSuccess(challenge.bonusXp > 0 && challenge.winnerId
+        ? `Challenge deleted. ${challenge.bonusXp} XP removed from winner.`
+        : 'Challenge deleted.')
+      setTimeout(() => setSuccess(''), 3000)
+    } catch (err) {
+      setError('Failed to delete group challenge.')
+      console.error('deleteGroupChallenge error:', err)
     }
   }
 
@@ -920,6 +1033,115 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     finally { setBuyerReplySaving(null) }
   }
 
+  // ── Recruit Handlers ────────────────────────────────────────────────────
+  async function saveRecruit() {
+    if (!recruitForm?.name?.trim() || !recruitForm?.email?.trim()) return
+    setRecruitSaving(true)
+    try {
+      const existing = teamData?.team_prefs?.recruits || []
+      const newRecruit = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+        name: recruitForm.name.trim(),
+        email: recruitForm.email.trim(),
+        phone: (recruitForm.phone || '').trim(),
+        submittedBy: user.id,
+        submitterName: profile?.full_name || 'Agent',
+        status: 'submitted',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        mgmtNotes: '',
+      }
+      const newPrefs = { ...(teamData.team_prefs || {}), recruits: [...existing, newRecruit] }
+      const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', teamData.id)
+      if (err) throw err
+      setTeamData(prev => ({ ...prev, team_prefs: newPrefs }))
+      setRecruitForm(null)
+      // Award 25 XP
+      const currentXp = profile?.xp || 0
+      await supabase.from('profiles').update({ xp: currentXp + 25 }).eq('id', user.id)
+      refreshProfile()
+      setSuccess('Recruit submitted! +25 XP')
+      setTimeout(() => setSuccess(''), 3000)
+    } catch (err) {
+      setError('Failed to submit recruit.')
+      console.error('saveRecruit error:', err)
+    } finally {
+      setRecruitSaving(false)
+    }
+  }
+
+  async function updateRecruitStatus(recruitId, newStatus) {
+    const recruits = teamData?.team_prefs?.recruits || []
+    const recruit = recruits.find(r => r.id === recruitId)
+    if (!recruit) return
+    const wasHired = recruit.status === 'hired'
+    const updated = recruits.map(r => r.id === recruitId
+      ? { ...r, status: newStatus, updatedAt: new Date().toISOString() } : r)
+    const newPrefs = { ...(teamData.team_prefs || {}), recruits: updated }
+    try {
+      const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', teamData.id)
+      if (err) throw err
+      setTeamData(prev => ({ ...prev, team_prefs: newPrefs }))
+      // Award 100 XP bonus to submitter when newly marked as hired
+      if (newStatus === 'hired' && !wasHired) {
+        const submitter = members.find(m => m.id === recruit.submittedBy)
+        if (submitter) {
+          const subXp = submitter.xp || 0
+          await supabase.from('profiles').update({ xp: subXp + 100 }).eq('id', submitter.id)
+          if (submitter.id === user.id) refreshProfile()
+          setSuccess(`${recruit.name} marked as hired! ${recruit.submitterName} earned +100 XP`)
+          setTimeout(() => setSuccess(''), 3000)
+        }
+      }
+    } catch (err) { console.error('updateRecruitStatus error:', err) }
+  }
+
+  async function updateRecruitNotes(recruitId) {
+    const updated = (teamData?.team_prefs?.recruits || []).map(r =>
+      r.id === recruitId ? { ...r, mgmtNotes: recruitNoteText, updatedAt: new Date().toISOString() } : r)
+    const newPrefs = { ...(teamData.team_prefs || {}), recruits: updated }
+    try {
+      const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', teamData.id)
+      if (err) throw err
+      setTeamData(prev => ({ ...prev, team_prefs: newPrefs }))
+      setRecruitNoteEditing(null)
+      setRecruitNoteText('')
+    } catch (err) { console.error('updateRecruitNotes error:', err) }
+  }
+
+  async function deleteRecruit(recruitId) {
+    const updated = (teamData?.team_prefs?.recruits || []).filter(r => r.id !== recruitId)
+    const newPrefs = { ...(teamData.team_prefs || {}), recruits: updated }
+    try {
+      const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', teamData.id)
+      if (err) throw err
+      setTeamData(prev => ({ ...prev, team_prefs: newPrefs }))
+    } catch (err) { console.error('deleteRecruit error:', err) }
+  }
+
+  // ── Recruit Email Settings Handlers ─────────────────────────────────────
+  async function saveRecruitEmail() {
+    setRecruitEmailSaving(true)
+    try {
+      const newSettings = {
+        subject: recruitEmailSubject.trim(),
+        body: recruitEmailBody.trim(),
+      }
+      const newPrefs = { ...(teamData.team_prefs || {}), recruit_email_settings: newSettings }
+      const { error: err } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', teamData.id)
+      if (err) throw err
+      setTeamData(prev => ({ ...prev, team_prefs: newPrefs }))
+      setSuccess('Email template saved!')
+      setTimeout(() => setSuccess(''), 2000)
+    } catch (err) { console.error('saveRecruitEmail error:', err) }
+    finally { setRecruitEmailSaving(false) }
+  }
+
+  function resetRecruitEmail() {
+    setRecruitEmailSubject('')
+    setRecruitEmailBody('')
+  }
+
   // ── Team logo ──
   function handleLogoSelect(e) {
     const file = e.target.files?.[0]
@@ -953,7 +1175,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const {
     isTeamOwner, teamAdmins, isAdmin, allGroups, myLedGroup,
     isGroupLeader, myGroupMembers, isAdminOrOwner, coachableMembers,
-    allCoachingNotes, myCoachingNotes, pendingInvites, allBuyerNeeds,
+    allCoachingNotes, myCoachingNotes, pendingInvites, allBuyerNeeds, allRecruits,
   } = useMemo(() => {
     const _isSuperAdmin     = profile?.app_role === 'admin'
     const _isTeamOwner      = !!(teamData?.created_by === user?.id) || _isSuperAdmin
@@ -978,13 +1200,14 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       need._allReplies = [...(need.replies || []), ...externalReplies]
         .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
     })
+    const _allRecruits = teamData?.team_prefs?.recruits || []
     return {
       isTeamOwner: _isTeamOwner, teamAdmins: _teamAdmins, isAdmin: _isAdmin,
       allGroups: _allGroups, myLedGroup: _myLedGroup, isGroupLeader: _isGroupLeader,
       myGroupMembers: _myGroupMembers, isAdminOrOwner: _isAdminOrOwner,
       coachableMembers: _coachableMembers, allCoachingNotes: _allCoachingNotes,
       myCoachingNotes: _myCoachingNotes, pendingInvites: _pendingInvites,
-      allBuyerNeeds: _allBuyerNeeds,
+      allBuyerNeeds: _allBuyerNeeds, allRecruits: _allRecruits,
     }
   }, [teamData, user?.id, members])
   const canViewDetail = (m) => isTeamOwner || isAdmin || (isGroupLeader && myLedGroup?.memberIds.includes(m.id))
@@ -1290,9 +1513,22 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 {endedChallenges.map(c=>{
                                   const winner = groupMems.find(m=>m.id===c.winnerId)
                                   return (
-                                    <div key={c.id} style={{ padding:'10px 14px', borderRadius:9, background:'var(--bg2)', border:'1px solid var(--b1)', fontSize:12, color:'var(--muted)' }}>
-                                      <span style={{ fontWeight:600, color:'var(--text)' }}>{c.title}</span>
-                                      {winner && <span> — 🏆 {winner.full_name||'Agent'} won {c.bonusXp>0?`+${c.bonusXp} XP`:''}</span>}
+                                    <div key={c.id} style={{ padding:'10px 14px', borderRadius:9, background:'var(--bg2)', border:'1px solid var(--b1)', fontSize:12, color:'var(--muted)',
+                                      display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                                      <div>
+                                        <span style={{ fontWeight:600, color:'var(--text)' }}>{c.title}</span>
+                                        {winner && <span> — 🏆 {winner.full_name||'Agent'} won {c.bonusXp>0?`+${c.bonusXp} XP`:''}</span>}
+                                      </div>
+                                      {isAdminOrOwner && (
+                                        <button onClick={()=>setConfirmModal({
+                                          message:`Delete "${c.title}"?${c.bonusXp>0 && c.winnerId ? ` This will remove ${c.bonusXp} XP from the winner.` : ''}`,
+                                          label:'Delete & Remove XP',
+                                          onConfirm:()=>deleteGroupChallenge(group.id, c.id),
+                                        })} style={{
+                                          background:'none', border:'1px solid rgba(220,38,38,.2)', borderRadius:6,
+                                          padding:'3px 8px', fontSize:10, cursor:'pointer', color:'var(--red)', flexShrink:0,
+                                        }}>🗑</button>
+                                      )}
                                     </div>
                                   )
                                 })}
@@ -1485,6 +1721,16 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                             {members.length} member{members.length!==1?'s':''}
                             {teamData.max_members ? ` · ${members.length}/${teamData.max_members} seats` : ''}
                           </div>
+                          {members.length > 0 && (
+                            <button onClick={()=>setTvMode(true)}
+                              style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'4px 12px',
+                                marginTop:6, background:'rgba(59,130,246,.08)', border:'1px solid rgba(59,130,246,.2)',
+                                borderRadius:20, cursor:'pointer', transition:'all .15s',
+                                fontSize:11, fontWeight:700, color:'#3b82f6',
+                                fontFamily:"'JetBrains Mono',monospace" }}>
+                              <span style={{ fontSize:12 }}>📺</span> TV Mode
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div style={{ display:'flex', gap:12, alignItems:'center' }}>
@@ -1534,20 +1780,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       style={{ fontSize:14, padding:'10px 18px', fontWeight:600 }}>🏡 Buyers</button>
                     <button className={`tab-item${teamsTab==='groups'?' on':''}`} onClick={()=>setTeamsTab('groups')}
                       style={{ fontSize:14, padding:'10px 18px', fontWeight:600 }}>🫂 Groups</button>
+                    <button className={`tab-item${teamsTab==='recruit'?' on':''}`} onClick={()=>setTeamsTab('recruit')}
+                      style={{ fontSize:14, padding:'10px 18px', fontWeight:600 }}>🎯 Recruit</button>
                     {isTeamOwner && (
                       <button className={`tab-item${teamsTab==='settings'?' on':''}`} onClick={()=>setTeamsTab('settings')}
                         style={{ fontSize:14, padding:'10px 18px', fontWeight:600 }}>⚙️ Settings</button>
-                    )}
-                    {members.length > 0 && (
-                      <button onClick={()=>setTvMode(true)} style={{
-                        marginLeft:'auto', background:'none', border:'1px solid var(--b2)', borderRadius:8,
-                        padding:'5px 12px', fontSize:11, cursor:'pointer', color:'var(--muted)',
-                        fontFamily:'Poppins,sans-serif', fontWeight:600, display:'flex', alignItems:'center', gap:5,
-                        transition:'all .15s',
-                      }} onMouseEnter={e=>{e.target.style.background='var(--gold2)';e.target.style.color='#fff';e.target.style.borderColor='var(--gold2)'}}
-                        onMouseLeave={e=>{e.target.style.background='none';e.target.style.color='var(--muted)';e.target.style.borderColor='var(--b2)'}}>
-                        📺 TV Mode
-                      </button>
                     )}
                   </div>
 
@@ -1741,11 +1978,18 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                   </div>
                                 </div>
                                 {isOwner && (
-                                  <button onClick={()=>setConfirmModal({ message:'Award XP to the current leader and end this challenge?', label:'End & Award', onConfirm:()=>endChallenge(c.id) })}
-                                    style={{ background:'rgba(220,38,38,.08)', border:'1px solid rgba(220,38,38,.2)',
-                                      color:'var(--red)', borderRadius:7, padding:'6px 12px', fontSize:11, cursor:'pointer', fontWeight:600, whiteSpace:'nowrap' }}>
-                                    End & Award
-                                  </button>
+                                  <div style={{ display:'flex', gap:6 }}>
+                                    <button onClick={()=>setConfirmModal({ message:'Award XP to the current leader and end this challenge?', label:'End & Award', onConfirm:()=>endChallenge(c.id) })}
+                                      style={{ background:'rgba(220,38,38,.08)', border:'1px solid rgba(220,38,38,.2)',
+                                        color:'var(--red)', borderRadius:7, padding:'6px 12px', fontSize:11, cursor:'pointer', fontWeight:600, whiteSpace:'nowrap' }}>
+                                      End & Award
+                                    </button>
+                                    <button onClick={()=>setConfirmModal({ message:`Delete "${c.title}" without awarding XP?`, label:'Delete', onConfirm:()=>deleteChallenge(c.id) })}
+                                      style={{ background:'none', border:'1px solid rgba(220,38,38,.2)', borderRadius:7,
+                                        padding:'6px 10px', fontSize:11, cursor:'pointer', color:'var(--red)', whiteSpace:'nowrap' }}>
+                                      🗑
+                                    </button>
+                                  </div>
                                 )}
                               </div>
                               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
@@ -1780,9 +2024,22 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 const winner = members.find(m=>m.id===c.winnerId)
                                 return (
                                   <div key={c.id} style={{ padding:'10px 14px', borderRadius:9, background:'var(--bg2)',
-                                    border:'1px solid var(--b1)', fontSize:12, color:'var(--muted)' }}>
-                                    <span style={{ fontWeight:600, color:'var(--text)' }}>{c.title}</span>
-                                    {winner && <span> — 🏆 {winner.full_name||'Agent'} won {c.bonusXp>0?`+${c.bonusXp} XP`:''}</span>}
+                                    border:'1px solid var(--b1)', fontSize:12, color:'var(--muted)',
+                                    display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                                    <div>
+                                      <span style={{ fontWeight:600, color:'var(--text)' }}>{c.title}</span>
+                                      {winner && <span> — 🏆 {winner.full_name||'Agent'} won {c.bonusXp>0?`+${c.bonusXp} XP`:''}</span>}
+                                    </div>
+                                    {isTeamOwner && (
+                                      <button onClick={()=>setConfirmModal({
+                                        message:`Delete "${c.title}"?${c.bonusXp>0 && c.winnerId ? ` This will remove ${c.bonusXp} XP from the winner.` : ''}`,
+                                        label:'Delete & Remove XP',
+                                        onConfirm:()=>deleteChallenge(c.id),
+                                      })} style={{
+                                        background:'none', border:'1px solid rgba(220,38,38,.2)', borderRadius:6,
+                                        padding:'3px 8px', fontSize:10, cursor:'pointer', color:'var(--red)', flexShrink:0,
+                                      }}>🗑</button>
+                                    )}
                                   </div>
                                 )
                               })}
@@ -2211,6 +2468,173 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                     </div>
                   )} {/* end buyers tab */}
 
+                  {/* ════════ RECRUIT TAB ════════ */}
+                  {teamsTab==='recruit' && (
+                    <div>
+                      {/* Summary stat cards */}
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:10, marginBottom:20 }}>
+                        <StatCard label="Total Submitted" value={allRecruits.length} color="#3b82f6"/>
+                        <StatCard label="Contacted" value={allRecruits.filter(r=>r.status==='contacted').length} color="#d97706"/>
+                        <StatCard label="Hired" value={allRecruits.filter(r=>r.status==='hired').length} color="#10b981"/>
+                        <StatCard label="Declined" value={allRecruits.filter(r=>r.status==='declined').length} color="var(--muted)"/>
+                      </div>
+
+                      {/* Filter pills */}
+                      <div style={{ display:'flex', gap:6, marginBottom:18, flexWrap:'wrap' }}>
+                        {['all','submitted','contacted','hired','declined'].map(f => (
+                          <button key={f} onClick={()=>setRecruitFilter(f)}
+                            style={{
+                              padding:'5px 14px', borderRadius:20, fontSize:11, fontWeight:700,
+                              fontFamily:"'JetBrains Mono',monospace", cursor:'pointer', transition:'all .15s',
+                              textTransform:'capitalize',
+                              background: recruitFilter===f ? 'var(--gold2)' : 'var(--bg2)',
+                              color: recruitFilter===f ? '#fff' : 'var(--muted)',
+                              border: recruitFilter===f ? '1px solid var(--gold2)' : '1px solid var(--b2)',
+                            }}>
+                            {f === 'all' ? `All (${allRecruits.length})` : `${f} (${allRecruits.filter(r=>r.status===f).length})`}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Submit form */}
+                      {recruitForm ? (
+                        <div className="card" style={{ padding:18, marginBottom:20 }}>
+                          <div style={{ fontSize:14, fontWeight:700, marginBottom:12, color:'var(--text)' }}>🎯 Submit a Recruit</div>
+                          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                            <input className="field-input" placeholder="Agent Name *" value={recruitForm.name}
+                              onChange={e=>setRecruitForm(f=>({...f, name:e.target.value}))}
+                              style={{ fontSize:13 }}/>
+                            <input className="field-input" placeholder="Email *" type="email" value={recruitForm.email}
+                              onChange={e=>setRecruitForm(f=>({...f, email:e.target.value}))}
+                              style={{ fontSize:13 }}/>
+                            <input className="field-input" placeholder="Phone" type="tel" value={recruitForm.phone}
+                              onChange={e=>setRecruitForm(f=>({...f, phone:e.target.value}))}
+                              style={{ fontSize:13 }}/>
+                            <div style={{ display:'flex', gap:8 }}>
+                              <button className="btn-primary" onClick={saveRecruit}
+                                disabled={recruitSaving || !recruitForm.name?.trim() || !recruitForm.email?.trim()}
+                                style={{ fontSize:12, padding:'8px 18px' }}>
+                                {recruitSaving ? 'Submitting...' : 'Submit (+25 XP)'}
+                              </button>
+                              <button className="btn-outline" onClick={()=>setRecruitForm(null)}
+                                style={{ fontSize:12, padding:'8px 14px' }}>Cancel</button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <button className="btn-outline" onClick={()=>setRecruitForm({ name:'', email:'', phone:'' })}
+                          style={{ fontSize:13, marginBottom:20 }}>🎯 Submit a Recruit</button>
+                      )}
+
+                      {/* Recruit cards */}
+                      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                        {(() => {
+                          const STATUS_COLORS = { submitted:'#3b82f6', contacted:'#d97706', hired:'#10b981', declined:'#dc2626' }
+                          const filtered = allRecruits
+                            .filter(r => recruitFilter === 'all' || r.status === recruitFilter)
+                            .filter(r => isAdminOrOwner || r.submittedBy === user.id)
+                            .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt))
+                          if (filtered.length === 0) return (
+                            <div style={{ textAlign:'center', padding:40, color:'var(--muted)', fontSize:13 }}>
+                              {allRecruits.length === 0 ? 'No recruits submitted yet. Be the first!' : 'No recruits match this filter.'}
+                            </div>
+                          )
+                          return filtered.map(r => {
+                            const col = STATUS_COLORS[r.status] || '#3b82f6'
+                            const submitter = members.find(m => m.id === r.submittedBy)
+                            return (
+                              <div key={r.id} className="card" style={{ padding:16 }}>
+                                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12, flexWrap:'wrap' }}>
+                                  <div style={{ flex:1, minWidth:180 }}>
+                                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
+                                      {submitter && <MemberAvatar member={submitter} size={28}/>}
+                                      <div>
+                                        <div style={{ fontSize:15, fontWeight:700, color:'var(--text)' }}>{r.name}</div>
+                                        <div style={{ fontSize:11, color:'var(--muted)' }}>
+                                          by {r.submitterName} · {relativeTime(r.createdAt)}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div style={{ display:'flex', flexDirection:'column', gap:3, marginTop:8, fontSize:12 }}>
+                                      <div style={{ color:'var(--dim)' }}>📧 <span style={{ color:'var(--text)' }}>{r.email}</span></div>
+                                      {r.phone && <div style={{ color:'var(--dim)' }}>📞 <span style={{ color:'var(--text)' }}>{r.phone}</span></div>}
+                                    </div>
+                                  </div>
+                                  <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:8 }}>
+                                    {/* Status badge */}
+                                    <span style={{
+                                      padding:'3px 10px', borderRadius:12, fontSize:10, fontWeight:700,
+                                      textTransform:'uppercase', letterSpacing:'.5px',
+                                      background:`${col}18`, color:col, border:`1px solid ${col}33`,
+                                    }}>{r.status}</span>
+                                    {/* Management controls */}
+                                    {isAdminOrOwner && (
+                                      <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                                        <select value={r.status} onChange={e=>updateRecruitStatus(r.id, e.target.value)}
+                                          style={{
+                                            fontSize:11, padding:'4px 8px', borderRadius:6,
+                                            border:'1px solid var(--b2)', background:'var(--bg2)',
+                                            color:'var(--text)', cursor:'pointer',
+                                          }}>
+                                          <option value="submitted">Submitted</option>
+                                          <option value="contacted">Contacted</option>
+                                          <option value="hired">Hired</option>
+                                          <option value="declined">Declined</option>
+                                        </select>
+                                        <a href={buildRecruitMailto(r, r.submitterName, teamData?.name, teamData?.team_prefs?.recruit_email_settings)}
+                                          title={`Email ${r.name}`} style={{
+                                          background:'none', border:'1px solid var(--b2)', borderRadius:6,
+                                          padding:'3px 8px', fontSize:11, cursor:'pointer', color:'var(--muted)',
+                                          textDecoration:'none', display:'inline-flex', alignItems:'center',
+                                        }}>✉️</a>
+                                        <button onClick={()=>{
+                                          if (recruitNoteEditing === r.id) { setRecruitNoteEditing(null); setRecruitNoteText('') }
+                                          else { setRecruitNoteEditing(r.id); setRecruitNoteText(r.mgmtNotes || '') }
+                                        }} style={{
+                                          background:'none', border:'1px solid var(--b2)', borderRadius:6,
+                                          padding:'3px 8px', fontSize:11, cursor:'pointer', color:'var(--muted)',
+                                        }}>📝</button>
+                                        <button onClick={()=>setConfirmModal({
+                                          message:`Remove recruit "${r.name}"?`,
+                                          label:'Delete',
+                                          onConfirm:()=>deleteRecruit(r.id),
+                                        })} style={{
+                                          background:'none', border:'1px solid rgba(220,38,38,.2)', borderRadius:6,
+                                          padding:'3px 8px', fontSize:11, cursor:'pointer', color:'var(--red)',
+                                        }}>✕</button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                {/* Management notes (expandable) */}
+                                {isAdminOrOwner && recruitNoteEditing === r.id && (
+                                  <div style={{ marginTop:10, borderTop:'1px solid var(--b2)', paddingTop:10 }}>
+                                    <textarea className="field-input" value={recruitNoteText}
+                                      onChange={e=>setRecruitNoteText(e.target.value)}
+                                      placeholder="Management notes..."
+                                      rows={2} style={{ fontSize:12, resize:'vertical' }}/>
+                                    <div style={{ display:'flex', gap:6, marginTop:6 }}>
+                                      <button className="btn-primary" onClick={()=>updateRecruitNotes(r.id)}
+                                        style={{ fontSize:11, padding:'5px 12px' }}>Save Note</button>
+                                      <button className="btn-outline" onClick={()=>{setRecruitNoteEditing(null);setRecruitNoteText('')}}
+                                        style={{ fontSize:11, padding:'5px 12px' }}>Cancel</button>
+                                    </div>
+                                  </div>
+                                )}
+                                {isAdminOrOwner && r.mgmtNotes && recruitNoteEditing !== r.id && (
+                                  <div style={{ marginTop:8, fontSize:11, color:'var(--dim)', fontStyle:'italic',
+                                    borderTop:'1px solid var(--b2)', paddingTop:8 }}>
+                                    📝 {r.mgmtNotes}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })
+                        })()}
+                      </div>
+                    </div>
+                  )} {/* end recruit tab */}
+
                   {/* ════════ SETTINGS TAB (owner only) ════════ */}
                   {teamsTab==='settings' && isTeamOwner && (
                         <div>
@@ -2223,6 +2647,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               { id:'ai',      label:'🤖 AI Tools' },
                               { id:'directory', label:'🔗 Directory' },
                               { id:'integrations', label:'🔌 Integrations' },
+                              { id:'recruit',  label:'🎯 Recruit Email' },
                               { id:'danger',  label:'⚠️ Danger Zone' },
                             ].map(t=>(
                               <button key={t.id} onClick={()=>setSettingsSubTab(t.id)} style={{
@@ -2936,6 +3361,97 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 ✓ Slack button will appear on team member dashboards
                               </div>
                             )}
+                          </div>
+                          )}
+
+                          {/* ── Recruit Email sub-tab ── */}
+                          {settingsSubTab==='recruit' && (
+                          <div className="card" style={{
+                            padding:'18px 20px',
+                            borderLeft:'3px solid #3b82f6',
+                            background:'linear-gradient(135deg, rgba(59,130,246,.06) 0%, var(--surface) 55%)',
+                          }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+                              <span style={{ fontSize:16 }}>🎯</span>
+                              <span className="serif" style={{ fontSize:15, color:'var(--text)', fontWeight:600 }}>
+                                Recruit Outreach Email
+                              </span>
+                              <span style={{ fontSize:11, color:'var(--muted)', marginLeft:'auto' }}>
+                                Customize the email sent to recruits
+                              </span>
+                            </div>
+
+                            <div style={{ fontSize:12, color:'var(--muted)', marginBottom:12, lineHeight:1.6 }}>
+                              When you click the ✉️ icon on a recruit card, their email client opens
+                              with this template. Use placeholders to personalize each email:
+                            </div>
+
+                            {/* Placeholder tokens */}
+                            <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }}>
+                              {[
+                                { token:'{recruit_name}', desc:'Recruit\'s name' },
+                                { token:'{referrer_name}', desc:'Agent who referred' },
+                                { token:'{team_name}', desc:'Your team name' },
+                              ].map(t => (
+                                <button key={t.token} onClick={()=>{
+                                  navigator.clipboard.writeText(t.token)
+                                  setSuccess(`Copied ${t.token}`)
+                                  setTimeout(()=>setSuccess(''),1500)
+                                }} style={{
+                                  fontSize:10, padding:'3px 8px', borderRadius:6,
+                                  background:'rgba(59,130,246,.08)', color:'#3b82f6',
+                                  border:'1px solid rgba(59,130,246,.2)',
+                                  fontFamily:"'JetBrains Mono',monospace",
+                                  cursor:'pointer', transition:'all .15s',
+                                }} title={`Click to copy ${t.token}`}>{t.token}</button>
+                              ))}
+                            </div>
+
+                            {/* Subject */}
+                            <div style={{ marginBottom:16 }}>
+                              <div style={{ fontSize:12, fontWeight:700, color:'var(--text)', marginBottom:6 }}>
+                                Subject Line
+                              </div>
+                              <input className="field-input" value={recruitEmailSubject}
+                                onChange={e => setRecruitEmailSubject(e.target.value)}
+                                placeholder={DEFAULT_RECRUIT_SUBJECT}
+                                style={{ fontSize:12, width:'100%' }}/>
+                            </div>
+
+                            {/* Body */}
+                            <div style={{ marginBottom:16 }}>
+                              <div style={{ fontSize:12, fontWeight:700, color:'var(--text)', marginBottom:6 }}>
+                                Email Body
+                              </div>
+                              <textarea className="field-input" value={recruitEmailBody}
+                                onChange={e => setRecruitEmailBody(e.target.value)}
+                                placeholder={DEFAULT_RECRUIT_BODY}
+                                rows={12} style={{ fontSize:12, resize:'vertical', width:'100%', lineHeight:1.6 }}/>
+                            </div>
+
+                            {/* Actions */}
+                            <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+                              <button className="btn-primary" onClick={saveRecruitEmail}
+                                disabled={recruitEmailSaving}
+                                style={{ fontSize:12, padding:'8px 16px' }}>
+                                {recruitEmailSaving ? 'Saving...' : 'Save Template'}
+                              </button>
+                              <button className="btn-outline" onClick={resetRecruitEmail}
+                                style={{ fontSize:12, padding:'8px 16px' }}>
+                                Reset to Default
+                              </button>
+                            </div>
+
+                            {/* Email preview */}
+                            <div style={{ borderTop:'1px solid var(--b2)', paddingTop:14 }}>
+                              <div style={{ fontSize:11, fontWeight:700, color:'var(--muted)', marginBottom:8,
+                                textTransform:'uppercase', letterSpacing:'.5px' }}>Preview</div>
+                              <pre style={{ fontSize:11, color:'var(--dim)', whiteSpace:'pre-wrap',
+                                background:'var(--bg2)', padding:12, borderRadius:8, lineHeight:1.5,
+                                border:'1px solid var(--b2)', margin:0, fontFamily:"'Poppins',sans-serif" }}>
+{buildRecruitMailtoPreview(teamData?.name, { subject: recruitEmailSubject, body: recruitEmailBody })}
+                              </pre>
+                            </div>
                           </div>
                           )}
 

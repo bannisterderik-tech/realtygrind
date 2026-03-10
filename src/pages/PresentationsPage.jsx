@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import { Loader } from '../design'
@@ -58,6 +58,60 @@ const COLOR_HEX = {
   blue: '#2563eb', gold: '#d97706', green: '#059669', purple: '#8b5cf6', red: '#dc2626', neutral: '#6b7280',
 }
 
+/* ── Slide thumbnail ────────────────────────────────────────────────── */
+function SlideThumb({ html }) {
+  const ref = useRef(null)
+  const [scale, setScale] = useState(0)
+
+  useEffect(() => {
+    if (!ref.current) return
+    const update = () => { if (ref.current) setScale(ref.current.offsetWidth / 1280) }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(ref.current)
+    return () => ro.disconnect()
+  }, [])
+
+  const thumbHtml = useMemo(() => {
+    if (!html) return ''
+    let t = html
+    // Make first slide visible without JS (add 'active' class)
+    t = t.replace(/(<section\b[^>]*class=")/, '$1active ')
+    // Hide nav chrome & disable slide transitions
+    t = t.replace('</style>',
+      '.counter,.progress,.nav-arrows{display:none!important}' +
+      'section{transition:none!important}' +
+      '</style>')
+    // Strip <script> — not needed for a static thumbnail
+    t = t.replace(/<script[\s\S]*?<\/script>/gi, '')
+    return t
+  }, [html])
+
+  return (
+    <div ref={ref} style={{
+      position: 'relative', width: '100%', paddingBottom: '56.25%',
+      overflow: 'hidden', background: '#111',
+    }}>
+      {scale > 0 && (
+        <iframe
+          srcDoc={thumbHtml}
+          sandbox=""
+          style={{
+            position: 'absolute', top: 0, left: 0,
+            width: 1280, height: 720,
+            transform: `scale(${scale})`,
+            transformOrigin: 'top left',
+            border: 'none', pointerEvents: 'none',
+          }}
+          loading="lazy"
+          tabIndex={-1}
+          aria-hidden="true"
+        />
+      )}
+    </div>
+  )
+}
+
 export default function PresentationsPage({ onNavigate, theme, onToggleTheme, onPresentMode }) {
   const { user, profile } = useAuth()
   const [view, setView]           = useState('list')     // 'list' | 'create' | 'present'
@@ -96,7 +150,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
   useEffect(() => {
     if (!user?.id) return
     supabase.from('presentations')
-      .select('id, title, style, theme, font, color_scheme, slide_count, status, created_at, updated_at')
+      .select('id, title, style, theme, font, color_scheme, slide_count, status, html, created_at, updated_at')
       .eq('user_id', user.id)
       .order('updated_at', { ascending: false })
       .limit(100)
@@ -224,7 +278,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
 
         // Refresh list immediately to show the generating card
         const { data: updated } = await supabase.from('presentations')
-          .select('id, title, style, theme, font, color_scheme, slide_count, status, created_at, updated_at')
+          .select('id, title, style, theme, font, color_scheme, slide_count, status, html, created_at, updated_at')
           .eq('user_id', user.id)
           .order('updated_at', { ascending: false })
           .limit(100)
@@ -250,7 +304,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
               generatingRef.current = false
               // Refresh list
               const { data: listData } = await supabase.from('presentations')
-                .select('id, title, style, theme, font, color_scheme, slide_count, status, created_at, updated_at')
+                .select('id, title, style, theme, font, color_scheme, slide_count, status, html, created_at, updated_at')
                 .eq('user_id', user.id)
                 .order('updated_at', { ascending: false })
                 .limit(100)
@@ -282,7 +336,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
 
       // Refresh list
       const { data: updated } = await supabase.from('presentations')
-        .select('id, title, style, theme, font, color_scheme, slide_count, status, created_at, updated_at')
+        .select('id, title, style, theme, font, color_scheme, slide_count, status, html, created_at, updated_at')
         .eq('user_id', user.id)
         .order('updated_at', { ascending: false })
         .limit(100)
@@ -521,111 +575,150 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
                 }}>
                   {presentations.map(pres => {
                     const sc = pres.color_scheme?.startsWith('#') ? pres.color_scheme : (COLOR_HEX[pres.color_scheme] || '#6b7280')
+                    const hasThumb = pres.status === 'ready' && pres.html
                     return (
                       <div key={pres.id} className="card" style={{
-                        padding: 22, display: 'flex', flexDirection: 'column',
-                        borderTop: `3px solid ${sc}`,
+                        display: 'flex', flexDirection: 'column',
+                        overflow: 'hidden',
+                        ...(hasThumb ? {} : { borderTop: `3px solid ${sc}` }),
                       }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                          <div className="serif" style={{ fontSize: 16, color: 'var(--text)', fontWeight: 700, lineHeight: 1.3, flex: 1 }}>
-                            {pres.title}
+                        {/* ── Slide thumbnail / placeholder ── */}
+                        {hasThumb ? (
+                          <div style={{ cursor: 'pointer' }} onClick={() => loadAndPresent(pres.id)}>
+                            <SlideThumb html={pres.html} />
                           </div>
-                          <button onClick={() => setDeleteConfirm(pres.id)} className="btn-del"
-                            title="Delete" style={{ fontSize: 12, flexShrink: 0 }}>
-                            🗑
-                          </button>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-                          <span style={{
-                            fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 700,
-                            background: `${STYLE_COLORS[pres.style] || '#6b7280'}18`,
-                            color: STYLE_COLORS[pres.style] || '#6b7280',
-                            border: `1px solid ${STYLE_COLORS[pres.style] || '#6b7280'}30`,
-                            fontFamily: "'JetBrains Mono',monospace",
-                          }}>
-                            {pres.style?.toUpperCase()}
-                          </span>
-                          <span style={{
-                            fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 700,
-                            background: `${sc}18`, color: sc, border: `1px solid ${sc}30`,
-                            fontFamily: "'JetBrains Mono',monospace",
-                          }}>
-                            {pres.color_scheme?.startsWith('#') ? pres.color_scheme.toUpperCase() : pres.color_scheme?.toUpperCase()}
-                          </span>
-                          <span style={{
-                            fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 600,
-                            background: 'var(--b1)', color: 'var(--muted)',
-                            fontFamily: "'JetBrains Mono',monospace",
-                          }}>
-                            {pres.slide_count} slides
-                          </span>
-                        </div>
-
-                        <div style={{ fontSize: 11, color: 'var(--dim)', marginBottom: 16,
-                          fontFamily: "'JetBrains Mono',monospace" }}>
-                          {new Date(pres.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        </div>
-
-                        <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
-                          {pres.status === 'generating' ? (
-                            <div style={{
-                              flex: 1, textAlign: 'center', fontSize: 12, padding: '8px 0',
-                              color: '#d97706', fontWeight: 600,
-                              animation: 'pulse 2s ease-in-out infinite',
-                            }}>
-                              Building...
-                            </div>
-                          ) : pres.status === 'failed' ? (
-                            <button className="btn-outline" onClick={() => {
-                              supabase.from('presentations').select('*').eq('id', pres.id).single()
-                                .then(({ data }) => { if (data) openRegenerate(data) })
-                            }} style={{ flex: 1, fontSize: 12, padding: '8px 0', color: '#dc2626', borderColor: 'rgba(220,38,38,.3)' }}>
-                              Retry
-                            </button>
-                          ) : (
-                            <>
-                              <button className="btn-primary" onClick={() => loadAndPresent(pres.id)}
-                                style={{ flex: 1, fontSize: 12, padding: '8px 0' }}>
-                                Present
-                              </button>
-                              <button className="btn-outline" onClick={() => {
-                                supabase.from('presentations').select('*').eq('id', pres.id).single()
-                                  .then(({ data }) => { if (data) openRegenerate(data) })
-                              }}
-                                style={{ flex: 1, fontSize: 12, padding: '8px 0' }}>
-                                Edit
-                              </button>
-                            </>
-                          )}
-                        </div>
-
-                        {/* Delete confirmation */}
-                        {deleteConfirm === pres.id && (
+                        ) : (
                           <div style={{
-                            marginTop: 12, padding: '10px 14px', borderRadius: 8,
-                            background: 'rgba(220,38,38,.06)', border: '1px solid rgba(220,38,38,.2)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                            position: 'relative', width: '100%', paddingBottom: '56.25%',
+                            background: pres.status === 'generating'
+                              ? `linear-gradient(135deg, ${sc}18, ${sc}08)`
+                              : 'var(--b1)',
                           }}>
-                            <span style={{ fontSize: 12, color: '#dc2626', fontWeight: 600 }}>Delete?</span>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <button onClick={() => deletePresentation(pres.id)}
-                                style={{
-                                  fontSize: 11, padding: '4px 12px', borderRadius: 6, cursor: 'pointer',
-                                  background: '#dc2626', color: '#fff', border: 'none', fontWeight: 700,
-                                }}>
-                                Yes
-                              </button>
-                              <button onClick={() => setDeleteConfirm(null)}
-                                style={{
-                                  fontSize: 11, padding: '4px 12px', borderRadius: 6, cursor: 'pointer',
-                                  background: 'transparent', color: 'var(--muted)', border: '1px solid var(--b2)', fontWeight: 600,
-                                }}>
-                                No
-                              </button>
+                            <div style={{
+                              position: 'absolute', inset: 0,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              flexDirection: 'column', gap: 8,
+                            }}>
+                              {pres.status === 'generating' ? (
+                                <>
+                                  <div style={{ fontSize: 28, animation: 'pulse 2s ease-in-out infinite' }}>&#9733;</div>
+                                  <div style={{ fontSize: 11, fontWeight: 600, color: '#d97706' }}>Building slides...</div>
+                                </>
+                              ) : pres.status === 'failed' ? (
+                                <>
+                                  <div style={{ fontSize: 28, opacity: 0.5 }}>&#9888;</div>
+                                  <div style={{ fontSize: 11, fontWeight: 600, color: '#dc2626' }}>Generation failed</div>
+                                </>
+                              ) : (
+                                <div style={{ fontSize: 28, opacity: 0.18 }}>&#9654;</div>
+                              )}
                             </div>
                           </div>
                         )}
+
+                        {/* ── Card content ── */}
+                        <div style={{ padding: '14px 18px 18px', display: 'flex', flexDirection: 'column', flex: 1 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                            <div className="serif" style={{ fontSize: 15, color: 'var(--text)', fontWeight: 700, lineHeight: 1.3, flex: 1 }}>
+                              {pres.title}
+                            </div>
+                            <button onClick={() => setDeleteConfirm(pres.id)} className="btn-del"
+                              title="Delete" style={{ fontSize: 12, flexShrink: 0 }}>
+                              &#128465;
+                            </button>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                            <span style={{
+                              fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 700,
+                              background: `${STYLE_COLORS[pres.style] || '#6b7280'}18`,
+                              color: STYLE_COLORS[pres.style] || '#6b7280',
+                              border: `1px solid ${STYLE_COLORS[pres.style] || '#6b7280'}30`,
+                              fontFamily: "'JetBrains Mono',monospace",
+                            }}>
+                              {pres.style?.toUpperCase()}
+                            </span>
+                            <span style={{
+                              fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 700,
+                              background: `${sc}18`, color: sc, border: `1px solid ${sc}30`,
+                              fontFamily: "'JetBrains Mono',monospace",
+                            }}>
+                              {pres.color_scheme?.startsWith('#') ? pres.color_scheme.toUpperCase() : pres.color_scheme?.toUpperCase()}
+                            </span>
+                            <span style={{
+                              fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 600,
+                              background: 'var(--b1)', color: 'var(--muted)',
+                              fontFamily: "'JetBrains Mono',monospace",
+                            }}>
+                              {pres.slide_count} slides
+                            </span>
+                          </div>
+
+                          <div style={{ fontSize: 11, color: 'var(--dim)', marginBottom: 14,
+                            fontFamily: "'JetBrains Mono',monospace" }}>
+                            {new Date(pres.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </div>
+
+                          <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
+                            {pres.status === 'generating' ? (
+                              <div style={{
+                                flex: 1, textAlign: 'center', fontSize: 12, padding: '8px 0',
+                                color: '#d97706', fontWeight: 600,
+                                animation: 'pulse 2s ease-in-out infinite',
+                              }}>
+                                Building...
+                              </div>
+                            ) : pres.status === 'failed' ? (
+                              <button className="btn-outline" onClick={() => {
+                                supabase.from('presentations').select('*').eq('id', pres.id).single()
+                                  .then(({ data }) => { if (data) openRegenerate(data) })
+                              }} style={{ flex: 1, fontSize: 12, padding: '8px 0', color: '#dc2626', borderColor: 'rgba(220,38,38,.3)' }}>
+                                Retry
+                              </button>
+                            ) : (
+                              <>
+                                <button className="btn-primary" onClick={() => loadAndPresent(pres.id)}
+                                  style={{ flex: 1, fontSize: 12, padding: '8px 0' }}>
+                                  Present
+                                </button>
+                                <button className="btn-outline" onClick={() => {
+                                  supabase.from('presentations').select('*').eq('id', pres.id).single()
+                                    .then(({ data }) => { if (data) openRegenerate(data) })
+                                }}
+                                  style={{ flex: 1, fontSize: 12, padding: '8px 0' }}>
+                                  Edit
+                                </button>
+                              </>
+                            )}
+                          </div>
+
+                          {/* Delete confirmation */}
+                          {deleteConfirm === pres.id && (
+                            <div style={{
+                              marginTop: 12, padding: '10px 14px', borderRadius: 8,
+                              background: 'rgba(220,38,38,.06)', border: '1px solid rgba(220,38,38,.2)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                            }}>
+                              <span style={{ fontSize: 12, color: '#dc2626', fontWeight: 600 }}>Delete?</span>
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button onClick={() => deletePresentation(pres.id)}
+                                  style={{
+                                    fontSize: 11, padding: '4px 12px', borderRadius: 6, cursor: 'pointer',
+                                    background: '#dc2626', color: '#fff', border: 'none', fontWeight: 700,
+                                  }}>
+                                  Yes
+                                </button>
+                                <button onClick={() => setDeleteConfirm(null)}
+                                  style={{
+                                    fontSize: 11, padding: '4px 12px', borderRadius: 6, cursor: 'pointer',
+                                    background: 'transparent', color: 'var(--muted)', border: '1px solid var(--b2)', fontWeight: 600,
+                                  }}>
+                                  No
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )
                   })}

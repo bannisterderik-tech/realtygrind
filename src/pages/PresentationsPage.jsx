@@ -61,6 +61,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
   const [error, setError]         = useState('')
   const [activePresentation, setActivePresentation] = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const [teamMonthlyUsage, setTeamMonthlyUsage] = useState(null) // { used, limit }
 
   // Form state
   const [title, setTitle]         = useState('Untitled Presentation')
@@ -96,6 +97,21 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
         setLoading(false)
       })
   }, [user?.id])
+
+  // Fetch team monthly presentation usage
+  useEffect(() => {
+    const teamId = profile?.team_id
+    if (!teamId) return
+    const now = new Date()
+    const startOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01T00:00:00.000Z`
+    supabase.from('presentations')
+      .select('id', { count: 'exact', head: true })
+      .eq('team_id', teamId)
+      .gte('created_at', startOfMonth)
+      .then(({ count }) => {
+        setTeamMonthlyUsage({ used: count ?? 0, limit: 45 })
+      })
+  }, [profile?.team_id, presentations.length]) // re-fetch after generation updates presentations list
 
   function resetForm() {
     setTitle('Untitled Presentation')
@@ -170,6 +186,9 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
       if (!resp.ok) {
         if (data.error === 'credits_exhausted') {
           setError(`You've used all ${data.limit} AI credits this month. Credits reset next month.`)
+        } else if (data.error === 'presentations_limit_reached') {
+          setError(`Your team has reached the monthly limit of ${data.limit} presentations. Resets next month.`)
+          setTeamMonthlyUsage({ used: data.used, limit: data.limit })
         } else if (data.error === 'addon_required') {
           setError('The Presentation Builder add-on is required. Ask your team owner to subscribe.')
         } else {
@@ -371,11 +390,27 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
           {view === 'list' && (
             <>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-                  {presentations.length} presentation{presentations.length !== 1 ? 's' : ''}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+                    {presentations.length} presentation{presentations.length !== 1 ? 's' : ''}
+                  </div>
+                  {teamMonthlyUsage && (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 8, fontSize: 11,
+                      padding: '4px 12px', borderRadius: 20,
+                      background: teamMonthlyUsage.used >= teamMonthlyUsage.limit ? 'rgba(220,38,38,.08)' : 'rgba(14,165,233,.06)',
+                      border: `1px solid ${teamMonthlyUsage.used >= teamMonthlyUsage.limit ? 'rgba(220,38,38,.2)' : 'rgba(14,165,233,.15)'}`,
+                      color: teamMonthlyUsage.used >= teamMonthlyUsage.limit ? '#dc2626' : '#0ea5e9',
+                      fontFamily: "'JetBrains Mono',monospace", fontWeight: 600,
+                    }}>
+                      <span>{teamMonthlyUsage.used}/{teamMonthlyUsage.limit}</span>
+                      <span style={{ fontWeight: 400, fontFamily: 'Poppins,sans-serif', fontSize: 10, opacity: .7 }}>this month</span>
+                    </div>
+                  )}
                 </div>
                 <button className="btn-gold" onClick={openCreate}
-                  style={{ padding: '10px 22px', fontSize: 13 }}>
+                  disabled={teamMonthlyUsage && teamMonthlyUsage.used >= teamMonthlyUsage.limit}
+                  style={{ padding: '10px 22px', fontSize: 13, opacity: teamMonthlyUsage && teamMonthlyUsage.used >= teamMonthlyUsage.limit ? .5 : 1 }}>
                   + New Presentation
                 </button>
               </div>

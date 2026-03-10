@@ -23,7 +23,7 @@ const DEFAULT_GTM_TASKS = [
   { id: 'gtm-2',  title: 'Launch TikTok & YouTube Shorts channel', phase: 1, column: 'backlog', notes: '' },
   { id: 'gtm-3',  title: 'Real estate Facebook group outreach campaign', phase: 1, column: 'backlog', notes: '' },
   { id: 'gtm-4',  title: 'Reddit community engagement (r/realtors, r/RealEstate)', phase: 1, column: 'backlog', notes: '' },
-  { id: 'gtm-5',  title: 'Set up 14-day free trial flow (Solo plan)', phase: 1, column: 'backlog', notes: '' },
+  { id: 'gtm-5',  title: 'Set up 3-day free trial flow (Solo plan)', phase: 1, column: 'backlog', notes: '' },
   { id: 'gtm-6',  title: 'SEO: target "real estate habit tracker", "agent accountability app"', phase: 1, column: 'backlog', notes: '' },
   { id: 'gtm-7',  title: 'Build email drip sequence for trial onboarding', phase: 1, column: 'backlog', notes: '' },
   { id: 'gtm-8',  title: 'Reach 500 solo subscribers', phase: 1, column: 'backlog', notes: '' },

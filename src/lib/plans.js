@@ -54,6 +54,17 @@ export function getAICreditLimit(plan) {
   return AI_CREDIT_LIMITS[plan] ?? 0
 }
 
+// ── Add-on helpers ──────────────────────────────────────────────────────────
+export function hasActiveAddon(profile, addonName) {
+  if (isPlatformAdmin(profile)) return true
+  const team = profile?.teams
+  if (!team) return false
+  if (addonName === 'presentations') {
+    return team.presentations_addon_status === 'active' || team.presentations_addon_status === 'trialing'
+  }
+  return false
+}
+
 export function getPlanBadge(profile, userId) {
   // Platform admin — special badge, no plan needed
   if (isPlatformAdmin(profile)) {

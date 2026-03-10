@@ -8,6 +8,7 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
   const [annual, setAnnual] = useState(false)
   const [portalLoading, setPortalLoading] = useState(false)
   const [checkoutLoading, setCheckoutLoading] = useState(null) // planId or null
+  const [addonLoading, setAddonLoading] = useState(false)
   const [error, setError] = useState('')
 
   const currentPlan = getPlan(profile?.plan)
@@ -19,6 +20,36 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
 
   // True if this account was set up directly in the DB (no Stripe customer)
   const hasStripeCustomer = !!profile?.stripe_customer_id
+  const isTeamOwner = profile?.team_id && profile?.teams?.created_by === user?.id
+  const addonStatus = profile?.teams?.presentations_addon_status
+  const addonActive = addonStatus === 'active' || addonStatus === 'trialing'
+
+  async function handleAddonCheckout() {
+    if (addonLoading) return
+    setAddonLoading(true); setError('')
+    try {
+      if (!supabase) { setError('Service unavailable'); return }
+      const { data, error: e } = await supabase.functions.invoke('create-addon-checkout', {
+        body: { addonId: 'presentations', returnUrl: window.location.origin }
+      })
+      if (e) {
+        const body = typeof e.context === 'object' ? e.context : null
+        const msg = body?.error || e.message || ''
+        if (msg.includes('Failed to send') || msg.includes('FunctionsFetchError'))
+          throw new Error('Could not reach billing service. Please try again later.')
+        throw new Error(msg || 'Could not start checkout.')
+      }
+      if (data?.error) throw new Error(data.error)
+      if (data?.url) window.location.href = data.url
+      else throw new Error('Checkout URL not available. Please try again.')
+    } catch (err) {
+      console.error('Add-on checkout error:', err)
+      const msg = err.message || 'Could not start checkout.'
+      setError(msg.includes('Failed to send') ? 'Could not reach billing service. Please try again later.' : msg)
+    } finally {
+      setAddonLoading(false)
+    }
+  }
 
   async function openPortal() {
     if (portalLoading || checkoutLoading) return
@@ -198,6 +229,59 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
                         <span style={{ color:currentPlan.color, fontSize:11, fontWeight:700 }}>&#10003;</span> {f}
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Add-ons ── */}
+              {hasSubscription && isTeamOwner && (
+                <div style={{ marginBottom:24 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
+                    <span style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace", letterSpacing:.8,
+                      textTransform:'uppercase', fontWeight:700, color:'var(--muted)' }}>
+                      ADD-ONS
+                    </span>
+                  </div>
+                  <div className="card" style={{ padding:24, display:'flex', alignItems:'center', justifyContent:'space-between',
+                    gap:16, flexWrap:'wrap', borderLeft:'3px solid #d97706' }}>
+                    <div style={{ flex:1, minWidth:200 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
+                        <span style={{ fontSize:20 }}>🎯</span>
+                        <span className="serif" style={{ fontSize:18, color:'var(--text)' }}>Presentation Builder</span>
+                        {addonActive && (
+                          <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:12,
+                            background:'rgba(16,185,129,.12)', color:'#059669', border:'1px solid rgba(16,185,129,.25)' }}>
+                            {addonStatus === 'trialing' ? 'TRIAL' : 'ACTIVE'}
+                          </span>
+                        )}
+                        {addonStatus === 'past_due' && (
+                          <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:12,
+                            background:'rgba(245,158,11,.12)', color:'#f59e0b', border:'1px solid rgba(245,158,11,.25)' }}>
+                            PAST DUE
+                          </span>
+                        )}
+                        {addonStatus === 'cancelled' && (
+                          <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:12,
+                            background:'rgba(100,100,100,.1)', color:'var(--muted)', border:'1px solid var(--b2)' }}>
+                            CANCELLED
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize:13, color:'var(--muted)', lineHeight:1.6 }}>
+                        AI-powered slideshow builder for your team. Generate polished presentations with your team logo, custom themes, and one-click fullscreen presenting.
+                      </div>
+                    </div>
+                    {addonActive ? (
+                      <button className="btn-outline" onClick={openPortal} disabled={portalLoading}
+                        style={{ fontSize:13, padding:'10px 20px', whiteSpace:'nowrap' }}>
+                        {portalLoading ? 'Opening...' : 'Manage'}
+                      </button>
+                    ) : (
+                      <button className="btn-gold" onClick={handleAddonCheckout} disabled={addonLoading}
+                        style={{ fontSize:13, padding:'10px 22px', whiteSpace:'nowrap' }}>
+                        {addonLoading ? 'Redirecting...' : 'Subscribe'}
+                      </button>
+                    )}
                   </div>
                 </div>
               )}

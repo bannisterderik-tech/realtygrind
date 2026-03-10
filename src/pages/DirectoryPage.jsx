@@ -14,6 +14,17 @@ const AI_TOOLS = [
     desc: 'AI-powered real estate coaching — listing strategy, pipeline review, comp research, and goal tracking.',
     page: 'ai-assistant',
   },
+  {
+    id: 'presentations',
+    name: 'Presentation Builder',
+    icon: '🎯',
+    category: 'AI',
+    catColor: '#d97706',
+    catBg: 'rgba(217,119,6,.1)',
+    catBorder: 'rgba(217,119,6,.25)',
+    desc: 'AI-generated listing presentations and slideshows. Choose a style, enter your content, and present.',
+    page: 'presentations',
+  },
 ]
 
 const CALCULATORS = [

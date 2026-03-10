@@ -84,7 +84,7 @@ export function AuthProvider({ children }) {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('*, teams(name, invite_code, created_by, team_prefs)')
+        .select('*, teams(name, invite_code, created_by, team_prefs, presentations_addon_status)')
         .eq('id', userId)
         .single()
 
@@ -125,7 +125,7 @@ export function AuthProvider({ children }) {
           if (!mountedRef.current) return
           const { data: updated } = await supabase
             .from('profiles')
-            .select('*, teams(name, invite_code, created_by, team_prefs)')
+            .select('*, teams(name, invite_code, created_by, team_prefs, presentations_addon_status)')
             .eq('id', userId)
             .single()
           if (mountedRef.current) {

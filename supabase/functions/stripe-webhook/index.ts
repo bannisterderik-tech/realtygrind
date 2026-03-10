@@ -47,6 +47,13 @@ Deno.serve(async (req) => {
     if (id) PRICE_TO_PLAN[id] = plan
   }
 
+  // Add-on price reverse map (price_id → addon name)
+  const ADDON_PRICES: Record<string, string> = {}
+  const presMonthly = Deno.env.get('STRIPE_PRICE_PRESENTATIONS_MONTHLY')
+  const presAnnual = Deno.env.get('STRIPE_PRICE_PRESENTATIONS_ANNUAL')
+  if (presMonthly) ADDON_PRICES[presMonthly] = 'presentations'
+  if (presAnnual) ADDON_PRICES[presAnnual] = 'presentations'
+
   let event: Stripe.Event
   try {
     event = stripe.webhooks.constructEvent(
@@ -94,41 +101,63 @@ Deno.serve(async (req) => {
     let planId: string | null = null
     let userId: string | null = null
     let billingStatus: string = 'active'
+    let addonId: string | null = null
+    let teamId: string | null = null
     if (session.subscription) {
       try {
         const sub = await stripe.subscriptions.retrieve(session.subscription as string)
         planId = sub.metadata?.planId || null
         userId = sub.metadata?.userId || null
+        addonId = sub.metadata?.addonId || null
+        teamId = sub.metadata?.teamId || null
         billingStatus = sub.status // preserve 'trialing' for trial subscriptions
       } catch (err) {
         console.error('Failed to fetch subscription:', err)
       }
     }
 
-    const updatePayload = {
-      plan:                    planId,
-      billing_status:          billingStatus,
-      stripe_customer_id:      session.customer as string,
-      stripe_subscription_id:  session.subscription as string,
-    }
-
-    // Prefer userId from metadata (reliable), fall back to email (fragile)
-    if (userId) {
-      const { error } = await supabase
-        .from('profiles')
-        .update(updatePayload)
-        .eq('id', userId)
-
-      if (error) console.error('profiles update error (checkout by userId):', error.message)
+    // ── Add-on checkout (e.g. Presentation Builder) ──
+    if (addonId === 'presentations' && teamId) {
+      const { error } = await supabase.from('teams').update({
+        presentations_addon_status: billingStatus,
+        presentations_stripe_subscription_id: session.subscription as string,
+      }).eq('id', teamId)
+      if (error) console.error('teams update error (addon checkout):', error.message)
+      // Also enable the tool in team_prefs
+      const { data: team } = await supabase.from('teams').select('team_prefs').eq('id', teamId).single()
+      if (team) {
+        const prefs = team.team_prefs || {}
+        const aiTools = prefs.ai_tools || {}
+        aiTools.presentations_enabled = true
+        await supabase.from('teams').update({ team_prefs: { ...prefs, ai_tools: aiTools } }).eq('id', teamId)
+      }
     } else {
-      const email = session.customer_details?.email
-      if (email) {
+      // ── Base plan checkout ──
+      const updatePayload = {
+        plan:                    planId,
+        billing_status:          billingStatus,
+        stripe_customer_id:      session.customer as string,
+        stripe_subscription_id:  session.subscription as string,
+      }
+
+      // Prefer userId from metadata (reliable), fall back to email (fragile)
+      if (userId) {
         const { error } = await supabase
           .from('profiles')
           .update(updatePayload)
-          .eq('email', email)
+          .eq('id', userId)
 
-        if (error) console.error('profiles update error (checkout by email):', error.message)
+        if (error) console.error('profiles update error (checkout by userId):', error.message)
+      } else {
+        const email = session.customer_details?.email
+        if (email) {
+          const { error } = await supabase
+            .from('profiles')
+            .update(updatePayload)
+            .eq('email', email)
+
+          if (error) console.error('profiles update error (checkout by email):', error.message)
+        }
       }
     }
   }
@@ -137,25 +166,35 @@ Deno.serve(async (req) => {
   if (event.type === 'customer.subscription.updated') {
     const sub        = event.data.object as Stripe.Subscription
     const customerId = sub.customer as string
-    const status     = sub.status // preserve 'trialing' vs 'active' for UI display
+    const status     = sub.status
 
-    const updateData: Record<string, unknown> = { billing_status: status }
-
-    // Derive plan from the subscription's ACTUAL price — not metadata.
-    // Metadata stays stale after Portal upgrades/downgrades (it was set at
-    // original checkout time and Stripe doesn't update it on price change).
+    // Check if this is an add-on subscription
     const priceId = sub.items?.data?.[0]?.price?.id
-    const derivedPlan = priceId ? PRICE_TO_PLAN[priceId] : null
-    const metadataPlan = sub.metadata?.planId
-    const planId = derivedPlan || metadataPlan // price-derived is authoritative
-    if (planId) updateData.plan = planId
+    const isAddon = priceId ? ADDON_PRICES[priceId] : null
 
-    const { error } = await supabase
-      .from('profiles')
-      .update(updateData)
-      .eq('stripe_customer_id', customerId)
+    if (isAddon === 'presentations') {
+      // Update teams table by subscription ID
+      const { error } = await supabase.from('teams').update({
+        presentations_addon_status: status,
+      }).eq('presentations_stripe_subscription_id', sub.id)
+      if (error) console.error('teams update error (addon sub updated):', error.message)
+    } else {
+      // Base plan update
+      const updateData: Record<string, unknown> = { billing_status: status }
 
-    if (error) console.error('profiles update error (sub updated):', error.message)
+      // Derive plan from the subscription's ACTUAL price — not metadata.
+      const derivedPlan = priceId ? PRICE_TO_PLAN[priceId] : null
+      const metadataPlan = sub.metadata?.planId
+      const planId = derivedPlan || metadataPlan
+      if (planId) updateData.plan = planId
+
+      const { error } = await supabase
+        .from('profiles')
+        .update(updateData)
+        .eq('stripe_customer_id', customerId)
+
+      if (error) console.error('profiles update error (sub updated):', error.message)
+    }
   }
 
   // ── customer.subscription.deleted ─────────────────────────────────────
@@ -163,12 +202,26 @@ Deno.serve(async (req) => {
     const sub        = event.data.object as Stripe.Subscription
     const customerId = sub.customer as string
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({ billing_status: 'cancelled', plan: null })
-      .eq('stripe_customer_id', customerId)
+    // Check if this is an add-on subscription
+    const { data: addonTeam } = await supabase.from('teams')
+      .select('id')
+      .eq('presentations_stripe_subscription_id', sub.id)
+      .single()
 
-    if (error) console.error('profiles update error (sub deleted):', error.message)
+    if (addonTeam) {
+      const { error } = await supabase.from('teams').update({
+        presentations_addon_status: 'cancelled',
+      }).eq('id', addonTeam.id)
+      if (error) console.error('teams update error (addon sub deleted):', error.message)
+    } else {
+      // Base plan deletion
+      const { error } = await supabase
+        .from('profiles')
+        .update({ billing_status: 'cancelled', plan: null })
+        .eq('stripe_customer_id', customerId)
+
+      if (error) console.error('profiles update error (sub deleted):', error.message)
+    }
   }
 
   // ── invoice.payment_failed ──────────────────────────────────────────────

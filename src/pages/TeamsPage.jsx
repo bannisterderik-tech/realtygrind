@@ -2486,6 +2486,58 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 }} />
                               </button>
                             </div>
+
+                            {/* ── Presentation Builder toggle ── */}
+                            <div style={{ height: 1, background: 'var(--b1)', margin: '16px 0' }} />
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                              <div>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  Presentation Builder
+                                  {(teamData?.presentations_addon_status === 'active' || teamData?.presentations_addon_status === 'trialing') ? (
+                                    <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 700,
+                                      background: 'rgba(5,150,105,.1)', color: '#059669', border: '1px solid rgba(5,150,105,.25)',
+                                      fontFamily: "'JetBrains Mono',monospace" }}>
+                                      ADD-ON ACTIVE
+                                    </span>
+                                  ) : (
+                                    <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 700,
+                                      background: 'rgba(217,119,6,.1)', color: '#d97706', border: '1px solid rgba(217,119,6,.25)',
+                                      fontFamily: "'JetBrains Mono',monospace" }}>
+                                      ADD-ON REQUIRED
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ fontSize: 11, color: 'var(--muted)' }}>AI-generated listing presentations and slideshows</div>
+                              </div>
+                              <button
+                                onClick={async () => {
+                                  const current = teamData?.team_prefs?.ai_tools?.presentations_enabled !== false
+                                  const newAiTools = { ...(teamData?.team_prefs?.ai_tools || {}), presentations_enabled: !current }
+                                  const newPrefs = { ...(teamData?.team_prefs || {}), ai_tools: newAiTools }
+                                  try {
+                                    const { error } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                    if (error) throw error
+                                    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+                                  } catch (err) {
+                                    setError('Failed to update AI settings.')
+                                    console.error('togglePresentations error:', err)
+                                  }
+                                }}
+                                style={{
+                                  width: 48, height: 26, borderRadius: 13, cursor: 'pointer', border: 'none',
+                                  position: 'relative', flexShrink: 0, transition: 'background .2s',
+                                  background: (teamData?.team_prefs?.ai_tools?.presentations_enabled !== false)
+                                    ? '#d97706' : 'var(--b2)',
+                                }}
+                              >
+                                <div style={{
+                                  width: 20, height: 20, borderRadius: 10,
+                                  background: '#fff', position: 'absolute', top: 3,
+                                  transition: 'left .2s',
+                                  left: (teamData?.team_prefs?.ai_tools?.presentations_enabled !== false) ? 25 : 3,
+                                }} />
+                              </button>
+                            </div>
                           </div>
                           )}
 

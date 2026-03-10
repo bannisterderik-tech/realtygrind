@@ -335,28 +335,25 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
     }
 
     // ── 12. Build full HTML from template ───────────────────────────────────
-    const COLORS: Record<string, { primary: string; accent: string; glow: string }> = {
-      blue:    { primary: '#1e40af', accent: '#60a5fa', glow: '96,165,250' },
-      gold:    { primary: '#92400e', accent: '#f59e0b', glow: '245,158,11' },
-      green:   { primary: '#065f46', accent: '#34d399', glow: '52,211,153' },
-      purple:  { primary: '#5b21b6', accent: '#a78bfa', glow: '167,139,250' },
-      red:     { primary: '#991b1b', accent: '#f87171', glow: '248,113,113' },
-      neutral: { primary: '#111827', accent: '#9ca3af', glow: '156,163,175' },
+    const COLORS: Record<string, { primary: string; accent: string; glow: string; secondary: string }> = {
+      blue:    { primary: '#2563eb', accent: '#38bdf8', glow: '37,99,235', secondary: '#818cf8' },
+      gold:    { primary: '#d97706', accent: '#fbbf24', glow: '217,119,6', secondary: '#f59e0b' },
+      green:   { primary: '#059669', accent: '#34d399', glow: '5,150,105', secondary: '#6ee7b7' },
+      purple:  { primary: '#7c3aed', accent: '#c084fc', glow: '124,58,237', secondary: '#a78bfa' },
+      red:     { primary: '#dc2626', accent: '#fb923c', glow: '220,38,38', secondary: '#f87171' },
+      neutral: { primary: '#374151', accent: '#9ca3af', glow: '55,65,81', secondary: '#6b7280' },
     }
     const c = COLORS[colorScheme] || COLORS.blue
     const isDark = presTheme === 'dark'
-    const bg = isDark ? '#0f172a' : '#ffffff'
-    const fg = isDark ? '#e2e8f0' : '#1e293b'
-    const mutedFg = isDark ? '#94a3b8' : '#64748b'
-    const cardBg = isDark ? 'rgba(255,255,255,.03)' : `rgba(${c.glow},.04)`
-    const cardBorder = isDark ? 'rgba(255,255,255,.06)' : `rgba(${c.glow},.12)`
-    const titleSlideBg = isDark
-      ? `radial-gradient(ellipse at 70% 20%,rgba(${c.glow},.08) 0%,${bg} 70%)`
-      : `radial-gradient(ellipse at 70% 20%,rgba(${c.glow},.06) 0%,${bg} 70%)`
-    const headingFont = font === 'serif' ? 'Georgia,"Palatino Linotype","Book Antiqua",serif'
-      : font === 'monospace' ? '"SF Mono","Fira Code","Courier New",monospace'
-      : '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif'
-    const bodyFont = '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif'
+    const bg = isDark ? '#0a0a0f' : '#fafafa'
+    const bg2 = isDark ? '#12121a' : '#ffffff'
+    const fg = isDark ? '#e4e4e7' : '#18181b'
+    const mutedFg = isDark ? '#71717a' : '#71717a'
+    const subtleBorder = isDark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)'
+    const headingFont = font === 'serif' ? '"Playfair Display",Georgia,"Times New Roman",serif'
+      : font === 'monospace' ? '"JetBrains Mono","SF Mono","Fira Code",monospace'
+      : '"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif'
+    const bodyFont = '"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif'
 
     const logoWatermark = teamLogo
       ? `<img src="${teamLogo}" class="watermark" alt="">`
@@ -364,37 +361,56 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
 
     // ── Style-specific CSS overrides ──
     let styleCSS = ''
+    let styleBodyClass = style
     if (style === 'modern') {
       styleCSS = [
-        `section.title-slide{background:${titleSlideBg}}`,
-        `section::before{width:5px}`,
-        `section h1{background:linear-gradient(135deg,${c.primary},${c.accent});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}`,
+        // Gradient mesh title slide
+        `section.title-slide{background:${bg}}`,
+        `section.title-slide::after{content:'';position:absolute;top:-20%;right:-10%;width:70%;height:80%;background:radial-gradient(circle,rgba(${c.glow},.12) 0%,transparent 70%);filter:blur(60px);pointer-events:none;z-index:0}`,
+        `section.title-slide::before{display:block;content:'';position:absolute;bottom:0;left:20%;width:50%;height:60%;background:radial-gradient(circle,rgba(${c.glow},.06) 0%,transparent 70%);filter:blur(80px);pointer-events:none;z-index:0}`,
+        `section.title-slide>*{position:relative;z-index:1}`,
+        // Gradient text h1
+        `section h1{background:linear-gradient(135deg,${c.primary} 0%,${c.accent} 50%,${c.secondary} 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}`,
+        // Accent line
+        `section::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;background:linear-gradient(180deg,${c.primary},${c.accent},transparent);opacity:.6}`,
+        // Subtle dot grid bg on content slides
+        `section:not(.title-slide):not(.closing-slide){background-image:radial-gradient(${isDark ? 'rgba(255,255,255,.03)' : 'rgba(0,0,0,.03)'} 1px,transparent 1px);background-size:24px 24px}`,
       ].join('\n')
     } else if (style === 'classic') {
       styleCSS = [
-        `section h1{color:${c.primary}}`,
-        `section::before{background:${c.primary};width:3px}`,
-        `section h2::after{width:100%;background:${c.primary}15;height:1px}`,
-        `section li::before{width:7px;height:7px;border-radius:50%;top:21px;background:${c.primary}}`,
+        `section h1{color:${c.primary};-webkit-text-fill-color:${c.primary}}`,
+        `section::before{background:${c.primary};width:1px;opacity:.2}`,
+        `section h2::after{width:40px;height:1px;background:${c.primary};opacity:.3}`,
+        `section li::before{width:6px;height:6px;border-radius:50%;top:22px;background:${c.primary};opacity:.5}`,
+        `section li{padding-left:28px}`,
+        // Elegant top-right corner accent
+        `section:not(.title-slide):not(.closing-slide)::after{content:'';position:absolute;top:40px;right:60px;width:60px;height:60px;border-top:1px solid ${c.primary}20;border-right:1px solid ${c.primary}20;pointer-events:none}`,
       ].join('\n')
     } else if (style === 'minimal') {
       styleCSS = [
-        `section{padding:80px 140px}`,
-        `section h1{color:${c.primary};font-weight:600;letter-spacing:-.02em}`,
+        `section{padding:100px 160px}`,
+        `section h1{color:${fg};-webkit-text-fill-color:${fg};font-weight:300;letter-spacing:-.03em;font-size:3.8em}`,
         `section::before{display:none}`,
-        `section h2{font-weight:500}`,
+        `section h2{font-weight:400;color:${fg};letter-spacing:-.02em}`,
         `section h2::after{display:none}`,
-        `section li::before{width:24px;height:1px;background:${mutedFg};opacity:.25}`,
-        `section li{padding-left:44px}`,
+        `section li::before{width:16px;height:1px;background:${mutedFg};opacity:.2;top:22px}`,
+        `section li{padding-left:32px;color:${mutedFg}}`,
+        `section p{color:${mutedFg}}`,
+        // Ultra-thin bottom line
+        `section:not(.title-slide):not(.closing-slide)::after{content:'';position:absolute;bottom:60px;left:160px;right:160px;height:1px;background:${subtleBorder};pointer-events:none}`,
       ].join('\n')
     } else if (style === 'bold') {
       styleCSS = [
-        `section.title-slide{background:${titleSlideBg}}`,
-        `section h1{font-size:4.2em;line-height:1.05;background:linear-gradient(135deg,${c.primary},${c.accent});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}`,
-        `section h2{font-size:2.6em}`,
-        `section::before{width:8px}`,
-        `section h2::after{height:4px;width:60px}`,
-        `section li::before{height:4px;width:24px}`,
+        // Giant gradient text
+        `section h1{font-size:4.8em;line-height:1;font-weight:900;background:linear-gradient(135deg,${c.primary} 0%,${c.accent} 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:-.05em}`,
+        `section h2{font-size:2.8em;font-weight:800;letter-spacing:-.03em}`,
+        `section::before{width:6px;background:${c.primary}}`,
+        `section h2::after{height:4px;width:60px;border-radius:4px}`,
+        `section li::before{height:3px;width:20px;border-radius:2px}`,
+        // Full bleed accent block on title slide
+        `section.title-slide{background:linear-gradient(135deg,${c.primary} 0%,${isDark ? '#1a1a2e' : c.accent + '18'} 100%)}`,
+        `section.title-slide h1{-webkit-text-fill-color:${isDark ? '#fff' : c.primary};background:none}`,
+        `section.title-slide h2{color:${isDark ? 'rgba(255,255,255,.6)' : c.primary + '80'}}`,
       ].join('\n')
     }
 
@@ -403,55 +419,98 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{background:${bg};color:${fg};font-family:${bodyFont};overflow:hidden;height:100vh;width:100vw;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+html,body{background:${bg};color:${fg};font-family:${bodyFont};overflow:hidden;height:100vh;width:100vw;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-feature-settings:'cv02','cv03','cv04','cv11'}
 h1,h2,h3{font-family:${headingFont}}
+
+/* ── Slide system ── */
 .slides{position:relative;height:100vh;width:100vw}
-section{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:72px 100px 80px;opacity:0;pointer-events:none;transform:translateY(20px);transition:opacity .6s cubic-bezier(.4,0,.2,1),transform .6s cubic-bezier(.4,0,.2,1);overflow-y:auto}
-section.active{opacity:1;pointer-events:auto;transform:translateY(0)}
-section.title-slide{text-align:center;align-items:center;padding:80px 100px}
+section{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:80px 120px 80px;opacity:0;pointer-events:none;transform:scale(.98);transition:opacity .5s cubic-bezier(.16,1,.3,1),transform .5s cubic-bezier(.16,1,.3,1);overflow-y:auto;background:${bg2}}
+section.active{opacity:1;pointer-events:auto;transform:scale(1)}
+section.title-slide{text-align:center;align-items:center;padding:80px 120px}
 section.closing-slide{text-align:center;align-items:center}
-section::before{content:'';position:absolute;top:0;left:0;width:5px;height:100%;background:linear-gradient(180deg,${c.primary},${c.accent})}
+
+/* ── Accent bar (left edge) ── */
+section::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;background:linear-gradient(180deg,${c.primary},${c.accent});opacity:.5}
 section.title-slide::before,section.closing-slide::before{display:none}
-section h1{font-size:3.4em;font-weight:800;color:${c.primary};margin-bottom:20px;line-height:1.08;letter-spacing:-.04em}
-section h2{font-size:2em;font-weight:700;color:${c.primary};margin-bottom:36px;line-height:1.2;letter-spacing:-.025em;position:relative;display:inline-block}
-section h2::after{content:'';display:block;width:48px;height:3px;background:${c.accent};border-radius:2px;margin-top:12px}
-section.title-slide h2,section.closing-slide h2{font-weight:400;color:${mutedFg};font-size:1.2em;letter-spacing:.01em;margin-bottom:12px}
+
+/* ── Typography ── */
+section h1{font-size:3.6em;font-weight:800;color:${c.primary};margin-bottom:16px;line-height:1.05;letter-spacing:-.04em}
+section h2{font-size:1.75em;font-weight:700;color:${fg};margin-bottom:40px;line-height:1.25;letter-spacing:-.025em;position:relative;display:inline-block}
+section h2::after{content:'';display:block;width:40px;height:2.5px;background:linear-gradient(90deg,${c.primary},${c.accent});border-radius:2px;margin-top:16px}
+section.title-slide h2,section.closing-slide h2{font-weight:400;color:${mutedFg};font-size:1.15em;letter-spacing:.02em;margin-bottom:8px}
 section.title-slide h2::after,section.closing-slide h2::after{display:none}
-section h3{font-size:.75em;font-weight:700;color:${c.accent};margin-bottom:18px;letter-spacing:.12em;text-transform:uppercase}
-section p{font-size:1.15em;line-height:1.8;margin-bottom:18px;color:${fg};max-width:800px}
+section h3{font-size:.7em;font-weight:600;color:${c.accent};margin-bottom:20px;letter-spacing:.14em;text-transform:uppercase}
+section p{font-size:1.1em;line-height:1.85;margin-bottom:20px;color:${isDark ? '#a1a1aa' : '#3f3f46'};max-width:760px}
 section ul{list-style:none;padding:0;margin-bottom:24px}
-section li{font-size:1.12em;line-height:1.75;padding:12px 0 12px 40px;position:relative;color:${fg}}
-section li::before{content:'';position:absolute;left:0;top:22px;width:20px;height:2px;background:${c.accent};border-radius:1px}
+section li{font-size:1.05em;line-height:1.8;padding:14px 0 14px 44px;position:relative;color:${isDark ? '#a1a1aa' : '#3f3f46'}}
+section li::before{content:'';position:absolute;left:0;top:24px;width:20px;height:2px;background:linear-gradient(90deg,${c.primary},${c.accent});border-radius:1px}
 section strong{color:${c.primary};font-weight:600}
-section em{font-style:italic}
-.team-logo{max-width:300px;max-height:160px;margin-bottom:36px;object-fit:contain}
-.watermark{position:fixed;bottom:24px;left:32px;max-height:28px;opacity:.15;z-index:10}
-.watermark-text{position:fixed;bottom:24px;left:32px;font-size:10px;opacity:.15;color:${mutedFg};z-index:10;font-weight:600;letter-spacing:1px;text-transform:uppercase}
-.counter{position:fixed;bottom:24px;right:32px;font-size:12px;font-weight:500;color:${mutedFg};z-index:10;opacity:.4;letter-spacing:1px;font-variant-numeric:tabular-nums}
-.nav-arrows{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:10;opacity:0;transition:opacity .3s}
-body:hover .nav-arrows{opacity:.4}
-.nav-arrows:hover{opacity:.8!important}
-.nav-btn{width:38px;height:38px;border-radius:50%;border:1.5px solid ${isDark ? 'rgba(255,255,255,.1)' : 'rgba(0,0,0,.08)'};background:${isDark ? 'rgba(255,255,255,.03)' : 'rgba(255,255,255,.8)'};backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:${mutedFg};cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;transition:all .25s cubic-bezier(.4,0,.2,1);-webkit-appearance:none;font-family:system-ui}
-.nav-btn:hover{background:${c.primary};color:#fff;border-color:${c.primary};transform:scale(1.1);box-shadow:0 4px 16px rgba(${c.glow},.35)}
-.agent-cta{margin-top:44px;padding:36px 52px;background:${cardBg};border-radius:20px;border:1px solid ${cardBorder};display:inline-block;min-width:360px;text-align:center;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
-.agent-cta .agent-name{font-size:1.4em;font-weight:700;color:${c.primary};margin-bottom:14px;font-family:${headingFont};letter-spacing:-.02em}
-.agent-cta .agent-details{font-size:.92em;color:${mutedFg};line-height:2;letter-spacing:.02em}
-.progress{position:fixed;bottom:0;left:0;height:2px;background:linear-gradient(90deg,${c.primary},${c.accent});z-index:10;transition:width .5s cubic-bezier(.4,0,.2,1);opacity:.5}
+section em{font-style:italic;color:${isDark ? '#d4d4d8' : '#27272a'}}
+
+/* ── Staggered content entrance ── */
+section.active h1,section.active h2,section.active h3,section.active p,section.active li,section.active .agent-cta{animation:fadeUp .5s cubic-bezier(.16,1,.3,1) both}
+section.active h1{animation-delay:.05s}
+section.active h2{animation-delay:.1s}
+section.active h3{animation-delay:.12s}
+section.active p{animation-delay:.15s}
+section.active li:nth-child(1){animation-delay:.12s}
+section.active li:nth-child(2){animation-delay:.17s}
+section.active li:nth-child(3){animation-delay:.22s}
+section.active li:nth-child(4){animation-delay:.27s}
+section.active li:nth-child(5){animation-delay:.32s}
+section.active li:nth-child(6){animation-delay:.37s}
+section.active li:nth-child(7){animation-delay:.42s}
+section.active li:nth-child(8){animation-delay:.47s}
+section.active .agent-cta{animation-delay:.25s}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── Logo ── */
+.team-logo{max-width:280px;max-height:140px;margin-bottom:40px;object-fit:contain;opacity:.9}
+
+/* ── Watermark ── */
+.watermark{position:fixed;bottom:24px;left:36px;max-height:24px;opacity:.08;z-index:10;filter:grayscale(1)}
+.watermark-text{position:fixed;bottom:26px;left:36px;font-size:9px;opacity:.12;color:${mutedFg};z-index:10;font-weight:600;letter-spacing:2px;text-transform:uppercase}
+
+/* ── Slide counter ── */
+.counter{position:fixed;bottom:26px;right:36px;font-size:11px;font-weight:500;color:${mutedFg};z-index:10;opacity:.3;letter-spacing:2px;font-variant-numeric:tabular-nums;font-family:${bodyFont}}
+
+/* ── Nav buttons ── */
+.nav-arrows{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:10;opacity:0;transition:opacity .4s}
+body:hover .nav-arrows{opacity:.3}
+.nav-arrows:hover{opacity:1!important}
+.nav-btn{width:36px;height:36px;border-radius:10px;border:1px solid ${subtleBorder};background:${isDark ? 'rgba(255,255,255,.04)' : 'rgba(255,255,255,.9)'};backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:${mutedFg};cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .2s cubic-bezier(.16,1,.3,1);-webkit-appearance:none;font-family:system-ui}
+.nav-btn:hover{background:${c.primary};color:#fff;border-color:transparent;box-shadow:0 0 0 1px ${c.primary},0 4px 24px rgba(${c.glow},.3)}
+
+/* ── Agent CTA ── */
+.agent-cta{margin-top:48px;padding:32px 48px;background:${isDark ? 'rgba(255,255,255,.03)' : 'rgba(0,0,0,.02)'};border-radius:16px;border:1px solid ${subtleBorder};display:inline-block;min-width:340px;text-align:center;position:relative;overflow:hidden}
+.agent-cta::before{content:'';position:absolute;inset:-1px;border-radius:17px;padding:1px;background:linear-gradient(135deg,${c.primary}30,${c.accent}20,transparent);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+.agent-cta .agent-name{font-size:1.3em;font-weight:700;color:${fg};margin-bottom:10px;font-family:${headingFont};letter-spacing:-.02em}
+.agent-cta .agent-details{font-size:.85em;color:${mutedFg};line-height:2;letter-spacing:.03em}
+
+/* ── Progress bar ── */
+.progress{position:fixed;bottom:0;left:0;height:2px;background:linear-gradient(90deg,${c.primary},${c.accent});z-index:10;transition:width .5s cubic-bezier(.16,1,.3,1);opacity:.4}
+.progress::after{content:'';position:absolute;right:0;top:-4px;width:10px;height:10px;border-radius:50%;background:${c.accent};box-shadow:0 0 12px rgba(${c.glow},.5);opacity:.6}
+
+/* ── Style preset overrides ── */
 ${styleCSS}
+
+/* ── Responsive ── */
 @media(max-width:768px){
-section{padding:44px 32px 64px}
-section h1{font-size:2.2em}
-section h2{font-size:1.5em}
-section.title-slide{padding:48px 32px}
-.team-logo{max-width:200px;max-height:110px}
+section{padding:48px 36px 72px}
+section h1{font-size:2.4em}
+section h2{font-size:1.4em}
+section.title-slide{padding:52px 36px}
+.team-logo{max-width:180px;max-height:100px}
 .agent-cta{min-width:auto;padding:24px 28px}
 section li{padding-left:36px}
+section p{font-size:1em}
 }
 </style>
 </head>
-<body>
+<body class="style-${styleBodyClass}">
 ${logoWatermark}
 <div class="counter"></div>
 <div class="progress" style="width:0%"></div>

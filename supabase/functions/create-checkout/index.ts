@@ -163,7 +163,7 @@ Deno.serve(async (req) => {
       cancel_url:  `${getSafeReturnUrl(returnUrl)}?checkout=cancelled`,
       allow_promotion_codes: true,
       subscription_data: {
-        ...(planId === 'solo' ? { trial_period_days: 14 } : {}),
+        ...(planId === 'solo' ? { trial_period_days: 3 } : {}),
         metadata: { planId, userId: user.id, source: 'realtygrind' },
       },
     })

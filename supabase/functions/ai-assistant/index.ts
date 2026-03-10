@@ -103,9 +103,9 @@ Deno.serve(async (req) => {
       effectivePlan = profile.plan || 'free'
     }
 
-    // ── 3. Plan gate ────────────────────────────────────────────────────────
+    // ── 3. Plan gate — paid subscription required (trialing users blocked) ─
     const billing = profile.billing_status
-    const hasBilling = billing === 'active' || billing === 'trialing'
+    const hasBilling = billing === 'active'
     if (!isAdmin && !hasBilling && !isTeamMember) {
       return json({ error: 'subscription_required', message: 'Subscribe to a plan to use AI Assistant.' }, 403)
     }

@@ -428,100 +428,196 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
       : teamName ? `<span class="watermark-text">${esc(teamName)}</span>` : ''
 
     // ── Style-specific CSS overrides ──
+    // Each preset completely transforms the look — not just minor tweaks
     let styleCSS = ''
     let styleBodyClass = style
     if (style === 'modern') {
+      // ═══════════════════════════════════════════════════════════════
+      // MODERN — Glassmorphism + gradient mesh + floating orbs
+      // Think: Apple keynote meets Stripe homepage
+      // ═══════════════════════════════════════════════════════════════
       styleCSS = [
-        // Gradient mesh title slide — layered ambient orbs
-        `section.title-slide{background:${isDark ? `linear-gradient(160deg,${bg} 0%,#0d0d18 40%,#0a0a12 100%)` : `linear-gradient(160deg,${bg} 0%,${bg2} 40%,#f0f4ff 100%)`}}`,
-        `section.title-slide::after{content:'';position:absolute;top:-25%;right:-10%;width:55%;height:65%;background:radial-gradient(ellipse at 60% 40%,rgba(${c.glow},.10) 0%,transparent 60%);filter:blur(80px);pointer-events:none;z-index:0}`,
-        `section.title-slide::before{display:block;content:'';position:absolute;bottom:-15%;left:5%;width:45%;height:55%;background:radial-gradient(ellipse at 40% 60%,rgba(${c.glow},.05) 0%,transparent 60%);filter:blur(100px);pointer-events:none;z-index:0}`,
+        // ── Title slide: gradient mesh with floating orbs ──
+        `section.title-slide{background:${isDark
+          ? `linear-gradient(135deg,#0c0c1d 0%,#0f1028 30%,#0a0a18 100%)`
+          : `linear-gradient(135deg,#f8faff 0%,#eef2ff 50%,#f0f4ff 100%)`}}`,
+        // Large floating orb top-right
+        `section.title-slide::after{content:'';position:absolute;top:-20%;right:-10%;width:60vw;height:60vw;background:radial-gradient(circle,rgba(${c.glow},.15) 0%,rgba(${c.glow},.05) 30%,transparent 60%);filter:blur(60px);pointer-events:none;z-index:0}`,
+        // Secondary orb bottom-left
+        `section.title-slide::before{display:block;content:'';position:absolute;bottom:-20%;left:-10%;width:50vw;height:50vw;background:radial-gradient(circle,${c.accent}12 0%,transparent 55%);filter:blur(80px);pointer-events:none;z-index:0}`,
         `section.title-slide>*{position:relative;z-index:1}`,
-        // Gradient text h1 — vivid 3-stop
-        `section h1{background:linear-gradient(135deg,${c.primary} 0%,${c.accent} 50%,${c.secondary} 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}`,
-        // 5px gradient accent bar (left edge)
-        `section::before{content:'';position:absolute;top:0;left:0;width:5px;height:100%;background:linear-gradient(180deg,${c.primary},${c.accent},transparent);opacity:.6;border-radius:0 3px 3px 0}`,
-        // 48px h2 underline
-        `section h2::after{width:48px;height:3px;background:linear-gradient(90deg,${c.primary},${c.accent})}`,
-        // Very subtle dot grid bg on content slides
-        `section:not(.title-slide):not(.closing-slide){background-image:radial-gradient(${isDark ? 'rgba(255,255,255,.018)' : 'rgba(0,0,0,.02)'} 1px,transparent 1px);background-size:28px 28px}`,
-        // Subtle glow on hover for li
-        `section li{transition:transform .2s ease}`,
+        // ── Gradient text h1 with glow ──
+        `section h1{background:linear-gradient(135deg,${c.primary} 0%,${c.accent} 45%,${c.secondary} 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;filter:drop-shadow(0 0 40px rgba(${c.glow},.15))}`,
+        `section.title-slide h1{font-size:4em;letter-spacing:-.05em}`,
+        // ── Glassmorphic accent bar (left edge) ──
+        `section::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;background:linear-gradient(180deg,${c.primary},${c.accent},${c.secondary}40,transparent);opacity:.8;border-radius:0 4px 4px 0}`,
+        // ── H2 with gradient underline ──
+        `section h2::after{width:48px;height:3px;background:linear-gradient(90deg,${c.primary},${c.accent});border-radius:6px;margin-top:14px}`,
+        // ── Content slides: frosted glass look ──
+        `section:not(.title-slide):not(.closing-slide){background:${isDark ? '#0a0a14' : '#fafbff'}}`,
+        // Floating accent orb on content slides
+        `section:not(.title-slide):not(.closing-slide)::after{content:'';position:absolute;top:-30%;right:-20%;width:40vw;height:40vw;background:radial-gradient(circle,rgba(${c.glow},.04) 0%,transparent 50%);filter:blur(60px);pointer-events:none;z-index:0}`,
+        `section:not(.title-slide):not(.closing-slide)>*{position:relative;z-index:1}`,
+        // ── Bullet styling: gradient dash + glass hover ──
+        `section li::before{width:24px;height:2px;background:linear-gradient(90deg,${c.primary},${c.accent});border-radius:2px;top:24px}`,
+        `section li{padding-left:48px;border-radius:12px;padding-top:16px;padding-bottom:16px;margin-bottom:4px;transition:background .2s ease}`,
+        // ── Agent CTA: glassmorphic ──
+        `.agent-cta{background:${isDark ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.6)'};backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-radius:24px;border:1px solid ${isDark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.06)'};box-shadow:0 8px 40px rgba(${c.glow},.08)}`,
+        `.agent-cta::before{border-radius:25px;background:linear-gradient(135deg,${c.primary}40,${c.accent}25,transparent 60%)}`,
+        `.agent-avatar{box-shadow:0 4px 20px rgba(${c.glow},.2);border:3px solid ${isDark ? 'rgba(255,255,255,.1)' : 'rgba(255,255,255,.8)'}}`,
+        // ── Nav buttons: glass ──
+        `.nav-btn{border-radius:12px;background:${isDark ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.8)'};backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid ${isDark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.06)'}}`,
+        `.nav-btn:hover{background:linear-gradient(135deg,${c.primary},${c.accent});box-shadow:0 4px 24px rgba(${c.glow},.35)}`,
+        // ── Progress bar: gradient glow ──
+        `.progress{height:3px;background:linear-gradient(90deg,${c.primary},${c.accent},${c.secondary});opacity:.6}`,
+        `.progress::after{background:${c.accent};box-shadow:0 0 20px rgba(${c.glow},.7),0 0 60px rgba(${c.glow},.3)}`,
       ].join('\n')
     } else if (style === 'classic') {
+      // ═══════════════════════════════════════════════════════════════
+      // CLASSIC — Editorial elegance, refined borders, sophistication
+      // Think: The Economist, Architectural Digest, premium print
+      // ═══════════════════════════════════════════════════════════════
       styleCSS = [
-        // Solid color h1 — no gradient, timeless
-        `section h1{color:${c.primary};-webkit-text-fill-color:${c.primary};font-weight:700;letter-spacing:-.02em}`,
-        // 3px solid accent bar (left edge)
-        `section::before{background:${c.primary};width:3px;opacity:.25;border-radius:0 2px 2px 0}`,
-        // Full-width 1px underline on h2
-        `section h2::after{width:100%;height:1px;background:${c.primary};opacity:.15;border-radius:0;margin-top:18px}`,
-        // Round dot bullets
-        `section li::before{width:7px;height:7px;border-radius:50%;top:23px;background:${c.primary};opacity:.45}`,
-        `section li{padding-left:30px}`,
-        // Elegant top-right corner accent
-        `section:not(.title-slide):not(.closing-slide)::after{content:'';position:absolute;top:44px;right:56px;width:48px;height:48px;border-top:1.5px solid ${c.primary}18;border-right:1.5px solid ${c.primary}18;pointer-events:none}`,
-        // Title slide — clean, dignified
-        `section.title-slide{background:${isDark ? `linear-gradient(180deg,${bg2} 0%,${bg} 100%)` : `linear-gradient(180deg,#fff 0%,${bg} 100%)`}}`,
-        `section.title-slide h1{font-size:3.2em}`,
-        // Subtle serif feel for headings if using serif font
-        `section h2{font-weight:600}`,
+        // ── Title slide: elegant centered with ornamental border ──
+        `section.title-slide{background:${isDark ? bg2 : '#fff'};border:none}`,
+        `section.title-slide::after{content:'';position:absolute;inset:40px;border:1px solid ${isDark ? 'rgba(255,255,255,.08)' : `${c.primary}15`};pointer-events:none;z-index:0}`,
+        `section.title-slide::before{display:block;content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:120px;height:1px;background:${c.primary};opacity:.2;z-index:0}`,
+        `section.title-slide>*{position:relative;z-index:1}`,
+        // ── Solid h1 — no gradient, classic typesetting ──
+        `section h1{color:${c.primary};-webkit-text-fill-color:${c.primary};font-weight:700;letter-spacing:-.02em;font-size:3.2em}`,
+        `section.title-slide h1{font-size:3.6em;margin-bottom:24px}`,
+        `section.title-slide h2{font-size:1em;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:${mutedFg};opacity:.7}`,
+        // ── Thin accent rule (left edge) ──
+        `section::before{background:${c.primary};width:2px;opacity:.15}`,
+        // ── H2: full-width hairline rule ──
+        `section h2{font-weight:600;letter-spacing:-.01em;color:${fg}}`,
+        `section h2::after{width:100%;height:1px;background:${isDark ? 'rgba(255,255,255,.08)' : `${c.primary}18`};border-radius:0;margin-top:20px}`,
+        // ── Round dot bullets — editorial style ──
+        `section li::before{width:6px;height:6px;border-radius:50%;top:24px;background:${c.primary};opacity:.35}`,
+        `section li{padding-left:28px;line-height:1.9;border-bottom:1px solid ${isDark ? 'rgba(255,255,255,.03)' : 'rgba(0,0,0,.03)'};padding-bottom:18px}`,
+        `section li:last-child{border-bottom:none}`,
+        // ── Content slides: clean white with corner ornament ──
+        `section:not(.title-slide):not(.closing-slide)::after{content:'';position:absolute;top:40px;right:48px;width:56px;height:56px;border-top:1px solid ${isDark ? 'rgba(255,255,255,.06)' : `${c.primary}12`};border-right:1px solid ${isDark ? 'rgba(255,255,255,.06)' : `${c.primary}12`};pointer-events:none}`,
+        // Bottom-left mirror corner
+        `section:not(.title-slide):not(.closing-slide) h3::before{content:'';position:fixed;bottom:40px;left:48px;width:56px;height:56px;border-bottom:1px solid ${isDark ? 'rgba(255,255,255,.06)' : `${c.primary}12`};border-left:1px solid ${isDark ? 'rgba(255,255,255,.06)' : `${c.primary}12`};pointer-events:none}`,
+        // ── Strong = small caps feel ──
+        `section strong{color:${c.primary};font-weight:600;letter-spacing:.03em}`,
+        // ── Agent CTA: understated ──
+        `.agent-cta{background:${isDark ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.015)'};border:1px solid ${isDark ? 'rgba(255,255,255,.06)' : `${c.primary}10`};border-radius:12px;backdrop-filter:none}`,
+        `.agent-cta::before{background:none}`,
+        `.agent-avatar{border:1px solid ${isDark ? 'rgba(255,255,255,.1)' : `${c.primary}20`};box-shadow:none}`,
+        // ── Nav + progress: subtle ──
+        `.nav-btn{border-radius:8px;border:1px solid ${isDark ? 'rgba(255,255,255,.06)' : `${c.primary}12`};background:${isDark ? 'rgba(255,255,255,.02)' : 'rgba(255,255,255,.95)'}}`,
+        `.nav-btn:hover{background:${c.primary};box-shadow:none}`,
+        `.progress{height:1px;opacity:.2;background:${c.primary}}`,
+        `.progress::after{display:none}`,
       ].join('\n')
     } else if (style === 'minimal') {
+      // ═══════════════════════════════════════════════════════════════
+      // MINIMAL — Swiss/Japanese design, extreme whitespace, barely there
+      // Think: Muji, Dieter Rams, Swiss typography posters
+      // ═══════════════════════════════════════════════════════════════
       styleCSS = [
-        // Extra breathing room
-        `section{padding:80px 140px}`,
-        `section.title-slide{padding:80px 140px}`,
-        // Light, airy h1 — no gradient, just weight
-        `section h1{color:${fg};-webkit-text-fill-color:${fg};font-weight:300;letter-spacing:-.03em;font-size:3.8em;line-height:1.08}`,
-        // No accent bar
-        `section::before{display:none}`,
-        // Subtle h2 — no underline
-        `section h2{font-weight:400;color:${fg};letter-spacing:-.015em;font-size:1.6em}`,
-        `section h2::after{display:none}`,
-        // Ultra-thin faded dash bullets
-        `section li::before{width:16px;height:1px;background:${mutedFg};opacity:.18;top:23px}`,
-        `section li{padding-left:36px;color:${mutedFg};font-weight:400;line-height:1.9}`,
-        `section p{color:${mutedFg};font-weight:400;line-height:2;max-width:640px}`,
-        // Muted strong text
-        `section strong{color:${fg};font-weight:500}`,
-        // Ultra-thin bottom divider
-        `section:not(.title-slide):not(.closing-slide)::after{content:'';position:absolute;bottom:56px;left:140px;right:140px;height:1px;background:${subtleBorder};pointer-events:none}`,
-        // Title slide — pure, no gradient orbs
+        // ── Extreme padding ──
+        `section{padding:100px 160px}`,
+        `section.title-slide{padding:100px 160px;align-items:flex-start;text-align:left}`,
+        `section.closing-slide{align-items:flex-start;text-align:left}`,
+        // ── Title slide: nearly empty, massive type ──
         `section.title-slide{background:${bg2}}`,
-        `section.title-slide h2{font-weight:300;opacity:.5;font-size:1.05em;letter-spacing:.04em}`,
-        // Minimal agent CTA
-        `.agent-cta{background:transparent;border:1px solid ${subtleBorder};backdrop-filter:none;border-radius:12px}`,
+        // ── H1: ultra-light weight, massive ──
+        `section h1{color:${fg};-webkit-text-fill-color:${fg};font-weight:200;letter-spacing:-.04em;font-size:4.2em;line-height:1.05}`,
+        `section.title-slide h1{font-size:5em;font-weight:200}`,
+        `section.title-slide h2{font-weight:300;color:${mutedFg};opacity:.4;font-size:1em;letter-spacing:.06em;text-transform:uppercase;margin-bottom:0}`,
+        `section.title-slide h2::after{display:none}`,
+        // ── No accent bar ──
+        `section::before{display:none}`,
+        // ── H2: weightless ──
+        `section h2{font-weight:400;color:${fg};letter-spacing:-.02em;font-size:1.7em;margin-bottom:48px}`,
+        `section h2::after{display:none}`,
+        // ── Bullets: almost invisible thin line ──
+        `section li::before{width:20px;height:1px;background:${mutedFg};opacity:.15;top:24px}`,
+        `section li{padding-left:40px;color:${mutedFg};font-weight:400;line-height:2;font-size:1em;padding-top:12px;padding-bottom:12px}`,
+        `section p{color:${mutedFg};font-weight:400;line-height:2.1;max-width:600px;font-size:1.05em}`,
+        // ── Muted everything ──
+        `section strong{color:${fg};font-weight:500;-webkit-text-fill-color:${fg}}`,
+        `section h3{color:${mutedFg};opacity:.5;font-size:.65em;letter-spacing:.2em}`,
+        // ── Single thin rule at bottom of content slides ──
+        `section:not(.title-slide):not(.closing-slide)::after{content:'';position:absolute;bottom:60px;left:160px;right:160px;height:1px;background:${isDark ? 'rgba(255,255,255,.04)' : 'rgba(0,0,0,.04)'};pointer-events:none}`,
+        // ── Agent CTA: borderless, floating ──
+        `.agent-cta{background:transparent;border:none;backdrop-filter:none;border-radius:0;text-align:left;min-width:auto;padding:32px 0}`,
         `.agent-cta::before{display:none}`,
-        // Hide progress dot glow
+        `.agent-avatar{width:56px;height:56px;border:1px solid ${subtleBorder};box-shadow:none}`,
+        `.agent-cta .agent-name{font-weight:500;font-size:1.1em;letter-spacing:0}`,
+        `.agent-cta .agent-details{opacity:.4}`,
+        // ── Logo: faded ──
+        `.team-logo{opacity:.5;max-width:200px;max-height:60px;filter:${isDark ? 'brightness(2)' : 'none'} grayscale(.3)}`,
+        // ── Progress: hairline ──
+        `.progress{height:1px;opacity:.12;background:${fg}}`,
         `.progress::after{display:none}`,
-        `.progress{opacity:.2;height:1px}`,
+        // ── Nav: ghost ──
+        `.nav-btn{border:none;background:transparent;opacity:.3;border-radius:6px}`,
+        `.nav-btn:hover{background:${isDark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.04)'};color:${fg};box-shadow:none;opacity:1}`,
+        // ── Counter: more subtle ──
+        `.counter{opacity:.15;font-weight:300}`,
+        `.watermark{opacity:.04}`,
+        `.watermark-text{opacity:.06}`,
       ].join('\n')
     } else if (style === 'bold') {
+      // ═══════════════════════════════════════════════════════════════
+      // BOLD — Magazine cover, full-bleed color, oversized everything
+      // Think: Nike ads, Spotify Wrapped, TED talks
+      // ═══════════════════════════════════════════════════════════════
+      const darkPrimary = rgbToHex(...hexToRgb(c.primary).map(v => Math.max(0, v * 0.7)) as [number, number, number])
       styleCSS = [
-        // Giant gradient text — huge, dramatic
-        `section h1{font-size:4.2em;line-height:1.02;font-weight:900;background:linear-gradient(135deg,${c.primary} 0%,${c.accent} 60%,${c.secondary} 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:-.05em}`,
-        `section h2{font-size:2.6em;font-weight:800;letter-spacing:-.03em}`,
-        // 8px thick accent bar (left edge)
-        `section::before{width:8px;background:linear-gradient(180deg,${c.primary},${c.accent});border-radius:0 4px 4px 0;opacity:.7}`,
-        // Thick 60px h2 underline
-        `section h2::after{height:4px;width:60px;border-radius:4px;background:linear-gradient(90deg,${c.primary},${c.accent})}`,
-        // Bold bullet bars
-        `section li::before{height:3px;width:24px;border-radius:2px;background:linear-gradient(90deg,${c.primary},${c.accent})}`,
-        `section li{font-size:1.1em;font-weight:500}`,
-        // Full bleed gradient title slide — immersive
-        `section.title-slide{background:linear-gradient(150deg,${c.primary} 0%,${isDark ? '#080810' : c.accent + '08'} 100%);position:relative}`,
-        `section.title-slide::after{content:'';position:absolute;bottom:0;left:0;right:0;height:40%;background:linear-gradient(to top,rgba(0,0,0,.3),transparent);pointer-events:none;z-index:0}`,
+        // ── Giant gradient text ──
+        `section h1{font-size:4.2em;line-height:1;font-weight:900;background:linear-gradient(135deg,${c.primary} 0%,${c.accent} 55%,${c.secondary} 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:-.05em}`,
+        `section h2{font-size:2.4em;font-weight:800;letter-spacing:-.03em;margin-bottom:48px}`,
+        // ── Chunky accent bar (left) ──
+        `section::before{width:8px;background:linear-gradient(180deg,${c.primary},${c.accent});border-radius:0 6px 6px 0;opacity:.85}`,
+        // ── Thick h2 underline ──
+        `section h2::after{height:5px;width:64px;border-radius:6px;background:linear-gradient(90deg,${c.primary},${c.accent});margin-top:18px}`,
+        // ── Bold bar bullets ──
+        `section li::before{height:4px;width:28px;border-radius:3px;background:linear-gradient(90deg,${c.primary},${c.accent});top:24px}`,
+        `section li{font-size:1.1em;font-weight:500;padding-left:52px;padding-top:16px;padding-bottom:16px}`,
+        // ════════════════════════════════════════════════════════
+        // ── Title slide: FULL BLEED color — the signature look ──
+        // ════════════════════════════════════════════════════════
+        `section.title-slide{background:linear-gradient(150deg,${c.primary} 0%,${darkPrimary} 100%);position:relative}`,
+        // Dark vignette at bottom
+        `section.title-slide::after{content:'';position:absolute;bottom:0;left:0;right:0;height:50%;background:linear-gradient(to top,rgba(0,0,0,.35),transparent);pointer-events:none;z-index:0}`,
+        // Subtle noise/grain texture
+        `section.title-slide::before{display:block;content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 30% 20%,rgba(255,255,255,.08) 0%,transparent 50%);pointer-events:none;z-index:0}`,
         `section.title-slide>*{position:relative;z-index:1}`,
-        `section.title-slide h1{-webkit-text-fill-color:#fff;background:none;text-shadow:0 4px 32px rgba(0,0,0,.25);font-size:4.4em}`,
-        `section.title-slide h2{color:rgba(255,255,255,.7);font-size:1.2em;font-weight:400}`,
-        `section.title-slide .team-logo{filter:brightness(10) drop-shadow(0 2px 12px rgba(0,0,0,.4))}`,
-        // Bigger agent CTA
-        `.agent-cta{padding:36px 56px;border-radius:24px}`,
-        `.agent-cta .agent-name{font-size:1.5em}`,
-        // Thicker progress bar
-        `.progress{height:4px;opacity:.6}`,
-        `.progress::after{width:14px;height:14px;top:-5px}`,
+        // White text on color bg
+        `section.title-slide h1{-webkit-text-fill-color:#fff;background:none;text-shadow:0 4px 40px rgba(0,0,0,.3);font-size:5em;line-height:.95}`,
+        `section.title-slide h2{color:rgba(255,255,255,.75);font-size:1.15em;font-weight:400;letter-spacing:.04em;text-shadow:0 2px 12px rgba(0,0,0,.15)}`,
+        `section.title-slide h2::after{display:none}`,
+        // Logo on colored bg: invert to white
+        `section.title-slide .team-logo{filter:brightness(0) invert(1) drop-shadow(0 2px 16px rgba(0,0,0,.3));opacity:.9}`,
+        // ── Closing slide: also colored ──
+        `section.closing-slide{background:linear-gradient(150deg,${c.primary} 0%,${darkPrimary} 100%)}`,
+        `section.closing-slide::before{display:block;content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 70% 80%,rgba(255,255,255,.06) 0%,transparent 50%);pointer-events:none;z-index:0}`,
+        `section.closing-slide>*{position:relative;z-index:1}`,
+        `section.closing-slide h2{color:#fff;-webkit-text-fill-color:#fff}`,
+        `section.closing-slide h2::after{background:rgba(255,255,255,.3)}`,
+        // ── Agent CTA on colored bg ──
+        `.style-bold section.closing-slide .agent-cta{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.15);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}`,
+        `.style-bold section.closing-slide .agent-cta::before{background:linear-gradient(135deg,rgba(255,255,255,.2),transparent)}`,
+        `.style-bold section.closing-slide .agent-name{color:#fff}`,
+        `.style-bold section.closing-slide .agent-details{color:rgba(255,255,255,.6)}`,
+        `.style-bold section.closing-slide .agent-avatar{border-color:rgba(255,255,255,.2);box-shadow:0 4px 20px rgba(0,0,0,.3)}`,
+        // ── Content slides: slight accent tint ──
+        `section:not(.title-slide):not(.closing-slide){background:${isDark ? '#0c0c14' : `linear-gradient(180deg,${bg2} 0%,${c.primary}04 100%)`}}`,
+        // ── Bigger everything ──
+        `.agent-cta{padding:40px 56px;border-radius:28px}`,
+        `.agent-cta .agent-name{font-size:1.5em;font-weight:800}`,
+        `.agent-avatar{width:80px;height:80px;border:3px solid rgba(${c.glow},.2);box-shadow:0 4px 24px rgba(${c.glow},.2)}`,
+        // ── Progress: thick and vivid ──
+        `.progress{height:4px;opacity:.7;background:linear-gradient(90deg,${c.primary},${c.accent})}`,
+        `.progress::after{width:14px;height:14px;top:-5px;box-shadow:0 0 24px rgba(${c.glow},.6),0 0 60px rgba(${c.glow},.2)}`,
+        // ── Nav: bold style ──
+        `.nav-btn{border-radius:14px;width:40px;height:40px;font-size:18px;background:${isDark ? 'rgba(255,255,255,.06)' : 'rgba(255,255,255,.9)'};border:2px solid ${isDark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.06)'}}`,
+        `.nav-btn:hover{background:${c.primary};border-color:${c.primary};box-shadow:0 4px 28px rgba(${c.glow},.4)}`,
       ].join('\n')
     }
 
@@ -546,7 +642,7 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)}</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700;800;900&family=Playfair+Display:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{background:${bg};color:${fg};font-family:${bodyFont};overflow:hidden;height:100vh;width:100vw;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-feature-settings:'cv02','cv03','cv04','cv11'}
@@ -554,7 +650,7 @@ h1,h2,h3{font-family:${headingFont}}
 
 /* ── Slide system ── */
 .slides{position:relative;height:100vh;width:100vw}
-section{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:80px 120px 80px;opacity:0;pointer-events:none;transform:translateY(20px);transition:opacity .5s cubic-bezier(.16,1,.3,1),transform .5s cubic-bezier(.16,1,.3,1);overflow-y:auto;background:${bg2}}
+section{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:72px 100px 72px 120px;opacity:0;pointer-events:none;transform:translateY(12px);transition:opacity .55s cubic-bezier(.22,1,.36,1),transform .55s cubic-bezier(.22,1,.36,1);overflow-y:auto;background:${bg2}}
 section.active{opacity:1;pointer-events:auto;transform:translateY(0)}
 section.title-slide{text-align:center;align-items:center;padding:80px 120px}
 section.closing-slide{text-align:center;align-items:center}
@@ -564,63 +660,64 @@ section::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;
 section.title-slide::before,section.closing-slide::before{display:none}
 
 /* ── Typography ── */
-section h1{font-size:3.6em;font-weight:800;color:${c.primary};margin-bottom:16px;line-height:1.05;letter-spacing:-.04em}
-section h2{font-size:1.75em;font-weight:700;color:${fg};margin-bottom:40px;line-height:1.25;letter-spacing:-.025em;position:relative;display:inline-block}
-section h2::after{content:'';display:block;width:48px;height:3px;background:linear-gradient(90deg,${c.primary},${c.accent});border-radius:2px;margin-top:16px}
-section.title-slide h2,section.closing-slide h2{font-weight:400;color:${mutedFg};font-size:1.15em;letter-spacing:.02em;margin-bottom:8px}
+section h1{font-size:3.6em;font-weight:800;color:${c.primary};margin-bottom:20px;line-height:1.05;letter-spacing:-.04em}
+section h2{font-size:1.65em;font-weight:700;color:${fg};margin-bottom:40px;line-height:1.3;letter-spacing:-.02em;position:relative;display:inline-block}
+section h2::after{content:'';display:block;width:48px;height:3px;background:linear-gradient(90deg,${c.primary},${c.accent});border-radius:4px;margin-top:16px}
+section.title-slide h2,section.closing-slide h2{font-weight:400;color:${mutedFg};font-size:1.1em;letter-spacing:.03em;margin-bottom:8px}
 section.title-slide h2::after,section.closing-slide h2::after{display:none}
-section h3{font-size:.7em;font-weight:600;color:${c.accent};margin-bottom:20px;letter-spacing:.14em;text-transform:uppercase}
-section p{font-size:1.1em;line-height:1.85;margin-bottom:20px;color:${isDark ? '#a1a1aa' : '#3f3f46'};max-width:760px}
+section h3{font-size:.68em;font-weight:600;color:${c.accent};margin-bottom:24px;letter-spacing:.16em;text-transform:uppercase}
+section p{font-size:1.08em;line-height:1.9;margin-bottom:20px;color:${isDark ? '#a1a1aa' : '#52525b'};max-width:720px}
 section ul{list-style:none;padding:0;margin-bottom:24px}
-section li{font-size:1.05em;line-height:1.8;padding:14px 0 14px 44px;position:relative;color:${isDark ? '#a1a1aa' : '#3f3f46'}}
-section li::before{content:'';position:absolute;left:0;top:24px;width:20px;height:2px;background:linear-gradient(90deg,${c.primary},${c.accent});border-radius:1px}
+section li{font-size:1.05em;line-height:1.85;padding:14px 0 14px 44px;position:relative;color:${isDark ? '#a1a1aa' : '#52525b'}}
+section li::before{content:'';position:absolute;left:0;top:24px;width:20px;height:2px;background:linear-gradient(90deg,${c.primary},${c.accent});border-radius:2px}
 section strong{color:${c.primary};font-weight:600}
 section em{font-style:italic;color:${isDark ? '#d4d4d8' : '#27272a'}}
 
 /* ── Staggered content entrance ── */
-section.active h1,section.active h2,section.active h3,section.active p,section.active li,section.active .agent-cta{animation:fadeUp .5s cubic-bezier(.16,1,.3,1) both}
-section.active h1{animation-delay:.05s}
-section.active h2{animation-delay:.1s}
-section.active h3{animation-delay:.12s}
-section.active p{animation-delay:.15s}
-section.active li:nth-child(1){animation-delay:.12s}
-section.active li:nth-child(2){animation-delay:.17s}
-section.active li:nth-child(3){animation-delay:.22s}
-section.active li:nth-child(4){animation-delay:.27s}
-section.active li:nth-child(5){animation-delay:.32s}
-section.active li:nth-child(6){animation-delay:.37s}
-section.active li:nth-child(7){animation-delay:.42s}
-section.active li:nth-child(8){animation-delay:.47s}
-section.active .agent-cta{animation-delay:.25s}
-@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+section.active h1,section.active h2,section.active h3,section.active p,section.active li,section.active .agent-cta,section.active .team-logo{animation:slideIn .6s cubic-bezier(.22,1,.36,1) both}
+section.active h1{animation-delay:.04s}
+section.active .team-logo{animation-delay:.02s}
+section.active h2{animation-delay:.08s}
+section.active h3{animation-delay:.1s}
+section.active p{animation-delay:.12s}
+section.active li:nth-child(1){animation-delay:.08s}
+section.active li:nth-child(2){animation-delay:.12s}
+section.active li:nth-child(3){animation-delay:.16s}
+section.active li:nth-child(4){animation-delay:.20s}
+section.active li:nth-child(5){animation-delay:.24s}
+section.active li:nth-child(6){animation-delay:.28s}
+section.active li:nth-child(7){animation-delay:.32s}
+section.active li:nth-child(8){animation-delay:.36s}
+section.active .agent-cta{animation-delay:.2s}
+@keyframes slideIn{from{opacity:0;transform:translateY(20px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
 
 /* ── Logo ── */
-.team-logo{max-width:360px;max-height:100px;margin-bottom:44px;object-fit:contain;opacity:.92;filter:drop-shadow(0 2px 8px rgba(0,0,0,.08))}
+.team-logo{max-width:340px;max-height:90px;margin-bottom:44px;object-fit:contain;opacity:.9;filter:drop-shadow(0 2px 12px rgba(0,0,0,.06))}
 
 /* ── Watermark ── */
-.watermark{position:fixed;bottom:24px;left:36px;max-height:24px;opacity:.08;z-index:10;filter:grayscale(1)}
-.watermark-text{position:fixed;bottom:26px;left:36px;font-size:9px;opacity:.12;color:${mutedFg};z-index:10;font-weight:600;letter-spacing:2px;text-transform:uppercase}
+.watermark{position:fixed;bottom:24px;left:36px;max-height:22px;opacity:.06;z-index:10;filter:grayscale(1)}
+.watermark-text{position:fixed;bottom:26px;left:36px;font-size:9px;opacity:.1;color:${mutedFg};z-index:10;font-weight:600;letter-spacing:2px;text-transform:uppercase}
 
 /* ── Slide counter ── */
-.counter{position:fixed;bottom:26px;right:36px;font-size:11px;font-weight:500;color:${mutedFg};z-index:10;opacity:.3;letter-spacing:2px;font-variant-numeric:tabular-nums;font-family:${bodyFont}}
+.counter{position:fixed;bottom:28px;right:36px;font-size:10px;font-weight:500;color:${mutedFg};z-index:10;opacity:.25;letter-spacing:3px;font-variant-numeric:tabular-nums;font-family:${bodyFont}}
 
 /* ── Nav buttons ── */
-.nav-arrows{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:10;opacity:0;transition:opacity .4s}
-body:hover .nav-arrows{opacity:.3}
+.nav-arrows{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:10;opacity:0;transition:opacity .4s}
+body:hover .nav-arrows{opacity:.25}
 .nav-arrows:hover{opacity:1!important}
-.nav-btn{width:36px;height:36px;border-radius:10px;border:1px solid ${subtleBorder};background:${isDark ? 'rgba(255,255,255,.04)' : 'rgba(255,255,255,.9)'};backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:${mutedFg};cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .2s cubic-bezier(.16,1,.3,1);-webkit-appearance:none;font-family:system-ui}
-.nav-btn:hover{background:${c.primary};color:#fff;border-color:transparent;box-shadow:0 0 0 1px ${c.primary},0 4px 24px rgba(${c.glow},.3)}
+.nav-btn{width:38px;height:38px;border-radius:12px;border:1px solid ${subtleBorder};background:${isDark ? 'rgba(255,255,255,.04)' : 'rgba(255,255,255,.85)'};backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:${mutedFg};cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .25s cubic-bezier(.22,1,.36,1);-webkit-appearance:none;font-family:system-ui}
+.nav-btn:hover{background:${c.primary};color:#fff;border-color:transparent;box-shadow:0 4px 20px rgba(${c.glow},.3);transform:scale(1.05)}
 
 /* ── Agent CTA ── */
-.agent-cta{margin-top:48px;padding:32px 48px;background:${isDark ? 'rgba(255,255,255,.04)' : 'rgba(255,255,255,.7)'};backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-radius:20px;border:1px solid ${subtleBorder};display:inline-block;min-width:340px;text-align:center;position:relative;overflow:hidden}
-.agent-cta::before{content:'';position:absolute;inset:-1px;border-radius:17px;padding:1px;background:linear-gradient(135deg,${c.primary}30,${c.accent}20,transparent);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
-.agent-avatar{width:72px;height:72px;border-radius:50%;object-fit:cover;margin-bottom:16px;border:2px solid ${subtleBorder};box-shadow:0 2px 12px rgba(${c.glow},.15)}
-.agent-cta .agent-name{font-size:1.3em;font-weight:700;color:${fg};margin-bottom:10px;font-family:${headingFont};letter-spacing:-.02em}
-.agent-cta .agent-details{font-size:.85em;color:${mutedFg};line-height:2;letter-spacing:.03em}
+.agent-cta{margin-top:48px;padding:36px 52px;background:${isDark ? 'rgba(255,255,255,.04)' : 'rgba(255,255,255,.7)'};backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-radius:24px;border:1px solid ${subtleBorder};display:inline-block;min-width:340px;text-align:center;position:relative;overflow:hidden}
+.agent-cta::before{content:'';position:absolute;inset:-1px;border-radius:25px;padding:1px;background:linear-gradient(135deg,${c.primary}30,${c.accent}20,transparent 60%);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+.agent-avatar{width:76px;height:76px;border-radius:50%;object-fit:cover;margin-bottom:18px;border:3px solid ${isDark ? 'rgba(255,255,255,.08)' : 'rgba(255,255,255,.9)'};box-shadow:0 4px 20px rgba(${c.glow},.12)}
+.agent-cta .agent-name{font-size:1.35em;font-weight:700;color:${fg};margin-bottom:10px;font-family:${headingFont};letter-spacing:-.02em}
+.agent-cta .agent-details{font-size:.82em;color:${mutedFg};line-height:2.1;letter-spacing:.04em}
 
 /* ── Progress bar ── */
-.progress{position:fixed;bottom:0;left:0;height:2px;background:linear-gradient(90deg,${c.primary},${c.accent});z-index:10;transition:width .5s cubic-bezier(.16,1,.3,1);opacity:.4}
-.progress::after{content:'';position:absolute;right:0;top:-4px;width:10px;height:10px;border-radius:50%;background:${c.accent};box-shadow:0 0 12px rgba(${c.glow},.5);opacity:.6}
+.progress{position:fixed;bottom:0;left:0;height:2px;background:linear-gradient(90deg,${c.primary},${c.accent});z-index:10;transition:width .55s cubic-bezier(.22,1,.36,1);opacity:.45}
+.progress::after{content:'';position:absolute;right:0;top:-4px;width:10px;height:10px;border-radius:50%;background:${c.accent};box-shadow:0 0 16px rgba(${c.glow},.5);opacity:.7}
 
 /* ── Style preset overrides ── */
 ${styleCSS}
@@ -628,14 +725,15 @@ ${bgImageCSS ? `/* ── Background image ── */\n${bgImageCSS}` : ''}
 
 /* ── Responsive ── */
 @media(max-width:768px){
-section{padding:48px 36px 72px}
-section h1{font-size:2.4em}
-section h2{font-size:1.4em}
-section.title-slide{padding:52px 36px}
-.team-logo{max-width:180px;max-height:100px}
+section{padding:44px 32px 68px}
+section h1{font-size:2.2em}
+section h2{font-size:1.3em}
+section.title-slide{padding:48px 32px}
+.team-logo{max-width:180px;max-height:80px}
 .agent-cta{min-width:auto;padding:24px 28px}
 section li{padding-left:36px}
 section p{font-size:1em}
+.nav-btn{width:32px;height:32px;font-size:14px}
 }
 </style>
 </head>

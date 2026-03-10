@@ -317,6 +317,7 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
     const agentEmail = user.email || ''
     const agentPhone = profile.habit_prefs?.bio?.phone || ''
     const agentLicense = profile.habit_prefs?.bio?.license || ''
+    const agentAvatar = profile.goals?.avatar_url || ''
 
     const ctaParts: string[] = []
     if (agentEmail) ctaParts.push(esc(agentEmail))
@@ -324,7 +325,11 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
     if (agentLicense) ctaParts.push(`License #${esc(agentLicense)}`)
 
     if (agentName || ctaParts.length > 0) {
+      const avatarHtml = agentAvatar
+        ? `<img src="${esc(agentAvatar)}" alt="${esc(agentName)}" class="agent-avatar">`
+        : ''
       const ctaHtml = `<div class="agent-cta">` +
+        avatarHtml +
         (agentName ? `<div class="agent-name">${esc(agentName)}</div>` : '') +
         (ctaParts.length ? `<div class="agent-details">${ctaParts.join(' &middot; ')}</div>` : '') +
         `</div>`
@@ -487,6 +492,7 @@ body:hover .nav-arrows{opacity:.3}
 /* ── Agent CTA ── */
 .agent-cta{margin-top:48px;padding:32px 48px;background:${isDark ? 'rgba(255,255,255,.03)' : 'rgba(0,0,0,.02)'};border-radius:16px;border:1px solid ${subtleBorder};display:inline-block;min-width:340px;text-align:center;position:relative;overflow:hidden}
 .agent-cta::before{content:'';position:absolute;inset:-1px;border-radius:17px;padding:1px;background:linear-gradient(135deg,${c.primary}30,${c.accent}20,transparent);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+.agent-avatar{width:72px;height:72px;border-radius:50%;object-fit:cover;margin-bottom:16px;border:2px solid ${subtleBorder};box-shadow:0 2px 12px rgba(${c.glow},.15)}
 .agent-cta .agent-name{font-size:1.3em;font-weight:700;color:${fg};margin-bottom:10px;font-family:${headingFont};letter-spacing:-.02em}
 .agent-cta .agent-details{font-size:.85em;color:${mutedFg};line-height:2;letter-spacing:.03em}
 

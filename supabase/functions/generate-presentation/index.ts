@@ -188,6 +188,7 @@ Deno.serve(async (req) => {
       font: rawFont,
       colorScheme: rawColor,
       content: rawContent,
+      backgroundImage: rawBgImage,
       presentationId,
     } = reqBody as {
       title?: string
@@ -196,6 +197,7 @@ Deno.serve(async (req) => {
       font?: string
       colorScheme?: string
       content?: string
+      backgroundImage?: string
       presentationId?: string
     }
 
@@ -206,6 +208,10 @@ Deno.serve(async (req) => {
     const colorScheme = VALID_COLORS.includes(rawColor as string) ? rawColor as string
       : (typeof rawColor === 'string' && HEX_RE.test(rawColor)) ? rawColor : 'blue'
     const content = typeof rawContent === 'string' ? rawContent.trim() : ''
+    // Validate background image against team's allowed backgrounds
+    const teamBackgrounds: string[] = profile.teams?.team_prefs?.ai_tools?.presentation_backgrounds || []
+    const backgroundImage = (typeof rawBgImage === 'string' && rawBgImage && teamBackgrounds.includes(rawBgImage))
+      ? rawBgImage : ''
 
     if (!content) return json({ error: 'Content is required.' }, 400)
     if (content.length > 8000) return json({ error: 'Content must be under 8000 characters.' }, 400)
@@ -358,6 +364,11 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
       }
     }
 
+    // Inject background overlay div into each section if background image selected
+    if (backgroundImage) {
+      slidesHtml = slidesHtml.replace(/<section([^>]*)>/g, '<section$1><div class="bg-overlay"></div>')
+    }
+
     // ── 12. Build full HTML from template ───────────────────────────────────
     const COLORS: Record<string, { primary: string; accent: string; glow: string; secondary: string }> = {
       blue:    { primary: '#2563eb', accent: '#38bdf8', glow: '37,99,235', secondary: '#818cf8' },
@@ -437,6 +448,13 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
         `section.title-slide h2{color:${isDark ? 'rgba(255,255,255,.6)' : c.primary + '80'}}`,
       ].join('\n')
     }
+
+    // Background image CSS (applied via .bg-overlay div injected into each slide)
+    const bgImageCSS = backgroundImage ? [
+      `.bg-overlay{position:absolute;inset:0;background:url("${backgroundImage}") center/cover no-repeat;opacity:${isDark ? '.06' : '.04'};pointer-events:none;z-index:0}`,
+      `section.title-slide .bg-overlay{opacity:${isDark ? '.1' : '.07'}}`,
+      `section>*:not(.bg-overlay){position:relative;z-index:1}`,
+    ].join('\n') : ''
 
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -521,6 +539,7 @@ body:hover .nav-arrows{opacity:.3}
 
 /* ── Style preset overrides ── */
 ${styleCSS}
+${bgImageCSS ? `/* ── Background image ── */\n${bgImageCSS}` : ''}
 
 /* ── Responsive ── */
 @media(max-width:768px){

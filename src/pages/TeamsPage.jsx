@@ -2963,6 +2963,74 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 }} />
                               </button>
                             </div>
+
+                            {/* ── Presentation Background Images ── */}
+                            <div style={{ height: 1, background: 'var(--b1)', margin: '16px 0' }} />
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
+                                Presentation Backgrounds
+                              </div>
+                              <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12 }}>
+                                Upload up to 6 background images your team can use in generated presentations.
+                              </div>
+                              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                                {(teamData?.team_prefs?.ai_tools?.presentation_backgrounds || []).map((bg, idx) => (
+                                  <div key={idx} style={{ position: 'relative', width: 100, height: 64, borderRadius: 8,
+                                    overflow: 'hidden', border: '1px solid var(--border)' }}>
+                                    <img src={bg} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    <button onClick={async () => {
+                                      const bgs = [...(teamData?.team_prefs?.ai_tools?.presentation_backgrounds || [])]
+                                      bgs.splice(idx, 1)
+                                      const newAiTools = { ...(teamData?.team_prefs?.ai_tools || {}), presentation_backgrounds: bgs }
+                                      const newPrefs = { ...(teamData?.team_prefs || {}), ai_tools: newAiTools }
+                                      try {
+                                        const { error } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                        if (error) throw error
+                                        setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+                                      } catch (err) { console.error('Remove bg error:', err) }
+                                    }} style={{
+                                      position: 'absolute', top: 2, right: 2, width: 18, height: 18, borderRadius: '50%',
+                                      background: 'rgba(0,0,0,.6)', color: '#fff', border: 'none', cursor: 'pointer',
+                                      fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+                                    }}>✕</button>
+                                  </div>
+                                ))}
+                                {(teamData?.team_prefs?.ai_tools?.presentation_backgrounds || []).length < 6 && (
+                                  <label style={{
+                                    width: 100, height: 64, borderRadius: 8, border: '2px dashed var(--border)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                                    fontSize: 11, color: 'var(--muted)', flexDirection: 'column', gap: 2,
+                                    transition: 'border-color .2s',
+                                  }}>
+                                    <span style={{ fontSize: 18 }}>+</span>
+                                    <span>Upload</span>
+                                    <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }}
+                                      onChange={async (e) => {
+                                        const file = e.target.files?.[0]
+                                        if (!file) return
+                                        if (file.size > 2 * 1024 * 1024) { setError('Image must be under 2MB'); return }
+                                        e.target.value = ''
+                                        const reader = new FileReader()
+                                        reader.onload = async () => {
+                                          const dataUrl = reader.result
+                                          const bgs = [...(teamData?.team_prefs?.ai_tools?.presentation_backgrounds || []), dataUrl]
+                                          const newAiTools = { ...(teamData?.team_prefs?.ai_tools || {}), presentation_backgrounds: bgs }
+                                          const newPrefs = { ...(teamData?.team_prefs || {}), ai_tools: newAiTools }
+                                          try {
+                                            const { error } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                            if (error) throw error
+                                            setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+                                          } catch (err) {
+                                            console.error('Upload bg error:', err)
+                                            setError('Failed to upload background image.')
+                                          }
+                                        }
+                                        reader.readAsDataURL(file)
+                                      }} />
+                                  </label>
+                                )}
+                              </div>
+                            </div>
                           </div>
                           )}
 

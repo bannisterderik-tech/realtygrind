@@ -68,6 +68,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
   const [presTheme, setPresTheme] = useState('light')
   const [font, setFont]           = useState('sans-serif')
   const [colorScheme, setColorScheme] = useState('#2563eb')
+  const [backgroundImage, setBackgroundImage] = useState('')  // URL or empty
   const [content, setContent]     = useState('')
   const [editingId, setEditingId] = useState(null) // presentation id when re-generating
 
@@ -80,6 +81,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
     profile?.teams?.presentations_addon_status === 'active' ||
     profile?.teams?.presentations_addon_status === 'trialing'
   const isDisabledByTeam = profile?.teams?.team_prefs?.ai_tools?.presentations_enabled === false
+  const teamBackgrounds = profile?.teams?.team_prefs?.ai_tools?.presentation_backgrounds || []
 
   // Fetch presentations
   useEffect(() => {
@@ -158,6 +160,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
           },
           body: JSON.stringify({
             title, style, theme: presTheme, font, colorScheme, content,
+            backgroundImage: backgroundImage || null,
             presentationId: editingId || null,
           }),
         }
@@ -608,6 +611,39 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
                     </div>
                   </div>
                 </div>
+
+                {/* Background Image selector */}
+                {teamBackgrounds.length > 0 && (
+                  <div style={{ marginBottom: 18 }}>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)',
+                      letterSpacing: .8, textTransform: 'uppercase', marginBottom: 6 }}>
+                      Background Image <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+                    </label>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <button onClick={() => setBackgroundImage('')}
+                        style={{
+                          width: 64, height: 44, borderRadius: 6, cursor: 'pointer',
+                          border: !backgroundImage ? '2px solid var(--fg)' : '1.5px solid var(--border)',
+                          background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 10, color: 'var(--muted)', fontWeight: 600,
+                          boxShadow: !backgroundImage ? '0 0 0 2px var(--bg), 0 0 0 4px var(--fg)' : 'none',
+                        }}>
+                        None
+                      </button>
+                      {teamBackgrounds.map((bg, idx) => (
+                        <button key={idx} onClick={() => setBackgroundImage(bg)}
+                          style={{
+                            width: 64, height: 44, borderRadius: 6, cursor: 'pointer', padding: 0, overflow: 'hidden',
+                            border: backgroundImage === bg ? '2px solid var(--fg)' : '1.5px solid var(--border)',
+                            boxShadow: backgroundImage === bg ? '0 0 0 2px var(--bg), 0 0 0 4px var(--fg)' : 'none',
+                            background: 'none',
+                          }}>
+                          <img src={bg} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Content textarea */}
                 <div style={{ marginBottom: 18 }}>

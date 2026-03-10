@@ -49,7 +49,7 @@ const COLOR_HEX = {
   blue: '#2563eb', gold: '#d97706', green: '#059669', purple: '#8b5cf6', red: '#dc2626', neutral: '#6b7280',
 }
 
-export default function PresentationsPage({ onNavigate, theme, onToggleTheme }) {
+export default function PresentationsPage({ onNavigate, theme, onToggleTheme, onPresentMode }) {
   const { user, profile } = useAuth()
   const [view, setView]           = useState('list')     // 'list' | 'create' | 'present'
   const [presentations, setPresentations] = useState([])
@@ -199,6 +199,11 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme }) 
       setDeleteConfirm(null)
     }
   }
+
+  // Notify parent when entering/exiting present mode (hides AI chat widget)
+  useEffect(() => {
+    onPresentMode?.(view === 'present')
+  }, [view, onPresentMode])
 
   // Keyboard: ESC exits present mode, arrow keys forwarded to iframe
   useEffect(() => {

@@ -1433,6 +1433,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [dbLoading, setDbLoading] = useState(true)
   const [dbError,   setDbError]   = useState(null)
   const [aiWidgetOpen, setAiWidgetOpen] = useState(false)
+  const [presentMode, setPresentMode] = useState(false)
   // Stable callbacks for AI widget — avoids new function refs on every render
   const toggleAiWidget = useCallback(() => setAiWidgetOpen(o => !o), [])
   const closeAiWidget  = useCallback(() => setAiWidgetOpen(false), [])
@@ -4986,7 +4987,7 @@ function Dashboard({ theme, onToggleTheme }) {
       {page==='admin'     && <ErrorBoundary key="admin" onReset={()=>setPage('dashboard')}><AdminPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
       {page==='terms'     && <ErrorBoundary key="terms" onReset={()=>setPage('dashboard')}><TermsPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
       {page==='affiliates' && <ErrorBoundary key="affiliates" onReset={()=>setPage('dashboard')}><AffiliatesPage onNavigate={()=>setPage('billing')} theme={theme}/></ErrorBoundary>}
-      {page==='presentations' && <ErrorBoundary key="presentations" onReset={()=>setPage('dashboard')}><PresentationsPage onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
+      {page==='presentations' && <ErrorBoundary key="presentations" onReset={()=>setPage('dashboard')}><PresentationsPage onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme} onPresentMode={setPresentMode}/></ErrorBoundary>}
       </Suspense>
       )}
       {/* AI Assistant now handled by floating widget — see useEffect redirect below */}
@@ -5352,16 +5353,18 @@ function Dashboard({ theme, onToggleTheme }) {
       )}
 
 
-      {/* ── Floating AI Chat Widget ── */}
-      <ErrorBoundary key="ai-widget" onReset={() => setAiWidgetOpen(false)}>
-        <AIChatWidget
-          isOpen={aiWidgetOpen}
-          onToggle={toggleAiWidget}
-          onClose={closeAiWidget}
-          onNavigate={setPage}
-          theme={theme}
-        />
-      </ErrorBoundary>
+      {/* ── Floating AI Chat Widget (hidden in present mode) ── */}
+      {!presentMode && (
+        <ErrorBoundary key="ai-widget" onReset={() => setAiWidgetOpen(false)}>
+          <AIChatWidget
+            isOpen={aiWidgetOpen}
+            onToggle={toggleAiWidget}
+            onClose={closeAiWidget}
+            onNavigate={setPage}
+            theme={theme}
+          />
+        </ErrorBoundary>
+      )}
 
       {/* ── App Footer ── */}
       <footer style={{ textAlign:'center', padding:'24px 16px 32px', fontSize:12, color:'var(--muted)',

@@ -621,25 +621,40 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                     <button onClick={() => setBackgroundImage('')}
                       style={{
-                        width: 72, height: 48, borderRadius: 8, cursor: 'pointer',
-                        border: !backgroundImage ? '2px solid var(--fg)' : '1.5px solid var(--border)',
-                        background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 10, color: 'var(--muted)', fontWeight: 600,
-                        boxShadow: !backgroundImage ? '0 0 0 2px var(--bg), 0 0 0 4px var(--fg)' : 'none',
+                        width: 72, height: 48, borderRadius: 8, cursor: 'pointer', position: 'relative',
+                        border: !backgroundImage ? `2.5px solid ${colorScheme.startsWith('#') ? colorScheme : '#2563eb'}` : '1.5px solid var(--border)',
+                        background: !backgroundImage ? `${(colorScheme.startsWith('#') ? colorScheme : '#2563eb')}10` : 'var(--bg)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 10, color: !backgroundImage ? (colorScheme.startsWith('#') ? colorScheme : '#2563eb') : 'var(--muted)', fontWeight: 600,
+                        boxShadow: !backgroundImage ? `0 0 0 1px ${(colorScheme.startsWith('#') ? colorScheme : '#2563eb')}40` : 'none',
+                        transition: 'all .15s',
                       }}>
                       None
                     </button>
-                    {teamBackgrounds.map((bg, idx) => (
-                      <button key={idx} onClick={() => setBackgroundImage(bg)}
-                        style={{
-                          width: 72, height: 48, borderRadius: 8, cursor: 'pointer', padding: 0, overflow: 'hidden',
-                          border: backgroundImage === bg ? '2px solid var(--fg)' : '1.5px solid var(--border)',
-                          boxShadow: backgroundImage === bg ? '0 0 0 2px var(--bg), 0 0 0 4px var(--fg)' : 'none',
-                          background: 'none',
-                        }}>
-                        <img src={bg} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                      </button>
-                    ))}
+                    {teamBackgrounds.map((bg, idx) => {
+                      const isSelected = backgroundImage === bg
+                      const accent = colorScheme.startsWith('#') ? colorScheme : '#2563eb'
+                      return (
+                        <button key={idx} onClick={() => setBackgroundImage(bg)}
+                          style={{
+                            width: 72, height: 48, borderRadius: 8, cursor: 'pointer', padding: 0, overflow: 'hidden',
+                            position: 'relative',
+                            border: isSelected ? `2.5px solid ${accent}` : '1.5px solid var(--border)',
+                            boxShadow: isSelected ? `0 0 0 1px ${accent}40` : 'none',
+                            background: 'none', transition: 'all .15s',
+                          }}>
+                          <img src={bg} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block',
+                            opacity: isSelected ? 1 : 0.7, transition: 'opacity .15s' }} />
+                          {isSelected && (
+                            <div style={{
+                              position: 'absolute', top: 3, right: 3, width: 16, height: 16, borderRadius: '50%',
+                              background: accent, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 9, color: '#fff', fontWeight: 700, lineHeight: 1,
+                            }}>✓</div>
+                          )}
+                        </button>
+                      )
+                    })}
                     {teamBackgrounds.length === 0 && (
                       <span style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>
                         No backgrounds uploaded yet — team owner can add them in Team Settings → AI Tools

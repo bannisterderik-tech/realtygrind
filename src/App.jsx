@@ -1508,6 +1508,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [offersReceived,   setOffersReceived]   = useState([])
   const [pendingDeals,     setPendingDeals]     = useState([])
   const [closedDeals,      setClosedDeals]      = useState([])
+  const [archivedDeals,    setArchivedDeals]    = useState([]) // closed deals archived from pipeline
   const [wentPendingCount, setWentPendingCount] = useState(0) // historical — includes archived
   const [offersMadeCount, setOffersMadeCount] = useState(0) // historical — includes archived
   const [offersReceivedCount, setOffersReceivedCount] = useState(0) // historical — includes archived
@@ -1676,6 +1677,7 @@ function Dashboard({ theme, onToggleTheme }) {
       })
       setPendingDeals(pendingRows)
       setClosedDeals(   txRes.data.filter(t=>t.type==='closed' && active(t)).map(m))
+      setArchivedDeals( txRes.data.filter(t=>t.type==='closed' && t.status==='archived').map(m))
       setClosedCount(txRes.data.filter(t=>t.type==='closed').length)
       // Historical counts — a deal that moved forward still counts toward its earlier stage
       // closedFrom='Offers' means the deal was once an offer; checklist presence means it was pending
@@ -2325,10 +2327,13 @@ function Dashboard({ theme, onToggleTheme }) {
     }
   }
 
-  // ── Archive closed deal from pipeline (keeps it in Closed tab) ───────────
+  // ── Archive closed deal from pipeline (moves it to Archived tab) ─────────
   async function archiveDealFromPipeline(dealId) {
-    setClosedDeals(prev => prev.map(d => d.id === dealId ? {...d, status:'pipeline_archived'} : d))
-    await safeDb(supabase.from('transactions').update({status:'pipeline_archived'}).eq('id', dealId).eq('user_id', user.id))
+    const deal = closedDeals.find(d => d.id === dealId)
+    if (!deal) return
+    setClosedDeals(prev => prev.filter(d => d.id !== dealId))
+    setArchivedDeals(prev => [...prev, {...deal, status:'archived'}])
+    await safeDb(supabase.from('transactions').update({status:'archived'}).eq('id', dealId).eq('user_id', user.id))
   }
 
   // ── Checklist handlers ────────────────────────────────────────────────────
@@ -2724,8 +2729,9 @@ function Dashboard({ theme, onToggleTheme }) {
     const totalShowings    = Object.entries(counters).filter(([k])=>k.startsWith('showing')).reduce((a,[,v])=>a+v,0)
     const totalListings    = listings.filter(l => l.status !== 'closed').length
     const totalBuyerReps   = buyerReps.filter(r => r.status !== 'closed').length
-    const closedVol        = closedDeals.reduce((a,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
-    const closedComm       = closedDeals.reduce((a,r) => a + resolveCommission(r.commission, r.price), 0)
+    const allClosed        = [...closedDeals, ...archivedDeals]
+    const closedVol        = allClosed.reduce((a,r)=>{ const n=parseFloat(String(r.price||'').replace(/[^0-9.]/g,'')); return a+(isNaN(n)?0:n) },0)
+    const closedComm       = allClosed.reduce((a,r) => a + resolveCommission(r.commission, r.price), 0)
     const viewHabitXp      = builtInEffective.reduce((acc,h)=>{
       if(!habits[h.id][viewWeek]?.[viewDayIdx]) return acc
       const ckey=`${h.id}-${viewWeek}-${viewDayIdx}`
@@ -2738,7 +2744,7 @@ function Dashboard({ theme, onToggleTheme }) {
       sessionPipeline.went_pending  * PIPELINE_XP.went_pending  +
       sessionPipeline.closed        * PIPELINE_XP.closed
     return { totalHabitChecks, totalPossible, monthPct, viewChecks, viewPct, totalProspecting, totalAppts, totalShowings, totalListings, totalBuyerReps, closedVol, closedComm, viewHabitXp, sessionPipelineXp, viewXp: viewHabitXp + sessionPipelineXp }
-  }, [habits, counters, builtInEffective, viewBuiltInActive, viewWeek, viewDayIdx, listings, buyerReps, closedDeals, sessionPipeline, lastDayOfMonth])
+  }, [habits, counters, builtInEffective, viewBuiltInActive, viewWeek, viewDayIdx, listings, buyerReps, closedDeals, archivedDeals, sessionPipeline, lastDayOfMonth])
   const { totalHabitChecks, monthPct, viewChecks: todayChecks, viewPct: todayPct, totalProspecting, totalAppts, totalShowings, totalListings, totalBuyerReps, closedVol, closedComm, viewHabitXp: todayHabitXp, sessionPipelineXp, viewXp: todayXp } = dashStats
 
   // ── Daily targets from monthly goals (auto-redistributing) ─────────────
@@ -2773,18 +2779,19 @@ function Dashboard({ theme, onToggleTheme }) {
 
   // ── GCI Dashboard stats ──────────────────────────────────────────────────
   const gciStats = useMemo(() => {
-    if (!closedDeals.length) return { bySource: [], avgDeal: 0, annualPace: 0 }
+    const all = [...closedDeals, ...archivedDeals]
+    if (!all.length) return { bySource: [], avgDeal: 0, annualPace: 0 }
     const sourceMap = {}
-    closedDeals.forEach(d => {
+    all.forEach(d => {
       const src = d.closedFrom || 'Direct'
       const comm = resolveCommission(d.commission, d.price)
       sourceMap[src] = (sourceMap[src] || 0) + comm
     })
     const bySource = Object.entries(sourceMap).map(([name, amount]) => ({ name, amount })).sort((a, b) => b.amount - a.amount)
-    const avgDeal = closedComm / closedDeals.length
+    const avgDeal = closedComm / all.length
     const annualPace = closedComm * 12
     return { bySource, avgDeal, annualPace }
-  }, [closedDeals, closedComm])
+  }, [closedDeals, archivedDeals, closedComm])
 
   // ── Personal Records ─────────────────────────────────────────────────────
   const personalRecords = useMemo(() => {
@@ -2851,7 +2858,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
       {/* ── Deal Celebration ───────────────────────────────── */}
       {celebration && (() => {
-        const ytd = closedDeals.reduce((a,r) => a + resolveCommission(r.commission, r.price), 0)
+        const ytd = [...closedDeals,...archivedDeals].reduce((a,r) => a + resolveCommission(r.commission, r.price), 0)
         const year = new Date().getFullYear()
         const confettiColors = ['#10b981','#f59e0b','#3b82f6','#f43f5e','#8b5cf6','#fb923c','#06b6d4','#d97706']
         const pieces = Array.from({length:22},(_,i)=>({
@@ -3211,7 +3218,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
         {/* ── Primary Tabs ────────────────────────────────── */}
         <div className="primary-tabs">
-          {[{id:'calendar',l:'📅 Calendar'},{id:'potential',l:'💡 Potential',count:potentialListings.length},{id:'listings',l:'🏡 Listings',count:listings.length},{id:'buyers',l:'🤝 Buyers',count:buyerReps.length},{id:'closed',l:'✅ Closed',count:closedDeals.filter(d=>(d.month_year||d.monthYear)===MONTH_YEAR).length}].map(t=>(
+          {[{id:'calendar',l:'📅 Calendar'},{id:'potential',l:'💡 Potential',count:potentialListings.length},{id:'listings',l:'🏡 Listings',count:listings.length},{id:'buyers',l:'🤝 Buyers',count:buyerReps.length},{id:'closed',l:'📦 Archived',count:archivedDeals.length}].map(t=>(
             <button key={t.id} className={`primary-tab${primaryTab===t.id?' on':''}`} onClick={()=>setPrimaryTab(t.id)}>
               {t.l}{t.count!=null && <span className="ptab-count">{t.count}</span>}
             </button>
@@ -3677,7 +3684,7 @@ function Dashboard({ theme, onToggleTheme }) {
               </div>
 
               {/* ── Personal Records Card ────────────────────── */}
-              {(personalRecords.activeDays > 0 || closedDeals.length > 0) && (
+              {(personalRecords.activeDays > 0 || closedDeals.length > 0 || archivedDeals.length > 0) && (
                 <div className="card" style={{ padding:16, background:'linear-gradient(160deg, rgba(139,92,246,.08) 0%, var(--surface) 100%)', border:'1px solid rgba(139,92,246,.15)', borderTop:'2.5px solid #8b5cf6' }}>
                   <div className="label" style={{ marginBottom:10, color:'#8b5cf6', textAlign:'center', letterSpacing:.8 }}>🏅 Personal Records</div>
                   <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
@@ -3701,7 +3708,7 @@ function Dashboard({ theme, onToggleTheme }) {
                       <span style={{ fontSize:11, color:'var(--text2)' }}>Active Days</span>
                       <span className="mono" style={{ fontSize:13, fontWeight:700, color:'#8b5cf6' }}>{personalRecords.activeDays}/{personalRecords.daysInMonth}</span>
                     </div>
-                    {closedDeals.length > 0 && (
+                    {(closedDeals.length > 0 || archivedDeals.length > 0) && (
                       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 8px', borderRadius:7, background:'rgba(16,185,129,.06)' }}>
                         <span style={{ fontSize:11, color:'var(--text2)' }}>Month GCI</span>
                         <span className="mono" style={{ fontSize:13, fontWeight:700, color:'#10b981' }}>{fmtMoney(closedComm)||'$0'}</span>
@@ -4404,7 +4411,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 onToggleChecklistItem={toggleChecklistItem} onAddChecklistItem={addChecklistItem}
                 onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
               <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
-                rows={closedDeals.filter(d=>d.status!=='pipeline_archived'&&(d.dealSide==='seller'||d.closedFrom==='Listing'))} setRows={setClosedDeals} userId={user.id}
+                rows={closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing')} setRows={setClosedDeals} userId={user.id}
                 archiveOnRemove={true} onArchiveToClosed={archiveDealFromPipeline}
                 showSource={true}/>
             </>
@@ -4413,7 +4420,7 @@ function Dashboard({ theme, onToggleTheme }) {
               {[
                 { title:'Offers Rec\'d', icon:'📥', color:'#8b5cf6', rows:offersReceived },
                 { title:'Pending', icon:'⏳', color:'#f59e0b', rows:pendingDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing') },
-                { title:'Closed', icon:'🎉', color:'#10b981', rows:closedDeals.filter(d=>d.status!=='pipeline_archived'&&(d.dealSide==='seller'||d.closedFrom==='Listing')) },
+                { title:'Closed', icon:'🎉', color:'#10b981', rows:closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing') },
               ].map(col => (
                 <div key={col.title} style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:12, overflow:'hidden' }}>
                   <div style={{ padding:'10px 12px', background:`${col.color}11`, borderBottom:`2px solid ${col.color}33`, display:'flex', alignItems:'center', gap:6 }}>
@@ -4448,8 +4455,8 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
 
         {/* ══ LISTINGS GCI ══════════════════════════════════════ */}
-        {closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing').length > 0 && (() => {
-          const sellerClosed = closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing')
+        {[...closedDeals,...archivedDeals].filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing').length > 0 && (() => {
+          const sellerClosed = [...closedDeals,...archivedDeals].filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing')
           const sellerComm = sellerClosed.reduce((s,d)=>s+resolveCommission(d.commission,d.price),0)
           const sellerVol = sellerClosed.reduce((s,d)=>s+parseFloat(String(d.price||'').replace(/[^0-9.]/g,'')||0),0)
           return (
@@ -4780,7 +4787,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 onToggleChecklistItem={toggleChecklistItem} onAddChecklistItem={addChecklistItem}
                 onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
               <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
-                rows={closedDeals.filter(d=>d.status!=='pipeline_archived'&&(d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing')))} setRows={setClosedDeals} userId={user.id}
+                rows={closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))} setRows={setClosedDeals} userId={user.id}
                 archiveOnRemove={true} onArchiveToClosed={archiveDealFromPipeline}
                 showSource={true}/>
             </>
@@ -4789,7 +4796,7 @@ function Dashboard({ theme, onToggleTheme }) {
               {[
                 { title:'Offers Made', icon:'📤', color:'#0ea5e9', rows:offersMade },
                 { title:'Pending', icon:'⏳', color:'#f59e0b', rows:pendingDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing')) },
-                { title:'Closed', icon:'🎉', color:'#10b981', rows:closedDeals.filter(d=>d.status!=='pipeline_archived'&&(d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))) },
+                { title:'Closed', icon:'🎉', color:'#10b981', rows:closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing')) },
               ].map(col => (
                 <div key={col.title} style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:12, overflow:'hidden' }}>
                   <div style={{ padding:'10px 12px', background:`${col.color}11`, borderBottom:`2px solid ${col.color}33`, display:'flex', alignItems:'center', gap:6 }}>
@@ -4824,8 +4831,8 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
 
         {/* ══ BUYERS GCI ════════════════════════════════════════ */}
-        {closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing')).length > 0 && (() => {
-          const buyerClosed = closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))
+        {[...closedDeals,...archivedDeals].filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing')).length > 0 && (() => {
+          const buyerClosed = [...closedDeals,...archivedDeals].filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))
           const buyerComm = buyerClosed.reduce((s,d)=>s+resolveCommission(d.commission,d.price),0)
           const buyerVol = buyerClosed.reduce((s,d)=>s+parseFloat(String(d.price||'').replace(/[^0-9.]/g,'')||0),0)
           return (
@@ -4852,7 +4859,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
         </>)}
 
-        {/* ══ CLOSED TAB ═══════════════════════════════════════ */}
+        {/* ══ ARCHIVED TAB ═══════════════════════════════════════ */}
         {primaryTab==='closed' && (<>
         <div style={{ marginTop:36 }}>
           <div className="section-divider"/>
@@ -4860,26 +4867,26 @@ function Dashboard({ theme, onToggleTheme }) {
             <div>
               <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:4 }}>
                 <div style={{ width:36, height:36, borderRadius:10, background:'rgba(16,185,129,.1)', border:'1px solid rgba(16,185,129,.25)',
-                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:17, flexShrink:0 }}>🎉</div>
-                <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>Closed This Month</span>
+                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:17, flexShrink:0 }}>📦</div>
+                <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>Archived Deals</span>
                 <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, fontSize:20, color:'#10b981', lineHeight:1 }}>
-                  {closedDeals.filter(d=>(d.month_year||d.monthYear)===MONTH_YEAR).length}
+                  {archivedDeals.length}
                 </span>
               </div>
               <div className="section-sub" style={{ marginBottom:0 }}>
-                Deals closed in {MONTH_YEAR} · labeled by side
+                Closed deals archived from pipeline · {MONTH_YEAR}
               </div>
             </div>
           </div>
 
           <div className="deal-card-grid">
-            {closedDeals.filter(d=>(d.month_year||d.monthYear)===MONTH_YEAR).length === 0 && (
+            {archivedDeals.length === 0 && (
               <div className="deal-card" style={{ textAlign:'center', padding:'28px 20px', color:'var(--dim)', fontSize:13 }}>
-                No closed deals this month yet
+                No archived deals yet — archive closed deals from the pipeline
               </div>
             )}
 
-            {closedDeals.filter(d=>(d.month_year||d.monthYear)===MONTH_YEAR).map(d => {
+            {archivedDeals.map(d => {
               const isSeller = d.dealSide === 'seller' || d.closedFrom === 'Listing'
               const sideLabel = isSeller ? 'SELLER' : 'BUYER'
               const sideIcon = isSeller ? '🏡' : '🤝'
@@ -4913,7 +4920,7 @@ function Dashboard({ theme, onToggleTheme }) {
                     {d.originalLeadSource && <><span className="sep"/><span>{d.originalLeadSource}</span></>}
                   </div>
 
-                  {/* Closed label */}
+                  {/* Archived label */}
                   <div className="deal-actions">
                     <span style={{ fontSize:11, color:'var(--green)', fontWeight:600 }}>✓ Closed</span>
                   </div>
@@ -4924,12 +4931,11 @@ function Dashboard({ theme, onToggleTheme }) {
 
           {/* Summary cards */}
           {(() => {
-            const monthClosed = closedDeals.filter(d=>(d.month_year||d.monthYear)===MONTH_YEAR)
-            if (monthClosed.length === 0) return null
-            const sellerCount = monthClosed.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing').length
-            const buyerCount = monthClosed.length - sellerCount
-            const totalComm = monthClosed.reduce((s,d)=>s+resolveCommission(d.commission,d.price),0)
-            const totalVol = monthClosed.reduce((s,d)=>s+parseFloat(String(d.price||'').replace(/[^0-9.]/g,'')||0),0)
+            if (archivedDeals.length === 0) return null
+            const sellerCount = archivedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing').length
+            const buyerCount = archivedDeals.length - sellerCount
+            const totalComm = archivedDeals.reduce((s,d)=>s+resolveCommission(d.commission,d.price),0)
+            const totalVol = archivedDeals.reduce((s,d)=>s+parseFloat(String(d.price||'').replace(/[^0-9.]/g,'')||0),0)
             return (
               <div style={{ marginTop:24 }}>
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))', gap:10 }}>
@@ -5055,7 +5061,7 @@ function Dashboard({ theme, onToggleTheme }) {
           offersMade={offersMade}
           offersReceived={offersReceived}
           pendingDeals={pendingDeals}
-          closedDeals={closedDeals}
+          closedDeals={[...closedDeals,...archivedDeals]}
           buyerReps={buyerReps}
           onClose={() => setShowPrint(false)}
           target={isViewingToday ? undefined : { wi: viewWeek, di: viewDayIdx, dateStr: viewDateStr }}
@@ -5078,7 +5084,7 @@ function Dashboard({ theme, onToggleTheme }) {
             offersMade={offersMade}
             offersReceived={offersReceived}
             pendingDeals={pendingDeals}
-            closedDeals={closedDeals}
+            closedDeals={[...closedDeals,...archivedDeals]}
             buyerReps={buyerReps}
             target={plannerPrint}
             onClose={() => setPlannerPrint(null)}
@@ -5092,7 +5098,7 @@ function Dashboard({ theme, onToggleTheme }) {
           listings={listings}
           offersReceived={offersReceived}
           pendingDeals={pendingDeals}
-          closedDeals={closedDeals}
+          closedDeals={[...closedDeals,...archivedDeals]}
           onClose={() => setShowWeeklyUpdate(false)}
         />
       )}

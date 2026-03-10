@@ -15,7 +15,8 @@ const AIAssistantPage = lazy(() => import('./pages/AIAssistantPage'))
 const CoachingPage    = lazy(() => import('./pages/CoachingPage'))
 const AdminPage       = lazy(() => import('./pages/AdminPage'))
 const TermsPage       = lazy(() => import('./pages/TermsPage'))
-const AffiliatesPage  = lazy(() => import('./pages/AffiliatesPage'))
+const AffiliatesPage     = lazy(() => import('./pages/AffiliatesPage'))
+const PresentationsPage  = lazy(() => import('./pages/PresentationsPage'))
 import AIChatWidget from './components/AIChatWidget'
 import { CSS, Ring, StatCard, Wordmark, Loader, ThemeToggle, getRank, fmtMoney, resolveCommission, RANKS, CAT, formatPrice, stripPrice, daysOnMarket, LEAD_SOURCES, LEAD_SOURCE_COLORS } from './design'
 import { HABITS } from './habits'
@@ -2972,7 +2973,7 @@ function Dashboard({ theme, onToggleTheme }) {
           <button className={`nav-btn mob-hide${page==='teams'?' active':''}`} onClick={()=>setPage('teams')}>👥 Teams</button>
           <button className={`nav-btn mob-hide${page==='coaching'?' active':''}`} onClick={()=>setPage('coaching')}>📝 Coaching</button>
 
-          <button className={`nav-btn mob-hide${(page==='directory'||page==='apod'||page==='ai-assistant')?' active':''}`} onClick={()=>setPage('directory')}>🔗 Tools</button>
+          <button className={`nav-btn mob-hide${(page==='directory'||page==='apod'||page==='ai-assistant'||page==='presentations')?' active':''}`} onClick={()=>setPage('directory')}>🔗 Tools</button>
           <button className={`nav-btn mob-hide${page==='affiliates'?' active':''}`} onClick={()=>setPage('affiliates')}>💰 Affiliates</button>
 
           {profileAppRole === 'admin' && (
@@ -4985,6 +4986,7 @@ function Dashboard({ theme, onToggleTheme }) {
       {page==='admin'     && <ErrorBoundary key="admin" onReset={()=>setPage('dashboard')}><AdminPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
       {page==='terms'     && <ErrorBoundary key="terms" onReset={()=>setPage('dashboard')}><TermsPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
       {page==='affiliates' && <ErrorBoundary key="affiliates" onReset={()=>setPage('dashboard')}><AffiliatesPage onNavigate={()=>setPage('billing')} theme={theme}/></ErrorBoundary>}
+      {page==='presentations' && <ErrorBoundary key="presentations" onReset={()=>setPage('dashboard')}><PresentationsPage onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
       </Suspense>
       )}
       {/* AI Assistant now handled by floating widget — see useEffect redirect below */}

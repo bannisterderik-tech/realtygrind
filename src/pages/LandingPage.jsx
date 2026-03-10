@@ -922,6 +922,65 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
       </FeatureSection>
 
       {/* ═══════════════════════════════════════════════════════════
+          FEATURE 14: AI PRESENTATION BUILDER
+      ═══════════════════════════════════════════════════════════ */}
+      <FeatureSection theme={theme} reverse tinted num="14" label="AI Presentations" labelColor="#0ea5e9"
+        title="Webinars that" boldWord="convert."
+        desc="Generate stunning, branded webinar presentations to attract and convert leads. Pick your colors, style preset, and background — AI builds a polished multi-slide deck ready to present at virtual events and capture new clients."
+        bullets={[
+          ['🎨','Custom brand colors with hex input and color wheel'],
+          ['🖼️','Team background images set by your leader'],
+          ['📐','4 style presets — Modern, Classic, Minimal, Bold'],
+          ['🎯','Lead-gen topics, market insights, and agent CTA auto-built'],
+          ['🖥️','Fullscreen present mode with keyboard navigation'],
+        ]}
+        aiNote="Claude crafts compelling webinar content tailored to your market area to help you generate and convert leads.">
+        <MockupFrame theme={theme} title="Presentation Builder">
+          <div style={{ position:'relative', borderRadius:10, overflow:'hidden', background: theme === 'dark' ? '#0f172a' : '#f8fafc', border:'1px solid var(--b2)' }}>
+            {/* Mini slide preview */}
+            <div style={{ padding:'18px 16px 12px', background: theme === 'dark' ? 'linear-gradient(135deg,#0f172a 0%,#1e293b 100%)' : 'linear-gradient(135deg,#f0f9ff 0%,#e0f2fe 100%)', position:'relative' }}>
+              <div style={{ position:'absolute', top:0, left:0, right:0, height:3, background:'linear-gradient(90deg,#0ea5e9,#38bdf8,#7dd3fc)', borderRadius:'0 0 2px 2px' }} />
+              <div style={{ fontSize:7, fontWeight:700, letterSpacing:1.2, textTransform:'uppercase', color:'#0ea5e9', marginBottom:4 }}>WEBINAR PRESENTATION</div>
+              <div style={{ fontSize:14, fontWeight:800, lineHeight:1.2, marginBottom:6, background:'linear-gradient(135deg,#0ea5e9,#38bdf8)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>First-Time Buyer Workshop</div>
+              <div style={{ fontSize:9, color:'var(--muted)', marginBottom:10 }}>Generate leads with expert market insights</div>
+              <div style={{ display:'flex', gap:8 }}>
+                {[
+                  { label:'Slides', val:'12' },
+                  { label:'Topics', val:'5' },
+                  { label:'CTA', val:'Book a Call' },
+                ].map(s => (
+                  <div key={s.label} style={{ flex:1, padding:'6px 8px', borderRadius:8, background: theme === 'dark' ? 'rgba(14,165,233,.08)' : 'rgba(14,165,233,.06)', border:'1px solid rgba(14,165,233,.15)' }}>
+                    <div style={{ fontSize:7, color:'var(--muted)', textTransform:'uppercase', letterSpacing:.8, marginBottom:2 }}>{s.label}</div>
+                    <div style={{ fontSize:10, fontWeight:700, color:'var(--text)' }}>{s.val}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Controls bar */}
+            <div style={{ padding:'10px 16px', borderTop:'1px solid var(--b2)', display:'flex', alignItems:'center', gap:8 }}>
+              <div style={{ display:'flex', gap:4 }}>
+                {['#2563eb','#d97706','#059669','#7c3aed'].map(c => (
+                  <div key={c} style={{ width:14, height:14, borderRadius:'50%', background:c, border: c === '#2563eb' ? '2px solid var(--text)' : '2px solid transparent', cursor:'default' }} />
+                ))}
+                <div style={{ width:14, height:14, borderRadius:'50%', background:'conic-gradient(#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)', border:'2px solid transparent' }} />
+              </div>
+              <div style={{ marginLeft:'auto', display:'flex', gap:6 }}>
+                {['Modern','Classic','Minimal','Bold'].map((p,i) => (
+                  <span key={p} style={{ fontSize:8, padding:'2px 8px', borderRadius:10, fontWeight:600, fontFamily:'Poppins,sans-serif', background: i === 0 ? 'rgba(14,165,233,.12)' : 'transparent', color: i === 0 ? '#0ea5e9' : 'var(--muted)', border: i === 0 ? '1px solid rgba(14,165,233,.3)' : '1px solid var(--b2)' }}>{p}</span>
+                ))}
+              </div>
+            </div>
+            {/* Slide dots */}
+            <div style={{ padding:'0 16px 10px', display:'flex', justifyContent:'center', gap:4 }}>
+              {[0,1,2,3,4].map(i => (
+                <div key={i} style={{ width: i === 0 ? 16 : 6, height:6, borderRadius:3, background: i === 0 ? '#0ea5e9' : 'var(--b2)', transition:'width .2s' }} />
+              ))}
+            </div>
+          </div>
+        </MockupFrame>
+      </FeatureSection>
+
+      {/* ═══════════════════════════════════════════════════════════
           TESTIMONIALS
       ═══════════════════════════════════════════════════════════ */}
       <section id="features" className="lp-section">

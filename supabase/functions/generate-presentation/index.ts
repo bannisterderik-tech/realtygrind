@@ -266,7 +266,7 @@ Do not include any markdown fencing, explanation, or commentary — just the raw
     }
 
     const fetchController = new AbortController()
-    const fetchTimeout = setTimeout(() => fetchController.abort(), 55000)
+    const fetchTimeout = setTimeout(() => fetchController.abort(), 120000)
 
     let claudeResponse: Response
     try {

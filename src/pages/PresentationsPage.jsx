@@ -76,6 +76,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
   const [font, setFont]           = useState('sans-serif')
   const [colorScheme, setColorScheme] = useState('#2563eb')
   const [backgroundImage, setBackgroundImage] = useState('')  // URL or empty
+  const [overlayOpacity, setOverlayOpacity] = useState(8)    // 0-100 scale, default 8%
   const [content, setContent]     = useState('')
   const [editingId, setEditingId] = useState(null) // presentation id when re-generating
 
@@ -178,6 +179,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
             body: JSON.stringify({
               title, style, theme: presTheme, font, colorScheme, content,
               backgroundImage: backgroundImage || null,
+              overlayOpacity: backgroundImage ? overlayOpacity : null,
               presentationId: editingId || null,
             }),
           }
@@ -709,6 +711,23 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
                     )}
                   </div>
                 </div>
+
+                {/* Overlay opacity slider — only show when background is selected */}
+                {backgroundImage && (
+                  <div style={{ marginBottom: 18 }}>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)',
+                      letterSpacing: .8, textTransform: 'uppercase', marginBottom: 6 }}>
+                      Background Intensity <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontFamily: "'JetBrains Mono',monospace" }}>{overlayOpacity}%</span>
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span style={{ fontSize: 10, color: 'var(--muted)', width: 36, textAlign: 'right' }}>Subtle</span>
+                      <input type="range" min={2} max={40} value={overlayOpacity}
+                        onChange={e => setOverlayOpacity(Number(e.target.value))}
+                        style={{ flex: 1, accentColor: colorScheme.startsWith('#') ? colorScheme : '#2563eb' }} />
+                      <span style={{ fontSize: 10, color: 'var(--muted)', width: 36 }}>Strong</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Content textarea */}
                 <div style={{ marginBottom: 18 }}>

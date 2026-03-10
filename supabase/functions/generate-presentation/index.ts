@@ -288,7 +288,7 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
     const bg = isDark ? '#0a0a0f' : '#fafafa'
     const bg2 = isDark ? '#12121a' : '#ffffff'
     const fg = isDark ? '#e4e4e7' : '#18181b'
-    const mutedFg = isDark ? '#71717a' : '#71717a'
+    const mutedFg = isDark ? '#a1a1aa' : '#71717a'
     const subtleBorder = isDark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)'
     const headingFont = font === 'serif' ? '"Playfair Display",Georgia,"Times New Roman",serif'
       : font === 'monospace' ? '"JetBrains Mono","SF Mono","Fira Code",monospace'
@@ -373,7 +373,7 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
         // ── Solid h1 — no gradient, classic typesetting ──
         `section h1{color:${c.primary};-webkit-text-fill-color:${c.primary};font-weight:700;letter-spacing:-.02em;font-size:3.2em}`,
         `section.title-slide h1{font-size:3.6em;margin-bottom:24px}`,
-        `section.title-slide h2{font-size:1em;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:${mutedFg};opacity:.7}`,
+        `section.title-slide h2{font-size:1em;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:${mutedFg}}`,
         // ── Thin accent rule (left edge) ──
         `section::before{background:${c.primary};width:2px;opacity:.15}`,
         // ── H2: full-width hairline rule ──
@@ -428,7 +428,7 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
         // ── H1: ultra-light weight, massive ──
         `section h1{color:${fg};-webkit-text-fill-color:${fg};font-weight:200;letter-spacing:-.04em;font-size:4.2em;line-height:1.05}`,
         `section.title-slide h1{font-size:5em;font-weight:200}`,
-        `section.title-slide h2{font-weight:300;color:${mutedFg};opacity:.4;font-size:1em;letter-spacing:.06em;text-transform:uppercase;margin-bottom:0}`,
+        `section.title-slide h2{font-weight:300;color:${mutedFg};font-size:1em;letter-spacing:.06em;text-transform:uppercase;margin-bottom:0}`,
         `section.title-slide h2::after{display:none}`,
         // ── No accent bar ──
         `section::before{display:none}`,
@@ -441,7 +441,7 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
         `section p{color:${mutedFg};font-weight:400;line-height:2.1;max-width:600px;font-size:1.05em}`,
         // ── Muted everything ──
         `section strong{color:${fg};font-weight:500;-webkit-text-fill-color:${fg}}`,
-        `section h3{color:${mutedFg};opacity:.5;font-size:.65em;letter-spacing:.2em}`,
+        `section h3{color:${mutedFg};font-size:.65em;letter-spacing:.2em}`,
         // ── Single thin rule at bottom of content slides ──
         `section:not(.title-slide):not(.closing-slide)::after{content:'';position:absolute;bottom:60px;left:160px;right:160px;height:1px;background:${isDark ? 'rgba(255,255,255,.04)' : 'rgba(0,0,0,.04)'};pointer-events:none}`,
         // ── Agent CTA: borderless, floating ──
@@ -449,7 +449,7 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
         `.agent-cta::before{display:none}`,
         `.agent-avatar{width:56px;height:56px;border:1px solid ${subtleBorder};box-shadow:none}`,
         `.agent-cta .agent-name{font-weight:500;font-size:1.1em;letter-spacing:0}`,
-        `.agent-cta .agent-details{opacity:.4}`,
+        `.agent-cta .agent-details{color:${mutedFg}}`,
         // ── Logo: faded ──
         `.team-logo{opacity:.5;max-width:200px;max-height:60px;filter:${isDark ? 'brightness(2)' : 'none'} grayscale(.3)}`,
         // ── Progress: hairline ──
@@ -466,17 +466,17 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
         // Stats: borderless, left-aligned, ultra-light
         `[data-layout="stats"] .stat-card{background:transparent;border:none;text-align:left;padding:24px 0}`,
         `[data-layout="stats"] .stat-number{font-weight:200;font-size:3.2em;color:${fg};-webkit-text-fill-color:${fg}}`,
-        `[data-layout="stats"] .stat-label{opacity:.4}`,
+        `[data-layout="stats"] .stat-label{color:${mutedFg}}`,
         // Quote: no decoration, left-aligned
         `[data-layout="quote"]{align-items:flex-start;text-align:left;padding:100px 160px}`,
         `[data-layout="quote"] blockquote{font-size:1.6em;font-style:normal;font-weight:300;color:${mutedFg};max-width:600px}`,
         `[data-layout="quote"] blockquote::before{display:none}`,
-        `[data-layout="quote"] cite{color:${mutedFg};opacity:.4}`,
+        `[data-layout="quote"] cite{color:${mutedFg}}`,
         // Features: no bg, no border
         `[data-layout="features"] .feature{background:transparent;border:none;padding:20px 0}`,
         `[data-layout="features"] .feature-icon{font-size:1.5em;opacity:.5}`,
         // Two-col: just whitespace
-        `[data-layout="two-col"] .col h4{color:${fg};font-weight:400;opacity:.5}`,
+        `[data-layout="two-col"] .col h4{color:${mutedFg};font-weight:400}`,
         // Highlight: thin top rule only
         `[data-layout="highlight"] .highlight-box{background:transparent;border:none;border-top:1px solid ${isDark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)'};border-radius:0;padding:32px 0}`,
         `[data-layout="highlight"] .highlight-box p{color:${mutedFg};font-weight:300}`,
@@ -509,7 +509,7 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
         `section.title-slide>*:not(.bg-overlay){position:relative;z-index:1}`,
         // White text on color bg
         `section.title-slide h1{-webkit-text-fill-color:#fff;background:none;text-shadow:0 4px 40px rgba(0,0,0,.3);font-size:5em;line-height:.95}`,
-        `section.title-slide h2{color:rgba(255,255,255,.75);font-size:1.15em;font-weight:400;letter-spacing:.04em;text-shadow:0 2px 12px rgba(0,0,0,.15)}`,
+        `section.title-slide h2{color:rgba(255,255,255,.92);font-size:1.15em;font-weight:400;letter-spacing:.04em;text-shadow:0 2px 12px rgba(0,0,0,.25)}`,
         `section.title-slide h2::after{display:none}`,
         // Logo on colored bg: brighten + white drop-shadow so it pops
         `section.title-slide .team-logo{filter:brightness(1.8) saturate(0) drop-shadow(0 2px 16px rgba(0,0,0,.4));opacity:.95}`,
@@ -524,7 +524,7 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
         `section.closing-slide .agent-cta{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.15);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}`,
         `section.closing-slide .agent-cta::before{background:linear-gradient(135deg,rgba(255,255,255,.2),transparent)}`,
         `section.closing-slide .agent-name{color:#fff}`,
-        `section.closing-slide .agent-details{color:rgba(255,255,255,.6)}`,
+        `section.closing-slide .agent-details{color:rgba(255,255,255,.85)}`,
         `section.closing-slide .agent-avatar{border-color:rgba(255,255,255,.2);box-shadow:0 4px 20px rgba(0,0,0,.3)}`,
         // ── Content slides: slight accent tint ──
         `section:not(.title-slide):not(.closing-slide){background:${isDark ? '#0c0c14' : `linear-gradient(180deg,${bg2} 0%,${c.primary}04 100%)`}}`,
@@ -570,6 +570,8 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
       `section.title-slide .bg-overlay::before{opacity:${bgOpacityTitle}}`,
       // Ensure content stays above overlay
       `section>*:not(.bg-overlay){position:relative;z-index:1}`,
+      // Text readability safety net — theme-aware halo ensures contrast over any image
+      `section{text-shadow:${isDark ? '0 1px 12px rgba(0,0,0,.9),0 0 3px rgba(0,0,0,.5)' : '0 1px 8px rgba(255,255,255,.95),0 0 3px rgba(255,255,255,.8)'}}`,
     ].join('\n') : ''
 
     const html = `<!DOCTYPE html>
@@ -600,7 +602,7 @@ section h2{font-size:1.65em;font-weight:700;color:${fg};margin-bottom:40px;line-
 section h2::after{content:'';display:block;width:48px;height:3px;background:linear-gradient(90deg,${c.primary},${c.accent});border-radius:4px;margin-top:16px}
 section.title-slide h2,section.closing-slide h2{font-weight:400;color:${mutedFg};font-size:1.1em;letter-spacing:.03em;margin-bottom:8px}
 section.title-slide h2::after,section.closing-slide h2::after{display:none}
-section h3{font-size:.68em;font-weight:600;color:${c.accent};margin-bottom:24px;letter-spacing:.16em;text-transform:uppercase}
+section h3{font-size:.68em;font-weight:600;color:${isDark ? c.accent : c.primary};margin-bottom:24px;letter-spacing:.16em;text-transform:uppercase}
 section h4{font-size:1.1em;font-weight:700;color:${fg};margin-bottom:12px}
 section p{font-size:1.08em;line-height:1.9;margin-bottom:20px;color:${isDark ? '#a1a1aa' : '#52525b'};max-width:720px}
 section ul{list-style:none;padding:0;margin-bottom:24px}

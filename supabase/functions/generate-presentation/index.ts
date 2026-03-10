@@ -47,6 +47,8 @@ const VALID_THEMES = ['light', 'dark', 'brand']
 const VALID_FONTS  = ['sans-serif', 'serif', 'monospace']
 const VALID_COLORS = ['blue', 'gold', 'green', 'purple', 'red', 'neutral']
 
+function esc(s: string) { return s.replace(/</g, '&lt;').replace(/"/g, '&quot;') }
+
 Deno.serve(async (req) => {
   const CORS = getCorsHeaders(req)
 
@@ -209,23 +211,18 @@ Deno.serve(async (req) => {
     const teamLogo = profile.teams?.team_prefs?.logo_url || null
     const teamName = profile.teams?.name || ''
 
-    const logoNote = teamLogo
-      ? 'The team logo will be embedded automatically — do NOT include any <img> tags for it.'
-      : teamName ? `Include "${teamName}" as subtle text in the title slide subtitle area.` : ''
-
     const systemPrompt = `You are a presentation builder for real estate professionals. Output ONLY a series of <section> HTML elements — one per slide. Do NOT output <!DOCTYPE>, <html>, <head>, <body>, <style>, or <script> tags. The shell template is provided separately.
 
 RULES:
-- First <section> must be the title slide with an <h1> for the title
-- Last <section> must be a closing/thank you slide
+- First <section> must be the title slide with class="title-slide" and an <h1> for the title
+- Last <section> must be a closing/thank-you slide with class="closing-slide"
 - Each main point or bullet group = its own <section>
 - Use <h2> for slide headings, <h3> for subheadings
 - Use <ul>/<li> for bullet lists, <p> for paragraphs
 - Use <strong> and <em> for emphasis
-- Add class="title-slide" to the first section
-- Add class="closing-slide" to the last section
 - Keep content concise — bullet points, not paragraphs
-${logoNote}
+- Do NOT include any <img> tags — images are injected separately
+- The closing slide should have a brief thank-you or closing message — agent contact info is added automatically
 
 The presentation title is: "${title}"
 
@@ -303,111 +300,153 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
     // Count slides
     const slideCount = (slidesHtml.match(/<section/gi) || []).length
 
-    // ── 11. Build full HTML from template ─────────────────────────────────
-    const COLORS: Record<string, { primary: string; accent: string }> = {
-      blue:    { primary: '#2563eb', accent: '#3b82f6' },
-      gold:    { primary: '#b45309', accent: '#d97706' },
-      green:   { primary: '#059669', accent: '#10b981' },
-      purple:  { primary: '#7c3aed', accent: '#8b5cf6' },
-      red:     { primary: '#dc2626', accent: '#ef4444' },
-      neutral: { primary: '#374151', accent: '#6b7280' },
+    // ── 11. Inject logo + agent CTA ────────────────────────────────────────
+    // Inject logo into title slide
+    if (teamLogo) {
+      const titleMatch = slidesHtml.match(/<section[^>]*class="[^"]*title-slide[^"]*"[^>]*>/)
+      if (titleMatch && titleMatch.index !== undefined) {
+        const pos = titleMatch.index + titleMatch[0].length
+        slidesHtml = slidesHtml.slice(0, pos) +
+          `\n<img src="${teamLogo}" class="team-logo" alt="${esc(teamName || 'Logo')}">` +
+          slidesHtml.slice(pos)
+      }
+    }
+
+    // Inject agent CTA card into closing slide
+    const agentName = profile.full_name || ''
+    const agentEmail = user.email || ''
+    const agentPhone = profile.habit_prefs?.bio?.phone || ''
+    const agentLicense = profile.habit_prefs?.bio?.license || ''
+
+    const ctaParts: string[] = []
+    if (agentEmail) ctaParts.push(esc(agentEmail))
+    if (agentPhone) ctaParts.push(esc(agentPhone))
+    if (agentLicense) ctaParts.push(`License #${esc(agentLicense)}`)
+
+    if (agentName || ctaParts.length > 0) {
+      const ctaHtml = `<div class="agent-cta">` +
+        (agentName ? `<div class="agent-name">${esc(agentName)}</div>` : '') +
+        (ctaParts.length ? `<div class="agent-details">${ctaParts.join(' &middot; ')}</div>` : '') +
+        `</div>`
+      const lastClose = slidesHtml.lastIndexOf('</section>')
+      if (lastClose > -1) {
+        slidesHtml = slidesHtml.slice(0, lastClose) + ctaHtml + slidesHtml.slice(lastClose)
+      }
+    }
+
+    // ── 12. Build full HTML from template ───────────────────────────────────
+    const COLORS: Record<string, { primary: string; accent: string; glow: string }> = {
+      blue:    { primary: '#1d4ed8', accent: '#3b82f6', glow: '59,130,246' },
+      gold:    { primary: '#92400e', accent: '#d97706', glow: '217,119,6' },
+      green:   { primary: '#047857', accent: '#10b981', glow: '16,185,129' },
+      purple:  { primary: '#6d28d9', accent: '#8b5cf6', glow: '139,92,246' },
+      red:     { primary: '#b91c1c', accent: '#ef4444', glow: '239,68,68' },
+      neutral: { primary: '#1f2937', accent: '#6b7280', glow: '107,114,128' },
     }
     const c = COLORS[colorScheme] || COLORS.blue
     const isDark = presTheme === 'dark'
     const isBrand = presTheme === 'brand'
-    const bg = isDark ? '#1a1a2e' : isBrand ? '#fffbf0' : '#ffffff'
+    const bg = isDark ? '#0f172a' : isBrand ? '#fffbf5' : '#ffffff'
     const fg = isDark ? '#e2e8f0' : '#1e293b'
     const mutedFg = isDark ? '#94a3b8' : '#64748b'
-    const slideBg = isDark ? '#16213e' : isBrand ? '#fff9eb' : '#f8fafc'
-    const headingFont = font === 'serif' ? 'Georgia,"Times New Roman",serif'
-      : font === 'monospace' ? '"Courier New",monospace'
-      : '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif'
-    const bodyFont = '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif'
+    const cardBg = isDark ? 'rgba(255,255,255,.03)' : `rgba(${c.glow},.04)`
+    const cardBorder = isDark ? 'rgba(255,255,255,.06)' : `rgba(${c.glow},.12)`
+    const headingFont = font === 'serif' ? 'Georgia,"Palatino Linotype","Book Antiqua",serif'
+      : font === 'monospace' ? '"SF Mono","Fira Code","Courier New",monospace'
+      : '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif'
+    const bodyFont = '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif'
 
-    const logoImg = teamLogo
-      ? `<img src="${teamLogo}" class="team-logo" alt="Team Logo">`
-      : ''
     const logoWatermark = teamLogo
       ? `<img src="${teamLogo}" class="watermark" alt="">`
-      : teamName ? `<span class="watermark-text">${teamName}</span>` : ''
+      : teamName ? `<span class="watermark-text">${esc(teamName)}</span>` : ''
 
-    const styleVariant = style === 'bold'
-      ? 'section h2{font-size:2.4em}section h1{font-size:3em}'
-      : style === 'minimal'
-      ? 'section{padding:60px 80px}section h2{font-weight:400;letter-spacing:-.01em}'
-      : style === 'classic'
-      ? 'section{border:2px solid ${c.primary}22;border-radius:0}section h2{border-bottom:2px solid ${c.primary};padding-bottom:12px}'
-      : ''
+    let styleVariant = ''
+    if (style === 'bold') {
+      styleVariant = `section h1{font-size:3.8em;letter-spacing:-.04em}section h2{font-size:2.6em}section::before{width:8px}section li::before{height:4px;width:20px}`
+    } else if (style === 'minimal') {
+      styleVariant = `section{padding:80px 120px}section::before{display:none}section h2{font-weight:400;border-bottom:1px solid ${c.accent}25;letter-spacing:-.01em}section li::before{background:${mutedFg};opacity:.25;width:20px}`
+    } else if (style === 'classic') {
+      styleVariant = `section h2{letter-spacing:0;border-bottom:2px solid ${c.primary}}section li::before{width:8px;height:8px;border-radius:50%;top:17px}section::before{background:${c.primary}}`
+    }
 
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${title}</title>
+<title>${esc(title)}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:${bg};color:${fg};font-family:${bodyFont};overflow:hidden;height:100vh;width:100vw}
-h1,h2,h3{font-family:${headingFont};color:${c.primary}}
+html,body{background:${bg};color:${fg};font-family:${bodyFont};overflow:hidden;height:100vh;width:100vw;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+h1,h2,h3{font-family:${headingFont}}
 .slides{position:relative;height:100vh;width:100vw}
-section{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;
-  padding:48px 64px;opacity:0;pointer-events:none;transition:opacity .4s ease;
-  background:${slideBg};overflow-y:auto}
-section.active{opacity:1;pointer-events:auto}
-section.title-slide{text-align:center;align-items:center}
+section{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:72px 96px 80px;opacity:0;pointer-events:none;transform:translateX(40px);transition:opacity .5s cubic-bezier(.4,0,.2,1),transform .5s cubic-bezier(.4,0,.2,1);overflow-y:auto}
+section.active{opacity:1;pointer-events:auto;transform:translateX(0)}
+section.title-slide{text-align:center;align-items:center;padding:80px}
 section.closing-slide{text-align:center;align-items:center}
-section h1{font-size:2.6em;margin-bottom:16px;line-height:1.2}
-section h2{font-size:1.8em;margin-bottom:20px;line-height:1.3}
-section h3{font-size:1.2em;margin-bottom:12px;color:${c.accent}}
-section p{font-size:1.05em;line-height:1.7;margin-bottom:14px;color:${fg}}
-section ul{list-style:none;padding:0;margin-bottom:16px}
-section li{font-size:1.05em;line-height:1.7;padding:6px 0 6px 24px;position:relative;color:${fg}}
-section li::before{content:"";position:absolute;left:0;top:14px;width:8px;height:8px;
-  border-radius:50%;background:${c.accent}}
-section strong{color:${c.primary}}
-.team-logo{max-width:160px;max-height:90px;margin-bottom:20px}
-.watermark{position:fixed;bottom:16px;left:20px;max-height:26px;opacity:.35;z-index:10}
-.watermark-text{position:fixed;bottom:16px;left:20px;font-size:11px;opacity:.3;color:${mutedFg};z-index:10}
-.counter{position:fixed;bottom:16px;right:20px;font-size:13px;color:${mutedFg};
-  font-family:${bodyFont};z-index:10;opacity:.7}
-.nav-hint{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
-  font-size:11px;color:${mutedFg};opacity:.4;z-index:10}
+section::before{content:'';position:absolute;top:0;left:0;width:5px;height:100%;background:linear-gradient(180deg,${c.primary},${c.accent})}
+section.title-slide::before,section.closing-slide::before{display:none}
+section h1{font-size:3.2em;font-weight:700;color:${c.primary};margin-bottom:16px;line-height:1.1;letter-spacing:-.03em}
+section h2{font-size:2em;font-weight:600;color:${c.primary};margin-bottom:32px;line-height:1.2;letter-spacing:-.02em;padding-bottom:16px;border-bottom:3px solid ${c.accent}}
+section.title-slide h2,section.closing-slide h2{border-bottom:none;padding-bottom:0;font-weight:400;color:${mutedFg};font-size:1.15em;letter-spacing:.01em;margin-bottom:12px}
+section h3{font-size:.78em;font-weight:700;color:${c.accent};margin-bottom:16px;letter-spacing:.1em;text-transform:uppercase}
+section p{font-size:1.15em;line-height:1.8;margin-bottom:18px;color:${fg};max-width:840px}
+section ul{list-style:none;padding:0;margin-bottom:24px}
+section li{font-size:1.12em;line-height:1.75;padding:10px 0 10px 36px;position:relative;color:${fg}}
+section li::before{content:'';position:absolute;left:0;top:19px;width:16px;height:3px;background:${c.accent};border-radius:2px}
+section strong{color:${c.primary};font-weight:600}
+section em{font-style:italic}
+.team-logo{max-width:300px;max-height:160px;margin-bottom:32px;object-fit:contain}
+.watermark{position:fixed;bottom:22px;left:30px;max-height:30px;opacity:.2;z-index:10}
+.watermark-text{position:fixed;bottom:22px;left:30px;font-size:10px;opacity:.2;color:${mutedFg};z-index:10;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+.counter{position:fixed;bottom:22px;right:30px;font-size:12px;font-weight:500;color:${mutedFg};z-index:10;opacity:.45;letter-spacing:1px;font-variant-numeric:tabular-nums}
+.nav-arrows{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:10;opacity:0;transition:opacity .3s}
+body:hover .nav-arrows{opacity:.5}
+.nav-btn{width:36px;height:36px;border-radius:50%;border:1px solid ${isDark ? 'rgba(255,255,255,.12)' : 'rgba(0,0,0,.1)'};background:${isDark ? 'rgba(255,255,255,.04)' : 'rgba(0,0,0,.02)'};color:${mutedFg};cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .2s;-webkit-appearance:none;font-family:system-ui}
+.nav-btn:hover{background:${c.primary};color:#fff;border-color:${c.primary};transform:scale(1.1)}
+.agent-cta{margin-top:40px;padding:32px 48px;background:${cardBg};border-radius:16px;border:1px solid ${cardBorder};display:inline-block;min-width:340px;text-align:center}
+.agent-cta .agent-name{font-size:1.35em;font-weight:700;color:${c.primary};margin-bottom:12px;font-family:${headingFont};letter-spacing:-.01em}
+.agent-cta .agent-details{font-size:.95em;color:${mutedFg};line-height:2;letter-spacing:.02em}
+.progress{position:fixed;bottom:0;left:0;height:3px;background:linear-gradient(90deg,${c.primary},${c.accent});z-index:10;transition:width .4s ease;opacity:.6}
 ${styleVariant}
-@media(max-width:640px){section{padding:28px 24px}section h1{font-size:1.8em}section h2{font-size:1.3em}}
+@media(max-width:768px){
+section{padding:44px 32px 64px}
+section h1{font-size:2.2em}
+section h2{font-size:1.5em}
+section.title-slide{padding:48px 32px}
+.team-logo{max-width:200px;max-height:110px}
+.agent-cta{min-width:auto;padding:24px 28px}
+}
 </style>
 </head>
 <body>
 ${logoWatermark}
 <div class="counter"></div>
-<div class="nav-hint">← → arrow keys to navigate</div>
+<div class="progress" style="width:0%"></div>
+<div class="nav-arrows">
+<button class="nav-btn nav-prev" aria-label="Previous">&#8249;</button>
+<button class="nav-btn nav-next" aria-label="Next">&#8250;</button>
+</div>
 <div class="slides">
 ${slidesHtml}
 </div>
 <script>
 (function(){
-  const ss=document.querySelectorAll('.slides section');
-  const counter=document.querySelector('.counter');
-  let cur=0;
-  function show(i){
-    if(i<0||i>=ss.length)return;
-    ss[cur].classList.remove('active');
-    cur=i;
-    ss[cur].classList.add('active');
-    counter.textContent=(cur+1)+' / '+ss.length;
-  }
-  if(ss.length)show(0);
-  document.addEventListener('keydown',function(e){
-    if(e.key==='ArrowRight'||e.key===' ')show(cur+1);
-    else if(e.key==='ArrowLeft')show(cur-1);
-  });
-  document.addEventListener('click',function(e){
-    if(e.clientX>window.innerWidth/2)show(cur+1);else show(cur-1);
-  });
+var ss=document.querySelectorAll('.slides section'),counter=document.querySelector('.counter'),bar=document.querySelector('.progress'),cur=0;
+function show(i){if(i<0||i>=ss.length)return;ss[cur].classList.remove('active');cur=i;ss[cur].classList.add('active');counter.textContent=(cur+1)+' / '+ss.length;bar.style.width=((cur+1)/ss.length*100)+'%'}
+if(ss.length)show(0);
+function nav(key){if(key==='ArrowRight'||key===' ')show(cur+1);else if(key==='ArrowLeft')show(cur-1)}
+document.addEventListener('keydown',function(e){nav(e.key)});
+window.addEventListener('message',function(e){if(e.data&&e.data.type==='keydown')nav(e.data.key)});
+var pb=document.querySelector('.nav-prev'),nb=document.querySelector('.nav-next');
+if(pb)pb.addEventListener('click',function(e){e.stopPropagation();show(cur-1)});
+if(nb)nb.addEventListener('click',function(e){e.stopPropagation();show(cur+1)});
+document.addEventListener('click',function(e){if(e.target.closest('.nav-arrows'))return;if(e.clientX>window.innerWidth/2)show(cur+1);else show(cur-1)});
 })();
 </script>
 </body>
 </html>`
 
-    // ── 11. Save to database ────────────────────────────────────────────────
+    // ── 13. Save to database ────────────────────────────────────────────────
     const presentationData = {
       user_id: user.id,
       team_id: profile.team_id || null,

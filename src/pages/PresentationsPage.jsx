@@ -25,10 +25,10 @@ async function getFreshToken(forceRefresh = false) {
 }
 
 const STYLES = [
-  { value: 'modern',  label: 'Modern — clean gradients, rounded' },
-  { value: 'classic', label: 'Classic — traditional, structured' },
-  { value: 'minimal', label: 'Minimal — whitespace, content-focused' },
-  { value: 'bold',    label: 'Bold — large text, high contrast' },
+  { value: 'modern',  label: 'Modern — glass, gradients, glowing orbs' },
+  { value: 'classic', label: 'Classic — editorial, refined borders' },
+  { value: 'minimal', label: 'Minimal — Swiss design, pure whitespace' },
+  { value: 'bold',    label: 'Bold — full-bleed color, oversized' },
 ]
 const THEMES = [
   { value: 'light', label: 'Light' },

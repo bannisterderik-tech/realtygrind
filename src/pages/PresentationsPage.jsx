@@ -613,37 +613,40 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
                 </div>
 
                 {/* Background Image selector */}
-                {teamBackgrounds.length > 0 && (
-                  <div style={{ marginBottom: 18 }}>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)',
-                      letterSpacing: .8, textTransform: 'uppercase', marginBottom: 6 }}>
-                      Background Image <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
-                    </label>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                      <button onClick={() => setBackgroundImage('')}
+                <div style={{ marginBottom: 18 }}>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)',
+                    letterSpacing: .8, textTransform: 'uppercase', marginBottom: 6 }}>
+                    Slide Background <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+                  </label>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button onClick={() => setBackgroundImage('')}
+                      style={{
+                        width: 72, height: 48, borderRadius: 8, cursor: 'pointer',
+                        border: !backgroundImage ? '2px solid var(--fg)' : '1.5px solid var(--border)',
+                        background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 10, color: 'var(--muted)', fontWeight: 600,
+                        boxShadow: !backgroundImage ? '0 0 0 2px var(--bg), 0 0 0 4px var(--fg)' : 'none',
+                      }}>
+                      None
+                    </button>
+                    {teamBackgrounds.map((bg, idx) => (
+                      <button key={idx} onClick={() => setBackgroundImage(bg)}
                         style={{
-                          width: 64, height: 44, borderRadius: 6, cursor: 'pointer',
-                          border: !backgroundImage ? '2px solid var(--fg)' : '1.5px solid var(--border)',
-                          background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 10, color: 'var(--muted)', fontWeight: 600,
-                          boxShadow: !backgroundImage ? '0 0 0 2px var(--bg), 0 0 0 4px var(--fg)' : 'none',
+                          width: 72, height: 48, borderRadius: 8, cursor: 'pointer', padding: 0, overflow: 'hidden',
+                          border: backgroundImage === bg ? '2px solid var(--fg)' : '1.5px solid var(--border)',
+                          boxShadow: backgroundImage === bg ? '0 0 0 2px var(--bg), 0 0 0 4px var(--fg)' : 'none',
+                          background: 'none',
                         }}>
-                        None
+                        <img src={bg} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                       </button>
-                      {teamBackgrounds.map((bg, idx) => (
-                        <button key={idx} onClick={() => setBackgroundImage(bg)}
-                          style={{
-                            width: 64, height: 44, borderRadius: 6, cursor: 'pointer', padding: 0, overflow: 'hidden',
-                            border: backgroundImage === bg ? '2px solid var(--fg)' : '1.5px solid var(--border)',
-                            boxShadow: backgroundImage === bg ? '0 0 0 2px var(--bg), 0 0 0 4px var(--fg)' : 'none',
-                            background: 'none',
-                          }}>
-                          <img src={bg} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                        </button>
-                      ))}
-                    </div>
+                    ))}
+                    {teamBackgrounds.length === 0 && (
+                      <span style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>
+                        No backgrounds uploaded yet — team owner can add them in Team Settings → AI Tools
+                      </span>
+                    )}
                   </div>
-                )}
+                </div>
 
                 {/* Content textarea */}
                 <div style={{ marginBottom: 18 }}>

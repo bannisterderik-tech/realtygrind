@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, memo } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
-import { isActiveBilling, isTeamMember, isPlatformAdmin } from '../lib/plans'
+import { isPaidSubscriber, isTeamMember, isPlatformAdmin } from '../lib/plans'
 
 // Get a fresh access token (refreshes if expired)
 async function getFreshToken() {
@@ -288,8 +288,8 @@ const AIChatWidget = memo(function AIChatWidget({ isOpen, onToggle, onClose, onN
     e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'
   }
 
-  // Gate checks
-  const hasBilling = isPlatformAdmin(profile) || isActiveBilling(profile?.billing_status) || isTeamMember(profile, user?.id)
+  // Gate checks — AI chat requires a paid subscription (trialing users cannot use it)
+  const hasBilling = isPlatformAdmin(profile) || isPaidSubscriber(profile?.billing_status) || isTeamMember(profile, user?.id)
   const isDisabledByTeam = profile?.teams?.team_prefs?.ai_tools?.assistant_enabled === false
 
   // Credit display

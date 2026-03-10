@@ -431,7 +431,7 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
 
               {/* Help text */}
               <div style={{ textAlign:'center', padding:'24px 0 40px', fontSize:12, color:'var(--muted)', lineHeight:1.7 }}>
-                Solo plan includes a 14-day free trial. Cancel anytime from the billing portal.<br/>
+                Solo plan includes a 3-day free trial. Cancel anytime from the billing portal.<br/>
                 Need help? Contact us at <span style={{ color:'var(--gold)' }}>support@realtygrind.co</span>
               </div>
             </>

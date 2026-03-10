@@ -28,6 +28,11 @@ export function isActiveBilling(status) {
   return status === 'active' || status === 'trialing'
 }
 
+// Paid-only check — excludes trialing (used for AI chat gating)
+export function isPaidSubscriber(status) {
+  return status === 'active'
+}
+
 // Platform admins have full access to all features regardless of plan
 export function isPlatformAdmin(profile) {
   return profile?.app_role === 'admin'

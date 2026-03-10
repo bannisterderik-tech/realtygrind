@@ -242,7 +242,7 @@ Deno.serve(async (req) => {
     const backgroundImage = (typeof rawBgImage === 'string' && rawBgImage && teamBackgrounds.includes(rawBgImage))
       ? rawBgImage : ''
     const overlayOpacity = (typeof rawOverlayOpacity === 'number' && rawOverlayOpacity >= 0 && rawOverlayOpacity <= 100)
-      ? rawOverlayOpacity : 8 // default 8%
+      ? rawOverlayOpacity : 15 // default 15% — visible but not overwhelming
 
     if (!content) return json({ error: 'Content is required.' }, 400)
     if (content.length > 8000) return json({ error: 'Content must be under 8000 characters.' }, 400)
@@ -445,7 +445,8 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
         `section.title-slide::after{content:'';position:absolute;top:-20%;right:-10%;width:60vw;height:60vw;background:radial-gradient(circle,rgba(${c.glow},.15) 0%,rgba(${c.glow},.05) 30%,transparent 60%);filter:blur(60px);pointer-events:none;z-index:0}`,
         // Secondary orb bottom-left
         `section.title-slide::before{display:block;content:'';position:absolute;bottom:-20%;left:-10%;width:50vw;height:50vw;background:radial-gradient(circle,${c.accent}12 0%,transparent 55%);filter:blur(80px);pointer-events:none;z-index:0}`,
-        `section.title-slide>*{position:relative;z-index:1}`,
+        // z-index lift for content — MUST exclude .bg-overlay so background images still work
+        `section.title-slide>*:not(.bg-overlay){position:relative;z-index:1}`,
         // ── Gradient text h1 with glow ──
         `section h1{background:linear-gradient(135deg,${c.primary} 0%,${c.accent} 45%,${c.secondary} 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;filter:drop-shadow(0 0 40px rgba(${c.glow},.15))}`,
         `section.title-slide h1{font-size:4em;letter-spacing:-.05em}`,
@@ -457,7 +458,8 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
         `section:not(.title-slide):not(.closing-slide){background:${isDark ? '#0a0a14' : '#fafbff'}}`,
         // Floating accent orb on content slides
         `section:not(.title-slide):not(.closing-slide)::after{content:'';position:absolute;top:-30%;right:-20%;width:40vw;height:40vw;background:radial-gradient(circle,rgba(${c.glow},.04) 0%,transparent 50%);filter:blur(60px);pointer-events:none;z-index:0}`,
-        `section:not(.title-slide):not(.closing-slide)>*{position:relative;z-index:1}`,
+        // z-index lift for content slides — MUST exclude .bg-overlay
+        `section:not(.title-slide):not(.closing-slide)>*:not(.bg-overlay){position:relative;z-index:1}`,
         // ── Bullet styling: gradient dash + glass hover ──
         `section li::before{width:24px;height:2px;background:linear-gradient(90deg,${c.primary},${c.accent});border-radius:2px;top:24px}`,
         `section li{padding-left:48px;border-radius:12px;padding-top:16px;padding-bottom:16px;margin-bottom:4px;transition:background .2s ease}`,
@@ -482,7 +484,7 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
         `section.title-slide{background:${isDark ? bg2 : '#fff'};border:none}`,
         `section.title-slide::after{content:'';position:absolute;inset:40px;border:1px solid ${isDark ? 'rgba(255,255,255,.08)' : `${c.primary}15`};pointer-events:none;z-index:0}`,
         `section.title-slide::before{display:block;content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:120px;height:1px;background:${c.primary};opacity:.2;z-index:0}`,
-        `section.title-slide>*{position:relative;z-index:1}`,
+        `section.title-slide>*:not(.bg-overlay){position:relative;z-index:1}`,
         // ── Solid h1 — no gradient, classic typesetting ──
         `section h1{color:${c.primary};-webkit-text-fill-color:${c.primary};font-weight:700;letter-spacing:-.02em;font-size:3.2em}`,
         `section.title-slide h1{font-size:3.6em;margin-bottom:24px}`,
@@ -582,30 +584,32 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
         // ════════════════════════════════════════════════════════
         // ── Title slide: FULL BLEED color — the signature look ──
         // ════════════════════════════════════════════════════════
-        `section.title-slide{background:linear-gradient(150deg,${c.primary} 0%,${darkPrimary} 100%);position:relative}`,
+        `section.title-slide{background:linear-gradient(150deg,${c.primary} 0%,${darkPrimary} 100%)}`,
         // Dark vignette at bottom
         `section.title-slide::after{content:'';position:absolute;bottom:0;left:0;right:0;height:50%;background:linear-gradient(to top,rgba(0,0,0,.35),transparent);pointer-events:none;z-index:0}`,
-        // Subtle noise/grain texture
+        // Subtle light wash top-left
         `section.title-slide::before{display:block;content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 30% 20%,rgba(255,255,255,.08) 0%,transparent 50%);pointer-events:none;z-index:0}`,
-        `section.title-slide>*{position:relative;z-index:1}`,
+        // z-index lift — MUST exclude .bg-overlay
+        `section.title-slide>*:not(.bg-overlay){position:relative;z-index:1}`,
         // White text on color bg
         `section.title-slide h1{-webkit-text-fill-color:#fff;background:none;text-shadow:0 4px 40px rgba(0,0,0,.3);font-size:5em;line-height:.95}`,
         `section.title-slide h2{color:rgba(255,255,255,.75);font-size:1.15em;font-weight:400;letter-spacing:.04em;text-shadow:0 2px 12px rgba(0,0,0,.15)}`,
         `section.title-slide h2::after{display:none}`,
-        // Logo on colored bg: invert to white
-        `section.title-slide .team-logo{filter:brightness(0) invert(1) drop-shadow(0 2px 16px rgba(0,0,0,.3));opacity:.9}`,
+        // Logo on colored bg: brighten + white drop-shadow so it pops
+        `section.title-slide .team-logo{filter:brightness(1.8) saturate(0) drop-shadow(0 2px 16px rgba(0,0,0,.4));opacity:.95}`,
         // ── Closing slide: also colored ──
         `section.closing-slide{background:linear-gradient(150deg,${c.primary} 0%,${darkPrimary} 100%)}`,
         `section.closing-slide::before{display:block;content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 70% 80%,rgba(255,255,255,.06) 0%,transparent 50%);pointer-events:none;z-index:0}`,
-        `section.closing-slide>*{position:relative;z-index:1}`,
+        // z-index lift — MUST exclude .bg-overlay
+        `section.closing-slide>*:not(.bg-overlay){position:relative;z-index:1}`,
         `section.closing-slide h2{color:#fff;-webkit-text-fill-color:#fff}`,
         `section.closing-slide h2::after{background:rgba(255,255,255,.3)}`,
         // ── Agent CTA on colored bg ──
-        `.style-bold section.closing-slide .agent-cta{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.15);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}`,
-        `.style-bold section.closing-slide .agent-cta::before{background:linear-gradient(135deg,rgba(255,255,255,.2),transparent)}`,
-        `.style-bold section.closing-slide .agent-name{color:#fff}`,
-        `.style-bold section.closing-slide .agent-details{color:rgba(255,255,255,.6)}`,
-        `.style-bold section.closing-slide .agent-avatar{border-color:rgba(255,255,255,.2);box-shadow:0 4px 20px rgba(0,0,0,.3)}`,
+        `section.closing-slide .agent-cta{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.15);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}`,
+        `section.closing-slide .agent-cta::before{background:linear-gradient(135deg,rgba(255,255,255,.2),transparent)}`,
+        `section.closing-slide .agent-name{color:#fff}`,
+        `section.closing-slide .agent-details{color:rgba(255,255,255,.6)}`,
+        `section.closing-slide .agent-avatar{border-color:rgba(255,255,255,.2);box-shadow:0 4px 20px rgba(0,0,0,.3)}`,
         // ── Content slides: slight accent tint ──
         `section:not(.title-slide):not(.closing-slide){background:${isDark ? '#0c0c14' : `linear-gradient(180deg,${bg2} 0%,${c.primary}04 100%)`}}`,
         // ── Bigger everything ──

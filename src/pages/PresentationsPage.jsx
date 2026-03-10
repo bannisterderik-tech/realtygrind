@@ -76,7 +76,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
   const [font, setFont]           = useState('sans-serif')
   const [colorScheme, setColorScheme] = useState('#2563eb')
   const [backgroundImage, setBackgroundImage] = useState('')  // URL or empty
-  const [overlayOpacity, setOverlayOpacity] = useState(8)    // 0-100 scale, default 8%
+  const [overlayOpacity, setOverlayOpacity] = useState(15)   // 0-100 scale, default 15%
   const [content, setContent]     = useState('')
   const [editingId, setEditingId] = useState(null) // presentation id when re-generating
 

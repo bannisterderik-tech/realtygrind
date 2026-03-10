@@ -16,6 +16,7 @@ const PROD_ORIGINS = [
 const DEV_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:4173',
+  'http://localhost:5190',
 ]
 const ALLOWED_ORIGINS = Deno.env.get('ENVIRONMENT') === 'production'
   ? PROD_ORIGINS

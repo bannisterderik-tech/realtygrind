@@ -2135,11 +2135,15 @@ function Dashboard({ theme, onToggleTheme }) {
   // Check connection status on mount and auto-sync if connected
   useEffect(() => {
     if (!user?.id) return
-    supabase.functions.invoke('google-auth', { body: { action: 'status' } })
-      .then(({ data }) => {
-        if (data?.connected) { setGcalConnected(true); syncGoogleCalendar() }
-      })
-      .catch(e => console.error('gcal status check error:', e))
+    // Ensure session is fresh before calling edge function (prevents stale JWT 401s)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session?.access_token) return
+      supabase.functions.invoke('google-auth', { body: { action: 'status' } })
+        .then(({ data }) => {
+          if (data?.connected) { setGcalConnected(true); syncGoogleCalendar() }
+        })
+        .catch(e => console.error('gcal status check error:', e))
+    })
   }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function connectGoogleCalendar() {

@@ -4,11 +4,17 @@ import { supabase } from '../lib/supabase'
 import { Loader } from '../design'
 import { isActiveBilling, isTeamMember, isPlatformAdmin } from '../lib/plans'
 
-async function getFreshToken() {
+async function getFreshToken(forceRefresh = false) {
+  // Force refresh: always get a new token from the server
+  if (forceRefresh) {
+    const { data } = await supabase.auth.refreshSession()
+    return data.session?.access_token || null
+  }
   const { data: { session } } = await supabase.auth.getSession()
   if (session?.access_token) {
     const expiresAt = session.expires_at ?? 0
-    if (expiresAt - Math.floor(Date.now() / 1000) < 60) {
+    // Refresh if expiring within 120s (wider window to prevent edge cases)
+    if (expiresAt - Math.floor(Date.now() / 1000) < 120) {
       const { data } = await supabase.auth.refreshSession()
       return data.session?.access_token || null
     }
@@ -162,28 +168,39 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
     setError('')
 
     try {
-      const token = await getFreshToken()
-      if (!token) throw new Error('Not authenticated')
+      async function callGenerate(forceRefresh = false) {
+        const token = await getFreshToken(forceRefresh)
+        if (!token) throw new Error('Session expired — please log in again.')
+        return fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-presentation`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              title, style, theme: presTheme, font, colorScheme, content,
+              backgroundImage: backgroundImage || null,
+              presentationId: editingId || null,
+            }),
+          }
+        )
+      }
 
-      const resp = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-presentation`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            title, style, theme: presTheme, font, colorScheme, content,
-            backgroundImage: backgroundImage || null,
-            presentationId: editingId || null,
-          }),
-        }
-      )
+      let resp = await callGenerate()
+      // If 401 (expired JWT), force-refresh the token and retry once
+      if (resp.status === 401) {
+        resp = await callGenerate(true)
+      }
 
       const data = await resp.json()
       if (!resp.ok) {
+        if (resp.status === 401) {
+          setError('Session expired — please log in again.')
+          return
+        }
         if (data.error === 'credits_exhausted') {
           setError(`You've used all ${data.limit} AI credits this month. Credits reset next month.`)
         } else if (data.error === 'presentations_limit_reached') {

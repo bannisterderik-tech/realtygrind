@@ -70,6 +70,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme }) 
   const [editingId, setEditingId] = useState(null) // presentation id when re-generating
 
   const generatingRef = useRef(false)
+  const iframeRef = useRef(null)
 
   // Gate checks
   const hasBilling = isPlatformAdmin(profile) || isActiveBilling(profile?.billing_status) || isTeamMember(profile, user?.id)
@@ -200,14 +201,18 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme }) 
     }
   }
 
-  // ESC key to exit present mode
+  // Keyboard: ESC exits present mode, arrow keys forwarded to iframe
   useEffect(() => {
     if (view !== 'present') return
-    function handleEsc(e) {
-      if (e.key === 'Escape') setView('list')
+    function handleKey(e) {
+      if (e.key === 'Escape') { setView('list'); return }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === ' ') {
+        e.preventDefault()
+        iframeRef.current?.contentWindow?.postMessage({ type: 'keydown', key: e.key }, '*')
+      }
     }
-    window.addEventListener('keydown', handleEsc)
-    return () => window.removeEventListener('keydown', handleEsc)
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
   }, [view])
 
   // Add-on checkout
@@ -255,6 +260,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme }) 
           ESC Exit
         </button>
         <iframe
+          ref={iframeRef}
           srcDoc={activePresentation.html}
           style={{ width: '100%', height: '100%', border: 'none' }}
           sandbox="allow-scripts allow-same-origin"

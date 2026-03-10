@@ -47,6 +47,8 @@ const VALID_THEMES = ['light', 'dark', 'brand']
 const VALID_FONTS  = ['sans-serif', 'serif', 'monospace']
 const VALID_COLORS = ['blue', 'gold', 'green', 'purple', 'red', 'neutral']
 
+function esc(s: string) { return s.replace(/</g, '&lt;').replace(/"/g, '&quot;') }
+
 Deno.serve(async (req) => {
   const CORS = getCorsHeaders(req)
 
@@ -205,60 +207,28 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── 9. Build system prompt ──────────────────────────────────────────────
-    // Get team logo if available
+    // ── 9. Build system prompt (slides-only approach) ──────────────────────
     const teamLogo = profile.teams?.team_prefs?.logo_url || null
     const teamName = profile.teams?.name || ''
 
-    const logoInstruction = teamLogo
-      ? `\n\nIMPORTANT — TEAM LOGO: The team's logo is provided as a base64 data URL. You MUST embed it as an <img> tag on the title slide (centered, max-width 180px, max-height 100px, margin-bottom 20px, above the title). Also include a smaller version (max-height 30px) in the bottom-left corner of every slide as a subtle brand watermark. The logo data URL is:\n${teamLogo}`
-      : teamName ? `\n\nNote: The team name is "${teamName}" — include it as a text watermark in the footer of each slide.` : ''
+    const systemPrompt = `You are a presentation builder for real estate professionals. Output ONLY a series of <section> HTML elements — one per slide. Do NOT output <!DOCTYPE>, <html>, <head>, <body>, <style>, or <script> tags. The shell template is provided separately.
 
-    const systemPrompt = `You are a presentation builder for real estate professionals. Generate a complete, self-contained HTML file that is a slideshow presentation.
+RULES:
+- First <section> must be the title slide with class="title-slide" and an <h1> for the title
+- Last <section> must be a closing/thank-you slide with class="closing-slide"
+- Each main point or bullet group = its own <section>
+- Use <h2> for slide headings, <h3> for subheadings
+- Use <ul>/<li> for bullet lists, <p> for paragraphs
+- Use <strong> and <em> for emphasis
+- Keep content concise — bullet points, not paragraphs
+- Do NOT include any <img> tags — images are injected separately
+- The closing slide should have a brief thank-you or closing message — agent contact info is added automatically
 
-REQUIREMENTS:
-1. Output a SINGLE HTML file with ALL CSS and JS inline — no external dependencies, CDNs, or imports
-2. Slides are <section> elements inside a <div class="slides"> container
-3. Implement keyboard navigation: Left/Right arrow keys to move between slides
-4. Include a slide counter (current / total) in the bottom-right corner
-5. The presentation MUST be responsive and work on all screen sizes
-6. Include smooth slide transitions (fade or slide)
-7. Support fullscreen display (the HTML will be rendered inside an iframe)
-
-STYLE PARAMETERS:
-- Style: ${style}
-  ${style === 'modern' ? '→ Clean gradients, rounded corners, generous whitespace, subtle shadows' : ''}
-  ${style === 'classic' ? '→ Traditional borders, structured layout, formal typography, clean lines' : ''}
-  ${style === 'minimal' ? '→ Maximum whitespace, very clean, minimal decoration, content-focused' : ''}
-  ${style === 'bold' ? '→ Large text, high contrast, strong visual hierarchy, impactful headers' : ''}
-- Theme: ${presTheme}
-  ${presTheme === 'light' ? '→ White/light gray backgrounds, dark text' : ''}
-  ${presTheme === 'dark' ? '→ Dark backgrounds (#1a1a2e or similar), light text' : ''}
-  ${presTheme === 'brand' ? '→ Gold/amber accent colors (#d97706, #b45309), warm tones' : ''}
-- Font: ${font}
-  ${font === 'sans-serif' ? '→ Use system fonts: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' : ''}
-  ${font === 'serif' ? '→ Use Georgia, "Times New Roman", serif for headings; sans-serif for body' : ''}
-  ${font === 'monospace' ? '→ Use "Courier New", monospace for headings; sans-serif for body text' : ''}
-- Color scheme: ${colorScheme}
-  ${colorScheme === 'blue' ? '→ Primary: #2563eb, accent: #3b82f6' : ''}
-  ${colorScheme === 'gold' ? '→ Primary: #b45309, accent: #d97706' : ''}
-  ${colorScheme === 'green' ? '→ Primary: #059669, accent: #10b981' : ''}
-  ${colorScheme === 'purple' ? '→ Primary: #7c3aed, accent: #8b5cf6' : ''}
-  ${colorScheme === 'red' ? '→ Primary: #dc2626, accent: #ef4444' : ''}
-  ${colorScheme === 'neutral' ? '→ Primary: #374151, accent: #6b7280' : ''}
-${logoInstruction}
-
-CONTENT:
 The presentation title is: "${title}"
-Each main point, paragraph, or bullet group should be its own slide.
-Include a title slide at the beginning and a closing/thank you slide at the end.
 
-The user's content/outline is provided below. Transform it into polished presentation slides with proper formatting, headers, and visual hierarchy.
+Output ONLY the <section> elements, nothing else. No markdown fencing, no explanation.`
 
-Output ONLY the complete HTML document starting with <!DOCTYPE html> and ending with </html>.
-Do not include any markdown fencing, explanation, or commentary — just the raw HTML.`
-
-    // ── 10. Call Claude API (non-streaming) ─────────────────────────────────
+    // ── 10. Call Claude API ─────────────────────────────────────────────────
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
     if (!anthropicKey) {
       if (creditReserved) { try { await admin.rpc('decrement_ai_credit', { user_id_param: user.id }) } catch { /* best-effort */ } }
@@ -266,7 +236,7 @@ Do not include any markdown fencing, explanation, or commentary — just the raw
     }
 
     const fetchController = new AbortController()
-    const fetchTimeout = setTimeout(() => fetchController.abort(), 55000)
+    const fetchTimeout = setTimeout(() => fetchController.abort(), 90000)
 
     let claudeResponse: Response
     try {
@@ -279,7 +249,7 @@ Do not include any markdown fencing, explanation, or commentary — just the raw
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 8192,
+          max_tokens: 4096,
           system: systemPrompt,
           messages: [{ role: 'user', content }],
           stream: false,
@@ -306,14 +276,14 @@ Do not include any markdown fencing, explanation, or commentary — just the raw
     }
 
     const claudeData = await claudeResponse.json()
-    let html = ''
+    let slidesHtml = ''
     if (claudeData.content && Array.isArray(claudeData.content)) {
       for (const block of claudeData.content) {
-        if (block.type === 'text') html += block.text
+        if (block.type === 'text') slidesHtml += block.text
       }
     }
 
-    if (!html.trim()) {
+    if (!slidesHtml.trim()) {
       if (creditReserved) {
         try { await admin.rpc('decrement_ai_credit', { user_id_param: user.id }) } catch { /* best-effort */ }
       }
@@ -321,16 +291,162 @@ Do not include any markdown fencing, explanation, or commentary — just the raw
     }
 
     // Strip markdown fencing if Claude wrapped it anyway
-    html = html.trim()
-    if (html.startsWith('```html')) html = html.slice(7)
-    else if (html.startsWith('```')) html = html.slice(3)
-    if (html.endsWith('```')) html = html.slice(0, -3)
-    html = html.trim()
+    slidesHtml = slidesHtml.trim()
+    if (slidesHtml.startsWith('```html')) slidesHtml = slidesHtml.slice(7)
+    else if (slidesHtml.startsWith('```')) slidesHtml = slidesHtml.slice(3)
+    if (slidesHtml.endsWith('```')) slidesHtml = slidesHtml.slice(0, -3)
+    slidesHtml = slidesHtml.trim()
 
-    // Count slides (rough heuristic: count <section> tags)
-    const slideCount = (html.match(/<section/gi) || []).length
+    // Count slides
+    const slideCount = (slidesHtml.match(/<section/gi) || []).length
 
-    // ── 11. Save to database ────────────────────────────────────────────────
+    // ── 11. Inject logo + agent CTA ────────────────────────────────────────
+    // Inject logo into title slide
+    if (teamLogo) {
+      const titleMatch = slidesHtml.match(/<section[^>]*class="[^"]*title-slide[^"]*"[^>]*>/)
+      if (titleMatch && titleMatch.index !== undefined) {
+        const pos = titleMatch.index + titleMatch[0].length
+        slidesHtml = slidesHtml.slice(0, pos) +
+          `\n<img src="${teamLogo}" class="team-logo" alt="${esc(teamName || 'Logo')}">` +
+          slidesHtml.slice(pos)
+      }
+    }
+
+    // Inject agent CTA card into closing slide
+    const agentName = profile.full_name || ''
+    const agentEmail = user.email || ''
+    const agentPhone = profile.habit_prefs?.bio?.phone || ''
+    const agentLicense = profile.habit_prefs?.bio?.license || ''
+
+    const ctaParts: string[] = []
+    if (agentEmail) ctaParts.push(esc(agentEmail))
+    if (agentPhone) ctaParts.push(esc(agentPhone))
+    if (agentLicense) ctaParts.push(`License #${esc(agentLicense)}`)
+
+    if (agentName || ctaParts.length > 0) {
+      const ctaHtml = `<div class="agent-cta">` +
+        (agentName ? `<div class="agent-name">${esc(agentName)}</div>` : '') +
+        (ctaParts.length ? `<div class="agent-details">${ctaParts.join(' &middot; ')}</div>` : '') +
+        `</div>`
+      const lastClose = slidesHtml.lastIndexOf('</section>')
+      if (lastClose > -1) {
+        slidesHtml = slidesHtml.slice(0, lastClose) + ctaHtml + slidesHtml.slice(lastClose)
+      }
+    }
+
+    // ── 12. Build full HTML from template ───────────────────────────────────
+    const COLORS: Record<string, { primary: string; accent: string; glow: string }> = {
+      blue:    { primary: '#1d4ed8', accent: '#3b82f6', glow: '59,130,246' },
+      gold:    { primary: '#92400e', accent: '#d97706', glow: '217,119,6' },
+      green:   { primary: '#047857', accent: '#10b981', glow: '16,185,129' },
+      purple:  { primary: '#6d28d9', accent: '#8b5cf6', glow: '139,92,246' },
+      red:     { primary: '#b91c1c', accent: '#ef4444', glow: '239,68,68' },
+      neutral: { primary: '#1f2937', accent: '#6b7280', glow: '107,114,128' },
+    }
+    const c = COLORS[colorScheme] || COLORS.blue
+    const isDark = presTheme === 'dark'
+    const isBrand = presTheme === 'brand'
+    const bg = isDark ? '#0f172a' : isBrand ? '#fffbf5' : '#ffffff'
+    const fg = isDark ? '#e2e8f0' : '#1e293b'
+    const mutedFg = isDark ? '#94a3b8' : '#64748b'
+    const cardBg = isDark ? 'rgba(255,255,255,.03)' : `rgba(${c.glow},.04)`
+    const cardBorder = isDark ? 'rgba(255,255,255,.06)' : `rgba(${c.glow},.12)`
+    const headingFont = font === 'serif' ? 'Georgia,"Palatino Linotype","Book Antiqua",serif'
+      : font === 'monospace' ? '"SF Mono","Fira Code","Courier New",monospace'
+      : '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif'
+    const bodyFont = '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif'
+
+    const logoWatermark = teamLogo
+      ? `<img src="${teamLogo}" class="watermark" alt="">`
+      : teamName ? `<span class="watermark-text">${esc(teamName)}</span>` : ''
+
+    let styleVariant = ''
+    if (style === 'bold') {
+      styleVariant = `section h1{font-size:3.8em;letter-spacing:-.04em}section h2{font-size:2.6em}section::before{width:8px}section li::before{height:4px;width:20px}`
+    } else if (style === 'minimal') {
+      styleVariant = `section{padding:80px 120px}section::before{display:none}section h2{font-weight:400;border-bottom:1px solid ${c.accent}25;letter-spacing:-.01em}section li::before{background:${mutedFg};opacity:.25;width:20px}`
+    } else if (style === 'classic') {
+      styleVariant = `section h2{letter-spacing:0;border-bottom:2px solid ${c.primary}}section li::before{width:8px;height:8px;border-radius:50%;top:17px}section::before{background:${c.primary}}`
+    }
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(title)}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:${bg};color:${fg};font-family:${bodyFont};overflow:hidden;height:100vh;width:100vw;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+h1,h2,h3{font-family:${headingFont}}
+.slides{position:relative;height:100vh;width:100vw}
+section{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:72px 96px 80px;opacity:0;pointer-events:none;transform:translateX(40px);transition:opacity .5s cubic-bezier(.4,0,.2,1),transform .5s cubic-bezier(.4,0,.2,1);overflow-y:auto}
+section.active{opacity:1;pointer-events:auto;transform:translateX(0)}
+section.title-slide{text-align:center;align-items:center;padding:80px}
+section.closing-slide{text-align:center;align-items:center}
+section::before{content:'';position:absolute;top:0;left:0;width:5px;height:100%;background:linear-gradient(180deg,${c.primary},${c.accent})}
+section.title-slide::before,section.closing-slide::before{display:none}
+section h1{font-size:3.2em;font-weight:700;color:${c.primary};margin-bottom:16px;line-height:1.1;letter-spacing:-.03em}
+section h2{font-size:2em;font-weight:600;color:${c.primary};margin-bottom:32px;line-height:1.2;letter-spacing:-.02em;padding-bottom:16px;border-bottom:3px solid ${c.accent}}
+section.title-slide h2,section.closing-slide h2{border-bottom:none;padding-bottom:0;font-weight:400;color:${mutedFg};font-size:1.15em;letter-spacing:.01em;margin-bottom:12px}
+section h3{font-size:.78em;font-weight:700;color:${c.accent};margin-bottom:16px;letter-spacing:.1em;text-transform:uppercase}
+section p{font-size:1.15em;line-height:1.8;margin-bottom:18px;color:${fg};max-width:840px}
+section ul{list-style:none;padding:0;margin-bottom:24px}
+section li{font-size:1.12em;line-height:1.75;padding:10px 0 10px 36px;position:relative;color:${fg}}
+section li::before{content:'';position:absolute;left:0;top:19px;width:16px;height:3px;background:${c.accent};border-radius:2px}
+section strong{color:${c.primary};font-weight:600}
+section em{font-style:italic}
+.team-logo{max-width:300px;max-height:160px;margin-bottom:32px;object-fit:contain}
+.watermark{position:fixed;bottom:22px;left:30px;max-height:30px;opacity:.2;z-index:10}
+.watermark-text{position:fixed;bottom:22px;left:30px;font-size:10px;opacity:.2;color:${mutedFg};z-index:10;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+.counter{position:fixed;bottom:22px;right:30px;font-size:12px;font-weight:500;color:${mutedFg};z-index:10;opacity:.45;letter-spacing:1px;font-variant-numeric:tabular-nums}
+.nav-arrows{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:10;opacity:0;transition:opacity .3s}
+body:hover .nav-arrows{opacity:.5}
+.nav-btn{width:36px;height:36px;border-radius:50%;border:1px solid ${isDark ? 'rgba(255,255,255,.12)' : 'rgba(0,0,0,.1)'};background:${isDark ? 'rgba(255,255,255,.04)' : 'rgba(0,0,0,.02)'};color:${mutedFg};cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .2s;-webkit-appearance:none;font-family:system-ui}
+.nav-btn:hover{background:${c.primary};color:#fff;border-color:${c.primary};transform:scale(1.1)}
+.agent-cta{margin-top:40px;padding:32px 48px;background:${cardBg};border-radius:16px;border:1px solid ${cardBorder};display:inline-block;min-width:340px;text-align:center}
+.agent-cta .agent-name{font-size:1.35em;font-weight:700;color:${c.primary};margin-bottom:12px;font-family:${headingFont};letter-spacing:-.01em}
+.agent-cta .agent-details{font-size:.95em;color:${mutedFg};line-height:2;letter-spacing:.02em}
+.progress{position:fixed;bottom:0;left:0;height:3px;background:linear-gradient(90deg,${c.primary},${c.accent});z-index:10;transition:width .4s ease;opacity:.6}
+${styleVariant}
+@media(max-width:768px){
+section{padding:44px 32px 64px}
+section h1{font-size:2.2em}
+section h2{font-size:1.5em}
+section.title-slide{padding:48px 32px}
+.team-logo{max-width:200px;max-height:110px}
+.agent-cta{min-width:auto;padding:24px 28px}
+}
+</style>
+</head>
+<body>
+${logoWatermark}
+<div class="counter"></div>
+<div class="progress" style="width:0%"></div>
+<div class="nav-arrows">
+<button class="nav-btn nav-prev" aria-label="Previous">&#8249;</button>
+<button class="nav-btn nav-next" aria-label="Next">&#8250;</button>
+</div>
+<div class="slides">
+${slidesHtml}
+</div>
+<script>
+(function(){
+var ss=document.querySelectorAll('.slides section'),counter=document.querySelector('.counter'),bar=document.querySelector('.progress'),cur=0;
+function show(i){if(i<0||i>=ss.length)return;ss[cur].classList.remove('active');cur=i;ss[cur].classList.add('active');counter.textContent=(cur+1)+' / '+ss.length;bar.style.width=((cur+1)/ss.length*100)+'%'}
+if(ss.length)show(0);
+function nav(key){if(key==='ArrowRight'||key===' ')show(cur+1);else if(key==='ArrowLeft')show(cur-1)}
+document.addEventListener('keydown',function(e){nav(e.key)});
+window.addEventListener('message',function(e){if(e.data&&e.data.type==='keydown')nav(e.data.key)});
+var pb=document.querySelector('.nav-prev'),nb=document.querySelector('.nav-next');
+if(pb)pb.addEventListener('click',function(e){e.stopPropagation();show(cur-1)});
+if(nb)nb.addEventListener('click',function(e){e.stopPropagation();show(cur+1)});
+document.addEventListener('click',function(e){if(e.target.closest('.nav-arrows'))return;if(e.clientX>window.innerWidth/2)show(cur+1);else show(cur-1)});
+})();
+</script>
+</body>
+</html>`
+
+    // ── 13. Save to database ────────────────────────────────────────────────
     const presentationData = {
       user_id: user.id,
       team_id: profile.team_id || null,

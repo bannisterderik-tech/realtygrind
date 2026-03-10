@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
     // ── 2. Fetch profile + team info ────────────────────────────────────────
     const { data: profile } = await admin
       .from('profiles')
-      .select('*, teams(id, name, invite_code, created_by, team_prefs, max_members, presentations_addon_status)')
+      .select('*, teams(id, name, invite_code, created_by, team_prefs, max_members, presentations_addon_status, pres_generations_used, pres_generations_reset)')
       .eq('id', user.id)
       .single()
 
@@ -135,23 +135,25 @@ Deno.serve(async (req) => {
       return json({ error: 'disabled_by_team', message: 'Presentation Builder has been disabled by your team owner.' }, 403)
     }
 
-    // ── 5b. Monthly presentation limit per team (45/mo) ───────────────────
-    if (!isAdmin && profile.team_id) {
+    // ── 5b. Monthly presentation generation limit per team (45/mo) ─────────
+    // Tracks total generations (not stored presentations) — deleting doesn't free quota
+    if (!isAdmin && profile.team_id && profile.teams) {
       const month = currentMonth()
-      const startOfMonth = `${month}-01T00:00:00.000Z`
-      const { count } = await admin
-        .from('presentations')
-        .select('id', { count: 'exact', head: true })
-        .eq('team_id', profile.team_id)
-        .gte('created_at', startOfMonth)
+      let genUsed = profile.teams.pres_generations_used || 0
+      const genReset = profile.teams.pres_generations_reset || ''
 
-      const teamPresCount = count ?? 0
-      if (teamPresCount >= TEAM_PRESENTATION_LIMIT) {
+      // Reset counter if month rolled over
+      if (genReset !== month) {
+        await admin.from('teams').update({ pres_generations_used: 0, pres_generations_reset: month }).eq('id', profile.team_id)
+        genUsed = 0
+      }
+
+      if (genUsed >= TEAM_PRESENTATION_LIMIT) {
         return json({
           error: 'presentations_limit_reached',
           message: `Your team has reached the monthly limit of ${TEAM_PRESENTATION_LIMIT} presentations.`,
           limit: TEAM_PRESENTATION_LIMIT,
-          used: teamPresCount,
+          used: genUsed,
         }, 429)
       }
     }
@@ -647,6 +649,15 @@ document.addEventListener('click',function(e){if(e.target.closest('.nav-arrows')
         return json({ error: 'Failed to save presentation.' }, 500)
       }
       savedId = inserted.id
+    }
+
+    // ── 14. Increment team generation counter (not affected by deletes) ────
+    if (profile.team_id && !isAdmin) {
+      const month = currentMonth()
+      // Fetch current value fresh to avoid stale data from earlier check
+      const { data: teamRow } = await admin.from('teams').select('pres_generations_used, pres_generations_reset').eq('id', profile.team_id).single()
+      const curUsed = (teamRow?.pres_generations_reset === month) ? (teamRow?.pres_generations_used || 0) : 0
+      await admin.from('teams').update({ pres_generations_used: curUsed + 1, pres_generations_reset: month }).eq('id', profile.team_id)
     }
 
     return json({

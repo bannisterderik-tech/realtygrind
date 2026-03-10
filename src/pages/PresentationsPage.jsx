@@ -104,20 +104,15 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
       })
   }, [user?.id])
 
-  // Fetch team monthly presentation usage
+  // Read team monthly generation usage from profile (tracks generations, not stored presentations)
   useEffect(() => {
-    const teamId = profile?.team_id
-    if (!teamId) return
+    const team = profile?.teams
+    if (!team) return
     const now = new Date()
-    const startOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01T00:00:00.000Z`
-    supabase.from('presentations')
-      .select('id', { count: 'exact', head: true })
-      .eq('team_id', teamId)
-      .gte('created_at', startOfMonth)
-      .then(({ count }) => {
-        setTeamMonthlyUsage({ used: count ?? 0, limit: 45 })
-      })
-  }, [profile?.team_id, presentations.length]) // re-fetch after generation updates presentations list
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const used = (team.pres_generations_reset === currentMonth) ? (team.pres_generations_used || 0) : 0
+    setTeamMonthlyUsage({ used, limit: 45 })
+  }, [profile?.teams?.pres_generations_used, profile?.teams?.pres_generations_reset])
 
   function resetForm() {
     setTitle('Untitled Presentation')

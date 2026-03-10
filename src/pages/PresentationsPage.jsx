@@ -33,17 +33,20 @@ const FONTS = [
   { value: 'serif',      label: 'Serif (Elegant)' },
   { value: 'monospace',  label: 'Monospace (Technical)' },
 ]
-const COLORS = [
-  { value: 'blue',    label: 'Blue' },
-  { value: 'gold',    label: 'Gold' },
-  { value: 'green',   label: 'Green' },
-  { value: 'purple',  label: 'Purple' },
-  { value: 'red',     label: 'Red' },
-  { value: 'neutral', label: 'Neutral' },
+const COLOR_PRESETS = [
+  { value: '#2563eb', label: 'Blue' },
+  { value: '#d97706', label: 'Gold' },
+  { value: '#059669', label: 'Green' },
+  { value: '#7c3aed', label: 'Purple' },
+  { value: '#dc2626', label: 'Red' },
+  { value: '#374151', label: 'Neutral' },
 ]
 
 const STYLE_COLORS = {
   modern: '#3b82f6', classic: '#6b7280', minimal: '#94a3b8', bold: '#ef4444',
+}
+const LEGACY_COLOR_MAP = {
+  blue: '#2563eb', gold: '#d97706', green: '#059669', purple: '#7c3aed', red: '#dc2626', neutral: '#374151',
 }
 const COLOR_HEX = {
   blue: '#2563eb', gold: '#d97706', green: '#059669', purple: '#8b5cf6', red: '#dc2626', neutral: '#6b7280',
@@ -64,7 +67,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
   const [style, setStyle]         = useState('modern')
   const [presTheme, setPresTheme] = useState('light')
   const [font, setFont]           = useState('sans-serif')
-  const [colorScheme, setColorScheme] = useState('blue')
+  const [colorScheme, setColorScheme] = useState('#2563eb')
   const [content, setContent]     = useState('')
   const [editingId, setEditingId] = useState(null) // presentation id when re-generating
 
@@ -114,7 +117,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
     setStyle(pres.style)
     setPresTheme(pres.theme)
     setFont(pres.font)
-    setColorScheme(pres.color_scheme)
+    setColorScheme(LEGACY_COLOR_MAP[pres.color_scheme] || pres.color_scheme || '#2563eb')
     setContent(pres.content || '')
     setEditingId(pres.id)
     setActivePresentation(null)
@@ -395,7 +398,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
                   gap: 14,
                 }}>
                   {presentations.map(pres => {
-                    const sc = COLOR_HEX[pres.color_scheme] || '#6b7280'
+                    const sc = pres.color_scheme?.startsWith('#') ? pres.color_scheme : (COLOR_HEX[pres.color_scheme] || '#6b7280')
                     return (
                       <div key={pres.id} className="card" style={{
                         padding: 22, display: 'flex', flexDirection: 'column',
@@ -426,7 +429,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
                             background: `${sc}18`, color: sc, border: `1px solid ${sc}30`,
                             fontFamily: "'JetBrains Mono',monospace",
                           }}>
-                            {pres.color_scheme?.toUpperCase()}
+                            {pres.color_scheme?.startsWith('#') ? pres.color_scheme.toUpperCase() : pres.color_scheme?.toUpperCase()}
                           </span>
                           <span style={{
                             fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 600,
@@ -563,12 +566,46 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
                   <div>
                     <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)',
                       letterSpacing: .8, textTransform: 'uppercase', marginBottom: 6 }}>
-                      Color Scheme
+                      Brand Color
                     </label>
-                    <select className="field-input" value={colorScheme} onChange={e => setColorScheme(e.target.value)}
-                      style={{ width: '100%', padding: '10px 14px', fontSize: 13 }}>
-                      {COLORS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                    </select>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                      {COLOR_PRESETS.map(c => (
+                        <button key={c.value} title={c.label} onClick={() => setColorScheme(c.value)}
+                          style={{
+                            width: 28, height: 28, borderRadius: '50%', border: colorScheme === c.value ? '2.5px solid var(--fg)' : '2px solid transparent',
+                            background: c.value, cursor: 'pointer', padding: 0, outline: 'none',
+                            boxShadow: colorScheme === c.value ? `0 0 0 2px var(--bg), 0 0 0 4px ${c.value}` : 'none',
+                            transition: 'all .15s',
+                          }} />
+                      ))}
+                      <div style={{ position: 'relative', width: 28, height: 28, flexShrink: 0 }}>
+                        <input type="color" value={colorScheme.startsWith('#') ? colorScheme : '#2563eb'}
+                          onChange={e => setColorScheme(e.target.value)}
+                          style={{
+                            position: 'absolute', inset: 0, width: 28, height: 28, padding: 0, border: 'none',
+                            borderRadius: '50%', cursor: 'pointer', background: 'none',
+                          }}
+                          title="Pick custom color" />
+                        <div style={{
+                          position: 'absolute', inset: 0, borderRadius: '50%', pointerEvents: 'none',
+                          background: 'conic-gradient(red,yellow,lime,aqua,blue,magenta,red)',
+                          border: !COLOR_PRESETS.some(p => p.value === colorScheme) ? '2.5px solid var(--fg)' : '2px solid transparent',
+                          boxShadow: !COLOR_PRESETS.some(p => p.value === colorScheme) ? `0 0 0 2px var(--bg), 0 0 0 4px ${colorScheme}` : 'none',
+                        }} />
+                      </div>
+                      <input type="text" value={colorScheme} onChange={e => {
+                          const v = e.target.value
+                          if (/^#[0-9a-fA-F]{0,6}$/.test(v)) setColorScheme(v)
+                        }}
+                        onBlur={() => { if (!/^#[0-9a-fA-F]{6}$/.test(colorScheme)) setColorScheme('#2563eb') }}
+                        style={{
+                          width: 80, padding: '6px 8px', fontSize: 12, fontFamily: 'monospace',
+                          border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)',
+                          color: 'var(--fg)', textTransform: 'uppercase',
+                        }}
+                        placeholder="#2563EB"
+                        maxLength={7} />
+                    </div>
                   </div>
                 </div>
 

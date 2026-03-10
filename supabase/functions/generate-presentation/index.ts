@@ -46,8 +46,26 @@ const VALID_STYLES = ['modern', 'classic', 'minimal', 'bold']
 const VALID_THEMES = ['light', 'dark']
 const VALID_FONTS  = ['sans-serif', 'serif', 'monospace']
 const VALID_COLORS = ['blue', 'gold', 'green', 'purple', 'red', 'neutral']
+const HEX_RE = /^#[0-9a-fA-F]{6}$/
 
 function esc(s: string) { return s.replace(/</g, '&lt;').replace(/"/g, '&quot;') }
+
+// Derive accent/glow/secondary from a hex primary color
+function hexToRgb(hex: string) {
+  const n = parseInt(hex.slice(1), 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255] as const
+}
+function rgbToHex(r: number, g: number, b: number) {
+  return '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('')
+}
+function deriveColorSet(hex: string) {
+  const [r, g, b] = hexToRgb(hex)
+  // Accent: lighter version (mix toward white)
+  const accent = rgbToHex(r + (255 - r) * 0.45, g + (255 - g) * 0.45, b + (255 - b) * 0.45)
+  // Secondary: shift hue slightly by rotating toward complementary
+  const secondary = rgbToHex(r + (255 - r) * 0.3, g + (255 - g) * 0.2, b + (255 - b) * 0.55)
+  return { primary: hex, accent, glow: `${r},${g},${b}`, secondary }
+}
 
 Deno.serve(async (req) => {
   const CORS = getCorsHeaders(req)
@@ -185,7 +203,8 @@ Deno.serve(async (req) => {
     const style = VALID_STYLES.includes(rawStyle as string) ? rawStyle as string : 'modern'
     const presTheme = VALID_THEMES.includes(rawTheme as string) ? rawTheme as string : 'light'
     const font = VALID_FONTS.includes(rawFont as string) ? rawFont as string : 'sans-serif'
-    const colorScheme = VALID_COLORS.includes(rawColor as string) ? rawColor as string : 'blue'
+    const colorScheme = VALID_COLORS.includes(rawColor as string) ? rawColor as string
+      : (typeof rawColor === 'string' && HEX_RE.test(rawColor)) ? rawColor : 'blue'
     const content = typeof rawContent === 'string' ? rawContent.trim() : ''
 
     if (!content) return json({ error: 'Content is required.' }, 400)
@@ -348,7 +367,7 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
       red:     { primary: '#dc2626', accent: '#fb923c', glow: '220,38,38', secondary: '#f87171' },
       neutral: { primary: '#374151', accent: '#9ca3af', glow: '55,65,81', secondary: '#6b7280' },
     }
-    const c = COLORS[colorScheme] || COLORS.blue
+    const c = HEX_RE.test(colorScheme) ? deriveColorSet(colorScheme) : (COLORS[colorScheme] || COLORS.blue)
     const isDark = presTheme === 'dark'
     const bg = isDark ? '#0a0a0f' : '#fafafa'
     const bg2 = isDark ? '#12121a' : '#ffffff'

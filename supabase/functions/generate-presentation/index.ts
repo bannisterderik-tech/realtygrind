@@ -37,6 +37,9 @@ const CREDIT_LIMITS: Record<string, number> = {
   brokerage: 500,
 }
 
+// Monthly presentation generation limit per team
+const TEAM_PRESENTATION_LIMIT = 45
+
 function currentMonth() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -129,6 +132,27 @@ Deno.serve(async (req) => {
     // ── 5. Team toggle gate ─────────────────────────────────────────────────
     if (profile.team_id && profile.teams?.team_prefs?.ai_tools?.presentations_enabled === false) {
       return json({ error: 'disabled_by_team', message: 'Presentation Builder has been disabled by your team owner.' }, 403)
+    }
+
+    // ── 5b. Monthly presentation limit per team (45/mo) ───────────────────
+    if (!isAdmin && profile.team_id) {
+      const month = currentMonth()
+      const startOfMonth = `${month}-01T00:00:00.000Z`
+      const { count } = await admin
+        .from('presentations')
+        .select('id', { count: 'exact', head: true })
+        .eq('team_id', profile.team_id)
+        .gte('created_at', startOfMonth)
+
+      const teamPresCount = count ?? 0
+      if (teamPresCount >= TEAM_PRESENTATION_LIMIT) {
+        return json({
+          error: 'presentations_limit_reached',
+          message: `Your team has reached the monthly limit of ${TEAM_PRESENTATION_LIMIT} presentations.`,
+          limit: TEAM_PRESENTATION_LIMIT,
+          used: teamPresCount,
+        }, 429)
+      }
     }
 
     // ── 6. Credit gate ──────────────────────────────────────────────────────

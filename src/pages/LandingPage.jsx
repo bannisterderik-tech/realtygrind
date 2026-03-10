@@ -926,12 +926,12 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
       ═══════════════════════════════════════════════════════════ */}
       <FeatureSection theme={theme} reverse tinted num="14" label="AI Presentations" labelColor="#0ea5e9"
         title="Webinars that" boldWord="convert."
-        desc="Generate stunning, branded webinar presentations to attract and convert leads. Pick your colors, style preset, and background — AI builds a polished multi-slide deck ready to present at virtual events and capture new clients."
+        desc="Generate stunning, branded webinar presentations to attract and convert leads. Available as a $199/month add-on for Team plans — AI builds polished multi-slide decks ready to present at virtual events and capture new clients."
         bullets={[
+          ['💎','$199/mo add-on for Team plan · 45 presentations/month'],
           ['🎨','Custom brand colors with hex input and color wheel'],
           ['🖼️','Team background images set by your leader'],
           ['📐','4 style presets — Modern, Classic, Minimal, Bold'],
-          ['🎯','Lead-gen topics, market insights, and agent CTA auto-built'],
           ['🖥️','Fullscreen present mode with keyboard navigation'],
         ]}
         aiNote="Claude crafts compelling webinar content tailored to your market area to help you generate and convert leads.">

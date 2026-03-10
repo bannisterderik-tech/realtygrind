@@ -81,6 +81,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
   const [editingId, setEditingId] = useState(null) // presentation id when re-generating
 
   const generatingRef = useRef(false)
+  const pollRef = useRef(null) // polling interval for background generation
   const iframeRef = useRef(null)
 
   // Gate checks
@@ -95,7 +96,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
   useEffect(() => {
     if (!user?.id) return
     supabase.from('presentations')
-      .select('id, title, style, theme, font, color_scheme, slide_count, created_at, updated_at')
+      .select('id, title, style, theme, font, color_scheme, slide_count, status, created_at, updated_at')
       .eq('user_id', user.id)
       .order('updated_at', { ascending: false })
       .limit(100)
@@ -157,6 +158,11 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
     }
   }
 
+  // Clean up polling on unmount
+  useEffect(() => {
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [])
+
   const generatePresentation = useCallback(async () => {
     if (generatingRef.current || !content.trim()) return
     generatingRef.current = true
@@ -211,11 +217,72 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
         return
       }
 
+      // ── Background generation: poll for completion ──
+      if (data.status === 'generating') {
+        const presId = data.id
+        if (editingId) setEditingId(presId)
+
+        // Refresh list immediately to show the generating card
+        const { data: updated } = await supabase.from('presentations')
+          .select('id, title, style, theme, font, color_scheme, slide_count, status, created_at, updated_at')
+          .eq('user_id', user.id)
+          .order('updated_at', { ascending: false })
+          .limit(100)
+        setPresentations(updated || [])
+
+        // Poll every 3 seconds for completion
+        const startTime = Date.now()
+        if (pollRef.current) clearInterval(pollRef.current)
+        pollRef.current = setInterval(async () => {
+          try {
+            const { data: row } = await supabase
+              .from('presentations')
+              .select('id, title, html, slide_count, status')
+              .eq('id', presId)
+              .single()
+
+            if (row?.status === 'ready' && row.html) {
+              // Done — show the presentation
+              clearInterval(pollRef.current)
+              pollRef.current = null
+              setActivePresentation({ id: row.id, title: row.title, html: row.html, slideCount: row.slide_count })
+              setGenerating(false)
+              generatingRef.current = false
+              // Refresh list
+              const { data: listData } = await supabase.from('presentations')
+                .select('id, title, style, theme, font, color_scheme, slide_count, status, created_at, updated_at')
+                .eq('user_id', user.id)
+                .order('updated_at', { ascending: false })
+                .limit(100)
+              setPresentations(listData || [])
+            } else if (row?.status === 'failed') {
+              // Generation failed
+              clearInterval(pollRef.current)
+              pollRef.current = null
+              setError('Presentation generation failed. Please try again.')
+              setGenerating(false)
+              generatingRef.current = false
+            } else if (Date.now() - startTime > 150000) {
+              // Safety timeout: 150 seconds
+              clearInterval(pollRef.current)
+              pollRef.current = null
+              setError('Generation is taking longer than expected. Check back shortly — your presentation may still be building.')
+              setGenerating(false)
+              generatingRef.current = false
+            }
+          } catch (pollErr) {
+            console.error('Poll error:', pollErr)
+          }
+        }, 3000)
+        return // Don't fall through to finally — polling handles cleanup
+      }
+
+      // Fallback: synchronous response (shouldn't happen with new backend, but safe)
       setActivePresentation(data)
 
       // Refresh list
       const { data: updated } = await supabase.from('presentations')
-        .select('id, title, style, theme, font, color_scheme, slide_count, created_at, updated_at')
+        .select('id, title, style, theme, font, color_scheme, slide_count, status, created_at, updated_at')
         .eq('user_id', user.id)
         .order('updated_at', { ascending: false })
         .limit(100)
@@ -226,10 +293,13 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
       console.error('Generation error:', err)
       setError(err.message || 'Failed to generate presentation. Please try again.')
     } finally {
-      setGenerating(false)
-      generatingRef.current = false
+      if (!pollRef.current) {
+        // Only clean up if we're NOT polling (polling handles its own cleanup)
+        setGenerating(false)
+        generatingRef.current = false
+      }
     }
-  }, [title, style, presTheme, font, colorScheme, content, editingId, user?.id])
+  }, [title, style, presTheme, font, colorScheme, content, editingId, user?.id, backgroundImage, overlayOpacity])
 
   async function deletePresentation(id) {
     const { error: err } = await supabase.from('presentations').delete().eq('id', id).eq('user_id', user.id)
@@ -498,21 +568,36 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
                         </div>
 
                         <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
-                          <button className="btn-primary" onClick={() => loadAndPresent(pres.id)}
-                            style={{ flex: 1, fontSize: 12, padding: '8px 0' }}>
-                            Present
-                          </button>
-                          <button className="btn-outline" onClick={() => {
-                            // Load full content then open re-generate form
-                            supabase.from('presentations')
-                              .select('*')
-                              .eq('id', pres.id)
-                              .single()
-                              .then(({ data }) => { if (data) openRegenerate(data) })
-                          }}
-                            style={{ flex: 1, fontSize: 12, padding: '8px 0' }}>
-                            Edit
-                          </button>
+                          {pres.status === 'generating' ? (
+                            <div style={{
+                              flex: 1, textAlign: 'center', fontSize: 12, padding: '8px 0',
+                              color: '#d97706', fontWeight: 600,
+                              animation: 'pulse 2s ease-in-out infinite',
+                            }}>
+                              Building...
+                            </div>
+                          ) : pres.status === 'failed' ? (
+                            <button className="btn-outline" onClick={() => {
+                              supabase.from('presentations').select('*').eq('id', pres.id).single()
+                                .then(({ data }) => { if (data) openRegenerate(data) })
+                            }} style={{ flex: 1, fontSize: 12, padding: '8px 0', color: '#dc2626', borderColor: 'rgba(220,38,38,.3)' }}>
+                              Retry
+                            </button>
+                          ) : (
+                            <>
+                              <button className="btn-primary" onClick={() => loadAndPresent(pres.id)}
+                                style={{ flex: 1, fontSize: 12, padding: '8px 0' }}>
+                                Present
+                              </button>
+                              <button className="btn-outline" onClick={() => {
+                                supabase.from('presentations').select('*').eq('id', pres.id).single()
+                                  .then(({ data }) => { if (data) openRegenerate(data) })
+                              }}
+                                style={{ flex: 1, fontSize: 12, padding: '8px 0' }}>
+                                Edit
+                              </button>
+                            </>
+                          )}
                         </div>
 
                         {/* Delete confirmation */}
@@ -763,7 +848,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme, on
                       opacity: generating || !content.trim() ? 0.6 : 1,
                       cursor: generating || !content.trim() ? 'not-allowed' : 'pointer',
                     }}>
-                    {generating ? 'Generating...' : editingId ? 'Re-generate' : 'Generate Presentation'}
+                    {generating ? 'Building presentation...' : editingId ? 'Re-generate' : 'Generate Presentation'}
                   </button>
                 </div>
               </div>

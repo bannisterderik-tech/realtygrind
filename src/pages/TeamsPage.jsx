@@ -2964,6 +2964,69 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               </button>
                             </div>
 
+                            {/* ── Presentation Wide Logo ── */}
+                            <div style={{ height: 1, background: 'var(--b1)', margin: '16px 0' }} />
+                            <div style={{ marginBottom: 16 }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
+                                Presentation Logo <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--muted)' }}>(wide/horizontal)</span>
+                              </div>
+                              <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12 }}>
+                                Upload a horizontal logo for presentation title slides. Recommended: transparent PNG, at least 600px wide.
+                              </div>
+                              {teamData?.team_prefs?.ai_tools?.presentation_logo ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                  <div style={{ padding: 12, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)', display: 'inline-flex', alignItems: 'center' }}>
+                                    <img src={teamData.team_prefs.ai_tools.presentation_logo} alt="Presentation logo"
+                                      style={{ maxWidth: 200, maxHeight: 60, objectFit: 'contain' }} />
+                                  </div>
+                                  <button onClick={async () => {
+                                    const newAiTools = { ...(teamData?.team_prefs?.ai_tools || {}), presentation_logo: null }
+                                    const newPrefs = { ...(teamData?.team_prefs || {}), ai_tools: newAiTools }
+                                    try {
+                                      const { error } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                      if (error) throw error
+                                      setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+                                    } catch (err) { console.error('Remove logo error:', err) }
+                                  }} style={{
+                                    fontSize: 11, padding: '6px 14px', borderRadius: 6, cursor: 'pointer',
+                                    background: 'rgba(220,38,38,.08)', color: '#dc2626', border: '1px solid rgba(220,38,38,.2)',
+                                    fontWeight: 600,
+                                  }}>Remove</button>
+                                </div>
+                              ) : (
+                                <label style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px',
+                                  borderRadius: 8, border: '2px dashed var(--border)', cursor: 'pointer',
+                                  fontSize: 12, color: 'var(--muted)', transition: 'border-color .2s',
+                                }}>
+                                  <span style={{ fontSize: 16 }}>+</span>
+                                  <span>Upload Wide Logo</span>
+                                  <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" style={{ display: 'none' }}
+                                    onChange={async (e) => {
+                                      const file = e.target.files?.[0]
+                                      if (!file) return
+                                      if (file.size > 2 * 1024 * 1024) { setError('Image must be under 2MB'); return }
+                                      e.target.value = ''
+                                      const reader = new FileReader()
+                                      reader.onload = async () => {
+                                        const dataUrl = reader.result
+                                        const newAiTools = { ...(teamData?.team_prefs?.ai_tools || {}), presentation_logo: dataUrl }
+                                        const newPrefs = { ...(teamData?.team_prefs || {}), ai_tools: newAiTools }
+                                        try {
+                                          const { error } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                          if (error) throw error
+                                          setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+                                        } catch (err) {
+                                          console.error('Upload logo error:', err)
+                                          setError('Failed to upload logo.')
+                                        }
+                                      }
+                                      reader.readAsDataURL(file)
+                                    }} />
+                                </label>
+                              )}
+                            </div>
+
                             {/* ── Presentation Background Images ── */}
                             <div style={{ height: 1, background: 'var(--b1)', margin: '16px 0' }} />
                             <div>

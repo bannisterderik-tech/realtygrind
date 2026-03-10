@@ -216,6 +216,7 @@ Deno.serve(async (req) => {
       colorScheme: rawColor,
       content: rawContent,
       backgroundImage: rawBgImage,
+      overlayOpacity: rawOverlayOpacity,
       presentationId,
     } = reqBody as {
       title?: string
@@ -225,6 +226,7 @@ Deno.serve(async (req) => {
       colorScheme?: string
       content?: string
       backgroundImage?: string
+      overlayOpacity?: number
       presentationId?: string
     }
 
@@ -239,6 +241,8 @@ Deno.serve(async (req) => {
     const teamBackgrounds: string[] = profile.teams?.team_prefs?.ai_tools?.presentation_backgrounds || []
     const backgroundImage = (typeof rawBgImage === 'string' && rawBgImage && teamBackgrounds.includes(rawBgImage))
       ? rawBgImage : ''
+    const overlayOpacity = (typeof rawOverlayOpacity === 'number' && rawOverlayOpacity >= 0 && rawOverlayOpacity <= 100)
+      ? rawOverlayOpacity : 8 // default 8%
 
     if (!content) return json({ error: 'Content is required.' }, 400)
     if (content.length > 8000) return json({ error: 'Content must be under 8000 characters.' }, 400)
@@ -260,7 +264,9 @@ Deno.serve(async (req) => {
     }
 
     // ── 9. Build system prompt (slides-only approach) ──────────────────────
-    const teamLogo = profile.teams?.team_prefs?.logo_url || null
+    // Prefer wide presentation logo, fallback to square team logo
+    const presentationLogo = profile.teams?.team_prefs?.ai_tools?.presentation_logo || null
+    const teamLogo = presentationLogo || profile.teams?.team_prefs?.logo_url || null
     const teamName = profile.teams?.name || ''
 
     const systemPrompt = `You are a presentation builder for real estate professionals. Output ONLY a series of <section> HTML elements — one per slide. Do NOT output <!DOCTYPE>, <html>, <head>, <body>, <style>, or <script> tags. The shell template is provided separately.
@@ -426,60 +432,112 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
     let styleBodyClass = style
     if (style === 'modern') {
       styleCSS = [
-        // Gradient mesh title slide
-        `section.title-slide{background:${bg}}`,
-        `section.title-slide::after{content:'';position:absolute;top:-20%;right:-10%;width:70%;height:80%;background:radial-gradient(circle,rgba(${c.glow},.12) 0%,transparent 70%);filter:blur(60px);pointer-events:none;z-index:0}`,
-        `section.title-slide::before{display:block;content:'';position:absolute;bottom:0;left:20%;width:50%;height:60%;background:radial-gradient(circle,rgba(${c.glow},.06) 0%,transparent 70%);filter:blur(80px);pointer-events:none;z-index:0}`,
+        // Gradient mesh title slide — layered ambient orbs
+        `section.title-slide{background:${isDark ? `linear-gradient(160deg,${bg} 0%,#0d0d18 40%,#0a0a12 100%)` : `linear-gradient(160deg,${bg} 0%,${bg2} 40%,#f0f4ff 100%)`}}`,
+        `section.title-slide::after{content:'';position:absolute;top:-25%;right:-10%;width:55%;height:65%;background:radial-gradient(ellipse at 60% 40%,rgba(${c.glow},.10) 0%,transparent 60%);filter:blur(80px);pointer-events:none;z-index:0}`,
+        `section.title-slide::before{display:block;content:'';position:absolute;bottom:-15%;left:5%;width:45%;height:55%;background:radial-gradient(ellipse at 40% 60%,rgba(${c.glow},.05) 0%,transparent 60%);filter:blur(100px);pointer-events:none;z-index:0}`,
         `section.title-slide>*{position:relative;z-index:1}`,
-        // Gradient text h1
+        // Gradient text h1 — vivid 3-stop
         `section h1{background:linear-gradient(135deg,${c.primary} 0%,${c.accent} 50%,${c.secondary} 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}`,
-        // Accent line
-        `section::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;background:linear-gradient(180deg,${c.primary},${c.accent},transparent);opacity:.6}`,
-        // Subtle dot grid bg on content slides
-        `section:not(.title-slide):not(.closing-slide){background-image:radial-gradient(${isDark ? 'rgba(255,255,255,.03)' : 'rgba(0,0,0,.03)'} 1px,transparent 1px);background-size:24px 24px}`,
+        // 5px gradient accent bar (left edge)
+        `section::before{content:'';position:absolute;top:0;left:0;width:5px;height:100%;background:linear-gradient(180deg,${c.primary},${c.accent},transparent);opacity:.6;border-radius:0 3px 3px 0}`,
+        // 48px h2 underline
+        `section h2::after{width:48px;height:3px;background:linear-gradient(90deg,${c.primary},${c.accent})}`,
+        // Very subtle dot grid bg on content slides
+        `section:not(.title-slide):not(.closing-slide){background-image:radial-gradient(${isDark ? 'rgba(255,255,255,.018)' : 'rgba(0,0,0,.02)'} 1px,transparent 1px);background-size:28px 28px}`,
+        // Subtle glow on hover for li
+        `section li{transition:transform .2s ease}`,
       ].join('\n')
     } else if (style === 'classic') {
       styleCSS = [
-        `section h1{color:${c.primary};-webkit-text-fill-color:${c.primary}}`,
-        `section::before{background:${c.primary};width:1px;opacity:.2}`,
-        `section h2::after{width:40px;height:1px;background:${c.primary};opacity:.3}`,
-        `section li::before{width:6px;height:6px;border-radius:50%;top:22px;background:${c.primary};opacity:.5}`,
-        `section li{padding-left:28px}`,
+        // Solid color h1 — no gradient, timeless
+        `section h1{color:${c.primary};-webkit-text-fill-color:${c.primary};font-weight:700;letter-spacing:-.02em}`,
+        // 3px solid accent bar (left edge)
+        `section::before{background:${c.primary};width:3px;opacity:.25;border-radius:0 2px 2px 0}`,
+        // Full-width 1px underline on h2
+        `section h2::after{width:100%;height:1px;background:${c.primary};opacity:.15;border-radius:0;margin-top:18px}`,
+        // Round dot bullets
+        `section li::before{width:7px;height:7px;border-radius:50%;top:23px;background:${c.primary};opacity:.45}`,
+        `section li{padding-left:30px}`,
         // Elegant top-right corner accent
-        `section:not(.title-slide):not(.closing-slide)::after{content:'';position:absolute;top:40px;right:60px;width:60px;height:60px;border-top:1px solid ${c.primary}20;border-right:1px solid ${c.primary}20;pointer-events:none}`,
+        `section:not(.title-slide):not(.closing-slide)::after{content:'';position:absolute;top:44px;right:56px;width:48px;height:48px;border-top:1.5px solid ${c.primary}18;border-right:1.5px solid ${c.primary}18;pointer-events:none}`,
+        // Title slide — clean, dignified
+        `section.title-slide{background:${isDark ? `linear-gradient(180deg,${bg2} 0%,${bg} 100%)` : `linear-gradient(180deg,#fff 0%,${bg} 100%)`}}`,
+        `section.title-slide h1{font-size:3.2em}`,
+        // Subtle serif feel for headings if using serif font
+        `section h2{font-weight:600}`,
       ].join('\n')
     } else if (style === 'minimal') {
       styleCSS = [
-        `section{padding:100px 160px}`,
-        `section h1{color:${fg};-webkit-text-fill-color:${fg};font-weight:300;letter-spacing:-.03em;font-size:3.8em}`,
+        // Extra breathing room
+        `section{padding:80px 140px}`,
+        `section.title-slide{padding:80px 140px}`,
+        // Light, airy h1 — no gradient, just weight
+        `section h1{color:${fg};-webkit-text-fill-color:${fg};font-weight:300;letter-spacing:-.03em;font-size:3.8em;line-height:1.08}`,
+        // No accent bar
         `section::before{display:none}`,
-        `section h2{font-weight:400;color:${fg};letter-spacing:-.02em}`,
+        // Subtle h2 — no underline
+        `section h2{font-weight:400;color:${fg};letter-spacing:-.015em;font-size:1.6em}`,
         `section h2::after{display:none}`,
-        `section li::before{width:16px;height:1px;background:${mutedFg};opacity:.2;top:22px}`,
-        `section li{padding-left:32px;color:${mutedFg}}`,
-        `section p{color:${mutedFg}}`,
-        // Ultra-thin bottom line
-        `section:not(.title-slide):not(.closing-slide)::after{content:'';position:absolute;bottom:60px;left:160px;right:160px;height:1px;background:${subtleBorder};pointer-events:none}`,
+        // Ultra-thin faded dash bullets
+        `section li::before{width:16px;height:1px;background:${mutedFg};opacity:.18;top:23px}`,
+        `section li{padding-left:36px;color:${mutedFg};font-weight:400;line-height:1.9}`,
+        `section p{color:${mutedFg};font-weight:400;line-height:2;max-width:640px}`,
+        // Muted strong text
+        `section strong{color:${fg};font-weight:500}`,
+        // Ultra-thin bottom divider
+        `section:not(.title-slide):not(.closing-slide)::after{content:'';position:absolute;bottom:56px;left:140px;right:140px;height:1px;background:${subtleBorder};pointer-events:none}`,
+        // Title slide — pure, no gradient orbs
+        `section.title-slide{background:${bg2}}`,
+        `section.title-slide h2{font-weight:300;opacity:.5;font-size:1.05em;letter-spacing:.04em}`,
+        // Minimal agent CTA
+        `.agent-cta{background:transparent;border:1px solid ${subtleBorder};backdrop-filter:none;border-radius:12px}`,
+        `.agent-cta::before{display:none}`,
+        // Hide progress dot glow
+        `.progress::after{display:none}`,
+        `.progress{opacity:.2;height:1px}`,
       ].join('\n')
     } else if (style === 'bold') {
       styleCSS = [
-        // Giant gradient text
-        `section h1{font-size:4.8em;line-height:1;font-weight:900;background:linear-gradient(135deg,${c.primary} 0%,${c.accent} 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:-.05em}`,
-        `section h2{font-size:2.8em;font-weight:800;letter-spacing:-.03em}`,
-        `section::before{width:6px;background:${c.primary}}`,
-        `section h2::after{height:4px;width:60px;border-radius:4px}`,
-        `section li::before{height:3px;width:20px;border-radius:2px}`,
-        // Full bleed accent block on title slide
-        `section.title-slide{background:linear-gradient(135deg,${c.primary} 0%,${isDark ? '#1a1a2e' : c.accent + '18'} 100%)}`,
-        `section.title-slide h1{-webkit-text-fill-color:${isDark ? '#fff' : c.primary};background:none}`,
-        `section.title-slide h2{color:${isDark ? 'rgba(255,255,255,.6)' : c.primary + '80'}}`,
+        // Giant gradient text — huge, dramatic
+        `section h1{font-size:4.2em;line-height:1.02;font-weight:900;background:linear-gradient(135deg,${c.primary} 0%,${c.accent} 60%,${c.secondary} 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:-.05em}`,
+        `section h2{font-size:2.6em;font-weight:800;letter-spacing:-.03em}`,
+        // 8px thick accent bar (left edge)
+        `section::before{width:8px;background:linear-gradient(180deg,${c.primary},${c.accent});border-radius:0 4px 4px 0;opacity:.7}`,
+        // Thick 60px h2 underline
+        `section h2::after{height:4px;width:60px;border-radius:4px;background:linear-gradient(90deg,${c.primary},${c.accent})}`,
+        // Bold bullet bars
+        `section li::before{height:3px;width:24px;border-radius:2px;background:linear-gradient(90deg,${c.primary},${c.accent})}`,
+        `section li{font-size:1.1em;font-weight:500}`,
+        // Full bleed gradient title slide — immersive
+        `section.title-slide{background:linear-gradient(150deg,${c.primary} 0%,${isDark ? '#080810' : c.accent + '08'} 100%);position:relative}`,
+        `section.title-slide::after{content:'';position:absolute;bottom:0;left:0;right:0;height:40%;background:linear-gradient(to top,rgba(0,0,0,.3),transparent);pointer-events:none;z-index:0}`,
+        `section.title-slide>*{position:relative;z-index:1}`,
+        `section.title-slide h1{-webkit-text-fill-color:#fff;background:none;text-shadow:0 4px 32px rgba(0,0,0,.25);font-size:4.4em}`,
+        `section.title-slide h2{color:rgba(255,255,255,.7);font-size:1.2em;font-weight:400}`,
+        `section.title-slide .team-logo{filter:brightness(10) drop-shadow(0 2px 12px rgba(0,0,0,.4))}`,
+        // Bigger agent CTA
+        `.agent-cta{padding:36px 56px;border-radius:24px}`,
+        `.agent-cta .agent-name{font-size:1.5em}`,
+        // Thicker progress bar
+        `.progress{height:4px;opacity:.6}`,
+        `.progress::after{width:14px;height:14px;top:-5px}`,
       ].join('\n')
     }
 
     // Background image CSS (applied via .bg-overlay div injected into each slide)
+    // Uses user-controlled overlayOpacity (0-100 scale → decimal)
+    const bgOpacity = (overlayOpacity / 100).toFixed(2)
+    const bgOpacityTitle = Math.min(overlayOpacity * 1.4 / 100, 0.5).toFixed(2) // slightly stronger on title
     const bgImageCSS = backgroundImage ? [
-      `.bg-overlay{position:absolute;inset:0;background:url("${backgroundImage}") center/cover no-repeat;opacity:${isDark ? '.06' : '.04'};pointer-events:none;z-index:0}`,
-      `section.title-slide .bg-overlay{opacity:${isDark ? '.1' : '.07'}}`,
+      // Background image layer
+      `.bg-overlay{position:absolute;inset:0;pointer-events:none;z-index:0;overflow:hidden}`,
+      `.bg-overlay::before{content:'';position:absolute;inset:0;background:url("${backgroundImage}") center/cover no-repeat;opacity:${bgOpacity}}`,
+      // Color tint overlay to blend with theme
+      `.bg-overlay::after{content:'';position:absolute;inset:0;background:${isDark ? `linear-gradient(135deg,rgba(0,0,0,.5),rgba(${c.glow},.12))` : `linear-gradient(135deg,${bg2}cc,rgba(${c.glow},.04))`};mix-blend-mode:${isDark ? 'multiply' : 'normal'}}`,
+      // Title slide — slightly stronger
+      `section.title-slide .bg-overlay::before{opacity:${bgOpacityTitle}}`,
+      // Ensure content stays above overlay
       `section>*:not(.bg-overlay){position:relative;z-index:1}`,
     ].join('\n') : ''
 
@@ -496,8 +554,8 @@ h1,h2,h3{font-family:${headingFont}}
 
 /* ── Slide system ── */
 .slides{position:relative;height:100vh;width:100vw}
-section{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:80px 120px 80px;opacity:0;pointer-events:none;transform:scale(.98);transition:opacity .5s cubic-bezier(.16,1,.3,1),transform .5s cubic-bezier(.16,1,.3,1);overflow-y:auto;background:${bg2}}
-section.active{opacity:1;pointer-events:auto;transform:scale(1)}
+section{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:80px 120px 80px;opacity:0;pointer-events:none;transform:translateY(20px);transition:opacity .5s cubic-bezier(.16,1,.3,1),transform .5s cubic-bezier(.16,1,.3,1);overflow-y:auto;background:${bg2}}
+section.active{opacity:1;pointer-events:auto;transform:translateY(0)}
 section.title-slide{text-align:center;align-items:center;padding:80px 120px}
 section.closing-slide{text-align:center;align-items:center}
 
@@ -508,7 +566,7 @@ section.title-slide::before,section.closing-slide::before{display:none}
 /* ── Typography ── */
 section h1{font-size:3.6em;font-weight:800;color:${c.primary};margin-bottom:16px;line-height:1.05;letter-spacing:-.04em}
 section h2{font-size:1.75em;font-weight:700;color:${fg};margin-bottom:40px;line-height:1.25;letter-spacing:-.025em;position:relative;display:inline-block}
-section h2::after{content:'';display:block;width:40px;height:2.5px;background:linear-gradient(90deg,${c.primary},${c.accent});border-radius:2px;margin-top:16px}
+section h2::after{content:'';display:block;width:48px;height:3px;background:linear-gradient(90deg,${c.primary},${c.accent});border-radius:2px;margin-top:16px}
 section.title-slide h2,section.closing-slide h2{font-weight:400;color:${mutedFg};font-size:1.15em;letter-spacing:.02em;margin-bottom:8px}
 section.title-slide h2::after,section.closing-slide h2::after{display:none}
 section h3{font-size:.7em;font-weight:600;color:${c.accent};margin-bottom:20px;letter-spacing:.14em;text-transform:uppercase}
@@ -537,7 +595,7 @@ section.active .agent-cta{animation-delay:.25s}
 @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
 
 /* ── Logo ── */
-.team-logo{max-width:280px;max-height:140px;margin-bottom:40px;object-fit:contain;opacity:.9}
+.team-logo{max-width:360px;max-height:100px;margin-bottom:44px;object-fit:contain;opacity:.92;filter:drop-shadow(0 2px 8px rgba(0,0,0,.08))}
 
 /* ── Watermark ── */
 .watermark{position:fixed;bottom:24px;left:36px;max-height:24px;opacity:.08;z-index:10;filter:grayscale(1)}
@@ -554,7 +612,7 @@ body:hover .nav-arrows{opacity:.3}
 .nav-btn:hover{background:${c.primary};color:#fff;border-color:transparent;box-shadow:0 0 0 1px ${c.primary},0 4px 24px rgba(${c.glow},.3)}
 
 /* ── Agent CTA ── */
-.agent-cta{margin-top:48px;padding:32px 48px;background:${isDark ? 'rgba(255,255,255,.03)' : 'rgba(0,0,0,.02)'};border-radius:16px;border:1px solid ${subtleBorder};display:inline-block;min-width:340px;text-align:center;position:relative;overflow:hidden}
+.agent-cta{margin-top:48px;padding:32px 48px;background:${isDark ? 'rgba(255,255,255,.04)' : 'rgba(255,255,255,.7)'};backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-radius:20px;border:1px solid ${subtleBorder};display:inline-block;min-width:340px;text-align:center;position:relative;overflow:hidden}
 .agent-cta::before{content:'';position:absolute;inset:-1px;border-radius:17px;padding:1px;background:linear-gradient(135deg,${c.primary}30,${c.accent}20,transparent);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
 .agent-avatar{width:72px;height:72px;border-radius:50%;object-fit:cover;margin-bottom:16px;border:2px solid ${subtleBorder};box-shadow:0 2px 12px rgba(${c.glow},.15)}
 .agent-cta .agent-name{font-size:1.3em;font-weight:700;color:${fg};margin-bottom:10px;font-family:${headingFont};letter-spacing:-.02em}

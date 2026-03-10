@@ -1538,6 +1538,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [clientUpdateEmailTo, setClientUpdateEmailTo] = useState('')
   const [clientUpdateName, setClientUpdateName] = useState('')
   const [reviewRequestDeal, setReviewRequestDeal] = useState(null) // { address } shown after close
+  const [pendingReviewAddress, setPendingReviewAddress] = useState(null) // queued until celebration dismissed
   const [reviewRequestName, setReviewRequestName] = useState('')
   const [reviewRequestEmail, setReviewRequestEmail] = useState('')
   const [todayDate] = useState(() => new Date().toLocaleDateString('en-CA')) // YYYY-MM-DD, stable across re-renders
@@ -2282,6 +2283,7 @@ function Dashboard({ theme, onToggleTheme }) {
       markListingClosed(row.address)
       const comm = resolveCommission(row.commission, row.price)
       setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
+      setPendingReviewAddress(row.address || 'your property')
       await awardPipelineXp('closed', '#10b981')
     } else if (newStatus === 'declined') {
       srcSetter(prev => prev.filter(r => r.id !== row.id))
@@ -2309,6 +2311,7 @@ function Dashboard({ theme, onToggleTheme }) {
       markListingClosed(row.address)
       const comm = resolveCommission(row.commission, row.price)
       setCelebration({ address:row.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (row.commission||''), newComm:comm })
+      setPendingReviewAddress(row.address || 'your property')
       await awardPipelineXp('closed', '#10b981')
     }
   }
@@ -2560,13 +2563,8 @@ function Dashboard({ theme, onToggleTheme }) {
       setClosedCount(prev => prev + 1)
       const comm = resolveCommission(lComm, lPrice)
       setCelebration({ address:listing.address||'Deal Closed', commission:comm > 0 ? fmtMoney(comm) : (lComm||''), newComm:comm })
+      setPendingReviewAddress(listing.address || 'your property')
       await awardPipelineXp('closed', '#10b981')
-      // Prompt for optional review request
-      setTimeout(() => {
-        setReviewRequestName('')
-        setReviewRequestEmail('')
-        setReviewRequestDeal({ address: listing.address || 'your property' })
-      }, 2000)
     }
   }
 
@@ -2849,7 +2847,16 @@ function Dashboard({ theme, onToggleTheme }) {
         return (
           <div style={{ position:'fixed',inset:0,zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center',
             background:'rgba(0,0,0,.72)', backdropFilter:'blur(6px)' }}
-            onClick={()=>setCelebration(null)}>
+            onClick={()=>{
+              setCelebration(null)
+              if (pendingReviewAddress) {
+                setTimeout(()=>{
+                  setReviewRequestName(''); setReviewRequestEmail('')
+                  setReviewRequestDeal({ address: pendingReviewAddress })
+                  setPendingReviewAddress(null)
+                }, 350)
+              }
+            }}>
             {/* Confetti */}
             <style>{`
               @keyframes fallConfetti {
@@ -2897,7 +2904,16 @@ function Dashboard({ theme, onToggleTheme }) {
                 fontFamily:"'Fraunces',serif", letterSpacing:.5 }}>
                 ✨ +300 XP
               </div>
-              <button onClick={()=>setCelebration(null)} style={{ marginTop:24, padding:'11px 32px',
+              <button onClick={()=>{
+                setCelebration(null)
+                if (pendingReviewAddress) {
+                  setTimeout(()=>{
+                    setReviewRequestName(''); setReviewRequestEmail('')
+                    setReviewRequestDeal({ address: pendingReviewAddress })
+                    setPendingReviewAddress(null)
+                  }, 350)
+                }
+              }} style={{ marginTop:24, padding:'11px 32px',
                 background:'#10b981', border:'none', color:'#fff', borderRadius:10,
                 fontWeight:700, fontSize:14, cursor:'pointer', letterSpacing:.3 }}>
                 🚀 Keep Going!

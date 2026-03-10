@@ -27,7 +27,6 @@ const STYLES = [
 const THEMES = [
   { value: 'light', label: 'Light' },
   { value: 'dark',  label: 'Dark' },
-  { value: 'brand', label: 'Brand (Gold/Amber)' },
 ]
 const FONTS = [
   { value: 'sans-serif', label: 'Sans-serif (Clean)' },

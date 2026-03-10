@@ -123,9 +123,17 @@ async function handleBackgroundGeneration(
   }
 
   try {
-    // ── Build system prompt with 6 layout types ──────────────────────────────
-    const teamLogo = profileData?.teamLogo || null
+    // ── Theme-aware logo selection ────────────────────────────────────────────
+    const lightLogo = profileData?.teamLogo || profileData?.fallbackLogo || null
+    const darkLogo = profileData?.teamLogoDark || profileData?.teamLogo || profileData?.fallbackLogo || null
+    const hasDarkLogo = !!profileData?.teamLogoDark
+    const isDarkTheme = presTheme === 'dark'
+    // Bold preset title/closing always have colored bg → prefer dark-variant
+    const teamLogo = isDarkTheme ? darkLogo : lightLogo
+    const titleLogo = (style === 'bold') ? (darkLogo || lightLogo) : teamLogo
     const teamName = profileData?.teamName || ''
+
+    // ── Build system prompt with 6 layout types ──────────────────────────────
 
     const systemPrompt = `You are a presentation builder for real estate professionals. Output ONLY a series of <section> HTML elements — one per slide. Do NOT output <!DOCTYPE>, <html>, <head>, <body>, <style>, or <script> tags. The shell template is provided separately.
 
@@ -232,12 +240,12 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
     const slideCount = (slidesHtml.match(/<section/gi) || []).length
 
     // ── Inject logo into title slide ────────────────────────────────────────
-    if (teamLogo) {
+    if (titleLogo) {
       const titleMatch = slidesHtml.match(/<section[^>]*class="[^"]*title-slide[^"]*"[^>]*>/)
       if (titleMatch && titleMatch.index !== undefined) {
         const pos = titleMatch.index + titleMatch[0].length
         slidesHtml = slidesHtml.slice(0, pos) +
-          `\n<img src="${teamLogo}" class="team-logo" alt="${esc(teamName || 'Logo')}">` +
+          `\n<img src="${titleLogo}" class="team-logo" alt="${esc(teamName || 'Logo')}">` +
           slidesHtml.slice(pos)
       }
     }
@@ -451,7 +459,7 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
         `.agent-cta .agent-name{font-weight:500;font-size:1.1em;letter-spacing:0}`,
         `.agent-cta .agent-details{color:${mutedFg}}`,
         // ── Logo: faded ──
-        `.team-logo{opacity:.5;max-width:200px;max-height:60px;filter:${isDark ? 'brightness(2)' : 'none'} grayscale(.3)}`,
+        `.team-logo{opacity:.5;max-width:200px;max-height:60px;filter:${isDark && !hasDarkLogo ? 'brightness(2)' : 'none'} grayscale(.3)}`,
         // ── Progress: hairline ──
         `.progress{height:1px;opacity:.12;background:${fg}}`,
         `.progress::after{display:none}`,
@@ -511,8 +519,8 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
         `section.title-slide h1{-webkit-text-fill-color:#fff;background:none;text-shadow:0 4px 40px rgba(0,0,0,.3);font-size:5em;line-height:.95}`,
         `section.title-slide h2{color:rgba(255,255,255,.92);font-size:1.15em;font-weight:400;letter-spacing:.04em;text-shadow:0 2px 12px rgba(0,0,0,.25)}`,
         `section.title-slide h2::after{display:none}`,
-        // Logo on colored bg: brighten + white drop-shadow so it pops
-        `section.title-slide .team-logo{filter:brightness(1.8) saturate(0) drop-shadow(0 2px 16px rgba(0,0,0,.4));opacity:.95}`,
+        // Logo on colored bg: if no dark-variant logo, force-bleach; otherwise just shadow
+        `section.title-slide .team-logo{filter:${hasDarkLogo ? '' : 'brightness(1.8) saturate(0) '}drop-shadow(0 2px 16px rgba(0,0,0,.4));opacity:.95}`,
         // ── Closing slide: also colored ──
         `section.closing-slide{background:linear-gradient(150deg,${c.primary} 0%,${darkPrimary} 100%)}`,
         `section.closing-slide::before{display:block;content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 70% 80%,rgba(255,255,255,.06) 0%,transparent 50%);pointer-events:none;z-index:0}`,
@@ -993,7 +1001,8 @@ Deno.serve(async (req) => {
 
     // ── 9. Create/update presentation row with status='generating' ──────────
     const presentationLogo = profile.teams?.team_prefs?.ai_tools?.presentation_logo || null
-    const teamLogo = presentationLogo || profile.teams?.team_prefs?.logo_url || null
+    const presentationLogoDark = profile.teams?.team_prefs?.ai_tools?.presentation_logo_dark || null
+    const fallbackLogo = profile.teams?.team_prefs?.logo_url || null
     const teamName = profile.teams?.name || ''
 
     const presData = {
@@ -1054,7 +1063,9 @@ Deno.serve(async (req) => {
       creditReserved,
       creditLimit: limit,
       profileData: {
-        teamLogo,
+        teamLogo: presentationLogo,
+        teamLogoDark: presentationLogoDark,
+        fallbackLogo,
         teamName,
         agentName: profile.full_name || '',
         agentEmail: user.email || '',

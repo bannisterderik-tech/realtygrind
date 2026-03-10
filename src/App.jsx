@@ -964,7 +964,7 @@ function BuyersWeeklyModal({ buyerReps, offersMade, onClose }) {
 // ─── Pipeline section ─────────────────────────────────────────────────────────
 
 function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onStatusChange, showSource, statusOpts, onAdd, onRemove, userId,
-  expandedChecklist, setExpandedChecklist, onToggleChecklistItem, onAddChecklistItem, onRemoveChecklistItem, onUpdateChecklistDueDate, archiveOnRemove }) {
+  expandedChecklist, setExpandedChecklist, onToggleChecklistItem, onAddChecklistItem, onRemoveChecklistItem, onUpdateChecklistDueDate, archiveOnRemove, onArchiveToClosed }) {
   const [addr,  setAddr]  = useState('')
   const [price, setPrice] = useState('')
   const [comm,  setComm]  = useState('')
@@ -1159,7 +1159,16 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
             {/* Actions */}
             <div className="deal-actions">
               {showSource ? (
-                <span style={{ fontSize:11, color:'var(--dim)', fontStyle:'italic' }}>Closed</span>
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  <span style={{ fontSize:11, color:'var(--dim)', fontStyle:'italic' }}>Closed</span>
+                  {onArchiveToClosed && (
+                    <button className="act-btn act-btn-green" title="Archive to Closed tab"
+                      onClick={()=>onArchiveToClosed(r.id)}
+                      style={{ fontSize:10, padding:'2px 8px' }}>
+                      ✅ Archive
+                    </button>
+                  )}
+                </div>
               ) : (
                 <>
                   {r.checklist?.length > 0 && setExpandedChecklist && (
@@ -2314,6 +2323,12 @@ function Dashboard({ theme, onToggleTheme }) {
       setPendingReviewAddress(row.address || 'your property')
       await awardPipelineXp('closed', '#10b981')
     }
+  }
+
+  // ── Archive closed deal from pipeline (keeps it in Closed tab) ───────────
+  async function archiveDealFromPipeline(dealId) {
+    setClosedDeals(prev => prev.map(d => d.id === dealId ? {...d, status:'pipeline_archived'} : d))
+    await safeDb(supabase.from('transactions').update({status:'pipeline_archived'}).eq('id', dealId).eq('user_id', user.id))
   }
 
   // ── Checklist handlers ────────────────────────────────────────────────────
@@ -4389,8 +4404,8 @@ function Dashboard({ theme, onToggleTheme }) {
                 onToggleChecklistItem={toggleChecklistItem} onAddChecklistItem={addChecklistItem}
                 onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
               <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
-                rows={closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing')} setRows={setClosedDeals} userId={user.id}
-                archiveOnRemove={true}
+                rows={closedDeals.filter(d=>d.status!=='pipeline_archived'&&(d.dealSide==='seller'||d.closedFrom==='Listing'))} setRows={setClosedDeals} userId={user.id}
+                archiveOnRemove={true} onArchiveToClosed={archiveDealFromPipeline}
                 showSource={true}/>
             </>
           ) : (
@@ -4398,7 +4413,7 @@ function Dashboard({ theme, onToggleTheme }) {
               {[
                 { title:'Offers Rec\'d', icon:'📥', color:'#8b5cf6', rows:offersReceived },
                 { title:'Pending', icon:'⏳', color:'#f59e0b', rows:pendingDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing') },
-                { title:'Closed', icon:'🎉', color:'#10b981', rows:closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing') },
+                { title:'Closed', icon:'🎉', color:'#10b981', rows:closedDeals.filter(d=>d.status!=='pipeline_archived'&&(d.dealSide==='seller'||d.closedFrom==='Listing')) },
               ].map(col => (
                 <div key={col.title} style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:12, overflow:'hidden' }}>
                   <div style={{ padding:'10px 12px', background:`${col.color}11`, borderBottom:`2px solid ${col.color}33`, display:'flex', alignItems:'center', gap:6 }}>
@@ -4765,8 +4780,8 @@ function Dashboard({ theme, onToggleTheme }) {
                 onToggleChecklistItem={toggleChecklistItem} onAddChecklistItem={addChecklistItem}
                 onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
               <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
-                rows={closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))} setRows={setClosedDeals} userId={user.id}
-                archiveOnRemove={true}
+                rows={closedDeals.filter(d=>d.status!=='pipeline_archived'&&(d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing')))} setRows={setClosedDeals} userId={user.id}
+                archiveOnRemove={true} onArchiveToClosed={archiveDealFromPipeline}
                 showSource={true}/>
             </>
           ) : (
@@ -4774,7 +4789,7 @@ function Dashboard({ theme, onToggleTheme }) {
               {[
                 { title:'Offers Made', icon:'📤', color:'#0ea5e9', rows:offersMade },
                 { title:'Pending', icon:'⏳', color:'#f59e0b', rows:pendingDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing')) },
-                { title:'Closed', icon:'🎉', color:'#10b981', rows:closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing')) },
+                { title:'Closed', icon:'🎉', color:'#10b981', rows:closedDeals.filter(d=>d.status!=='pipeline_archived'&&(d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))) },
               ].map(col => (
                 <div key={col.title} style={{ background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:12, overflow:'hidden' }}>
                   <div style={{ padding:'10px 12px', background:`${col.color}11`, borderBottom:`2px solid ${col.color}33`, display:'flex', alignItems:'center', gap:6 }}>

@@ -278,7 +278,6 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
         .from('listings')
         .select('id,address,status,price,commission,user_id')
         .in('user_id', ids)
-        .neq('status', 'closed')
         .gt('unit_count', 0)
         .order('created_at', { ascending: false })
         .limit(500)
@@ -2055,8 +2054,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                   {/* ════════ LISTINGS TAB ════════ */}
                   {teamsTab==='listings' && (()=>{
                     const parseNum = v => { const n=parseFloat(String(v||'').replace(/[^0-9.]/g,'')); return isNaN(n)?0:n }
-                    const activeListings = teamListings.filter(l=>l.status!=='pending')
-                    const pendingListings = teamListings.filter(l=>l.status==='pending')
+                    const STATUS_COLORS = { potential:'#f59e0b', active:'#10b981', pending:'#6366f1', closed:'#6b7280' }
+                    const potentialListings = teamListings.filter(l=>l.status==='potential')
+                    const activeListings    = teamListings.filter(l=>l.status==='active')
+                    const pendingListings   = teamListings.filter(l=>l.status==='pending')
+                    const closedListings    = teamListings.filter(l=>l.status==='closed')
                     const totalVolume = teamListings.reduce((s,l)=>s+parseNum(l.price),0)
                     const totalCommission = teamListings.reduce((s,l)=>s+resolveCommission(l.commission, l.price),0)
                     // Agent breakdown
@@ -2086,15 +2088,18 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       </div>
                     ) : (<>
                     {/* Summary stat cards */}
-                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:12, marginBottom:24 }}>
-                      <div className="card" style={{ padding:'16px 18px', borderLeft:'3px solid #10b981' }}>
-                        <div style={{ fontSize:10, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', marginBottom:6 }}>Active</div>
-                        <div className="serif" style={{ fontSize:28, color:'#10b981', fontWeight:700, lineHeight:1 }}>{activeListings.length}</div>
-                      </div>
-                      <div className="card" style={{ padding:'16px 18px', borderLeft:'3px solid #6366f1' }}>
-                        <div style={{ fontSize:10, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', marginBottom:6 }}>Pending</div>
-                        <div className="serif" style={{ fontSize:28, color:'#6366f1', fontWeight:700, lineHeight:1 }}>{pendingListings.length}</div>
-                      </div>
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))', gap:12, marginBottom:24 }}>
+                      {[
+                        { label:'Potential', count:potentialListings.length, color:STATUS_COLORS.potential },
+                        { label:'Active', count:activeListings.length, color:STATUS_COLORS.active },
+                        { label:'Pending', count:pendingListings.length, color:STATUS_COLORS.pending },
+                        { label:'Closed', count:closedListings.length, color:STATUS_COLORS.closed },
+                      ].map(s=>(
+                        <div key={s.label} className="card" style={{ padding:'16px 18px', borderLeft:`3px solid ${s.color}` }}>
+                          <div style={{ fontSize:10, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', marginBottom:6 }}>{s.label}</div>
+                          <div className="serif" style={{ fontSize:28, color:s.color, fontWeight:700, lineHeight:1 }}>{s.count}</div>
+                        </div>
+                      ))}
                       <div className="card" style={{ padding:'16px 18px', borderLeft:'3px solid var(--text)' }}>
                         <div style={{ fontSize:10, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', marginBottom:6 }}>Total Volume</div>
                         <div className="mono" style={{ fontSize:20, color:'var(--text)', fontWeight:700, lineHeight:1 }}>{fmtMoney(totalVolume)}</div>
@@ -2141,54 +2146,61 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       </div>
                     )}
 
-                    {/* Listing cards */}
-                    <div style={{ fontSize:12, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', marginBottom:10 }}>All Listings</div>
-                    <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                      {teamListings.map(l => {
-                        const price = parseNum(l.price); const comm = resolveCommission(l.commission, l.price)
-                        const isMe  = l.user_id === user?.id
-                        const isPending = l.status === 'pending'
-                        const sc = isPending ? '#6366f1' : '#10b981'
-                        return (
-                          <div key={l.id} className="card" style={{ padding:'14px 18px',
-                            border:`1px solid ${isMe ? 'rgba(217,119,6,.3)' : 'var(--b2)'}`,
-                            background: isMe ? 'var(--gold3)' : 'var(--surface)' }}>
-                            <div style={{ display:'flex', alignItems:'flex-start', gap:12 }}>
-                              {/* Status dot */}
-                              <div style={{ width:8, height:8, borderRadius:'50%', background:sc, flexShrink:0, marginTop:6 }}/>
-                              <div style={{ flex:1, minWidth:0 }}>
-                                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, flexWrap:'wrap' }}>
-                                  <span style={{ fontSize:14, color:'var(--text)', fontWeight:600,
-                                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1, minWidth:0 }}>
-                                    {l.address || 'Untitled Listing'}
-                                  </span>
-                                  <span style={{ fontSize:9, padding:'2px 8px', borderRadius:4, fontWeight:700,
-                                    background:`${sc}15`, color:sc, border:`1px solid ${sc}30`,
-                                    textTransform:'uppercase', letterSpacing:'.5px', flexShrink:0 }}>
-                                    {l.status || 'Active'}
-                                  </span>
-                                </div>
-                                <div style={{ display:'flex', alignItems:'center', gap:16, flexWrap:'wrap' }}>
-                                  <span style={{ fontSize:11, color: isMe ? 'var(--gold)' : 'var(--muted)', fontWeight: isMe ? 700 : 500 }}>
-                                    {isMe ? '⭐ You' : l.agentName}
-                                  </span>
-                                  {price>0 && (
-                                    <span className="mono" style={{ fontSize:13, color:'var(--text)', fontWeight:700 }}>
-                                      {fmtMoney(price)}
-                                    </span>
-                                  )}
-                                  {comm>0 && (
-                                    <span className="mono" style={{ fontSize:12, color:'var(--green)', fontWeight:600 }}>
-                                      {fmtMoney(comm)} comm
-                                    </span>
-                                  )}
+                    {/* Segmented listing sections */}
+                    {[
+                      { label:'Potential', items:potentialListings, color:STATUS_COLORS.potential },
+                      { label:'Active', items:activeListings, color:STATUS_COLORS.active },
+                      { label:'Pending', items:pendingListings, color:STATUS_COLORS.pending },
+                      { label:'Closed', items:closedListings, color:STATUS_COLORS.closed },
+                    ].filter(s=>s.items.length>0).map(section=>(
+                      <div key={section.label} style={{ marginBottom:24 }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+                          <div style={{ width:3, height:18, borderRadius:2, background:section.color }}/>
+                          <span style={{ fontSize:12, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase' }}>
+                            {section.label}
+                          </span>
+                          <span className="mono" style={{ fontSize:11, color:section.color, fontWeight:700 }}>({section.items.length})</span>
+                        </div>
+                        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                          {section.items.map(l => {
+                            const price = parseNum(l.price); const comm = resolveCommission(l.commission, l.price)
+                            const isMe  = l.user_id === user?.id
+                            return (
+                              <div key={l.id} className="card" style={{ padding:'14px 18px',
+                                border:`1px solid ${isMe ? 'rgba(217,119,6,.3)' : 'var(--b2)'}`,
+                                background: isMe ? 'var(--gold3)' : 'var(--surface)' }}>
+                                <div style={{ display:'flex', alignItems:'flex-start', gap:12 }}>
+                                  <div style={{ width:8, height:8, borderRadius:'50%', background:section.color, flexShrink:0, marginTop:6 }}/>
+                                  <div style={{ flex:1, minWidth:0 }}>
+                                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, flexWrap:'wrap' }}>
+                                      <span style={{ fontSize:14, color:'var(--text)', fontWeight:600,
+                                        overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1, minWidth:0 }}>
+                                        {l.address || 'Untitled Listing'}
+                                      </span>
+                                    </div>
+                                    <div style={{ display:'flex', alignItems:'center', gap:16, flexWrap:'wrap' }}>
+                                      <span style={{ fontSize:11, color: isMe ? 'var(--gold)' : 'var(--muted)', fontWeight: isMe ? 700 : 500 }}>
+                                        {isMe ? '⭐ You' : l.agentName}
+                                      </span>
+                                      {price>0 && (
+                                        <span className="mono" style={{ fontSize:13, color:'var(--text)', fontWeight:700 }}>
+                                          {fmtMoney(price)}
+                                        </span>
+                                      )}
+                                      {comm>0 && (
+                                        <span className="mono" style={{ fontSize:12, color:'var(--green)', fontWeight:600 }}>
+                                          {fmtMoney(comm)} comm
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
                     </>)}
                   </div>
                   </>
@@ -4155,8 +4167,10 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
         const tvChallenges = (teamData?.team_prefs?.challenges||[]).filter(c=>c.status==='active')
         const tvVolume = teamListings.reduce((s,l)=>s+parseNum(l.price),0)
         const tvComm = teamListings.reduce((s,l)=>s+resolveCommission(l.commission,l.price),0)
-        const tvActiveListing = teamListings.filter(l=>l.status!=='pending').length
+        const tvPotentialListing = teamListings.filter(l=>l.status==='potential').length
+        const tvActiveListing = teamListings.filter(l=>l.status==='active').length
         const tvPendingListing = teamListings.filter(l=>l.status==='pending').length
+        const tvClosedListing = teamListings.filter(l=>l.status==='closed').length
         const tvTotalClosed = Object.values(memberStats).reduce((s,st)=>s+(st.closed||0),0)
         const tvTotalXp = members.reduce((s,m)=>s+(m.xp||0),0)
         return (
@@ -4194,8 +4208,10 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
               {[
                 { label:'TEAM XP', value:tvTotalXp.toLocaleString(), color:'#d97706', icon:'⚡' },
                 { label:'DEALS CLOSED', value:tvTotalClosed, color:'#10b981', icon:'🎉' },
-                { label:'ACTIVE LISTINGS', value:tvActiveListing, color:'#10b981', icon:'🏠' },
+                { label:'POTENTIAL', value:tvPotentialListing, color:'#f59e0b', icon:'🎯' },
+                { label:'ACTIVE', value:tvActiveListing, color:'#10b981', icon:'🏠' },
                 { label:'PENDING', value:tvPendingListing, color:'#6366f1', icon:'📋' },
+                { label:'CLOSED', value:tvClosedListing, color:'#6b7280', icon:'✅' },
                 { label:'TOTAL VOLUME', value:fmtMoney(tvVolume), color:'var(--text)', icon:'💰' },
                 { label:'COMMISSION', value:fmtMoney(tvComm), color:'#10b981', icon:'💵' },
               ].map(s=>(

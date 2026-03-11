@@ -86,6 +86,38 @@ Deno.serve(async (req) => {
       return json({ error: 'Forbidden: admin access required' }, 403)
     }
 
+    // ── Handle POST actions ─────────────────────────────────────────────────
+    if (req.method === 'POST') {
+      const ct = req.headers.get('content-type') || ''
+      if (!ct.includes('application/json')) return json({ error: 'Content-Type must be application/json' }, 400)
+      let body: Record<string, unknown>
+      try { body = await req.json() } catch { return json({ error: 'Invalid JSON body' }, 400) }
+
+      if (body.action === 'reset_xp') {
+        const targetUserId = body.userId as string
+        if (!targetUserId || typeof targetUserId !== 'string') {
+          return json({ error: 'userId is required' }, 400)
+        }
+        // Reset XP and streak to 0 — does NOT touch pipeline, listings, habits config, etc.
+        const { error: updateErr } = await admin
+          .from('profiles')
+          .update({ xp: 0, streak: 0 })
+          .eq('id', targetUserId)
+        if (updateErr) {
+          console.error('reset_xp error:', updateErr)
+          return json({ error: 'Failed to reset XP' }, 500)
+        }
+        // Clear XP history from habit_completions (set xp_earned to 0, keep completions intact)
+        await admin
+          .from('habit_completions')
+          .update({ xp_earned: 0 })
+          .eq('user_id', targetUserId)
+        return json({ success: true, message: 'XP and streak reset to 0' })
+      }
+
+      return json({ error: 'Unknown action' }, 400)
+    }
+
     // ── 3. Fetch all profiles (service role bypasses RLS) ───────────────────
     const { data: profiles, error: profilesErr } = await admin
       .from('profiles')

@@ -18,3 +18,9 @@ verify_jwt = false
 
 [functions.affiliate-signup]
 verify_jwt = false
+
+[functions.generate-presentation]
+verify_jwt = false
+
+[functions.create-addon-checkout]
+verify_jwt = false

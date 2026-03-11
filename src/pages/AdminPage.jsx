@@ -412,7 +412,7 @@ function relativeTime(date) {
   return `${Math.floor(s / 3600)}h ago`
 }
 
-function UserRow({ u, badge, indent, showTeam = true }) {
+function UserRow({ u, badge, indent, showTeam = true, onResetXp }) {
   const ep = effectivePlan(u)
   const epColor = PLAN_COLORS[ep] || PLAN_COLORS.free
   return (
@@ -472,10 +472,25 @@ function UserRow({ u, badge, indent, showTeam = true }) {
           {u.team_name}
         </span>
       )}
-      {/* Stats */}
-      <div className="mono" style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'right', minWidth: 60 }}>
-        <div>{(u.xp || 0).toLocaleString()} XP</div>
-        <div>🔥 {u.streak || 0}d</div>
+      {/* Stats + Reset */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="mono" style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'right', minWidth: 60 }}>
+          <div>{(u.xp || 0).toLocaleString()} XP</div>
+          <div>🔥 {u.streak || 0}d</div>
+        </div>
+        {onResetXp && (u.xp > 0 || u.streak > 0) && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onResetXp(u) }}
+            title="Reset XP & streak to 0"
+            style={{
+              fontSize: 9, padding: '3px 7px', borderRadius: 5, cursor: 'pointer',
+              background: '#ef444415', color: '#ef4444', border: '1px solid #ef444430',
+              fontWeight: 700, letterSpacing: '.03em', whiteSpace: 'nowrap',
+            }}
+          >
+            RESET
+          </button>
+        )}
       </div>
       {/* AI credits */}
       <div style={{ textAlign: 'right', minWidth: 40 }}>
@@ -503,6 +518,37 @@ function AdminPage({ onNavigate }) {
 
   const isAdmin = profile?.app_role === 'admin'
   const mountedRef = useRef(true)
+
+  async function handleResetXp(targetUser) {
+    const name = targetUser.full_name || targetUser.email || targetUser.id.slice(0, 12)
+    if (!window.confirm(`Reset ALL XP and streak for ${name} to 0?\n\nThis will NOT affect their pipeline, listings, or habits config.`)) return
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-dashboard`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({ action: 'reset_xp', userId: targetUser.id }),
+        }
+      )
+      const result = await resp.json()
+      if (!resp.ok) throw new Error(result.error || 'Reset failed')
+      // Update local state
+      setData(prev => {
+        if (!prev) return prev
+        const updated = prev.users.map(u => u.id === targetUser.id ? { ...u, xp: 0, streak: 0 } : u)
+        return { ...prev, users: updated }
+      })
+      alert(`✅ XP and streak reset for ${name}`)
+    } catch (err) {
+      alert(`❌ Failed to reset XP: ${err.message}`)
+    }
+  }
 
   // Reset mounted flag on each mount (critical for StrictMode double-invoke)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -904,11 +950,11 @@ function AdminPage({ onNavigate }) {
                               <div style={{ borderTop: '1px solid var(--b1)' }}>
                                 {/* Owner row */}
                                 {g.owner && (
-                                  <UserRow u={g.owner} badge="Owner" indent={false} />
+                                  <UserRow u={g.owner} badge="Owner" indent={false} onResetXp={handleResetXp} />
                                 )}
                                 {/* Members */}
                                 {g.members.length > 0 ? g.members.map(m => (
-                                  <UserRow key={m.id} u={m} badge="Member" indent={true} />
+                                  <UserRow key={m.id} u={m} badge="Member" indent={true} onResetXp={handleResetXp} />
                                 )) : (
                                   <div style={{ padding: '12px 18px 12px 52px', fontSize: 12, color: 'var(--muted)', fontStyle: 'italic' }}>
                                     No team members yet
@@ -932,7 +978,7 @@ function AdminPage({ onNavigate }) {
                         </div>
                       )}
                       {soloUsers.map(u => (
-                        <UserRow key={u.id} u={u} showTeam={false} />
+                        <UserRow key={u.id} u={u} showTeam={false} onResetXp={handleResetXp} />
                       ))}
                     </div>
                   )}
@@ -947,7 +993,7 @@ function AdminPage({ onNavigate }) {
                         </div>
                       )}
                       {freeUsers.map(u => (
-                        <UserRow key={u.id} u={u} showTeam={false} />
+                        <UserRow key={u.id} u={u} showTeam={false} onResetXp={handleResetXp} />
                       ))}
                     </div>
                   )}

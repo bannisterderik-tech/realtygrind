@@ -432,6 +432,18 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     }
   }
 
+  // ── Delete Listing (team-owner-only) ──────────────────────────────────────
+  async function deleteTeamListing(listing) {
+    const snapshot = teamListings
+    setTeamListings(prev => prev.filter(l => l.id !== listing.id))
+    const { error } = await supabase.from('listings').delete().eq('id', listing.id)
+    if (error) {
+      console.error('deleteTeamListing error:', error)
+      setTeamListings(snapshot)
+      alert('Failed to delete listing. Please try again.')
+    }
+  }
+
   // ── Remove Member (owner-only) ────────────────────────────────────────────
   async function removeMember(memberId) {
     setRemoveSaving(true); setError('')
@@ -2195,6 +2207,17 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                       )}
                                     </div>
                                   </div>
+                                  {isTeamOwner && (
+                                    <button title="Delete listing" onClick={()=>setConfirmModal({
+                                      message: `Delete "${l.address || 'Untitled Listing'}" from ${l.agentName}? This cannot be undone.`,
+                                      label: 'Delete Listing',
+                                      onConfirm: ()=>deleteTeamListing(l),
+                                    })} style={{ background:'none', border:'none', cursor:'pointer', padding:'4px 6px',
+                                      color:'var(--dim)', fontSize:14, lineHeight:1, flexShrink:0, borderRadius:6,
+                                      transition:'color .15s' }}
+                                      onMouseEnter={e=>e.currentTarget.style.color='var(--red)'}
+                                      onMouseLeave={e=>e.currentTarget.style.color='var(--dim)'}>✕</button>
+                                  )}
                                 </div>
                               </div>
                             )

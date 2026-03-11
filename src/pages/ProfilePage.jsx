@@ -1596,6 +1596,38 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                 </div>
               </div>
 
+              {/* XP Toggle — solo agents only (team members get this from team settings) */}
+              {!profile?.team_id && (
+                <div className="card" style={{ padding:24 }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+                    <div>
+                      <div style={{ fontSize:14, fontWeight:600, color:'var(--text)', marginBottom:4 }}>⚡ XP &amp; Streaks</div>
+                      <div style={{ fontSize:12, color:'var(--muted)', lineHeight:1.5 }}>
+                        {(habitPrefs?.xp_enabled !== false)
+                          ? 'XP points and streaks are visible on your dashboard.'
+                          : 'XP points and streaks are hidden.'}
+                      </div>
+                    </div>
+                    <button onClick={async ()=>{
+                      const current = habitPrefs?.xp_enabled !== false
+                      const newPrefs = { ...habitPrefs, xp_enabled: !current }
+                      try {
+                        const { error } = await supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id)
+                        if (!error) setHabitPrefs(newPrefs)
+                      } catch(e){ console.error('xp toggle error:', e) }
+                    }} style={{
+                      padding:'8px 20px', borderRadius:8, fontSize:12, fontWeight:700, cursor:'pointer',
+                      border: (habitPrefs?.xp_enabled !== false) ? '1px solid #10b981' : '1px solid var(--b3)',
+                      background: (habitPrefs?.xp_enabled !== false) ? 'rgba(16,185,129,.1)' : 'var(--surface)',
+                      color: (habitPrefs?.xp_enabled !== false) ? '#10b981' : 'var(--muted)',
+                      transition:'all .15s', flexShrink:0,
+                    }}>
+                      {(habitPrefs?.xp_enabled !== false) ? '✓ ON' : 'OFF'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Tools Directory — solo agents only (team members get this from team settings) */}
               {!profile?.team_id && (
                 <div className="card" style={{ padding: 24 }}>

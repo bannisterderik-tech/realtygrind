@@ -2693,6 +2693,7 @@ function Dashboard({ theme, onToggleTheme }) {
     [isOnTeam, teamPrefsKey, habitPrefs]
   )
   const activePrefsRef = useRef(activePrefs); activePrefsRef.current = activePrefs
+  const xpEnabled = activePrefs?.xp_enabled !== false
 
   // ── Effective habits: built-ins (with edits, hidden removed) + custom defaults, ordered ──
   const builtInEffective = useMemo(() => HABITS
@@ -2985,7 +2986,8 @@ function Dashboard({ theme, onToggleTheme }) {
             <button className={`nav-btn mob-hide${page==='admin'?' active':''}`} onClick={()=>setPage('admin')} style={{ fontSize:11, letterSpacing:'.03em' }}>⚙️ Admin</button>
           )}
 
-          {/* Rank + Streak chips — hidden on mobile */}
+          {/* Rank + Streak chips — hidden on mobile, hidden when XP disabled */}
+          {xpEnabled && <>
           <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
           <div className="mob-hide" style={{ background:'rgba(255,255,255,.06)', border:`1px solid ${rank.color}38`,
             borderRadius:9, padding:'5px 11px', display:'flex', alignItems:'center', gap:9 }}>
@@ -3004,6 +3006,7 @@ function Dashboard({ theme, onToggleTheme }) {
             <div style={{ fontSize:9, color:'var(--nav-sub)', letterSpacing:.8, lineHeight:1 }}>STREAK</div>
             <div className="serif" style={{ fontSize:15, color:'#fb923c', lineHeight:1.2 }}>🔥 {streak}</div>
           </div>
+          </>}
 
           <button className={`nav-btn mob-hide${page==='billing'?' active':''}`} onClick={()=>setPage('billing')}
             style={{ fontSize:11, fontWeight:700, color:planBadge.color, letterSpacing:.4 }}>
@@ -3413,9 +3416,9 @@ function Dashboard({ theme, onToggleTheme }) {
                               <span style={{ fontSize:9, fontWeight:700, color:'var(--green)', flexShrink:0 }}>✓ goal</span>
                             )}
                           </div>
-                          <div style={{ fontSize:10, color:'var(--dim)' }}>
+                          {xpEnabled && <div style={{ fontSize:10, color:'var(--dim)' }}>
                             +{h.xp} XP{h.xpEach?` · +${h.xpEach} per ${h.unit||'extra'}`:''}
-                          </div>
+                          </div>}
                         </div>
                         <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:500, flexShrink:0,
                           background:cs.light, color:cs.color, border:`1px solid ${cs.border}` }}>
@@ -3480,7 +3483,7 @@ function Dashboard({ theme, onToggleTheme }) {
                           <div style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
                             textDecoration:done?'line-through':'none', transition:'all .15s',
                             overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{h.label}</div>
-                          <div style={{ fontSize:10, color:'var(--dim)' }}>+{h.xp} XP</div>
+                          {xpEnabled && <div style={{ fontSize:10, color:'var(--dim)' }}>+{h.xp} XP</div>}
                         </div>
                         <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:500, flexShrink:0,
                           background: h.googleEventId ? 'rgba(66,133,244,.1)' : 'rgba(245,158,11,.1)',
@@ -3519,7 +3522,7 @@ function Dashboard({ theme, onToggleTheme }) {
                           <div style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
                             textDecoration:done?'line-through':'none', transition:'all .15s',
                             overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{h.label}</div>
-                          <div style={{ fontSize:10, color:'var(--dim)' }}>+{h.xp} XP</div>
+                          {xpEnabled && <div style={{ fontSize:10, color:'var(--dim)' }}>+{h.xp} XP</div>}
                         </div>
                         <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:500, flexShrink:0,
                           background:'rgba(6,182,212,.12)', color:'#06b6d4', border:'1px solid rgba(6,182,212,.22)' }}>
@@ -3557,8 +3560,8 @@ function Dashboard({ theme, onToggleTheme }) {
                             <span style={{ fontSize:15, flexShrink:0 }}>{h.icon}</span>
                             <span style={{ flex:1, fontSize:13, color:'var(--muted)',
                               textDecoration:'line-through', minWidth:0 }}>{h.label}</span>
-                            <span style={{ fontSize:11, color:'var(--dim)',
-                              fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>+{h.xp} XP</span>
+                            {xpEnabled && <span style={{ fontSize:11, color:'var(--dim)',
+                              fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>+{h.xp} XP</span>}
                             <button className="btn-outline" style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }}
                               onClick={()=>unSkipHabitToday(h.id)}>Restore</button>
                           </div>

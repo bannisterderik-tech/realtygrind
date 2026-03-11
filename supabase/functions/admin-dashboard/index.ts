@@ -78,15 +78,13 @@ Deno.serve(async (req) => {
 
     const { data: callerProfile } = await admin
       .from('profiles')
-      .select('app_role')
+      .select('app_role, team_id')
       .eq('id', user.id)
       .single()
 
-    if (callerProfile?.app_role !== 'admin') {
-      return json({ error: 'Forbidden: admin access required' }, 403)
-    }
+    const isPlatformAdmin = callerProfile?.app_role === 'admin'
 
-    // ── Handle POST actions ─────────────────────────────────────────────────
+    // ── Handle POST actions (platform admin OR team owner) ────────────────
     if (req.method === 'POST') {
       const ct = req.headers.get('content-type') || ''
       if (!ct.includes('application/json')) return json({ error: 'Content-Type must be application/json' }, 400)
@@ -98,6 +96,27 @@ Deno.serve(async (req) => {
         if (!targetUserId || typeof targetUserId !== 'string') {
           return json({ error: 'userId is required' }, 400)
         }
+
+        // Allow if platform admin OR team owner of the target user
+        if (!isPlatformAdmin) {
+          // Check if caller owns the team the target belongs to
+          const { data: targetProfile } = await admin
+            .from('profiles')
+            .select('team_id')
+            .eq('id', targetUserId)
+            .single()
+          let isTeamOwner = false
+          if (targetProfile?.team_id && callerProfile?.team_id === targetProfile.team_id) {
+            const { data: team } = await admin
+              .from('teams')
+              .select('created_by')
+              .eq('id', targetProfile.team_id)
+              .single()
+            isTeamOwner = team?.created_by === user.id
+          }
+          if (!isTeamOwner) return json({ error: 'Forbidden' }, 403)
+        }
+
         // Reset XP and streak to 0 — does NOT touch pipeline, listings, habits config, etc.
         const { error: updateErr } = await admin
           .from('profiles')
@@ -116,6 +135,11 @@ Deno.serve(async (req) => {
       }
 
       return json({ error: 'Unknown action' }, 400)
+    }
+
+    // ── GET: platform admin only ──────────────────────────────────────────
+    if (!isPlatformAdmin) {
+      return json({ error: 'Forbidden: admin access required' }, 403)
     }
 
     // ── 3. Fetch all profiles (service role bypasses RLS) ───────────────────

@@ -578,7 +578,7 @@ YOUR CAPABILITIES:
 1. LISTING STRATEGY: Analyze active listings and suggest pricing adjustments, marketing tactics, staging recommendations, and strategies to reduce days on market.
 2. PIPELINE COACHING: Review the agent's pipeline (offers, pending, closed) and suggest next actions, follow-up cadences, and negotiation approaches.
 3. BUYER MATCHING: Help agents strategize for their buyer clients — suggest search criteria refinements, offer strategies, and how to compete in multiple-offer situations.
-4. COMP RESEARCH: Use your knowledge of real estate markets to discuss comparable sales, pricing trends, and market conditions. While you don't have live MLS data, provide analysis based on the listing data available and general market knowledge for the area.
+4. COMP RESEARCH & MARKET DATA: You can search the web for current market data, recent sales, neighborhood trends, and pricing information. Use web search to find relevant comps, market reports, and real estate news when the agent asks about specific areas or properties. While you don't have direct MLS access, your web search capability lets you find publicly available market data to supplement your analysis.
 5. GOAL TRACKING: Compare the agent's activity and closings against their stated goals. Identify gaps and suggest specific actions to get back on track.
 6. PROSPECTING ADVICE: Based on the agent's activity patterns, suggest prospecting strategies, time-blocking recommendations, and lead source optimization.
 7. BUDGET CLARIFICATION: Analyze buyer financial data (pre-approval amount, comfortable payment range, down payment available) and suggest talking points for budget clarification calls. Flag mismatches between pre-approval amounts and search criteria or price ranges. Recommend when to push for updated pre-approval letters, and identify buyers who may need to adjust expectations.
@@ -592,9 +592,9 @@ YOUR CAPABILITIES:
 GUIDELINES:
 - Be specific and actionable. Reference the agent's actual listings, pipeline, standups, coaching notes, and data when giving advice.
 - Keep responses concise but thorough. Use bullet points and clear structure.
-- If asked about market data you don't have, be transparent and suggest where to find it (MLS, RPR, Zillow, etc).
+- When asked about current market data, use web search to find relevant information (recent sales, market trends, neighborhood stats). Cite your sources. If web search results are insufficient, suggest the agent check MLS, RPR, or other professional tools for more detailed data.
 - Encourage consistency and accountability — that's the RealtyGrind way.
-- When discussing pricing or comps, clarify that your analysis is based on available data and general market knowledge, not live MLS access.
+- When discussing pricing or comps, use web search to find supporting data. Clarify when analysis is based on web search results versus the agent's own RealtyGrind data.
 - When coaching notes exist, weave them naturally into your advice — don't just list them.
 - For team owners asking about their team, proactively highlight agents who need attention based on standups, habit streaks, and pipeline activity.
 - DUAL PERSPECTIVE: Always coach the user as an individual agent first (their own listings, pipeline, habits, goals). For team owners/admins, also provide team-level insights using the roster data — who's performing, who needs attention, and how the team is tracking overall.
@@ -621,13 +621,15 @@ GUIDELINES:
           'Content-Type': 'application/json',
           'x-api-key': anthropicKey,
           'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'web-search-2025-03-05',
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 2048,
+          max_tokens: 4096,
           system: systemPrompt,
           messages: messages.slice(-20),
           stream: true,
+          tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
         }),
         signal: fetchController.signal,
       })

@@ -355,22 +355,22 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
         // ── Title slide: gradient mesh with floating orbs ──
         `section.title-slide{background:${isDark
           ? `linear-gradient(135deg,#0c0c1d 0%,#0f1028 30%,#0a0a18 100%)`
-          : `linear-gradient(135deg,#f8faff 0%,#eef2ff 50%,#f0f4ff 100%)`}}`,
+          : `linear-gradient(135deg,#f8faff 0%,#eef2ff 50%,#f0f4ff 100%)`};isolation:isolate}`,
         // Large floating orb top-right
-        `section.title-slide::after{content:'';position:absolute;top:-20%;right:-10%;width:60vw;height:60vw;background:radial-gradient(circle,rgba(${c.glow},.15) 0%,rgba(${c.glow},.05) 30%,transparent 60%);filter:blur(60px);pointer-events:none;z-index:0}`,
+        `section.title-slide::after{content:'';position:absolute;top:-20%;right:-10%;width:60vw;height:60vw;background:radial-gradient(circle,rgba(${c.glow},.15) 0%,rgba(${c.glow},.05) 30%,transparent 60%);filter:blur(40px);pointer-events:none;z-index:0}`,
         // Secondary orb bottom-left
-        `section.title-slide::before{display:block;content:'';position:absolute;bottom:-20%;left:-10%;width:50vw;height:50vw;background:radial-gradient(circle,${c.accent}12 0%,transparent 55%);filter:blur(80px);pointer-events:none;z-index:0}`,
+        `section.title-slide::before{display:block;content:'';position:absolute;bottom:-20%;left:-10%;width:50vw;height:50vw;background:radial-gradient(circle,${c.accent}12 0%,transparent 55%);filter:blur(50px);pointer-events:none;z-index:0}`,
         // z-index lift for content — MUST exclude .bg-overlay so background images still work
         `section.title-slide>*:not(.bg-overlay){position:relative;z-index:1}`,
         // ── Gradient text h1 with glow ──
-        `section h1{background:linear-gradient(135deg,${c.primary} 0%,${c.accent} 45%,${c.secondary} 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;filter:drop-shadow(0 0 40px rgba(${c.glow},.15))}`,
+        `section h1{background:linear-gradient(135deg,${c.primary} 0%,${c.accent} 45%,${c.secondary} 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;filter:drop-shadow(0 0 20px rgba(${c.glow},.12))}`,
         `section.title-slide h1{font-size:4em;letter-spacing:-.05em}`,
         // ── Glassmorphic accent bar (left edge) ──
         `section::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;background:linear-gradient(180deg,${c.primary},${c.accent},${c.secondary}40,transparent);opacity:.8;border-radius:0 4px 4px 0}`,
         // ── H2 with gradient underline ──
         `section h2::after{width:48px;height:3px;background:linear-gradient(90deg,${c.primary},${c.accent});border-radius:6px;margin-top:14px}`,
         // ── Content slides: frosted glass look ──
-        `section:not(.title-slide):not(.closing-slide){background:${isDark ? '#0a0a14' : '#fafbff'}}`,
+        `section:not(.title-slide):not(.closing-slide){background:${isDark ? '#0a0a14' : '#fafbff'};isolation:isolate}`,
         // Floating accent orb on content slides
         `section:not(.title-slide):not(.closing-slide)::after{content:'';position:absolute;top:-30%;right:-20%;width:40vw;height:40vw;background:radial-gradient(circle,rgba(${c.glow},.04) 0%,transparent 50%);filter:blur(60px);pointer-events:none;z-index:0}`,
         // z-index lift for content slides — MUST exclude .bg-overlay

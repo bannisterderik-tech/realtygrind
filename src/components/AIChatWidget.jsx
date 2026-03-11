@@ -51,6 +51,7 @@ function renderMarkdown(text) {
       const num = (before.match(/^\d+\. /gm) || []).length + 1
       return `<div style="padding-left:18px;position:relative"><span style="position:absolute;left:0;color:var(--muted);font-size:11px">${num}.</span>${content}</div>`
     })
+    .replace(/\[(\d+)\]/g, '<sup style="font-size:9px;color:#8b5cf6;font-weight:700;cursor:default;margin:0 1px" title="Source $1">[$1]</sup>')
     .replace(/\n/g, '<br/>')
 }
 
@@ -196,6 +197,7 @@ const AIChatWidget = memo(function AIChatWidget({ isOpen, onToggle, onClose, onN
       let assistantText = ''
       let buffer = ''
       let lastUpdate = 0
+      let isSearching = false
       const THROTTLE_MS = 50
 
       setMessages([...newMessages, { role: 'assistant', content: '' }])
@@ -216,13 +218,17 @@ const AIChatWidget = memo(function AIChatWidget({ isOpen, onToggle, onClose, onN
 
             try {
               const parsed = JSON.parse(data)
-              if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+              if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'text_delta' && parsed.delta?.text) {
+                if (isSearching) isSearching = false
                 assistantText += parsed.delta.text
                 const now = Date.now()
                 if (now - lastUpdate >= THROTTLE_MS) {
                   setMessages([...newMessages, { role: 'assistant', content: assistantText }])
                   lastUpdate = now
                 }
+              } else if (parsed.type === 'content_block_start' && parsed.content_block?.type === 'server_tool_use' && parsed.content_block?.name === 'web_search') {
+                isSearching = true
+                setMessages([...newMessages, { role: 'assistant', content: assistantText, searching: true }])
               }
             } catch { /* skip non-JSON SSE lines */ }
           }
@@ -484,6 +490,19 @@ const AIChatWidget = memo(function AIChatWidget({ isOpen, onToggle, onClose, onN
                         {msg.role === 'assistant' ? (
                           <div dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
                         ) : msg.content}
+                        {streaming && i === messages.length - 1 && msg.role === 'assistant' && msg.searching && (
+                          <div style={{
+                            display:'flex', alignItems:'center', gap:6,
+                            fontSize:11, color:'var(--muted)', margin:'6px 0 2px',
+                            fontStyle:'italic',
+                          }}>
+                            <span style={{
+                              width:12, height:12, border:'2px solid var(--b2)', borderTopColor:'#8b5cf6',
+                              borderRadius:'50%', animation:'spin .6s linear infinite', flexShrink:0,
+                            }} />
+                            Searching the web…
+                          </div>
+                        )}
                         {streaming && i === messages.length - 1 && msg.role === 'assistant' && (
                           <span style={{
                             display:'inline-block', width:5, height:14, background:'#8b5cf6',

@@ -56,7 +56,7 @@ export default function TermsPage({ onNavigate, theme }) {
 
           <h3 style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginTop:20, marginBottom:8 }}>3. Billing &amp; Subscriptions</h3>
           <p style={{ marginBottom:14 }}>
-            Paid plans are billed on a recurring monthly or annual basis through Stripe. The Solo plan includes a 14-day free trial. You may cancel at any time from the Billing page or the Stripe customer portal. Cancellations take effect at the end of the current billing period — no prorated refunds are issued. We reserve the right to change pricing with 30 days' notice.
+            Paid plans are billed on a recurring monthly or annual basis through Stripe. The Solo plan includes a 3-day free trial. You may cancel at any time from the Billing page or the Stripe customer portal. Cancellations take effect at the end of the current billing period — no prorated refunds are issued. We reserve the right to change pricing with 30 days' notice.
           </p>
 
           <h3 style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginTop:20, marginBottom:8 }}>4. Team Plans</h3>

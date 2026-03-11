@@ -1,14 +1,20 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import { Loader } from '../design'
 import { isActiveBilling, isTeamMember, isPlatformAdmin } from '../lib/plans'
 
-async function getFreshToken() {
+async function getFreshToken(forceRefresh = false) {
+  // Force refresh: always get a new token from the server
+  if (forceRefresh) {
+    const { data } = await supabase.auth.refreshSession()
+    return data.session?.access_token || null
+  }
   const { data: { session } } = await supabase.auth.getSession()
   if (session?.access_token) {
     const expiresAt = session.expires_at ?? 0
-    if (expiresAt - Math.floor(Date.now() / 1000) < 60) {
+    // Refresh if expiring within 120s (wider window to prevent edge cases)
+    if (expiresAt - Math.floor(Date.now() / 1000) < 120) {
       const { data } = await supabase.auth.refreshSession()
       return data.session?.access_token || null
     }
@@ -19,38 +25,94 @@ async function getFreshToken() {
 }
 
 const STYLES = [
-  { value: 'modern',  label: 'Modern — clean gradients, rounded' },
-  { value: 'classic', label: 'Classic — traditional, structured' },
-  { value: 'minimal', label: 'Minimal — whitespace, content-focused' },
-  { value: 'bold',    label: 'Bold — large text, high contrast' },
+  { value: 'modern',  label: 'Modern — glass, gradients, glowing orbs' },
+  { value: 'classic', label: 'Classic — editorial, refined borders' },
+  { value: 'minimal', label: 'Minimal — Swiss design, pure whitespace' },
+  { value: 'bold',    label: 'Bold — full-bleed color, oversized' },
 ]
 const THEMES = [
   { value: 'light', label: 'Light' },
   { value: 'dark',  label: 'Dark' },
-  { value: 'brand', label: 'Brand (Gold/Amber)' },
 ]
 const FONTS = [
   { value: 'sans-serif', label: 'Sans-serif (Clean)' },
   { value: 'serif',      label: 'Serif (Elegant)' },
   { value: 'monospace',  label: 'Monospace (Technical)' },
 ]
-const COLORS = [
-  { value: 'blue',    label: 'Blue' },
-  { value: 'gold',    label: 'Gold' },
-  { value: 'green',   label: 'Green' },
-  { value: 'purple',  label: 'Purple' },
-  { value: 'red',     label: 'Red' },
-  { value: 'neutral', label: 'Neutral' },
+const COLOR_PRESETS = [
+  { value: '#2563eb', label: 'Blue' },
+  { value: '#d97706', label: 'Gold' },
+  { value: '#059669', label: 'Green' },
+  { value: '#7c3aed', label: 'Purple' },
+  { value: '#dc2626', label: 'Red' },
+  { value: '#374151', label: 'Neutral' },
 ]
 
 const STYLE_COLORS = {
   modern: '#3b82f6', classic: '#6b7280', minimal: '#94a3b8', bold: '#ef4444',
 }
+const LEGACY_COLOR_MAP = {
+  blue: '#2563eb', gold: '#d97706', green: '#059669', purple: '#7c3aed', red: '#dc2626', neutral: '#374151',
+}
 const COLOR_HEX = {
   blue: '#2563eb', gold: '#d97706', green: '#059669', purple: '#8b5cf6', red: '#dc2626', neutral: '#6b7280',
 }
 
-export default function PresentationsPage({ onNavigate, theme, onToggleTheme }) {
+/* ── Slide thumbnail ────────────────────────────────────────────────── */
+function SlideThumb({ html }) {
+  const ref = useRef(null)
+  const [scale, setScale] = useState(0)
+
+  useEffect(() => {
+    if (!ref.current) return
+    const update = () => { if (ref.current) setScale(ref.current.offsetWidth / 1280) }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(ref.current)
+    return () => ro.disconnect()
+  }, [])
+
+  const thumbHtml = useMemo(() => {
+    if (!html) return ''
+    let t = html
+    // Make first slide visible without JS (add 'active' class)
+    t = t.replace(/(<section\b[^>]*class=")/, '$1active ')
+    // Hide nav chrome & disable slide transitions
+    t = t.replace('</style>',
+      '.counter,.progress,.nav-arrows{display:none!important}' +
+      'section{transition:none!important}' +
+      '</style>')
+    // Strip <script> — not needed for a static thumbnail
+    t = t.replace(/<script[\s\S]*?<\/script>/gi, '')
+    return t
+  }, [html])
+
+  return (
+    <div ref={ref} style={{
+      position: 'relative', width: '100%', paddingBottom: '56.25%',
+      overflow: 'hidden', background: '#111',
+    }}>
+      {scale > 0 && (
+        <iframe
+          srcDoc={thumbHtml}
+          sandbox=""
+          style={{
+            position: 'absolute', top: 0, left: 0,
+            width: 1280, height: 720,
+            transform: `scale(${scale})`,
+            transformOrigin: 'top left',
+            border: 'none', pointerEvents: 'none',
+          }}
+          loading="lazy"
+          tabIndex={-1}
+          aria-hidden="true"
+        />
+      )}
+    </div>
+  )
+}
+
+export default function PresentationsPage({ onNavigate, theme, onToggleTheme, onPresentMode }) {
   const { user, profile } = useAuth()
   const [view, setView]           = useState('list')     // 'list' | 'create' | 'present'
   const [presentations, setPresentations] = useState([])
@@ -59,17 +121,22 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme }) 
   const [error, setError]         = useState('')
   const [activePresentation, setActivePresentation] = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const [teamMonthlyUsage, setTeamMonthlyUsage] = useState(null) // { used, limit }
 
   // Form state
   const [title, setTitle]         = useState('Untitled Presentation')
   const [style, setStyle]         = useState('modern')
   const [presTheme, setPresTheme] = useState('light')
   const [font, setFont]           = useState('sans-serif')
-  const [colorScheme, setColorScheme] = useState('blue')
+  const [colorScheme, setColorScheme] = useState('#2563eb')
+  const [backgroundImage, setBackgroundImage] = useState('')  // URL or empty
+  const [overlayOpacity, setOverlayOpacity] = useState(15)   // 0-100 scale, default 15%
   const [content, setContent]     = useState('')
   const [editingId, setEditingId] = useState(null) // presentation id when re-generating
 
   const generatingRef = useRef(false)
+  const pollRef = useRef(null) // polling interval for background generation
+  const iframeRef = useRef(null)
 
   // Gate checks
   const hasBilling = isPlatformAdmin(profile) || isActiveBilling(profile?.billing_status) || isTeamMember(profile, user?.id)
@@ -77,12 +144,13 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme }) 
     profile?.teams?.presentations_addon_status === 'active' ||
     profile?.teams?.presentations_addon_status === 'trialing'
   const isDisabledByTeam = profile?.teams?.team_prefs?.ai_tools?.presentations_enabled === false
+  const teamBackgrounds = profile?.teams?.team_prefs?.ai_tools?.presentation_backgrounds || []
 
   // Fetch presentations
   useEffect(() => {
     if (!user?.id) return
     supabase.from('presentations')
-      .select('id, title, style, theme, font, color_scheme, slide_count, created_at, updated_at')
+      .select('id, title, style, theme, font, color_scheme, slide_count, status, html, created_at, updated_at')
       .eq('user_id', user.id)
       .order('updated_at', { ascending: false })
       .limit(100)
@@ -91,6 +159,16 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme }) 
         setLoading(false)
       })
   }, [user?.id])
+
+  // Read team monthly generation usage from profile (tracks generations, not stored presentations)
+  useEffect(() => {
+    const team = profile?.teams
+    if (!team) return
+    const now = new Date()
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const used = (team.pres_generations_reset === currentMonth) ? (team.pres_generations_used || 0) : 0
+    setTeamMonthlyUsage({ used, limit: 45 })
+  }, [profile?.teams?.pres_generations_used, profile?.teams?.pres_generations_reset])
 
   function resetForm() {
     setTitle('Untitled Presentation')
@@ -114,7 +192,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme }) 
     setStyle(pres.style)
     setPresTheme(pres.theme)
     setFont(pres.font)
-    setColorScheme(pres.color_scheme)
+    setColorScheme(LEGACY_COLOR_MAP[pres.color_scheme] || pres.color_scheme || '#2563eb')
     setContent(pres.content || '')
     setEditingId(pres.id)
     setActivePresentation(null)
@@ -134,6 +212,11 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme }) 
     }
   }
 
+  // Clean up polling on unmount
+  useEffect(() => {
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [])
+
   const generatePresentation = useCallback(async () => {
     if (generatingRef.current || !content.trim()) return
     generatingRef.current = true
@@ -141,29 +224,45 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme }) 
     setError('')
 
     try {
-      const token = await getFreshToken()
-      if (!token) throw new Error('Not authenticated')
+      async function callGenerate(forceRefresh = false) {
+        const token = await getFreshToken(forceRefresh)
+        if (!token) throw new Error('Session expired — please log in again.')
+        return fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-presentation`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              title, style, theme: presTheme, font, colorScheme, content,
+              backgroundImage: backgroundImage || null,
+              overlayOpacity: backgroundImage ? overlayOpacity : null,
+              presentationId: editingId || null,
+            }),
+          }
+        )
+      }
 
-      const resp = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-presentation`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            title, style, theme: presTheme, font, colorScheme, content,
-            presentationId: editingId || null,
-          }),
-        }
-      )
+      let resp = await callGenerate()
+      // If 401 (expired JWT), force-refresh the token and retry once
+      if (resp.status === 401) {
+        resp = await callGenerate(true)
+      }
 
       const data = await resp.json()
       if (!resp.ok) {
+        if (resp.status === 401) {
+          setError('Session expired — please log in again.')
+          return
+        }
         if (data.error === 'credits_exhausted') {
           setError(`You've used all ${data.limit} AI credits this month. Credits reset next month.`)
+        } else if (data.error === 'presentations_limit_reached') {
+          setError(`Your team has reached the monthly limit of ${data.limit} presentations. Resets next month.`)
+          setTeamMonthlyUsage({ used: data.used, limit: data.limit })
         } else if (data.error === 'addon_required') {
           setError('The Presentation Builder add-on is required. Ask your team owner to subscribe.')
         } else {
@@ -172,11 +271,72 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme }) 
         return
       }
 
+      // ── Background generation: poll for completion ──
+      if (data.status === 'generating') {
+        const presId = data.id
+        if (editingId) setEditingId(presId)
+
+        // Refresh list immediately to show the generating card
+        const { data: updated } = await supabase.from('presentations')
+          .select('id, title, style, theme, font, color_scheme, slide_count, status, html, created_at, updated_at')
+          .eq('user_id', user.id)
+          .order('updated_at', { ascending: false })
+          .limit(100)
+        setPresentations(updated || [])
+
+        // Poll every 3 seconds for completion
+        const startTime = Date.now()
+        if (pollRef.current) clearInterval(pollRef.current)
+        pollRef.current = setInterval(async () => {
+          try {
+            const { data: row } = await supabase
+              .from('presentations')
+              .select('id, title, html, slide_count, status')
+              .eq('id', presId)
+              .single()
+
+            if (row?.status === 'ready' && row.html) {
+              // Done — show the presentation
+              clearInterval(pollRef.current)
+              pollRef.current = null
+              setActivePresentation({ id: row.id, title: row.title, html: row.html, slideCount: row.slide_count })
+              setGenerating(false)
+              generatingRef.current = false
+              // Refresh list
+              const { data: listData } = await supabase.from('presentations')
+                .select('id, title, style, theme, font, color_scheme, slide_count, status, html, created_at, updated_at')
+                .eq('user_id', user.id)
+                .order('updated_at', { ascending: false })
+                .limit(100)
+              setPresentations(listData || [])
+            } else if (row?.status === 'failed') {
+              // Generation failed
+              clearInterval(pollRef.current)
+              pollRef.current = null
+              setError('Presentation generation failed. Please try again.')
+              setGenerating(false)
+              generatingRef.current = false
+            } else if (Date.now() - startTime > 150000) {
+              // Safety timeout: 150 seconds
+              clearInterval(pollRef.current)
+              pollRef.current = null
+              setError('Generation is taking longer than expected. Check back shortly — your presentation may still be building.')
+              setGenerating(false)
+              generatingRef.current = false
+            }
+          } catch (pollErr) {
+            console.error('Poll error:', pollErr)
+          }
+        }, 3000)
+        return // Don't fall through to finally — polling handles cleanup
+      }
+
+      // Fallback: synchronous response (shouldn't happen with new backend, but safe)
       setActivePresentation(data)
 
       // Refresh list
       const { data: updated } = await supabase.from('presentations')
-        .select('id, title, style, theme, font, color_scheme, slide_count, created_at, updated_at')
+        .select('id, title, style, theme, font, color_scheme, slide_count, status, html, created_at, updated_at')
         .eq('user_id', user.id)
         .order('updated_at', { ascending: false })
         .limit(100)
@@ -187,10 +347,13 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme }) 
       console.error('Generation error:', err)
       setError(err.message || 'Failed to generate presentation. Please try again.')
     } finally {
-      setGenerating(false)
-      generatingRef.current = false
+      if (!pollRef.current) {
+        // Only clean up if we're NOT polling (polling handles its own cleanup)
+        setGenerating(false)
+        generatingRef.current = false
+      }
     }
-  }, [title, style, presTheme, font, colorScheme, content, editingId, user?.id])
+  }, [title, style, presTheme, font, colorScheme, content, editingId, user?.id, backgroundImage, overlayOpacity])
 
   async function deletePresentation(id) {
     const { error: err } = await supabase.from('presentations').delete().eq('id', id).eq('user_id', user.id)
@@ -200,14 +363,23 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme }) 
     }
   }
 
-  // ESC key to exit present mode
+  // Notify parent when entering/exiting present mode (hides AI chat widget)
+  useEffect(() => {
+    onPresentMode?.(view === 'present')
+  }, [view, onPresentMode])
+
+  // Keyboard: ESC exits present mode, arrow keys forwarded to iframe
   useEffect(() => {
     if (view !== 'present') return
-    function handleEsc(e) {
-      if (e.key === 'Escape') setView('list')
+    function handleKey(e) {
+      if (e.key === 'Escape') { setView('list'); return }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === ' ') {
+        e.preventDefault()
+        iframeRef.current?.contentWindow?.postMessage({ type: 'keydown', key: e.key }, '*')
+      }
     }
-    window.addEventListener('keydown', handleEsc)
-    return () => window.removeEventListener('keydown', handleEsc)
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
   }, [view])
 
   // Add-on checkout
@@ -255,6 +427,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme }) 
           ESC Exit
         </button>
         <iframe
+          ref={iframeRef}
           srcDoc={activePresentation.html}
           style={{ width: '100%', height: '100%', border: 'none' }}
           sandbox="allow-scripts allow-same-origin"
@@ -355,11 +528,27 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme }) 
           {view === 'list' && (
             <>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-                  {presentations.length} presentation{presentations.length !== 1 ? 's' : ''}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+                    {presentations.length} presentation{presentations.length !== 1 ? 's' : ''}
+                  </div>
+                  {teamMonthlyUsage && (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 8, fontSize: 11,
+                      padding: '4px 12px', borderRadius: 20,
+                      background: teamMonthlyUsage.used >= teamMonthlyUsage.limit ? 'rgba(220,38,38,.08)' : 'rgba(14,165,233,.06)',
+                      border: `1px solid ${teamMonthlyUsage.used >= teamMonthlyUsage.limit ? 'rgba(220,38,38,.2)' : 'rgba(14,165,233,.15)'}`,
+                      color: teamMonthlyUsage.used >= teamMonthlyUsage.limit ? '#dc2626' : '#0ea5e9',
+                      fontFamily: "'JetBrains Mono',monospace", fontWeight: 600,
+                    }}>
+                      <span>{teamMonthlyUsage.used}/{teamMonthlyUsage.limit}</span>
+                      <span style={{ fontWeight: 400, fontFamily: 'Poppins,sans-serif', fontSize: 10, opacity: .7 }}>this month</span>
+                    </div>
+                  )}
                 </div>
                 <button className="btn-gold" onClick={openCreate}
-                  style={{ padding: '10px 22px', fontSize: 13 }}>
+                  disabled={teamMonthlyUsage && teamMonthlyUsage.used >= teamMonthlyUsage.limit}
+                  style={{ padding: '10px 22px', fontSize: 13, opacity: teamMonthlyUsage && teamMonthlyUsage.used >= teamMonthlyUsage.limit ? .5 : 1 }}>
                   + New Presentation
                 </button>
               </div>
@@ -385,97 +574,151 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme }) 
                   gap: 14,
                 }}>
                   {presentations.map(pres => {
-                    const sc = COLOR_HEX[pres.color_scheme] || '#6b7280'
+                    const sc = pres.color_scheme?.startsWith('#') ? pres.color_scheme : (COLOR_HEX[pres.color_scheme] || '#6b7280')
+                    const hasThumb = pres.status === 'ready' && pres.html
                     return (
                       <div key={pres.id} className="card" style={{
-                        padding: 22, display: 'flex', flexDirection: 'column',
-                        borderTop: `3px solid ${sc}`,
+                        display: 'flex', flexDirection: 'column',
+                        overflow: 'hidden',
+                        ...(hasThumb ? {} : { borderTop: `3px solid ${sc}` }),
                       }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                          <div className="serif" style={{ fontSize: 16, color: 'var(--text)', fontWeight: 700, lineHeight: 1.3, flex: 1 }}>
-                            {pres.title}
+                        {/* ── Slide thumbnail / placeholder ── */}
+                        {hasThumb ? (
+                          <div style={{ cursor: 'pointer' }} onClick={() => loadAndPresent(pres.id)}>
+                            <SlideThumb html={pres.html} />
                           </div>
-                          <button onClick={() => setDeleteConfirm(pres.id)} className="btn-del"
-                            title="Delete" style={{ fontSize: 12, flexShrink: 0 }}>
-                            🗑
-                          </button>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-                          <span style={{
-                            fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 700,
-                            background: `${STYLE_COLORS[pres.style] || '#6b7280'}18`,
-                            color: STYLE_COLORS[pres.style] || '#6b7280',
-                            border: `1px solid ${STYLE_COLORS[pres.style] || '#6b7280'}30`,
-                            fontFamily: "'JetBrains Mono',monospace",
-                          }}>
-                            {pres.style?.toUpperCase()}
-                          </span>
-                          <span style={{
-                            fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 700,
-                            background: `${sc}18`, color: sc, border: `1px solid ${sc}30`,
-                            fontFamily: "'JetBrains Mono',monospace",
-                          }}>
-                            {pres.color_scheme?.toUpperCase()}
-                          </span>
-                          <span style={{
-                            fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 600,
-                            background: 'var(--b1)', color: 'var(--muted)',
-                            fontFamily: "'JetBrains Mono',monospace",
-                          }}>
-                            {pres.slide_count} slides
-                          </span>
-                        </div>
-
-                        <div style={{ fontSize: 11, color: 'var(--dim)', marginBottom: 16,
-                          fontFamily: "'JetBrains Mono',monospace" }}>
-                          {new Date(pres.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        </div>
-
-                        <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
-                          <button className="btn-primary" onClick={() => loadAndPresent(pres.id)}
-                            style={{ flex: 1, fontSize: 12, padding: '8px 0' }}>
-                            Present
-                          </button>
-                          <button className="btn-outline" onClick={() => {
-                            // Load full content then open re-generate form
-                            supabase.from('presentations')
-                              .select('*')
-                              .eq('id', pres.id)
-                              .single()
-                              .then(({ data }) => { if (data) openRegenerate(data) })
-                          }}
-                            style={{ flex: 1, fontSize: 12, padding: '8px 0' }}>
-                            Edit
-                          </button>
-                        </div>
-
-                        {/* Delete confirmation */}
-                        {deleteConfirm === pres.id && (
+                        ) : (
                           <div style={{
-                            marginTop: 12, padding: '10px 14px', borderRadius: 8,
-                            background: 'rgba(220,38,38,.06)', border: '1px solid rgba(220,38,38,.2)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                            position: 'relative', width: '100%', paddingBottom: '56.25%',
+                            background: pres.status === 'generating'
+                              ? `linear-gradient(135deg, ${sc}18, ${sc}08)`
+                              : 'var(--b1)',
                           }}>
-                            <span style={{ fontSize: 12, color: '#dc2626', fontWeight: 600 }}>Delete?</span>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <button onClick={() => deletePresentation(pres.id)}
-                                style={{
-                                  fontSize: 11, padding: '4px 12px', borderRadius: 6, cursor: 'pointer',
-                                  background: '#dc2626', color: '#fff', border: 'none', fontWeight: 700,
-                                }}>
-                                Yes
-                              </button>
-                              <button onClick={() => setDeleteConfirm(null)}
-                                style={{
-                                  fontSize: 11, padding: '4px 12px', borderRadius: 6, cursor: 'pointer',
-                                  background: 'transparent', color: 'var(--muted)', border: '1px solid var(--b2)', fontWeight: 600,
-                                }}>
-                                No
-                              </button>
+                            <div style={{
+                              position: 'absolute', inset: 0,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              flexDirection: 'column', gap: 8,
+                            }}>
+                              {pres.status === 'generating' ? (
+                                <>
+                                  <div style={{ fontSize: 28, animation: 'pulse 2s ease-in-out infinite' }}>&#9733;</div>
+                                  <div style={{ fontSize: 11, fontWeight: 600, color: '#d97706' }}>Building slides...</div>
+                                </>
+                              ) : pres.status === 'failed' ? (
+                                <>
+                                  <div style={{ fontSize: 28, opacity: 0.5 }}>&#9888;</div>
+                                  <div style={{ fontSize: 11, fontWeight: 600, color: '#dc2626' }}>Generation failed</div>
+                                </>
+                              ) : (
+                                <div style={{ fontSize: 28, opacity: 0.18 }}>&#9654;</div>
+                              )}
                             </div>
                           </div>
                         )}
+
+                        {/* ── Card content ── */}
+                        <div style={{ padding: '14px 18px 18px', display: 'flex', flexDirection: 'column', flex: 1 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                            <div className="serif" style={{ fontSize: 15, color: 'var(--text)', fontWeight: 700, lineHeight: 1.3, flex: 1 }}>
+                              {pres.title}
+                            </div>
+                            <button onClick={() => setDeleteConfirm(pres.id)} className="btn-del"
+                              title="Delete" style={{ fontSize: 12, flexShrink: 0 }}>
+                              &#128465;
+                            </button>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                            <span style={{
+                              fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 700,
+                              background: `${STYLE_COLORS[pres.style] || '#6b7280'}18`,
+                              color: STYLE_COLORS[pres.style] || '#6b7280',
+                              border: `1px solid ${STYLE_COLORS[pres.style] || '#6b7280'}30`,
+                              fontFamily: "'JetBrains Mono',monospace",
+                            }}>
+                              {pres.style?.toUpperCase()}
+                            </span>
+                            <span style={{
+                              fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 700,
+                              background: `${sc}18`, color: sc, border: `1px solid ${sc}30`,
+                              fontFamily: "'JetBrains Mono',monospace",
+                            }}>
+                              {pres.color_scheme?.startsWith('#') ? pres.color_scheme.toUpperCase() : pres.color_scheme?.toUpperCase()}
+                            </span>
+                            <span style={{
+                              fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 600,
+                              background: 'var(--b1)', color: 'var(--muted)',
+                              fontFamily: "'JetBrains Mono',monospace",
+                            }}>
+                              {pres.slide_count} slides
+                            </span>
+                          </div>
+
+                          <div style={{ fontSize: 11, color: 'var(--dim)', marginBottom: 14,
+                            fontFamily: "'JetBrains Mono',monospace" }}>
+                            {new Date(pres.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </div>
+
+                          <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
+                            {pres.status === 'generating' ? (
+                              <div style={{
+                                flex: 1, textAlign: 'center', fontSize: 12, padding: '8px 0',
+                                color: '#d97706', fontWeight: 600,
+                                animation: 'pulse 2s ease-in-out infinite',
+                              }}>
+                                Building...
+                              </div>
+                            ) : pres.status === 'failed' ? (
+                              <button className="btn-outline" onClick={() => {
+                                supabase.from('presentations').select('*').eq('id', pres.id).single()
+                                  .then(({ data }) => { if (data) openRegenerate(data) })
+                              }} style={{ flex: 1, fontSize: 12, padding: '8px 0', color: '#dc2626', borderColor: 'rgba(220,38,38,.3)' }}>
+                                Retry
+                              </button>
+                            ) : (
+                              <>
+                                <button className="btn-primary" onClick={() => loadAndPresent(pres.id)}
+                                  style={{ flex: 1, fontSize: 12, padding: '8px 0' }}>
+                                  Present
+                                </button>
+                                <button className="btn-outline" onClick={() => {
+                                  supabase.from('presentations').select('*').eq('id', pres.id).single()
+                                    .then(({ data }) => { if (data) openRegenerate(data) })
+                                }}
+                                  style={{ flex: 1, fontSize: 12, padding: '8px 0' }}>
+                                  Edit
+                                </button>
+                              </>
+                            )}
+                          </div>
+
+                          {/* Delete confirmation */}
+                          {deleteConfirm === pres.id && (
+                            <div style={{
+                              marginTop: 12, padding: '10px 14px', borderRadius: 8,
+                              background: 'rgba(220,38,38,.06)', border: '1px solid rgba(220,38,38,.2)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                            }}>
+                              <span style={{ fontSize: 12, color: '#dc2626', fontWeight: 600 }}>Delete?</span>
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button onClick={() => deletePresentation(pres.id)}
+                                  style={{
+                                    fontSize: 11, padding: '4px 12px', borderRadius: 6, cursor: 'pointer',
+                                    background: '#dc2626', color: '#fff', border: 'none', fontWeight: 700,
+                                  }}>
+                                  Yes
+                                </button>
+                                <button onClick={() => setDeleteConfirm(null)}
+                                  style={{
+                                    fontSize: 11, padding: '4px 12px', borderRadius: 6, cursor: 'pointer',
+                                    background: 'transparent', color: 'var(--muted)', border: '1px solid var(--b2)', fontWeight: 600,
+                                  }}>
+                                  No
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )
                   })}
@@ -553,14 +796,116 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme }) 
                   <div>
                     <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)',
                       letterSpacing: .8, textTransform: 'uppercase', marginBottom: 6 }}>
-                      Color Scheme
+                      Brand Color
                     </label>
-                    <select className="field-input" value={colorScheme} onChange={e => setColorScheme(e.target.value)}
-                      style={{ width: '100%', padding: '10px 14px', fontSize: 13 }}>
-                      {COLORS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                    </select>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                      {COLOR_PRESETS.map(c => (
+                        <button key={c.value} title={c.label} onClick={() => setColorScheme(c.value)}
+                          style={{
+                            width: 28, height: 28, borderRadius: '50%', border: colorScheme === c.value ? '2.5px solid var(--fg)' : '2px solid transparent',
+                            background: c.value, cursor: 'pointer', padding: 0, outline: 'none',
+                            boxShadow: colorScheme === c.value ? `0 0 0 2px var(--bg), 0 0 0 4px ${c.value}` : 'none',
+                            transition: 'all .15s',
+                          }} />
+                      ))}
+                      <div style={{ position: 'relative', width: 28, height: 28, flexShrink: 0 }}>
+                        <input type="color" value={colorScheme.startsWith('#') ? colorScheme : '#2563eb'}
+                          onChange={e => setColorScheme(e.target.value)}
+                          style={{
+                            position: 'absolute', inset: 0, width: 28, height: 28, padding: 0, border: 'none',
+                            borderRadius: '50%', cursor: 'pointer', background: 'none',
+                          }}
+                          title="Pick custom color" />
+                        <div style={{
+                          position: 'absolute', inset: 0, borderRadius: '50%', pointerEvents: 'none',
+                          background: 'conic-gradient(red,yellow,lime,aqua,blue,magenta,red)',
+                          border: !COLOR_PRESETS.some(p => p.value === colorScheme) ? '2.5px solid var(--fg)' : '2px solid transparent',
+                          boxShadow: !COLOR_PRESETS.some(p => p.value === colorScheme) ? `0 0 0 2px var(--bg), 0 0 0 4px ${colorScheme}` : 'none',
+                        }} />
+                      </div>
+                      <input type="text" value={colorScheme} onChange={e => {
+                          const v = e.target.value
+                          if (/^#[0-9a-fA-F]{0,6}$/.test(v)) setColorScheme(v)
+                        }}
+                        onBlur={() => { if (!/^#[0-9a-fA-F]{6}$/.test(colorScheme)) setColorScheme('#2563eb') }}
+                        style={{
+                          width: 80, padding: '6px 8px', fontSize: 12, fontFamily: 'monospace',
+                          border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)',
+                          color: 'var(--fg)', textTransform: 'uppercase',
+                        }}
+                        placeholder="#2563EB"
+                        maxLength={7} />
+                    </div>
                   </div>
                 </div>
+
+                {/* Background Image selector */}
+                <div style={{ marginBottom: 18 }}>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)',
+                    letterSpacing: .8, textTransform: 'uppercase', marginBottom: 6 }}>
+                    Slide Background <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+                  </label>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button onClick={() => setBackgroundImage('')}
+                      style={{
+                        width: 72, height: 48, borderRadius: 8, cursor: 'pointer', position: 'relative',
+                        border: !backgroundImage ? `2.5px solid ${colorScheme.startsWith('#') ? colorScheme : '#2563eb'}` : '1.5px solid var(--border)',
+                        background: !backgroundImage ? `${(colorScheme.startsWith('#') ? colorScheme : '#2563eb')}10` : 'var(--bg)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 10, color: !backgroundImage ? (colorScheme.startsWith('#') ? colorScheme : '#2563eb') : 'var(--muted)', fontWeight: 600,
+                        boxShadow: !backgroundImage ? `0 0 0 1px ${(colorScheme.startsWith('#') ? colorScheme : '#2563eb')}40` : 'none',
+                        transition: 'all .15s',
+                      }}>
+                      None
+                    </button>
+                    {teamBackgrounds.map((bg, idx) => {
+                      const isSelected = backgroundImage === bg
+                      const accent = colorScheme.startsWith('#') ? colorScheme : '#2563eb'
+                      return (
+                        <button key={idx} onClick={() => setBackgroundImage(bg)}
+                          style={{
+                            width: 72, height: 48, borderRadius: 8, cursor: 'pointer', padding: 0, overflow: 'hidden',
+                            position: 'relative',
+                            border: isSelected ? `2.5px solid ${accent}` : '1.5px solid var(--border)',
+                            boxShadow: isSelected ? `0 0 0 1px ${accent}40` : 'none',
+                            background: 'none', transition: 'all .15s',
+                          }}>
+                          <img src={bg} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block',
+                            opacity: isSelected ? 1 : 0.7, transition: 'opacity .15s' }} />
+                          {isSelected && (
+                            <div style={{
+                              position: 'absolute', top: 3, right: 3, width: 16, height: 16, borderRadius: '50%',
+                              background: accent, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 9, color: '#fff', fontWeight: 700, lineHeight: 1,
+                            }}>✓</div>
+                          )}
+                        </button>
+                      )
+                    })}
+                    {teamBackgrounds.length === 0 && (
+                      <span style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>
+                        No backgrounds uploaded yet — team owner can add them in Team Settings → AI Tools
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Overlay opacity slider — only show when background is selected */}
+                {backgroundImage && (
+                  <div style={{ marginBottom: 18 }}>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)',
+                      letterSpacing: .8, textTransform: 'uppercase', marginBottom: 6 }}>
+                      Background Intensity <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontFamily: "'JetBrains Mono',monospace" }}>{overlayOpacity}%</span>
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span style={{ fontSize: 10, color: 'var(--muted)', width: 36, textAlign: 'right' }}>Subtle</span>
+                      <input type="range" min={2} max={40} value={overlayOpacity}
+                        onChange={e => setOverlayOpacity(Number(e.target.value))}
+                        style={{ flex: 1, accentColor: colorScheme.startsWith('#') ? colorScheme : '#2563eb' }} />
+                      <span style={{ fontSize: 10, color: 'var(--muted)', width: 36 }}>Strong</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Content textarea */}
                 <div style={{ marginBottom: 18 }}>
@@ -596,7 +941,7 @@ export default function PresentationsPage({ onNavigate, theme, onToggleTheme }) 
                       opacity: generating || !content.trim() ? 0.6 : 1,
                       cursor: generating || !content.trim() ? 'not-allowed' : 'pointer',
                     }}>
-                    {generating ? 'Generating...' : editingId ? 'Re-generate' : 'Generate Presentation'}
+                    {generating ? 'Building presentation...' : editingId ? 'Re-generate' : 'Generate Presentation'}
                   </button>
                 </div>
               </div>

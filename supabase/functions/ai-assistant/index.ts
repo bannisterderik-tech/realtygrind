@@ -16,6 +16,7 @@ const PROD_ORIGINS = [
 const DEV_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:4173',
+  'http://localhost:5190',
 ]
 const ALLOWED_ORIGINS = Deno.env.get('ENVIRONMENT') === 'production'
   ? PROD_ORIGINS
@@ -103,9 +104,9 @@ Deno.serve(async (req) => {
       effectivePlan = profile.plan || 'free'
     }
 
-    // ── 3. Plan gate ────────────────────────────────────────────────────────
+    // ── 3. Plan gate — paid subscription required (trialing users blocked) ─
     const billing = profile.billing_status
-    const hasBilling = billing === 'active' || billing === 'trialing'
+    const hasBilling = billing === 'active'
     if (!isAdmin && !hasBilling && !isTeamMember) {
       return json({ error: 'subscription_required', message: 'Subscribe to a plan to use AI Assistant.' }, 403)
     }

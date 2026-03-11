@@ -1405,7 +1405,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                     <MemberAvatar member={m} size={34} rank={rank}/>
                                     <div style={{ flex:1, minWidth:0 }}>
                                       <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{m.full_name||'Agent'}</div>
-                                      <div style={{ fontSize:10, color:'var(--muted)' }}>{rank.name} · 🔥{m.streak||0}</div>
+                                      <div style={{ fontSize:10, color:'var(--muted)' }}>{rank.name}{xpEnabled ? ` · 🔥${m.streak||0}` : ''}</div>
                                     </div>
                                     {isLead && <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background:'rgba(139,92,246,.12)', color:'#8b5cf6', fontWeight:700, flexShrink:0 }}>LEAD</span>}
                                   </div>
@@ -2278,7 +2278,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                                 <MemberAvatar member={me} size={34} rank={myRank}/>
                                                 <div style={{ flex:1, minWidth:0 }}>
                                                   <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{me.full_name||'Agent'}</div>
-                                                  <div style={{ fontSize:10, color:'var(--muted)' }}>{myRank.name} · 🔥 {me.streak||0}</div>
+                                                  <div style={{ fontSize:10, color:'var(--muted)' }}>{myRank.name}{xpEnabled ? ` · 🔥 ${me.streak||0}` : ''}</div>
                                                 </div>
                                                 <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>YOU</span>
                                               </div>
@@ -2308,7 +2308,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                                 <MemberAvatar member={mate} size={34} rank={mateRank}/>
                                                 <div style={{ flex:1, minWidth:0 }}>
                                                   <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{mate.full_name||'Agent'}</div>
-                                                  <div style={{ fontSize:10, color:'var(--muted)' }}>{mateRank.name} · 🔥 {mate.streak||0}</div>
+                                                  <div style={{ fontSize:10, color:'var(--muted)' }}>{mateRank.name}{xpEnabled ? ` · 🔥 ${mate.streak||0}` : ''}</div>
                                                 </div>
                                                 {isLeaderMate && <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background:'rgba(139,92,246,.1)', color:'#8b5cf6', fontWeight:700 }}>LEAD</span>}
                                               </div>
@@ -2716,13 +2716,16 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                   const { error } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
                                   if (!error) setTeamData(td=>({...td, team_prefs: newPrefs }))
                                 }} style={{
-                                  padding:'8px 20px', borderRadius:8, fontSize:12, fontWeight:700, cursor:'pointer',
-                                  border: (teamData?.team_prefs?.xp_enabled !== false) ? '1px solid #10b981' : '1px solid var(--b3)',
-                                  background: (teamData?.team_prefs?.xp_enabled !== false) ? 'rgba(16,185,129,.1)' : 'var(--surface)',
-                                  color: (teamData?.team_prefs?.xp_enabled !== false) ? '#10b981' : 'var(--muted)',
-                                  transition:'all .15s', flexShrink:0,
+                                  width:42, height:24, borderRadius:12, cursor:'pointer', border:'none',
+                                  position:'relative', flexShrink:0, transition:'background .2s',
+                                  background: (teamData?.team_prefs?.xp_enabled !== false) ? '#10b981' : 'var(--b2)',
                                 }}>
-                                  {(teamData?.team_prefs?.xp_enabled !== false) ? '✓ ON' : 'OFF'}
+                                  <div style={{
+                                    width:18, height:18, borderRadius:9,
+                                    background:'#fff', position:'absolute', top:3,
+                                    transition:'left .2s',
+                                    left: (teamData?.team_prefs?.xp_enabled !== false) ? 21 : 3,
+                                  }}/>
                                 </button>
                               </div>
                             </div>
@@ -4477,10 +4480,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               {grp.memberIds.length} members{leader ? ` · 👑 ${leader.full_name||'Agent'}` : ''}
                             </div>
                           </div>
+                          {xpEnabled && (
                           <div style={{ textAlign:'right', flexShrink:0 }}>
                             <div style={{ fontSize:16, fontWeight:700, color:'#8b5cf6', fontFamily:"'Fraunces',serif" }}>{grpXp.toLocaleString()}</div>
                             <div style={{ fontSize:8, color:'var(--muted)' }}>GROUP XP</div>
                           </div>
+                          )}
                         </div>
                       )
                     })}

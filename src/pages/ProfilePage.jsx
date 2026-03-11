@@ -1584,8 +1584,10 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                   {[
                     {l:'Email', v:user?.email},
                     {l:'Member since', v:user?.created_at?new Date(user.created_at).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'}):'—'},
-                    {l:'Rank', v:`${rank.icon} ${rank.name}`},
-                    {l:'Total XP', v:(profile?.xp||0).toLocaleString()},
+                    ...(habitPrefs?.xp_enabled !== false ? [
+                      {l:'Rank', v:`${rank.icon} ${rank.name}`},
+                      {l:'Total XP', v:(profile?.xp||0).toLocaleString()},
+                    ] : []),
                   ].map((row,i)=>(
                     <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
                       padding:'10px 14px', borderRadius:8, background:'var(--bg2)', border:'1px solid var(--b1)' }}>
@@ -1616,13 +1618,16 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                         if (!error) setHabitPrefs(newPrefs)
                       } catch(e){ console.error('xp toggle error:', e) }
                     }} style={{
-                      padding:'8px 20px', borderRadius:8, fontSize:12, fontWeight:700, cursor:'pointer',
-                      border: (habitPrefs?.xp_enabled !== false) ? '1px solid #10b981' : '1px solid var(--b3)',
-                      background: (habitPrefs?.xp_enabled !== false) ? 'rgba(16,185,129,.1)' : 'var(--surface)',
-                      color: (habitPrefs?.xp_enabled !== false) ? '#10b981' : 'var(--muted)',
-                      transition:'all .15s', flexShrink:0,
+                      width:42, height:24, borderRadius:12, cursor:'pointer', border:'none',
+                      position:'relative', flexShrink:0, transition:'background .2s',
+                      background: (habitPrefs?.xp_enabled !== false) ? '#10b981' : 'var(--b2)',
                     }}>
-                      {(habitPrefs?.xp_enabled !== false) ? '✓ ON' : 'OFF'}
+                      <div style={{
+                        width:18, height:18, borderRadius:9,
+                        background:'#fff', position:'absolute', top:3,
+                        transition:'left .2s',
+                        left: (habitPrefs?.xp_enabled !== false) ? 21 : 3,
+                      }}/>
                     </button>
                   </div>
                 </div>

@@ -1048,10 +1048,10 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
             <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
               <span className="serif" style={{ fontSize:17, color:'var(--text)', fontWeight:600 }}>{title}</span>
               <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, fontSize:19, color:accentColor, lineHeight:1 }}>{rows.length}</span>
-              <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700, fontFamily:"'JetBrains Mono',monospace",
+              {xpLabel != null && <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700, fontFamily:"'JetBrains Mono',monospace",
                 background:`${accentColor}14`, color:accentColor, border:`1px solid ${accentColor}28` }}>
                 +{xpLabel} XP/deal
-              </span>
+              </span>}
             </div>
             {(totalVol > 0 || totalComm > 0) && (
               <div style={{ fontSize:11, color:'var(--muted)', marginTop:3, fontFamily:"'JetBrains Mono',monospace" }}>
@@ -2855,7 +2855,7 @@ function Dashboard({ theme, onToggleTheme }) {
   return (
     <div id="rg-dashboard" className="page">
       {/* XP float */}
-      {xpPop && (
+      {xpEnabled && xpPop && (
         <div style={{ position:'fixed', top:74, right:30, zIndex:9999, pointerEvents:'none',
           fontFamily:"'Fraunces',serif", fontSize:22, fontWeight:700, color:xpPop.color,
           animation:'floatXp 1.4s ease forwards', textShadow:`0 0 20px ${xpPop.color}55` }}>
@@ -2929,10 +2929,10 @@ function Dashboard({ theme, onToggleTheme }) {
                   📈 {year} Total Commission: <strong>${ytd.toLocaleString()}</strong>
                 </div>
               )}
-              <div style={{ marginTop:16, fontSize:18, fontWeight:700, color:'#f59e0b',
+              {xpEnabled && <div style={{ marginTop:16, fontSize:18, fontWeight:700, color:'#f59e0b',
                 fontFamily:"'Fraunces',serif", letterSpacing:.5 }}>
                 ✨ +300 XP
-              </div>
+              </div>}
               <button onClick={()=>{
                 setCelebration(null)
                 if (pendingReviewAddress) {
@@ -3153,15 +3153,15 @@ function Dashboard({ theme, onToggleTheme }) {
               {dateStr.split(',')[0]}<span style={{ color:rank.color }}>.</span>
             </div>
             <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:7, padding:'4px 10px 4px 5px',
+              {xpEnabled && <div style={{ display:'flex', alignItems:'center', gap:7, padding:'4px 10px 4px 5px',
                 background:`${rank.color}12`, border:`1px solid ${rank.color}28`, borderRadius:20 }}>
                 <div style={{ width:20, height:20, borderRadius:'50%',
                   background:`linear-gradient(135deg, ${rank.color}, ${rank.color}88)`,
                   display:'flex', alignItems:'center', justifyContent:'center', fontSize:11 }}>{rank.icon}</div>
                 <span style={{ fontSize:11, fontWeight:700, color:rank.color,
                   fontFamily:"'JetBrains Mono',monospace" }}>{rank.name} · {xp.toLocaleString()} XP</span>
-              </div>
-              {streak > 0 && (
+              </div>}
+              {xpEnabled && streak > 0 && (
                 <div style={{ display:'flex', alignItems:'center', gap:5, padding:'4px 10px',
                   background:'rgba(251,146,60,.1)', border:'1px solid rgba(251,146,60,.25)', borderRadius:20 }}>
                   <span style={{ fontSize:12 }}>🔥</span>
@@ -3272,7 +3272,7 @@ function Dashboard({ theme, onToggleTheme }) {
           <>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
             <div style={{ fontSize:12, color:'var(--muted)' }}>
-              {todayXp > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", color:'var(--gold)', fontWeight:700 }}>+{todayXp.toLocaleString()} XP</span>} {todayXp > 0 ? (isViewingToday ? 'earned today' : `earned ${FULL_DAYS[viewDayIdx]}`) : ''}
+              {xpEnabled && todayXp > 0 && <span style={{ fontFamily:"'JetBrains Mono',monospace", color:'var(--gold)', fontWeight:700 }}>+{todayXp.toLocaleString()} XP</span>} {xpEnabled && todayXp > 0 ? (isViewingToday ? 'earned today' : `earned ${FULL_DAYS[viewDayIdx]}`) : ''}
             </div>
             <button className="btn-outline" onClick={() => setShowPrint(true)}
               style={{ fontSize:12, display:'flex', alignItems:'center', gap:5, padding:'7px 14px' }}>
@@ -3572,8 +3572,8 @@ function Dashboard({ theme, onToggleTheme }) {
                             <span style={{ fontSize:15, flexShrink:0 }}>{t.icon}</span>
                             <span style={{ flex:1, fontSize:13, color:'var(--muted)',
                               textDecoration:'line-through', minWidth:0 }}>{t.label}</span>
-                            <span style={{ fontSize:11, color:'var(--dim)',
-                              fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>+{t.xp} XP</span>
+                            {xpEnabled && <span style={{ fontSize:11, color:'var(--dim)',
+                              fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>+{t.xp} XP</span>}
                             <button className="btn-outline" style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }}
                               onClick={()=>unSkipCustomTaskToday(t)}>Restore</button>
                           </div>
@@ -3600,7 +3600,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 <div style={{ fontSize:12, color:'var(--muted)', marginTop:4 }}>
                   {viewBuiltInActive.length-todayChecks === 0 ? 'All habits done' : `${viewBuiltInActive.length-todayChecks} habit${viewBuiltInActive.length-todayChecks!==1?'s':''} remaining`}
                 </div>
-                {streak > 0 && (
+                {xpEnabled && streak > 0 && (
                   <div style={{ marginTop:14, padding:'8px 14px', background:'rgba(251,146,60,.08)', border:'1px solid rgba(251,146,60,.2)', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
                     <span style={{ fontSize:14 }}>🔥</span>
                     <span className="serif" style={{ fontSize:14, color:'#fb923c', fontWeight:600, letterSpacing:'-.01em' }}>{streak}-day streak</span>
@@ -3629,7 +3629,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 </div>
               )}
 
-              <div className="card" style={{ padding:18,
+              {xpEnabled && <div className="card" style={{ padding:18,
                 background:'linear-gradient(160deg, rgba(217,119,6,.13) 0%, var(--gold5) 100%)',
                 border:'1px solid var(--gold4)', borderTop:'2.5px solid var(--gold)' }}>
                 <div className="label" style={{ marginBottom:8, color:'var(--gold)', textAlign:'center', letterSpacing:.8 }}>Today's XP</div>
@@ -3690,20 +3690,20 @@ function Dashboard({ theme, onToggleTheme }) {
                     )}
                   </div>
                 )}
-              </div>
+              </div>}
 
               {/* ── Personal Records Card ────────────────────── */}
               {(personalRecords.activeDays > 0 || closedDeals.length > 0 || archivedDeals.length > 0) && (
                 <div className="card" style={{ padding:16, background:'linear-gradient(160deg, rgba(139,92,246,.08) 0%, var(--surface) 100%)', border:'1px solid rgba(139,92,246,.15)', borderTop:'2.5px solid #8b5cf6' }}>
                   <div className="label" style={{ marginBottom:10, color:'#8b5cf6', textAlign:'center', letterSpacing:.8 }}>🏅 Personal Records</div>
                   <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                    {personalRecords.bestDayXp > 0 && (
+                    {xpEnabled && personalRecords.bestDayXp > 0 && (
                       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 8px', borderRadius:7, background:'rgba(139,92,246,.06)' }}>
                         <span style={{ fontSize:11, color:'var(--text2)' }}>Best Day</span>
                         <span className="mono" style={{ fontSize:13, fontWeight:700, color:'#8b5cf6' }}>+{personalRecords.bestDayXp.toLocaleString()} XP</span>
                       </div>
                     )}
-                    {personalRecords.bestWeekXp > 0 && (
+                    {xpEnabled && personalRecords.bestWeekXp > 0 && (
                       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 8px', borderRadius:7, background:'rgba(139,92,246,.06)' }}>
                         <span style={{ fontSize:11, color:'var(--text2)' }}>Best Week</span>
                         <span className="mono" style={{ fontSize:13, fontWeight:700, color:'#8b5cf6' }}>+{personalRecords.bestWeekXp.toLocaleString()} XP</span>
@@ -3846,7 +3846,7 @@ function Dashboard({ theme, onToggleTheme }) {
                                 <span style={{ fontSize:10, flex:1, minWidth:0, color:checked?'var(--muted)':'var(--text2)',
                                   textDecoration:checked?'line-through':'none',
                                   overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{h.icon} {h.label}</span>
-                                <span className="mono" style={{ fontSize:9, color:cs.color, flexShrink:0 }}>+{h.xp}</span>
+                                {xpEnabled && <span className="mono" style={{ fontSize:9, color:cs.color, flexShrink:0 }}>+{h.xp}</span>}
                               </button>
                               {weekRemoveBtn(()=>dateStr && skipHabitForDate(h.id, dateStr))}
                             </div>
@@ -4405,13 +4405,13 @@ function Dashboard({ theme, onToggleTheme }) {
 
           {listingsPipelineView === 'list' ? (
             <>
-              <PipelineSection title="Offers Received" icon="📥" accentColor="#8b5cf6" xpLabel={PIPELINE_XP.offer_received}
+              <PipelineSection title="Offers Received" icon="📥" accentColor="#8b5cf6" xpLabel={xpEnabled ? PIPELINE_XP.offer_received : null}
                 rows={offersReceived} setRows={setOffersReceived} userId={user.id}
                 onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersReceived)}
                 onAdd={handleOfferReceivedAdd}
                 onRemove={()=>deductPipelineXp('offer_received')}
                 statusOpts={[{v:'pending',l:'✓ Accepted'},{v:'countered',l:'↩ Counter'},{v:'declined',l:'✕ Decline',variant:'red'},{v:'closed',l:'Mark Closed'}]}/>
-              <PipelineSection title="Went Pending" icon="⏳" accentColor="#f59e0b" xpLabel={PIPELINE_XP.went_pending}
+              <PipelineSection title="Went Pending" icon="⏳" accentColor="#f59e0b" xpLabel={xpEnabled ? PIPELINE_XP.went_pending : null}
                 rows={pendingDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing')} setRows={setPendingDeals} userId={user.id}
                 onStatusChange={(r,s)=>handlePendingStatus(r,s)}
                 onRemove={()=>deductPipelineXp('went_pending')}
@@ -4419,7 +4419,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 expandedChecklist={expandedChecklist} setExpandedChecklist={setExpandedChecklist}
                 onToggleChecklistItem={toggleChecklistItem} onAddChecklistItem={addChecklistItem}
                 onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
-              <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
+              <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={xpEnabled ? PIPELINE_XP.closed : null}
                 rows={closedDeals.filter(d=>d.dealSide==='seller'||d.closedFrom==='Listing')} setRows={setClosedDeals} userId={user.id}
                 archiveOnRemove={true} onArchiveToClosed={archiveDealFromPipeline}
                 showSource={true}/>
@@ -4781,13 +4781,13 @@ function Dashboard({ theme, onToggleTheme }) {
 
           {buyersPipelineView === 'list' ? (
             <>
-              <PipelineSection title="Offers Made" icon="📤" accentColor="#0ea5e9" xpLabel={PIPELINE_XP.offer_made}
+              <PipelineSection title="Offers Made" icon="📤" accentColor="#0ea5e9" xpLabel={xpEnabled ? PIPELINE_XP.offer_made : null}
                 rows={offersMade} setRows={setOffersMade} userId={user.id}
                 onStatusChange={(r,s)=>handleOfferStatus(r,s,setOffersMade)}
                 onAdd={handleOfferMadeAdd}
                 onRemove={()=>deductPipelineXp('offer_made')}
                 statusOpts={[{v:'active',l:'Active'},{v:'pending',l:'Move to Pending'},{v:'closed',l:'Mark Closed'}]}/>
-              <PipelineSection title="Went Pending" icon="⏳" accentColor="#f59e0b" xpLabel={PIPELINE_XP.went_pending}
+              <PipelineSection title="Went Pending" icon="⏳" accentColor="#f59e0b" xpLabel={xpEnabled ? PIPELINE_XP.went_pending : null}
                 rows={pendingDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))} setRows={setPendingDeals} userId={user.id}
                 onStatusChange={(r,s)=>handlePendingStatus(r,s)}
                 onRemove={()=>deductPipelineXp('went_pending')}
@@ -4795,7 +4795,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 expandedChecklist={expandedChecklist} setExpandedChecklist={setExpandedChecklist}
                 onToggleChecklistItem={toggleChecklistItem} onAddChecklistItem={addChecklistItem}
                 onRemoveChecklistItem={removeChecklistItem} onUpdateChecklistDueDate={updateChecklistDueDate}/>
-              <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={PIPELINE_XP.closed}
+              <PipelineSection title="Closed Deals" icon="🎉" accentColor="#10b981" xpLabel={xpEnabled ? PIPELINE_XP.closed : null}
                 rows={closedDeals.filter(d=>d.dealSide==='buyer'||(!d.dealSide&&d.closedFrom!=='Listing'))} setRows={setClosedDeals} userId={user.id}
                 archiveOnRemove={true} onArchiveToClosed={archiveDealFromPipeline}
                 showSource={true}/>

@@ -1222,6 +1222,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       allBuyerNeeds: _allBuyerNeeds, allRecruits: _allRecruits,
     }
   }, [teamData, user?.id, members])
+  const xpEnabled = teamData?.team_prefs?.xp_enabled !== false
   const canViewDetail = (m) => isTeamOwner || isAdmin || (isGroupLeader && myLedGroup?.memberIds.includes(m.id))
 
   return (
@@ -1836,12 +1837,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               </div>
                               <div style={{ fontSize:11, color:'var(--muted)' }}>{rank.name}</div>
                             </div>
-                            <div style={{ textAlign:'right', flexShrink:0 }}>
+                            {xpEnabled && <div style={{ textAlign:'right', flexShrink:0 }}>
                               <div className="serif" style={{ fontSize:22, color:rank.color, fontWeight:700, lineHeight:1 }}>
                                 {(m.xp||0).toLocaleString()}
                               </div>
                               <div style={{ fontSize:11, color:'#f97316' }}>🔥 {m.streak||0} streak</div>
-                            </div>
+                            </div>}
                           </div>
 
                           {stats && stats.totalHabits > 0 && (
@@ -2681,6 +2682,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               { id:'admins',  label:'👑 Admins' },
                               { id:'groups',  label:'🫂 Groups' },
                               { id:'ai',      label:'🤖 AI Tools' },
+                              { id:'general',  label:'⚙️ General' },
                               { id:'directory', label:'🔗 Directory' },
                               { id:'integrations', label:'🔌 Integrations' },
                               { id:'recruit',  label:'🎯 Recruit Email' },
@@ -2694,6 +2696,38 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               }}>{t.label}</button>
                             ))}
                           </div>
+
+                          {/* ── General sub-tab ── */}
+                          {settingsSubTab==='general' && (
+                          <div>
+                            <div className="card" style={{ padding:'18px 20px', marginBottom:16 }}>
+                              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+                                <div>
+                                  <div style={{ fontSize:14, fontWeight:600, color:'var(--text)', marginBottom:4 }}>⚡ XP &amp; Streaks</div>
+                                  <div style={{ fontSize:12, color:'var(--muted)', lineHeight:1.5 }}>
+                                    {(teamData?.team_prefs?.xp_enabled !== false)
+                                      ? 'XP points and streaks are visible for all team members.'
+                                      : 'XP points and streaks are hidden for the team.'}
+                                  </div>
+                                </div>
+                                <button onClick={async ()=>{
+                                  const current = teamData?.team_prefs?.xp_enabled !== false
+                                  const newPrefs = { ...(teamData?.team_prefs||{}), xp_enabled: !current }
+                                  const { error } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                  if (!error) setTeamData(td=>({...td, team_prefs: newPrefs }))
+                                }} style={{
+                                  padding:'8px 20px', borderRadius:8, fontSize:12, fontWeight:700, cursor:'pointer',
+                                  border: (teamData?.team_prefs?.xp_enabled !== false) ? '1px solid #10b981' : '1px solid var(--b3)',
+                                  background: (teamData?.team_prefs?.xp_enabled !== false) ? 'rgba(16,185,129,.1)' : 'var(--surface)',
+                                  color: (teamData?.team_prefs?.xp_enabled !== false) ? '#10b981' : 'var(--muted)',
+                                  transition:'all .15s', flexShrink:0,
+                                }}>
+                                  {(teamData?.team_prefs?.xp_enabled !== false) ? '✓ ON' : 'OFF'}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                          )}
 
                           {/* ── Invites sub-tab ── */}
                           {settingsSubTab==='invites' && (
@@ -3789,12 +3823,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                   <MemberAvatar member={viewingMember} size={52} rank={rank}/>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{viewingMember.full_name||'Agent'}</div>
-                    <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>{rank.icon} {rank.name} · 🔥 {viewingMember.streak||0} day streak</div>
+                    <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>{rank.icon} {rank.name}{xpEnabled ? ` · 🔥 ${viewingMember.streak||0} day streak` : ''}</div>
                   </div>
-                  <div style={{ textAlign:'right', flexShrink:0 }}>
+                  {xpEnabled && <div style={{ textAlign:'right', flexShrink:0 }}>
                     <div className="serif" style={{ fontSize:22, color:rank.color, fontWeight:700, lineHeight:1 }}>{(viewingMember.xp||0).toLocaleString()}</div>
                     <div style={{ fontSize:10, color:'var(--dim)', marginTop:2 }}>XP</div>
-                  </div>
+                  </div>}
                   <button onClick={closePanel} style={{ background:'rgba(0,0,0,.15)', border:'1px solid var(--b3)', fontSize:20,
                     color:'var(--text)', cursor:'pointer', padding:'4px 10px', borderRadius:6,
                     lineHeight:1, flexShrink:0 }}>×</button>
@@ -4129,9 +4163,38 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                 )
               })()}
 
-              {/* Remove Member footer — owner only, not for self */}
+              {/* Reset XP + Remove Member footer — owner only, not for self */}
               {isTeamOwner && viewingMember.id !== user?.id && (
-                <div style={{ padding:'20px 24px', borderTop:'1px solid var(--b2)', flexShrink:0 }}>
+                <div style={{ padding:'20px 24px', borderTop:'1px solid var(--b2)', flexShrink:0, display:'flex', flexDirection:'column', gap:10 }}>
+                  {xpEnabled && (viewingMember.xp > 0 || viewingMember.streak > 0) && (
+                    <button onClick={()=>setConfirmModal({
+                      message: `Reset ALL XP and streak for ${viewingMember.full_name || 'this member'} to 0?\n\nThis will NOT affect their pipeline, listings, or habits config.`,
+                      label: 'Reset XP',
+                      onConfirm: async ()=>{
+                        try {
+                          const { data:{ session } } = await supabase.auth.getSession()
+                          const resp = await fetch(
+                            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-dashboard`,
+                            { method:'POST', headers:{ 'Content-Type':'application/json', apikey:import.meta.env.VITE_SUPABASE_ANON_KEY, Authorization:`Bearer ${session?.access_token}` },
+                              body: JSON.stringify({ action:'reset_xp', userId:viewingMember.id }) })
+                          const result = await resp.json()
+                          if (!resp.ok) throw new Error(result.error||'Reset failed')
+                          // Update local state
+                          setMembers(prev=>prev.map(m=>m.id===viewingMember.id?{...m,xp:0,streak:0}:m))
+                          setViewingMember(vm=>vm?{...vm,xp:0,streak:0}:vm)
+                          alert(`XP and streak reset for ${viewingMember.full_name||'member'}`)
+                        } catch(err){ alert(`Failed to reset XP: ${err.message}`) }
+                      },
+                    })} style={{ fontSize:12, padding:'8px 16px', borderRadius:7,
+                      border:'1px solid rgba(245,158,11,.4)', background:'rgba(245,158,11,.08)',
+                      color:'#f59e0b', cursor:'pointer', fontWeight:600, width:'fit-content' }}>
+                      ⚡ Reset XP &amp; Streak
+                    </button>
+                  )}
+                </div>
+              )}
+              {isTeamOwner && viewingMember.id !== user?.id && (
+                <div style={{ padding:'0 24px 20px', flexShrink:0 }}>
                   {removeConfirm === viewingMember.id ? (
                     <div style={{ display:'flex', gap:8 }}>
                       <button className="btn-outline" style={{ fontSize:12 }}
@@ -4230,7 +4293,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
             {/* ── Top stats row ── */}
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:12, marginBottom:24 }}>
               {[
-                { label:'TEAM XP', value:tvTotalXp.toLocaleString(), color:'#d97706', icon:'⚡' },
+                ...(xpEnabled ? [{ label:'TEAM XP', value:tvTotalXp.toLocaleString(), color:'#d97706', icon:'⚡' }] : []),
                 { label:'DEALS CLOSED', value:tvTotalClosed, color:'#10b981', icon:'🎉' },
                 { label:'POTENTIAL', value:tvPotentialListing, color:'#f59e0b', icon:'🎯' },
                 { label:'ACTIVE', value:tvActiveListing, color:'#10b981', icon:'🏠' },
@@ -4297,12 +4360,12 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                             <div style={{ fontSize:16, fontWeight:700, color:'#10b981' }}>{stats.closed}</div>
                             <div style={{ fontSize:8, color:'var(--muted)' }}>CLOSED</div>
                           </div>}
-                          <div style={{ textAlign:'right', minWidth:70 }}>
+                          {xpEnabled && <div style={{ textAlign:'right', minWidth:70 }}>
                             <div style={{ fontSize:i===0?28:24, fontWeight:700, color:rank.color, fontFamily:"'Fraunces',serif", lineHeight:1 }}>
                               {(m.xp||0).toLocaleString()}
                             </div>
                             <div style={{ fontSize:9, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace" }}>XP</div>
-                          </div>
+                          </div>}
                         </div>
                       </div>
                     )

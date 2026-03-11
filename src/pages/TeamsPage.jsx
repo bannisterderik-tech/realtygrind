@@ -118,6 +118,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [challengeForm, setChallengeForm] = useState(null) // null | { title, metric, bonusXp }
   const [challengeSaving, setChallengeSaving] = useState(false)
   const [teamsTab,       setTeamsTab]       = useState('roster') // 'roster' | 'groups' | 'challenges' | 'listings' | 'buyers' | 'settings'
+  const [listingsSubTab, setListingsSubTab] = useState('potential') // 'potential' | 'active' | 'pending' | 'closed'
   const [settingsSubTab, setSettingsSubTab] = useState('invites') // 'invites' | 'admins' | 'groups' | 'ai' | 'directory' | 'danger'
   const [groupForm,      setGroupForm]      = useState(null)     // null | { name, leaderId, memberIds, editingId }
   const [groupSaving,    setGroupSaving]    = useState(false)
@@ -2087,19 +2088,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                         🏠 No active listings right now.
                       </div>
                     ) : (<>
-                    {/* Summary stat cards */}
-                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))', gap:12, marginBottom:24 }}>
-                      {[
-                        { label:'Potential', count:potentialListings.length, color:STATUS_COLORS.potential },
-                        { label:'Active', count:activeListings.length, color:STATUS_COLORS.active },
-                        { label:'Pending', count:pendingListings.length, color:STATUS_COLORS.pending },
-                        { label:'Closed', count:closedListings.length, color:STATUS_COLORS.closed },
-                      ].map(s=>(
-                        <div key={s.label} className="card" style={{ padding:'16px 18px', borderLeft:`3px solid ${s.color}` }}>
-                          <div style={{ fontSize:10, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', marginBottom:6 }}>{s.label}</div>
-                          <div className="serif" style={{ fontSize:28, color:s.color, fontWeight:700, lineHeight:1 }}>{s.count}</div>
-                        </div>
-                      ))}
+                    {/* Volume / Commission summary */}
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:12, marginBottom:20 }}>
                       <div className="card" style={{ padding:'16px 18px', borderLeft:'3px solid var(--text)' }}>
                         <div style={{ fontSize:10, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', marginBottom:6 }}>Total Volume</div>
                         <div className="mono" style={{ fontSize:20, color:'var(--text)', fontWeight:700, lineHeight:1 }}>{fmtMoney(totalVolume)}</div>
@@ -2146,23 +2136,34 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       </div>
                     )}
 
-                    {/* Segmented listing sections */}
-                    {[
-                      { label:'Potential', items:potentialListings, color:STATUS_COLORS.potential },
-                      { label:'Active', items:activeListings, color:STATUS_COLORS.active },
-                      { label:'Pending', items:pendingListings, color:STATUS_COLORS.pending },
-                      { label:'Closed', items:closedListings, color:STATUS_COLORS.closed },
-                    ].filter(s=>s.items.length>0).map(section=>(
-                      <div key={section.label} style={{ marginBottom:24 }}>
-                        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
-                          <div style={{ width:3, height:18, borderRadius:2, background:section.color }}/>
-                          <span style={{ fontSize:12, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase' }}>
-                            {section.label}
-                          </span>
-                          <span className="mono" style={{ fontSize:11, color:section.color, fontWeight:700 }}>({section.items.length})</span>
+                    {/* Status tabs — matching Dashboard primary-tab pattern */}
+                    <div className="primary-tabs" style={{ flexWrap:'wrap' }}>
+                      {[
+                        { id:'potential', l:'💡 Potential', count:potentialListings.length },
+                        { id:'active',   l:'🏡 Listings',  count:activeListings.length },
+                        { id:'pending',  l:'📋 Pending',   count:pendingListings.length },
+                        { id:'closed',   l:'📦 Closed',    count:closedListings.length },
+                      ].map(t=>(
+                        <button key={t.id} className={`primary-tab${listingsSubTab===t.id?' on':''}`} onClick={()=>setListingsSubTab(t.id)}>
+                          {t.l}<span className="ptab-count">{t.count}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Tab content — render listings for selected status */}
+                    {(()=>{
+                      const TAB_MAP = { potential:potentialListings, active:activeListings, pending:pendingListings, closed:closedListings }
+                      const currentList = TAB_MAP[listingsSubTab] || []
+                      const sc = STATUS_COLORS[listingsSubTab] || '#10b981'
+                      if (currentList.length === 0) return (
+                        <div style={{ border:'1.5px dashed var(--b2)', borderRadius:12, padding:'28px 20px',
+                          fontSize:13, color:'var(--muted)', textAlign:'center' }}>
+                          No {listingsSubTab} listings right now.
                         </div>
+                      )
+                      return (
                         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                          {section.items.map(l => {
+                          {currentList.map(l => {
                             const price = parseNum(l.price); const comm = resolveCommission(l.commission, l.price)
                             const isMe  = l.user_id === user?.id
                             return (
@@ -2170,7 +2171,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 border:`1px solid ${isMe ? 'rgba(217,119,6,.3)' : 'var(--b2)'}`,
                                 background: isMe ? 'var(--gold3)' : 'var(--surface)' }}>
                                 <div style={{ display:'flex', alignItems:'flex-start', gap:12 }}>
-                                  <div style={{ width:8, height:8, borderRadius:'50%', background:section.color, flexShrink:0, marginTop:6 }}/>
+                                  <div style={{ width:8, height:8, borderRadius:'50%', background:sc, flexShrink:0, marginTop:6 }}/>
                                   <div style={{ flex:1, minWidth:0 }}>
                                     <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, flexWrap:'wrap' }}>
                                       <span style={{ fontSize:14, color:'var(--text)', fontWeight:600,
@@ -2199,8 +2200,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                             )
                           })}
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })()}
                     </>)}
                   </div>
                   </>

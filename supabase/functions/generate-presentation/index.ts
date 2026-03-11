@@ -50,6 +50,37 @@ function currentMonth() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+function postProcessSlides(html: string, teamLogo: string | null): string {
+  // Auto-assign data-layout to sections missing it (fallback if AI omits)
+  html = html.replace(/<section([^>]*)>/gi, (match, attrs: string) => {
+    if (/data-layout/i.test(attrs)) return match
+    if (/title-slide|closing-slide/i.test(attrs)) return match
+    // Peek at content after this tag to infer layout
+    const idx = html.indexOf(match) + match.length
+    const snippet = html.slice(idx, idx + 600)
+    if (/<blockquote/i.test(snippet)) return `<section${attrs} data-layout="quote">`
+    if (/stats-row|stat-card/i.test(snippet)) return `<section${attrs} data-layout="stats">`
+    if (/features-grid|class="feature"/i.test(snippet)) return `<section${attrs} data-layout="features">`
+    if (/col-wrap|class="col"/i.test(snippet)) return `<section${attrs} data-layout="two-col">`
+    if (/highlight-box/i.test(snippet)) return `<section${attrs} data-layout="highlight">`
+    return match
+  })
+
+  // Inject logo into title slide
+  if (teamLogo) {
+    html = html.replace(
+      /(<section[^>]*title-slide[^>]*>)/i,
+      `$1\n<img src="${teamLogo}" class="team-logo" alt="Logo">`
+    )
+  }
+
+  // Strip stray style/script tags from AI output
+  html = html.replace(/<style[\s\S]*?<\/style>/gi, '')
+  html = html.replace(/<script[\s\S]*?<\/script>/gi, '')
+
+  return html
+}
+
 const VALID_STYLES = ['modern', 'classic', 'minimal', 'bold']
 const VALID_THEMES = ['light', 'dark']
 const VALID_FONTS  = ['sans-serif', 'serif', 'monospace']
@@ -196,7 +227,7 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
           max_tokens: 6144,
-          system: systemPrompt,
+          system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
           messages: [{ role: 'user', content }],
           stream: false,
         }),
@@ -236,6 +267,9 @@ Output ONLY the <section> elements, nothing else. No markdown fencing, no explan
     else if (slidesHtml.startsWith('```')) slidesHtml = slidesHtml.slice(3)
     if (slidesHtml.endsWith('```')) slidesHtml = slidesHtml.slice(0, -3)
     slidesHtml = slidesHtml.trim()
+
+    // Post-process: auto-detect missing layouts, strip stray tags
+    slidesHtml = postProcessSlides(slidesHtml, null) // logo injected below separately
 
     const slideCount = (slidesHtml.match(/<section/gi) || []).length
 
@@ -754,13 +788,16 @@ ${slidesHtml}
 var ss=document.querySelectorAll('.slides section'),counter=document.querySelector('.counter'),bar=document.querySelector('.progress'),cur=0;
 function show(i){if(i<0||i>=ss.length)return;ss[cur].classList.remove('active');cur=i;ss[cur].classList.add('active');counter.textContent=(cur+1)+' / '+ss.length;bar.style.width=((cur+1)/ss.length*100)+'%'}
 if(ss.length)show(0);
-function nav(key){if(key==='ArrowRight'||key===' ')show(cur+1);else if(key==='ArrowLeft')show(cur-1)}
+function nav(key){if(key==='ArrowRight'||key===' '||key==='PageDown')show(cur+1);else if(key==='ArrowLeft'||key==='PageUp')show(cur-1);else if(key==='Home')show(0);else if(key==='End')show(ss.length-1)}
 document.addEventListener('keydown',function(e){nav(e.key)});
 window.addEventListener('message',function(e){if(e.data&&e.data.type==='keydown')nav(e.data.key)});
 var pb=document.querySelector('.nav-prev'),nb=document.querySelector('.nav-next');
 if(pb)pb.addEventListener('click',function(e){e.stopPropagation();show(cur-1)});
 if(nb)nb.addEventListener('click',function(e){e.stopPropagation();show(cur+1)});
 document.addEventListener('click',function(e){if(e.target.closest('.nav-arrows'))return;if(e.clientX>window.innerWidth/2)show(cur+1);else show(cur-1)});
+var tx=0,ty=0;
+document.addEventListener('touchstart',function(e){tx=e.changedTouches[0].screenX;ty=e.changedTouches[0].screenY},{passive:true});
+document.addEventListener('touchend',function(e){var dx=e.changedTouches[0].screenX-tx,dy=e.changedTouches[0].screenY-ty;if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>50){if(dx<0)show(cur+1);else show(cur-1)}},{passive:true});
 })();
 </script>
 </body>
@@ -1005,6 +1042,7 @@ Deno.serve(async (req) => {
     const fallbackLogo = profile.teams?.team_prefs?.logo_url || null
     const teamName = profile.teams?.name || ''
 
+    // ── 11. Save to database ────────────────────────────────────────────────
     const presData = {
       user_id: user.id,
       team_id: profile.team_id || null,

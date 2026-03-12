@@ -24,3 +24,6 @@ verify_jwt = false
 
 [functions.create-addon-checkout]
 verify_jwt = false
+
+[functions.ai-generate-tasks]
+verify_jwt = false

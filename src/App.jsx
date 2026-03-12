@@ -2774,12 +2774,11 @@ function Dashboard({ theme, onToggleTheme }) {
     if (!user?.id) return
     const bd = rep.buyerDetails || {}
     const parts = []
-    if (rep.clientName) parts.push(rep.clientName + ':')
     if (bd.locationPrefs) parts.push(bd.locationPrefs)
     if (bd.preApproval) parts.push('up to ' + (formatPrice(bd.preApproval) || bd.preApproval))
     if (bd.mustHaves) parts.push(bd.mustHaves)
     if (bd.timeline) parts.push(bd.timeline)
-    const text = parts.join(' · ') || (rep.clientName || 'Buyer') + ' — looking for a home'
+    const text = parts.join(' · ') || 'Buyer looking for a home'
     try {
       const { data: freshProfile } = await supabase.from('profiles').select('goals').eq('id', user.id).single()
       const currentGoals = freshProfile?.goals || profile?.goals || {}
@@ -2787,6 +2786,10 @@ function Dashboard({ theme, onToggleTheme }) {
       const newNeed = { id: Date.now().toString(36) + Math.random().toString(36).slice(2,5), authorId: user.id, text, replies: [], resolved: false, createdAt: new Date().toISOString() }
       const updatedGoals = { ...currentGoals, buyer_needs: [...existing, newNeed] }
       await supabase.from('profiles').update({ goals: updatedGoals }).eq('id', user.id)
+      // Mark as posted in buyerDetails and persist
+      const updatedBd = { ...bd, postedToBoard: true }
+      setBuyerReps(prev => prev.map(r => r.id === rep.id ? { ...r, buyerDetails: updatedBd } : r))
+      await safeDb(supabase.from('listings').update({ buyer_details: updatedBd }).eq('id', rep.id).eq('user_id', user.id))
       setSuccess('Posted to buyer needs board!')
       setTimeout(() => setSuccess(''), 2500)
     } catch (err) { console.error('postBuyerNeedToBoard:', err); setError('Failed to post buyer need') }
@@ -4752,11 +4755,18 @@ function Dashboard({ theme, onToggleTheme }) {
                       {bits.length > 0 && <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{bits.join(' · ')}</div>}
                       <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:2 }}>
                         {showCount > 0 && <span style={{ fontSize:11, color:'var(--dim)' }}>🏠 {showCount} showing{showCount!==1?'s':''}</span>}
-                        <button onClick={e => { e.stopPropagation(); postBuyerNeedToBoard(rep) }}
-                          style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'rgba(14,165,233,.1)', color:'var(--blue)',
-                            border:'1px solid rgba(14,165,233,.25)', cursor:'pointer', fontWeight:600, whiteSpace:'nowrap' }}>
-                          📋 Post to Board
-                        </button>
+                        {bd.postedToBoard ? (
+                          <span style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'rgba(16,185,129,.1)', color:'var(--green)',
+                            border:'1px solid rgba(16,185,129,.25)', fontWeight:600, whiteSpace:'nowrap' }}>
+                            ✓ On Board
+                          </span>
+                        ) : (
+                          <button onClick={e => { e.stopPropagation(); postBuyerNeedToBoard(rep) }}
+                            style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'rgba(14,165,233,.1)', color:'var(--blue)',
+                              border:'1px solid rgba(14,165,233,.25)', cursor:'pointer', fontWeight:600, whiteSpace:'nowrap' }}>
+                            📋 Post to Board
+                          </button>
+                        )}
                       </div>
                     </div>
                   )

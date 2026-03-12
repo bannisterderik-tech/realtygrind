@@ -1,4 +1,5 @@
 -- Update sync_gcal_events to accept and store event_time
+DROP FUNCTION IF EXISTS sync_gcal_events(jsonb);
 CREATE OR REPLACE FUNCTION sync_gcal_events(events jsonb)
 RETURNS SETOF custom_tasks
 LANGUAGE plpgsql SECURITY DEFINER

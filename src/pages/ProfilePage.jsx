@@ -98,7 +98,7 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   const [gciTarget,     setGciTarget]     = useState('')
   const [avgCommission, setAvgCommission] = useState('')
   const [calcResult,    setCalcResult]    = useState(null)
-  const [bio,      setBio]      = useState({ phone:'', license:'', specialty:'', about:'', review_link:'' })
+  const [bio,      setBio]      = useState({ phone:'', license:'', specialty:'', about:'', review_link:'', timezone:'' })
   const [bioSaving, setBioSaving] = useState(false)
   const [bioMsg,    setBioMsg]   = useState('')
   const [avatarUrl,     setAvatarUrl]     = useState(profile?.goals?.avatar_url || '')
@@ -802,6 +802,15 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                   <input className="field-input" value={bio.review_link}
                     onChange={e => setBio(b => ({ ...b, review_link: e.target.value }))}
                     placeholder="https://g.page/r/your-business/review" />
+                </div>
+                <div style={{ marginTop:14 }}>
+                  <div className="label" style={{ marginBottom:4 }}>
+                    Timezone <span style={{ color:'var(--dim)', fontWeight:400 }}>(used for standup dates & daily tracking)</span>
+                  </div>
+                  <select className="field-input" value={bio.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone}
+                    onChange={e => setBio(b => ({ ...b, timezone: e.target.value }))}>
+                    {Intl.supportedValuesOf('timeZone').map(tz => <option key={tz} value={tz}>{tz.replace(/_/g,' ')}</option>)}
+                  </select>
                 </div>
                 <div style={{ marginTop:16, display:'flex', alignItems:'center', gap:12 }}>
                   <button className="btn-primary" onClick={saveBio} disabled={bioSaving} style={{ fontSize:13 }}>

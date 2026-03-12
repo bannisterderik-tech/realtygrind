@@ -21,6 +21,7 @@ import AIChatWidget from './components/AIChatWidget'
 import { CSS, Ring, StatCard, Wordmark, Loader, ThemeToggle, getRank, fmtMoney, resolveCommission, RANKS, CAT, formatPrice, stripPrice, daysOnMarket, LEAD_SOURCES, LEAD_SOURCE_COLORS } from './design'
 import { HABITS } from './habits'
 import { getPlanBadge } from './lib/plans'
+import { getTodayStr } from './lib/dateUtils'
 
 // ─── Safe DB wrapper ────────────────────────────────────────────────────────────
 // Wraps any Supabase promise so fire-and-forget calls never silently fail.
@@ -1553,7 +1554,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [pendingReviewAddress, setPendingReviewAddress] = useState(null) // queued until celebration dismissed
   const [reviewRequestName, setReviewRequestName] = useState('')
   const [reviewRequestEmail, setReviewRequestEmail] = useState('')
-  const [todayDate] = useState(() => new Date().toLocaleDateString('en-CA')) // YYYY-MM-DD, stable across re-renders
+  const [todayDate] = useState(() => getTodayStr(profile?.habit_prefs?.bio?.timezone)) // YYYY-MM-DD, timezone-aware, stable across re-renders
 
   // Track mount status for async safety — prevents stale setState calls after unmount
   useEffect(() => {

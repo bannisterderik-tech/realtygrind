@@ -6,6 +6,7 @@ import { HABITS } from '../habits'
 import { canUseTeams, getMaxMembers, getPlan, isActiveBilling } from '../lib/plans'
 import { ALL_APPS } from './DirectoryPage'
 import AvatarCropModal from '../components/AvatarCropModal'
+import { getTodayStr } from '../lib/dateUtils'
 
 const HABITS_FOR_DISPLAY = [
   { id:'prospecting', label:'Prospecting', cat:'leads' },
@@ -1368,7 +1369,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                     if (!group) return null // useEffect above will reset groupView
                     const groupLeaderMember = members.find(m => m.id === group.leaderId)
                     const groupMems   = members.filter(m => group.memberIds.includes(m.id))
-                    const todayStr    = new Date().toISOString().slice(0,10)
+                    const todayStr    = getTodayStr(profile?.habit_prefs?.bio?.timezone)
                     const canManageGroup = isTeamOwner || group.leaderId === user?.id
                     const activeChallenges = (group.challenges||[]).filter(c=>c.status==='active')
                     const endedChallenges  = (group.challenges||[]).filter(c=>c.status==='ended').slice(-3).reverse()

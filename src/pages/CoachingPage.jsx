@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { Loader, Wordmark, ThemeToggle, getRank } from '../design'
 import { canUseTeams, isActiveBilling } from '../lib/plans'
+import { getTodayStr } from '../lib/dateUtils'
 
 const UI_NOTE_LIMIT = 500
 
@@ -443,14 +444,14 @@ export default function CoachingPage({ onNavigate, theme, onToggleTheme }) {
 
           {/* ── Admin Standup Tab ── */}
           {isAdminOrOwner && subTab==='standup' && (()=>{
-            const todayStr = new Date().toISOString().slice(0,10)
+            const todayStr = getTodayStr(profile?.habit_prefs?.bio?.timezone)
             const visibleMembers = isGroupLeader ? myGroupMembers : members.filter(m=>m.id!==user?.id)
             return (
               <div>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
                   <div>
                     <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:2 }}>⚡ Daily Standups</div>
-                    <div style={{ fontSize:12, color:'var(--muted)' }}>{new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</div>
+                    <div style={{ fontSize:12, color:'var(--muted)' }}>{new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',timeZone:profile?.habit_prefs?.bio?.timezone||undefined})}</div>
                   </div>
                   <div style={{ fontSize:12, color:'var(--muted)' }}>
                     {visibleMembers.filter(m=>m.habit_prefs?.standup_today?.date===todayStr).length}/{visibleMembers.length} submitted

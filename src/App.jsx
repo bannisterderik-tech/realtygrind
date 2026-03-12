@@ -1991,6 +1991,14 @@ function Dashboard({ theme, onToggleTheme }) {
     await safeDb(supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id))
   }
 
+  // ── Task time assignment ──────────────────────────────────────────────────
+  function setTaskTime(taskId, time) {
+    const newTimes = { ...(habitPrefs.taskTimes || {}) }
+    if (time) newTimes[taskId] = time
+    else delete newTimes[taskId]
+    saveProfileHabitPrefs({ ...habitPrefs, taskTimes: newTimes })
+  }
+
   // ── Task reordering ────────────────────────────────────────────────────────
   function getOrderedTasksForDate(dateStr, recHabits, daySpecific) {
     const all = [...recHabits, ...daySpecific.map(t => ({ ...t, isDaySpecific: true }))]
@@ -2921,15 +2929,18 @@ function Dashboard({ theme, onToggleTheme }) {
     ? []
     : customTasks.filter(t => t.isDefault).map(t => ({ ...t, isBuiltIn:false }))
   , [isOnTeam, isTeamOwner, customTasks])
+  const taskTimes = habitPrefs.taskTimes || {}
   const effectiveHabits = useMemo(() => {
-    const all = [...builtInEffective, ...customDefaults]
+    const all = [...builtInEffective, ...customDefaults].map(h => ({
+      ...h, eventTime: taskTimes[h.id] || h.eventTime || null
+    }))
     const orderArr = activePrefs.order || []
     if (orderArr.length) {
       const idx = {}; orderArr.forEach((id,i) => idx[id]=i)
       all.sort((a,b) => (idx[a.id]??999) - (idx[b.id]??999))
     }
     return all
-  }, [builtInEffective, customDefaults, activePrefs.order])
+  }, [builtInEffective, customDefaults, activePrefs.order, taskTimes])
 
   // ── Daily skip (for viewed day) ──────────────────────────────────────────
   const viewSkippedRaw      = (habitPrefs.skipped||{})[viewDateStr]
@@ -3641,6 +3652,14 @@ function Dashboard({ theme, onToggleTheme }) {
                           )}
                         </button>
                         <span style={{ fontSize:15, flexShrink:0 }}>{h.icon}</span>
+                        <input type="time" value={h.eventTime||''} title={h.eventTime ? `Scheduled ${fmtTime(h.eventTime)} — click to change` : 'Set a time'}
+                          onChange={e => setTaskTime(h.id, e.target.value||null)}
+                          style={{ width: h.eventTime ? 72 : 28, padding:'2px 3px', fontSize:10, fontWeight:700,
+                            fontFamily:"'JetBrains Mono',monospace", borderRadius:4, flexShrink:0,
+                            border:`1px solid ${h.eventTime ? 'var(--gold2)' : 'var(--b2)'}`,
+                            background: h.eventTime ? 'rgba(217,119,6,.08)' : 'transparent',
+                            color: h.eventTime ? 'var(--gold2)' : 'var(--dim)',
+                            outline:'none', cursor:'pointer', opacity: done ? .5 : 1 }}/>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                             <span style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
@@ -3760,10 +3779,14 @@ function Dashboard({ theme, onToggleTheme }) {
                           )}
                         </button>
                         <span style={{ fontSize:15, flexShrink:0 }}>{h.icon}</span>
-                        {h.eventTime && (
-                          <span style={{ fontSize:10, fontWeight:700, color:'var(--gold2)', flexShrink:0,
-                            fontFamily:"'JetBrains Mono',monospace", whiteSpace:'nowrap' }}>{fmtTime(h.eventTime)}</span>
-                        )}
+                        <input type="time" value={h.eventTime||''} title={h.eventTime ? `Scheduled ${fmtTime(h.eventTime)} — click to change` : 'Set a time'}
+                          onChange={e => setTaskTime(h.id, e.target.value||null)}
+                          style={{ width: h.eventTime ? 72 : 28, padding:'2px 3px', fontSize:10, fontWeight:700,
+                            fontFamily:"'JetBrains Mono',monospace", borderRadius:4, flexShrink:0,
+                            border:`1px solid ${h.eventTime ? 'var(--gold2)' : 'var(--b2)'}`,
+                            background: h.eventTime ? 'rgba(217,119,6,.08)' : 'transparent',
+                            color: h.eventTime ? 'var(--gold2)' : 'var(--dim)',
+                            outline:'none', cursor:'pointer', opacity: done ? .5 : 1 }}/>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
                             textDecoration:done?'line-through':'none', transition:'all .15s',

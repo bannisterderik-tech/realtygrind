@@ -483,7 +483,7 @@ export default function CoachingPage({ onNavigate, theme, onToggleTheme }) {
                         )}
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:14, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.full_name||'Agent'}</div>
-                          <div style={{ fontSize:11, color:'var(--muted)' }}>{submitted ? `Submitted ${new Date(sd.date).toLocaleDateString()}` : 'Not submitted yet'}</div>
+                          <div style={{ fontSize:11, color:'var(--muted)' }}>{submitted ? `Submitted ${new Date(sd.date + 'T00:00:00').toLocaleDateString('en-US', { timeZone: profile?.habit_prefs?.bio?.timezone || undefined })}` : 'Not submitted yet'}</div>
                         </div>
                         {submitted && <span style={{ fontSize:11, color:'var(--green)', fontWeight:600, flexShrink:0 }}>✓ Done</span>}
                       </div>

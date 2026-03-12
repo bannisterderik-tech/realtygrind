@@ -2769,6 +2769,29 @@ function Dashboard({ theme, onToggleTheme }) {
     setBuyerReps(prev => prev.map(r => r.id === id ? {...r, _dirty: false} : r))
   }
 
+  // ── Post buyer need to team board ──
+  async function postBuyerNeedToBoard(rep) {
+    if (!user?.id) return
+    const bd = rep.buyerDetails || {}
+    const parts = []
+    if (rep.clientName) parts.push(rep.clientName + ':')
+    if (bd.locationPrefs) parts.push(bd.locationPrefs)
+    if (bd.preApproval) parts.push('up to ' + (formatPrice(bd.preApproval) || bd.preApproval))
+    if (bd.mustHaves) parts.push(bd.mustHaves)
+    if (bd.timeline) parts.push(bd.timeline)
+    const text = parts.join(' · ') || (rep.clientName || 'Buyer') + ' — looking for a home'
+    try {
+      const { data: freshProfile } = await supabase.from('profiles').select('goals').eq('id', user.id).single()
+      const currentGoals = freshProfile?.goals || profile?.goals || {}
+      const existing = currentGoals.buyer_needs || []
+      const newNeed = { id: Date.now().toString(36) + Math.random().toString(36).slice(2,5), authorId: user.id, text, replies: [], resolved: false, createdAt: new Date().toISOString() }
+      const updatedGoals = { ...currentGoals, buyer_needs: [...existing, newNeed] }
+      await supabase.from('profiles').update({ goals: updatedGoals }).eq('id', user.id)
+      setSuccess('Posted to buyer needs board!')
+      setTimeout(() => setSuccess(''), 2500)
+    } catch (err) { console.error('postBuyerNeedToBoard:', err); setError('Failed to post buyer need') }
+  }
+
   // ── Showings helpers (local state only — persisted via saveBuyerRepDetails) ──
   function addShowing(repId, address, dateShown, timeShown, notes) {
     if (!address?.trim()) return
@@ -4724,12 +4747,19 @@ function Dashboard({ theme, onToggleTheme }) {
                   if (bd.preApproval) bits.push('💰 ' + (formatPrice(bd.preApproval) || bd.preApproval))
                   if (bd.mustHaves) bits.push(bd.mustHaves)
                   const showCount = (bd.showings||[]).length
-                  return (bits.length > 0 || showCount > 0) ? (
+                  return (
                     <div style={{ fontSize:12, color:'var(--muted)', lineHeight:1.5, marginTop:2 }}>
                       {bits.length > 0 && <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{bits.join(' · ')}</div>}
-                      {showCount > 0 && <div style={{ fontSize:11, color:'var(--dim)', marginTop:1 }}>🏠 {showCount} showing{showCount!==1?'s':''}</div>}
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:2 }}>
+                        {showCount > 0 && <span style={{ fontSize:11, color:'var(--dim)' }}>🏠 {showCount} showing{showCount!==1?'s':''}</span>}
+                        <button onClick={e => { e.stopPropagation(); postBuyerNeedToBoard(rep) }}
+                          style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'rgba(14,165,233,.1)', color:'var(--blue)',
+                            border:'1px solid rgba(14,165,233,.25)', cursor:'pointer', fontWeight:600, whiteSpace:'nowrap' }}>
+                          📋 Post to Board
+                        </button>
+                      </div>
                     </div>
-                  ) : null
+                  )
                 })()}
 
                 {/* Metadata line — pre-approval, dates, timeline, location, month */}

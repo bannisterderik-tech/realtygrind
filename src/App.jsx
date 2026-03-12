@@ -2489,6 +2489,22 @@ function Dashboard({ theme, onToggleTheme }) {
     showToast('Google Calendar disconnected')
   }
 
+  async function clearGcalEvents() {
+    const gcalTasks = customTasks.filter(t => t.googleEventId)
+    if (!gcalTasks.length) { showToast('No synced events to clear'); return }
+    if (!confirm(`Remove ${gcalTasks.length} synced Google Calendar event${gcalTasks.length !== 1 ? 's' : ''} from your task list?`)) return
+    setCustomTasks(p => p.filter(t => !t.googleEventId))
+    try {
+      const { error } = await supabase.from('custom_tasks').delete().eq('user_id', user.id).not('google_event_id', 'is', null)
+      if (error) throw error
+      showToast(`Cleared ${gcalTasks.length} synced events`, 'success')
+    } catch (e) {
+      console.error('clearGcalEvents error:', e)
+      setCustomTasks(prev => [...prev, ...gcalTasks])
+      showToast('Failed to clear events')
+    }
+  }
+
   async function syncGoogleCalendar() {
     if (gcalSyncing) return
     setGcalSyncing(true)
@@ -3810,6 +3826,9 @@ function Dashboard({ theme, onToggleTheme }) {
                   padding:'5px 10px', display:'flex', alignItems:'center', gap:5, fontFamily:'Poppins,sans-serif' }}>
                 📅 {gcalSyncing ? 'Syncing…' : 'Sync'}
               </button>
+              <button onClick={clearGcalEvents} title="Clear all synced events"
+                style={{ background:'none', border:'1px solid var(--b2)', borderRadius:7, cursor:'pointer',
+                  fontSize:11, color:'var(--dim)', padding:'5px 8px' }}>🗑️</button>
               <button onClick={disconnectGoogleCalendar} title="Disconnect Google Calendar"
                 style={{ background:'none', border:'1px solid var(--b2)', borderRadius:7, cursor:'pointer',
                   fontSize:11, color:'var(--dim)', padding:'5px 8px' }}>✕</button>

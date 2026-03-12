@@ -317,6 +317,114 @@ function OfferModal({ repName, onSubmit, onClose, prefillAddress }) {
   )
 }
 
+// ─── Print Buyer Summary Modal ────────────────────────────────────────────────
+function PrintBuyerModal({ rep, onClose }) {
+  const bd = rep.buyerDetails || {}
+  const showings = bd.showings || []
+  const fmtDate = d => d ? new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—'
+  const fmtTime = t => { if (!t) return ''; const [h,m] = t.split(':').map(Number); const ap = h>=12?'PM':'AM'; return `${h%12||12}:${String(m).padStart(2,'0')} ${ap}` }
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:1100,
+      overflowY:'auto', padding:'30px 20px' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ maxWidth:780, margin:'0 auto' }}>
+        <div className="print-modal-header">
+          <div style={{ color:'#fff', fontSize:15, fontWeight:600 }}>🖨️ Buyer Summary</div>
+          <div style={{ display:'flex', gap:8 }}>
+            <button className="btn-gold" style={{ fontSize:13 }} onClick={() => window.print()}>Print</button>
+            <button className="btn-outline" style={{ fontSize:13, color:'#fff', borderColor:'rgba(255,255,255,.3)' }} onClick={onClose}>✕ Close</button>
+          </div>
+        </div>
+        <div className="print-sheet">
+          {/* Header */}
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start',
+            borderBottom:'3px solid #111', paddingBottom:10, marginBottom:16 }}>
+            <div>
+              <div style={{ fontSize:22, fontWeight:700, letterSpacing:'.02em' }}>REALTYGRIND</div>
+              <div style={{ fontSize:11, color:'#555', letterSpacing:'.08em', textTransform:'uppercase' }}>Buyer Client Summary</div>
+            </div>
+            <div style={{ textAlign:'right' }}>
+              <div style={{ fontSize:11, color:'#888', textTransform:'uppercase', letterSpacing:'.05em' }}>Prepared</div>
+              <div style={{ fontSize:14, fontWeight:600 }}>{new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+            </div>
+          </div>
+
+          {/* Client name */}
+          <div style={{ fontSize:20, fontWeight:700, marginBottom:4 }}>👤 {rep.clientName || 'Unnamed Client'}</div>
+          <div style={{ fontSize:11, color:'#888', marginBottom:18 }}>
+            Status: <strong style={{ color: rep.status==='closed' ? '#10b981' : '#0ea5e9' }}>{rep.status==='closed' ? 'Closed' : 'Active'}</strong>
+          </div>
+
+          {/* Two-column: Financial + Agreement */}
+          <div className="print-sheet-grid">
+            <div>
+              <div className="print-section-title">Financial</div>
+              <div className="print-tracker-row"><span>Pre-Approval</span><span className="print-tracker-val">{bd.preApproval || '—'}</span></div>
+              <div className="print-tracker-row"><span>Payment Range</span><span className="print-tracker-val">{bd.paymentRange || '—'}</span></div>
+              <div className="print-tracker-row"><span>Down Payment</span><span className="print-tracker-val">{bd.downPayment || '—'}</span></div>
+            </div>
+            <div>
+              <div className="print-section-title">Agreement</div>
+              <div className="print-tracker-row"><span>Date Signed</span><span className="print-tracker-val">{fmtDate(bd.dateSigned)}</span></div>
+              <div className="print-tracker-row"><span>Date Expires</span><span className="print-tracker-val">{fmtDate(bd.dateExpires)}</span></div>
+              <div className="print-tracker-row"><span>Last Contact</span><span className="print-tracker-val">{fmtDate(bd.lastCallDate)}</span></div>
+              <div className="print-tracker-row"><span>Timeline</span><span className="print-tracker-val">{bd.timeline || '—'}</span></div>
+            </div>
+          </div>
+
+          {/* Search Criteria */}
+          <div style={{ marginTop:18 }}>
+            <div className="print-section-title">Search Criteria</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, fontSize:12.5 }}>
+              <div><strong>Location:</strong> {bd.locationPrefs || '—'}</div>
+              <div><strong>Timeline:</strong> {bd.timeline || '—'}</div>
+              <div><strong>Must-Haves:</strong> {bd.mustHaves || '—'}</div>
+              <div><strong>Nice-to-Haves:</strong> {bd.niceToHaves || '—'}</div>
+            </div>
+          </div>
+
+          {/* Houses Shown */}
+          <div style={{ marginTop:18 }}>
+            <div className="print-section-title">Houses Shown ({showings.length})</div>
+            {showings.length === 0 ? (
+              <div style={{ fontSize:12, color:'#888', fontStyle:'italic' }}>No showings logged</div>
+            ) : (
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                <thead>
+                  <tr style={{ borderBottom:'2px solid #111', textAlign:'left' }}>
+                    <th style={{ padding:'4px 8px 4px 0', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', fontFamily:"'Poppins',sans-serif" }}>Address</th>
+                    <th style={{ padding:'4px 8px', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', fontFamily:"'Poppins',sans-serif" }}>Date</th>
+                    <th style={{ padding:'4px 8px', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', fontFamily:"'Poppins',sans-serif" }}>Time</th>
+                    <th style={{ padding:'4px 8px', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', fontFamily:"'Poppins',sans-serif" }}>Notes</th>
+                    <th style={{ padding:'4px 0 4px 8px', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', fontFamily:"'Poppins',sans-serif", textAlign:'right' }}>Offer</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {showings.map(s => (
+                    <tr key={s.id} style={{ borderBottom:'1px solid #ddd' }}>
+                      <td style={{ padding:'6px 8px 6px 0', fontWeight:600 }}>{s.address}</td>
+                      <td style={{ padding:'6px 8px', whiteSpace:'nowrap' }}>{fmtDate(s.dateShown)}</td>
+                      <td style={{ padding:'6px 8px', whiteSpace:'nowrap' }}>{fmtTime(s.timeShown)}</td>
+                      <td style={{ padding:'6px 8px', color:'#555', maxWidth:200, overflow:'hidden', textOverflow:'ellipsis' }}>{s.notes || '—'}</td>
+                      <td style={{ padding:'6px 0 6px 8px', textAlign:'right', fontWeight:600, color: s.offerId ? '#10b981' : '#888' }}>{s.offerId ? '✓ Yes' : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* Notes */}
+          <div style={{ marginTop:22 }}>
+            <div className="print-section-title">Notes</div>
+            {[...Array(5)].map((_,i) => <div key={i} className="print-ruled"/>)}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Default Transaction Checklist ────────────────────────────────────────────
 const DEFAULT_CHECKLIST = [
   { id:'em',    label:'Earnest money deposited',         done:false },
@@ -1492,6 +1600,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [buyerReps,     setBuyerReps]    = useState([])
   const [newRepClient,  setNewRepClient] = useState('')
   const [offerModal,    setOfferModal]   = useState(null) // null | { repId, repName }
+  const [printBuyerRep, setPrintBuyerRep] = useState(null) // null | rep object for print modal
   const [expandedRep,   setExpandedRep]  = useState(null) // buyer rep id or null
   const [expandedChecklist, setExpandedChecklist] = useState(null) // pending deal id or null
 
@@ -4654,6 +4763,7 @@ function Dashboard({ theme, onToggleTheme }) {
                       style={ isEditingName ? { background:'var(--bg2)', color:'var(--text)', borderColor:'var(--b2)' } : {}}>
                       {isEditingName ? '✓' : '✏️'}
                     </button>
+                    <button className="edit-toggle" title="Print buyer summary" onClick={() => setPrintBuyerRep(rep)}>🖨️</button>
                     <button className="edit-toggle" title="Remove" onClick={() => removeBuyerRep(rep)}
                       style={{ color:'var(--dim)' }}>✕</button>
                   </div>
@@ -5184,6 +5294,10 @@ function Dashboard({ theme, onToggleTheme }) {
           onSubmit={(addr, price, comm) => submitBuyerRepOffer(addr, price, comm, offerModal.showingId || null)}
           onClose={() => setOfferModal(null)}
         />
+      )}
+      {/* ── Print Buyer Summary Modal ─────────────────── */}
+      {printBuyerRep && (
+        <PrintBuyerModal rep={printBuyerRep} onClose={() => setPrintBuyerRep(null)} />
       )}
 
       {/* ── Add Task Modal ───────────────────────────────── */}

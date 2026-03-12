@@ -4717,6 +4717,21 @@ function Dashboard({ theme, onToggleTheme }) {
                   )}
                 </div>
 
+                {/* At-a-glance summary */}
+                {(() => {
+                  const bits = []
+                  if (bd.locationPrefs) bits.push('📍 ' + bd.locationPrefs)
+                  if (bd.preApproval) bits.push('💰 ' + (formatPrice(bd.preApproval) || bd.preApproval))
+                  if (bd.mustHaves) bits.push(bd.mustHaves)
+                  const showCount = (bd.showings||[]).length
+                  return (bits.length > 0 || showCount > 0) ? (
+                    <div style={{ fontSize:12, color:'var(--muted)', lineHeight:1.5, marginTop:2 }}>
+                      {bits.length > 0 && <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{bits.join(' · ')}</div>}
+                      {showCount > 0 && <div style={{ fontSize:11, color:'var(--dim)', marginTop:1 }}>🏠 {showCount} showing{showCount!==1?'s':''}</div>}
+                    </div>
+                  ) : null
+                })()}
+
                 {/* Metadata line — pre-approval, dates, timeline, location, month */}
                 <div className="deal-meta-line">
                   {bd.preApproval && (

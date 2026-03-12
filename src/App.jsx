@@ -201,11 +201,21 @@ function dateStrForDay(weekIdx, dayIdx) {
 
 // ─── Add Task Modal ───────────────────────────────────────────────────────────
 
+// Format "HH:MM" → "9:30 AM"
+function fmtTime(t) {
+  if (!t) return ''
+  const [h,m] = t.split(':').map(Number)
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+  return `${h12}:${String(m).padStart(2,'0')} ${ampm}`
+}
+
 function AddTaskModal({ onSubmit, onClose }) {
   const [label, setLabel] = useState('')
   const [icon,  setIcon]  = useState('✅')
   const [xp,    setXp]    = useState('15')
-  const submit = () => { if (label.trim()) onSubmit(label.trim(), icon.trim()||'✅', Number(xp)||15) }
+  const [time,  setTime]  = useState('')
+  const submit = () => { if (label.trim()) onSubmit(label.trim(), icon.trim()||'✅', Number(xp)||15, time||null) }
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:1000,
       display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
@@ -230,13 +240,21 @@ function AddTaskModal({ onSubmit, onClose }) {
               placeholder="e.g. Morning call review"/>
           </div>
         </div>
-        <div style={{ marginBottom:22 }}>
-          <div className="label" style={{ marginBottom:5 }}>XP Reward</div>
-          <input className="field-input" value={xp} type="number" min="0" max="500"
-            onChange={e => setXp(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && submit()}
-            placeholder="15"
-            style={{ color:'var(--gold2)', fontFamily:"'JetBrains Mono',monospace", width:100 }}/>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:22 }}>
+          <div>
+            <div className="label" style={{ marginBottom:5 }}>Time <span style={{ color:'var(--dim)', fontWeight:400 }}>(optional)</span></div>
+            <input className="field-input" type="time" value={time}
+              onChange={e => setTime(e.target.value)}
+              style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:13 }}/>
+          </div>
+          <div>
+            <div className="label" style={{ marginBottom:5 }}>XP Reward</div>
+            <input className="field-input" value={xp} type="number" min="0" max="500"
+              onChange={e => setXp(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && submit()}
+              placeholder="15"
+              style={{ color:'var(--gold2)', fontFamily:"'JetBrains Mono',monospace", width:'100%' }}/>
+          </div>
         </div>
         <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
           <button className="btn-outline" onClick={onClose}>Cancel</button>
@@ -1744,7 +1762,7 @@ function Dashboard({ theme, onToggleTheme }) {
     }
 
     if (ctRes.data) {
-      const toTask = t => ({ id:t.id, label:t.label, icon:t.icon, xp:t.xp, isDefault:t.is_default, specificDate:t.specific_date, googleEventId:t.google_event_id||null })
+      const toTask = t => ({ id:t.id, label:t.label, icon:t.icon, xp:t.xp, isDefault:t.is_default, specificDate:t.specific_date, googleEventId:t.google_event_id||null, eventTime:t.event_time||null })
       const allNonDeleted = ctRes.data.filter(t => !t.is_deleted).map(toTask)
       // Split: tasks skipped for today go to skippedTodayTasks, rest stay in customTasks
       const persistedSkips = (profRes.data?.habit_prefs?.skipped||{})[todayDate] || []
@@ -1977,11 +1995,15 @@ function Dashboard({ theme, onToggleTheme }) {
   function getOrderedTasksForDate(dateStr, recHabits, daySpecific) {
     const all = [...recHabits, ...daySpecific.map(t => ({ ...t, isDaySpecific: true }))]
     const dayOrder = habitPrefs.dayOrder?.[dateStr]
+    // Auto-sort: tasks with a time come first (chronologically), then tasks without time
+    // Manual dayOrder overrides only within the no-time group
+    const withTime = all.filter(t => t.eventTime).sort((a, b) => a.eventTime.localeCompare(b.eventTime))
+    const noTime   = all.filter(t => !t.eventTime)
     if (dayOrder?.length) {
       const idx = {}; dayOrder.forEach((id, i) => idx[id] = i)
-      all.sort((a, b) => (idx[a.id] ?? 999) - (idx[b.id] ?? 999))
+      noTime.sort((a, b) => (idx[a.id] ?? 999) - (idx[b.id] ?? 999))
     }
-    return all
+    return [...withTime, ...noTime]
   }
 
   function moveTask(dateStr, orderedList, taskId, direction) {
@@ -2146,37 +2168,41 @@ function Dashboard({ theme, onToggleTheme }) {
     }
   }
 
-  async function addTaskToday(label, icon, xp) {
+  async function addTaskToday(label, icon, xp, eventTime) {
     try {
-      const {data, error} = await supabase.from('custom_tasks').insert({
+      const insert = {
         user_id:user.id, label, icon, xp:Number(xp)||15,
         is_default:false, specific_date:viewDateStr
-      }).select().single()
+      }
+      if (eventTime) insert.event_time = eventTime
+      const {data, error} = await supabase.from('custom_tasks').insert(insert).select().single()
       if (error) throw error
       if (data) setCustomTasks(prev => [...prev, {
         id:data.id, label:data.label, icon:data.icon, xp:data.xp,
-        isDefault:false, specificDate:data.specific_date
+        isDefault:false, specificDate:data.specific_date, eventTime:data.event_time||null
       }])
     } catch(e) { console.error('addTaskToday error:', e) }
     setAddTaskModal(false)
   }
 
-  async function addTaskForDay(weekIdx, dayIdx, label, icon, xp) {
+  async function addTaskForDay(weekIdx, dayIdx, label, icon, xp, eventTime) {
     const specificDate = dateStrForDay(weekIdx, dayIdx)
     if (!specificDate || !label.trim()) return
     try {
-      const { data, error } = await supabase.from('custom_tasks').insert({
+      const insert = {
         user_id:user.id, label, icon, xp:Number(xp)||15,
         is_default:false, specific_date:specificDate,
-      }).select().single()
+      }
+      if (eventTime) insert.event_time = eventTime
+      const { data, error } = await supabase.from('custom_tasks').insert(insert).select().single()
       if (error) throw error
       if (data) setCustomTasks(prev => [...prev, {
         id:data.id, label:data.label, icon:data.icon, xp:data.xp,
-        isDefault:false, specificDate:data.specific_date,
+        isDefault:false, specificDate:data.specific_date, eventTime:data.event_time||null,
       }])
     } catch(e) { console.error('addTaskForDay error:', e) }
     setPlannerTaskForm(null)
-    setPlannerForm({ label:'', icon:'🏠', xp:15 })
+    setPlannerForm({ label:'', icon:'🏠', xp:15, time:'' })
   }
 
   // Planner-only: move a day-specific task to a recoverable deleted list, hard-delete from DB
@@ -2304,16 +2330,28 @@ function Dashboard({ theme, onToggleTheme }) {
       }
       const events = data.events || []
       console.log('[GCal] Fetched', events.length, 'events from Google Calendar')
+      // Convert 12h display time (e.g. "2:30 PM") to 24h "HH:MM" for sorting
+      const to24h = (t) => {
+        if (!t) return null
+        const m = t.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+        if (!m) return t // already 24h or unknown format
+        let h = parseInt(m[1],10)
+        const min = m[2], ampm = m[3].toUpperCase()
+        if (ampm === 'PM' && h !== 12) h += 12
+        if (ampm === 'AM' && h === 12) h = 0
+        return `${String(h).padStart(2,'0')}:${min}`
+      }
       const batch = events.map(e => ({
-        label: e.time ? `${e.time} — ${e.summary}` : e.summary,
+        label: e.summary,
         specific_date: e.date,
         google_event_id: e.google_event_id,
+        event_time: to24h(e.time),
       }))
       const { data: inserted, error: rpcErr } = await supabase.rpc('sync_gcal_events', { events: batch })
       if (rpcErr) { console.error('[GCal] RPC error:', rpcErr.message); showToast('Sync failed: ' + rpcErr.message); return }
       const rows = inserted || []
       if (rows.length > 0) {
-        setCustomTasks(prev => [...prev, ...rows.map(r => ({ id:r.id, label:r.label, icon:r.icon, xp:r.xp, isDefault:false, specificDate:r.specific_date, googleEventId:r.google_event_id }))])
+        setCustomTasks(prev => [...prev, ...rows.map(r => ({ id:r.id, label:r.label, icon:r.icon, xp:r.xp, isDefault:false, specificDate:r.specific_date, googleEventId:r.google_event_id, eventTime:r.event_time||null }))])
       }
       console.log('[GCal] Sync complete:', rows.length, 'added')
       showToast(rows.length > 0 ? `Synced ${rows.length} event${rows.length !== 1 ? 's' : ''} from Google Calendar` : 'Calendar is up to date', 'success')
@@ -3679,6 +3717,10 @@ function Dashboard({ theme, onToggleTheme }) {
                           )}
                         </button>
                         <span style={{ fontSize:15, flexShrink:0 }}>{h.icon}</span>
+                        {h.eventTime && (
+                          <span style={{ fontSize:10, fontWeight:700, color:'var(--gold2)', flexShrink:0,
+                            fontFamily:"'JetBrains Mono',monospace", whiteSpace:'nowrap' }}>{fmtTime(h.eventTime)}</span>
+                        )}
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
                             textDecoration:done?'line-through':'none', transition:'all .15s',
@@ -3718,6 +3760,10 @@ function Dashboard({ theme, onToggleTheme }) {
                           )}
                         </button>
                         <span style={{ fontSize:15, flexShrink:0 }}>{h.icon}</span>
+                        {h.eventTime && (
+                          <span style={{ fontSize:10, fontWeight:700, color:'var(--gold2)', flexShrink:0,
+                            fontFamily:"'JetBrains Mono',monospace", whiteSpace:'nowrap' }}>{fmtTime(h.eventTime)}</span>
+                        )}
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:13, fontWeight:500, color:done?'var(--muted)':'var(--text)',
                             textDecoration:done?'line-through':'none', transition:'all .15s',
@@ -4150,25 +4196,31 @@ function Dashboard({ theme, onToggleTheme }) {
                           textTransform:'uppercase', letterSpacing:'.5px', marginBottom:6 }}>Add task for {dayName}</div>
                         <input value={plannerForm.label}
                           onChange={e=>setPlannerForm(p=>({...p,label:e.target.value}))}
-                          onKeyDown={e=>{ if(e.key==='Enter'&&plannerForm.label.trim()) addTaskForDay(wi,di,plannerForm.label,plannerForm.icon,plannerForm.xp) }}
+                          onKeyDown={e=>{ if(e.key==='Enter'&&plannerForm.label.trim()) addTaskForDay(wi,di,plannerForm.label,plannerForm.icon,plannerForm.xp,plannerForm.time||null) }}
                           placeholder="Task name…"
                           style={{ width:'100%', padding:'6px 8px', fontSize:12, borderRadius:6,
                             border:'1px solid var(--b2)', background:'var(--surface)', color:'var(--text)',
                             outline:'none', boxSizing:'border-box', marginBottom:6 }}
                           autoFocus/>
-                        <div style={{ display:'flex', gap:6 }}>
+                        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
                           <input value={plannerForm.icon}
                             onChange={e=>setPlannerForm(p=>({...p,icon:e.target.value}))}
                             style={{ width:38, padding:'5px 6px', fontSize:14, borderRadius:6,
                               border:'1px solid var(--b2)', background:'var(--surface)', color:'var(--text)',
                               textAlign:'center', outline:'none' }}/>
+                          <input type="time" value={plannerForm.time||''}
+                            onChange={e=>setPlannerForm(p=>({...p,time:e.target.value}))}
+                            placeholder="Time"
+                            style={{ width:80, padding:'5px 6px', fontSize:11, borderRadius:6,
+                              border:'1px solid var(--b2)', background:'var(--surface)', color:'var(--text)',
+                              outline:'none', fontFamily:"'JetBrains Mono',monospace" }}/>
                           <input type="number" value={plannerForm.xp}
                             onChange={e=>setPlannerForm(p=>({...p,xp:Number(e.target.value)||0}))}
-                            style={{ width:54, padding:'5px 8px', fontSize:12, borderRadius:6,
+                            style={{ width:48, padding:'5px 8px', fontSize:12, borderRadius:6,
                               border:'1px solid var(--b2)', background:'var(--surface)', color:'var(--text)', outline:'none' }}
                             placeholder="XP"/>
                           <button className="btn-gold" disabled={!plannerForm.label.trim()}
-                            onClick={()=>addTaskForDay(wi,di,plannerForm.label,plannerForm.icon,plannerForm.xp)}
+                            onClick={()=>addTaskForDay(wi,di,plannerForm.label,plannerForm.icon,plannerForm.xp,plannerForm.time||null)}
                             style={{ fontSize:12, flex:1, padding:'5px 10px' }}>Add</button>
                         </div>
                       </div>

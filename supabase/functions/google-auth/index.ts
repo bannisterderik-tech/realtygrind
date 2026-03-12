@@ -204,9 +204,19 @@ Deno.serve(async (req) => {
       const data = await res.json()
       const events = (data.items || []).map((event: any) => {
         const dateStr = event.start?.date || (event.start?.dateTime ? event.start.dateTime.slice(0, 10) : null)
-        const timeStr = event.start?.dateTime
-          ? new Date(event.start.dateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-          : null
+        // Extract local time directly from the ISO string (e.g. "2026-03-12T11:00:00-07:00")
+        // to avoid UTC conversion issues on the server
+        let timeStr: string | null = null
+        if (event.start?.dateTime) {
+          const m = event.start.dateTime.match(/T(\d{2}):(\d{2})/)
+          if (m) {
+            const h = parseInt(m[1], 10)
+            const min = m[2]
+            const ampm = h >= 12 ? 'PM' : 'AM'
+            const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+            timeStr = `${h12}:${min} ${ampm}`
+          }
+        }
         return {
           summary: event.summary || '',
           date: dateStr,

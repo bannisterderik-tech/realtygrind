@@ -4783,11 +4783,7 @@ function Dashboard({ theme, onToggleTheme }) {
                   {(bd.dateSigned || bd.dateExpires) && bd.timeline && <span className="sep"/>}
                   {!bd.dateSigned && !bd.dateExpires && bd.preApproval && bd.timeline && <span className="sep"/>}
                   {bd.timeline && <span>{bd.timeline}</span>}
-                  {(bd.preApproval || bd.dateSigned || bd.dateExpires || bd.timeline) && bd.locationPrefs && <span className="sep"/>}
-                  {bd.locationPrefs && (
-                    <span style={{ maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>📍 {bd.locationPrefs}</span>
-                  )}
-                  {(hasMetaInfo || bd.dateSigned || bd.dateExpires) && rep.monthYear && rep.monthYear !== MONTH_YEAR && <span className="sep"/>}
+                  {(bd.preApproval || bd.dateSigned || bd.dateExpires || bd.timeline) && rep.monthYear && rep.monthYear !== MONTH_YEAR && <span className="sep"/>}
                   {rep.monthYear && rep.monthYear !== MONTH_YEAR && (
                     <span>{fmtMonth(rep.monthYear)}</span>
                   )}

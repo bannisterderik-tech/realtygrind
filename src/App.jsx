@@ -3358,6 +3358,30 @@ function Dashboard({ theme, onToggleTheme }) {
                   </a>
                 ) : null
               })()}
+              {(() => {
+                const tp = profile?.teams?.team_prefs || {}
+                const links = [
+                  { key:'email', icon:'📧', color:'#ea4335', defaultLabel:'Email' },
+                  { key:'crm',   icon:'🏢', color:'#0176d3', defaultLabel:'CRM' },
+                  { key:'docs',  icon:'📄', color:'#4285f4', defaultLabel:'Docs' },
+                  { key:'mls',   icon:'🔑', color:'#2e7d32', defaultLabel:'MLS' },
+                ]
+                return links.map(lk => {
+                  const url = tp[lk.key+'_url']
+                  if (!url) return null
+                  const label = tp[lk.key+'_label'] || lk.defaultLabel
+                  return (
+                    <a key={lk.key} href={url} target="_blank" rel="noopener noreferrer"
+                      style={{ display:'flex', alignItems:'center', gap:5, padding:'4px 12px',
+                        background:`${lk.color}18`, border:`1px solid ${lk.color}40`, borderRadius:20,
+                        textDecoration:'none', cursor:'pointer', transition:'all .15s' }}>
+                      <span style={{ fontSize:12 }}>{lk.icon}</span>
+                      <span style={{ fontSize:11, fontWeight:700, color:lk.color,
+                        fontFamily:"'JetBrains Mono',monospace" }}>{label}</span>
+                    </a>
+                  )
+                })
+              })()}
             </div>
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:18, flexShrink:0 }}>

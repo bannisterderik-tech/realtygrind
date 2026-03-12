@@ -267,6 +267,169 @@ function AddTaskModal({ onSubmit, onClose }) {
   )
 }
 
+// ─── AI Task Gen Modal ────────────────────────────────────────────────────────
+
+function AITaskGenModal({ scope, onClose, onGenerate, onInsert }) {
+  const [phase, setPhase]       = useState('input') // input | loading | preview | error
+  const [guidance, setGuidance] = useState('')
+  const [tasks, setTasks]       = useState([])
+  const [summary, setSummary]   = useState('')
+  const [selected, setSelected] = useState({}) // { idx: true }
+  const [error, setError]       = useState('')
+
+  async function handleGenerate() {
+    setPhase('loading')
+    setError('')
+    try {
+      const result = await onGenerate(scope, guidance)
+      if (result.error) { setError(result.error); setPhase('error'); return }
+      setTasks(result.tasks || [])
+      setSummary(result.summary || '')
+      const sel = {}
+      ;(result.tasks || []).forEach((_, i) => sel[i] = true)
+      setSelected(sel)
+      setPhase('preview')
+    } catch (e) {
+      console.error('AI generate error:', e)
+      setError(e.message || 'Something went wrong')
+      setPhase('error')
+    }
+  }
+
+  function toggleTask(idx) {
+    setSelected(prev => ({ ...prev, [idx]: !prev[idx] }))
+  }
+
+  function handleInsert() {
+    const chosen = tasks.filter((_, i) => selected[i])
+    if (chosen.length === 0) return
+    onInsert(chosen)
+    onClose()
+  }
+
+  const selectedCount = Object.values(selected).filter(Boolean).length
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:1000,
+      display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="card" style={{ padding:28, width:'100%', maxWidth:520, maxHeight:'85vh', display:'flex', flexDirection:'column' }}>
+        {/* Header */}
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:18 }}>
+          <span style={{ fontSize:22 }}>✨</span>
+          <div className="serif" style={{ fontSize:18, color:'var(--text)' }}>
+            AI Task Planner — {scope === 'week' ? 'Plan My Week' : 'Plan My Day'}
+          </div>
+          <button onClick={onClose} style={{ marginLeft:'auto', background:'none', border:'none',
+            cursor:'pointer', color:'var(--dim)', fontSize:18, padding:'4px 8px' }}>✕</button>
+        </div>
+
+        {/* Phase: Input */}
+        {phase === 'input' && (
+          <>
+            <div style={{ fontSize:12, color:'var(--muted)', marginBottom:14, lineHeight:1.6 }}>
+              AI will analyze your pipeline, goals, calendar, and local market to generate a personalized task list.
+            </div>
+            <div className="label" style={{ marginBottom:5 }}>Focus areas <span style={{ fontWeight:400, color:'var(--dim)' }}>(optional)</span></div>
+            <textarea className="field-input" value={guidance} onChange={e => setGuidance(e.target.value)}
+              placeholder="e.g. Focus on buyer follow-ups, or prep for Thursday open house"
+              rows={2} style={{ resize:'vertical', marginBottom:20, fontSize:13 }}/>
+            <button className="btn-gold" onClick={handleGenerate} style={{ width:'100%', justifyContent:'center', fontSize:14, padding:'12px 0', gap:8 }}>
+              ✨ Generate Tasks
+            </button>
+          </>
+        )}
+
+        {/* Phase: Loading */}
+        {phase === 'loading' && (
+          <div style={{ textAlign:'center', padding:'40px 0' }}>
+            <div style={{ fontSize:32, marginBottom:12, animation:'spin 1.5s linear infinite' }}>✨</div>
+            <div style={{ fontSize:14, color:'var(--muted)', fontWeight:500 }}>
+              Analyzing your pipeline & market…
+            </div>
+            <div style={{ fontSize:11, color:'var(--dim)', marginTop:6 }}>This may take 10-15 seconds</div>
+          </div>
+        )}
+
+        {/* Phase: Error */}
+        {phase === 'error' && (
+          <div style={{ textAlign:'center', padding:'30px 0' }}>
+            <div style={{ fontSize:28, marginBottom:10 }}>⚠️</div>
+            <div style={{ fontSize:13, color:'var(--muted)', marginBottom:16 }}>{error}</div>
+            <div style={{ display:'flex', gap:8, justifyContent:'center' }}>
+              <button className="btn-outline" onClick={onClose}>Cancel</button>
+              <button className="btn-gold" onClick={handleGenerate}>Try Again</button>
+            </div>
+          </div>
+        )}
+
+        {/* Phase: Preview */}
+        {phase === 'preview' && (
+          <>
+            {summary && (
+              <div style={{ fontSize:12, color:'var(--muted)', marginBottom:14, padding:'10px 12px',
+                background:'var(--bg2)', borderRadius:8, border:'1px solid var(--b1)', lineHeight:1.6 }}>
+                {summary}
+              </div>
+            )}
+
+            <div style={{ flex:1, overflowY:'auto', marginBottom:16 }}>
+              {tasks.map((t, idx) => (
+                <div key={idx} style={{ display:'flex', alignItems:'flex-start', gap:8,
+                  padding:'10px 8px', borderBottom:'1px solid var(--b1)',
+                  opacity: selected[idx] ? 1 : 0.4, transition:'opacity .15s' }}>
+                  <button onClick={() => toggleTask(idx)}
+                    style={{ width:18, height:18, borderRadius:4, flexShrink:0, marginTop:2,
+                      border: selected[idx] ? '2px solid var(--gold2)' : '2px solid var(--b2)',
+                      background: selected[idx] ? 'rgba(217,119,6,.12)' : 'transparent',
+                      cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    {selected[idx] && <span style={{ fontSize:10, color:'var(--gold2)', fontWeight:900 }}>✓</span>}
+                  </button>
+                  <span style={{ fontSize:16, flexShrink:0 }}>{t.icon}</span>
+                  {t.time && (
+                    <span style={{ fontSize:10, fontWeight:700, color:'var(--gold2)', flexShrink:0,
+                      fontFamily:"'JetBrains Mono',monospace", whiteSpace:'nowrap', marginTop:2 }}>
+                      {fmtTime(t.time)}
+                    </span>
+                  )}
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight:500, color:'var(--text)', lineHeight:1.4 }}>{t.label}</div>
+                    {t.rationale && (
+                      <div style={{ fontSize:10, color:'var(--dim)', marginTop:2, lineHeight:1.4 }}>{t.rationale}</div>
+                    )}
+                    <div style={{ display:'flex', gap:8, marginTop:3 }}>
+                      {t.date && scope === 'week' && (
+                        <span style={{ fontSize:9, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace" }}>{t.date}</span>
+                      )}
+                      <span style={{ fontSize:9, color:'var(--gold2)', fontWeight:700,
+                        fontFamily:"'JetBrains Mono',monospace" }}>+{t.xp} XP</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {tasks.length === 0 && (
+                <div style={{ textAlign:'center', padding:'24px 0', color:'var(--dim)', fontSize:13 }}>
+                  No tasks generated. Try adding more details to your focus areas.
+                </div>
+              )}
+            </div>
+
+            <div style={{ display:'flex', gap:8, justifyContent:'flex-end', flexShrink:0 }}>
+              <button className="btn-outline" onClick={() => { setPhase('input'); setTasks([]) }}
+                style={{ fontSize:12 }}>↻ Regenerate</button>
+              <button className="btn-outline" onClick={onClose} style={{ fontSize:12 }}>Cancel</button>
+              <button className="btn-gold" onClick={handleInsert} disabled={selectedCount === 0}
+                style={{ minWidth:130, fontSize:13 }}>
+                + Add {selectedCount} Task{selectedCount !== 1 ? 's' : ''}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Offer Modal ──────────────────────────────────────────────────────────────
 
 function OfferModal({ repName, onSubmit, onClose, prefillAddress }) {
@@ -1658,6 +1821,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const [customDone,          setCustomDone]          = useState({}) // { 'uuid-week-day': true }
   const [skippedTodayTasks,   setSkippedTodayTasks]   = useState([]) // custom default tasks skipped for today
   const [addTaskModal,    setAddTaskModal]    = useState(false)
+  const [aiTaskGenScope, setAiTaskGenScope] = useState(null) // null | 'today' | 'week'
   const [plannerPrint,        setPlannerPrint]        = useState(null)  // { wi, di, dateStr } | null
   const [plannerTaskForm,     setPlannerTaskForm]     = useState(null)  // { wi, di } | null
   const [plannerForm,         setPlannerForm]         = useState({ label:'', icon:'🏠', xp:15 })
@@ -1868,12 +2032,13 @@ function Dashboard({ theme, onToggleTheme }) {
 
   // ESC key closes any open modal — use refs to avoid re-attaching listener on every modal change
   const modalsRef = useRef({})
-  modalsRef.current = { offerModal, offerReceivedModal, addTaskModal, showPrint, plannerPrint, showWeeklyUpdate, showBuyersUpdate, aiWidgetOpen }
+  modalsRef.current = { offerModal, offerReceivedModal, addTaskModal, aiTaskGenScope, showPrint, plannerPrint, showWeeklyUpdate, showBuyersUpdate, aiWidgetOpen }
   useEffect(() => {
     const onKey = e => {
       if (e.key !== 'Escape') return
       const m = modalsRef.current
       if (m.aiWidgetOpen)      setAiWidgetOpen(false)
+      else if (m.aiTaskGenScope) setAiTaskGenScope(null)
       else if (m.offerReceivedModal) setOfferReceivedModal(null)
       else if (m.offerModal)        setOfferModal(null)
       else if (m.addTaskModal) setAddTaskModal(false)
@@ -2379,6 +2544,139 @@ function Dashboard({ theme, onToggleTheme }) {
       }
       showToast(`Added "${task.label}" to Google Calendar`, 'success')
     } catch (e) { console.error('addToGoogleCalendar error:', e); showToast('Failed to add to calendar') }
+  }
+
+  // ── AI Task Generation ──────────────────────────────────────────────────────
+  async function generateAiTasks(scope, guidance) {
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) return { error: 'Not authenticated. Please sign in again.' }
+
+    // Assemble dates
+    const dates = []
+    if (scope === 'today') {
+      dates.push(viewDateStr)
+    } else {
+      // Current week visible in planner — 7 days from the viewed date's Monday
+      const d = new Date(viewDateStr)
+      const dayOfWeek = d.getDay()
+      const monday = new Date(d)
+      monday.setDate(d.getDate() - ((dayOfWeek + 6) % 7))
+      for (let i = 0; i < 7; i++) {
+        const day = new Date(monday)
+        day.setDate(monday.getDate() + i)
+        dates.push(day.toISOString().slice(0, 10))
+      }
+    }
+
+    // Assemble context from existing state
+    const bio = habitPrefs.bio || {}
+    const goals = profile?.goals || {}
+    const existingForDates = customTasks
+      .filter(t => t.specificDate && dates.includes(t.specificDate))
+      .map(t => ({ date: t.specificDate, label: t.label, time: t.eventTime || null }))
+
+    // Aggregate habit activity this month
+    const activityThisMonth = {}
+    Object.entries(counters).forEach(([key, val]) => {
+      const hid = key.split('-')[0]
+      if (!activityThisMonth[hid]) activityThisMonth[hid] = 0
+      activityThisMonth[hid] += (val || 0)
+    })
+
+    const pendingWithChecklist = pendingDeals.map(d => {
+      const cl = Array.isArray(d.checklist) ? d.checklist : []
+      const overdue = cl.filter(i => !i.done && i.dueDate && new Date(i.dueDate) < new Date()).map(i => i.label)
+      return { address: d.address, price: d.price, checklist_overdue: overdue }
+    })
+
+    const activeListingsCtx = listings
+      .filter(l => l.status !== 'closed' && (l.unit_count || 0) >= 1)
+      .slice(0, 20)
+      .map(l => {
+        const dom = l.list_date ? Math.floor((Date.now() - new Date(l.list_date).getTime()) / 86400000) : null
+        return { address: l.address, price: l.price, status: l.status, dom, expires_date: l.expires_date }
+      })
+
+    const buyerRepsCtx = buyerReps.slice(0, 15).map(b => {
+      const d = b.buyer_details || {}
+      return {
+        clientName: b.address || 'Buyer',
+        dateExpires: d.dateExpires || null,
+        lastCallDate: d.lastCallDate || null,
+        locationPrefs: d.locationPrefs || null,
+        timeline: d.timeline || null,
+      }
+    })
+
+    const standup = habitPrefs.standup_today?.date === viewDateStr ? habitPrefs.standup_today : null
+
+    const context = {
+      profile: { name: profile?.full_name, specialty: bio.specialty, about: bio.about, timezone: bio.timezone },
+      goals,
+      activeHabits: effectiveHabits.map(h => h.label),
+      existingTasks: existingForDates,
+      pipeline: {
+        offers_made: offersMade.length,
+        offers_received: offersReceived.length,
+        pending: pendingDeals.length,
+        closed: closedDeals.length,
+        closed_volume: closedDeals.reduce((s, d) => s + (parseFloat(String(d.price).replace(/[^0-9.]/g, '')) || 0), 0),
+      },
+      pendingDeals: pendingWithChecklist,
+      listings: activeListingsCtx,
+      buyerReps: buyerRepsCtx,
+      activityThisMonth,
+      standup: standup ? { q1: standup.q1, q2: standup.q2, q3: standup.q3 } : null,
+    }
+
+    try {
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-generate-tasks`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ scope, dates, context, guidance: guidance || undefined }),
+        }
+      )
+      const data = await resp.json()
+      if (!resp.ok) return { error: data.message || data.error || 'Failed to generate tasks' }
+      return data
+    } catch (e) {
+      console.error('generateAiTasks fetch error:', e)
+      return { error: 'Network error. Please check your connection.' }
+    }
+  }
+
+  async function insertAiGeneratedTasks(tasks) {
+    if (!tasks?.length) return
+    const inserts = tasks.map(t => ({
+      user_id: user.id,
+      label: t.label,
+      icon: t.icon || '✅',
+      xp: t.xp || 15,
+      is_default: false,
+      specific_date: t.date,
+      event_time: t.time || null,
+    }))
+    try {
+      const { data, error } = await supabase.from('custom_tasks').insert(inserts).select()
+      if (error) throw error
+      if (data?.length) {
+        setCustomTasks(prev => [...prev, ...data.map(r => ({
+          id: r.id, label: r.label, icon: r.icon, xp: r.xp,
+          isDefault: false, specificDate: r.specific_date, eventTime: r.event_time || null,
+        }))])
+      }
+      showToast(`Added ${data?.length || 0} AI-generated task${data?.length !== 1 ? 's' : ''}`, 'success')
+    } catch (e) {
+      console.error('insertAiGeneratedTasks error:', e)
+      showToast('Failed to add tasks')
+    }
   }
 
   // ── Pipeline helpers ───────────────────────────────────────────────────────
@@ -3813,10 +4111,19 @@ function Dashboard({ theme, onToggleTheme }) {
                 })}
               </div>
 
-                    <button className="btn-outline" onClick={()=>setAddTaskModal(true)}
-                      style={{ marginTop:12, fontSize:12, width:'100%', justifyContent:'center' }}>
-                      + Add task for {isViewingToday ? 'today' : FULL_DAYS[viewDayIdx]}
-                    </button>
+                    <div style={{ display:'flex', gap:8, marginTop:12 }}>
+                      <button className="btn-outline" onClick={()=>setAddTaskModal(true)}
+                        style={{ fontSize:12, flex:1, justifyContent:'center' }}>
+                        + Add task for {isViewingToday ? 'today' : FULL_DAYS[viewDayIdx]}
+                      </button>
+                      <button onClick={()=>setAiTaskGenScope('today')}
+                        style={{ fontSize:12, padding:'8px 14px', borderRadius:8, fontWeight:600,
+                          background:'linear-gradient(135deg,#8b5cf6,#6d28d9)', color:'#fff',
+                          border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:5,
+                          boxShadow:'0 2px 8px rgba(109,40,217,.25)', transition:'all .15s' }}>
+                        ✨ AI Plan
+                      </button>
+                    </div>
 
                     {/* Skipped habits & tasks — restore inline */}
                     {(skippedBuiltInView.length > 0 || skippedTodayTasks.length > 0) && (
@@ -4048,8 +4355,17 @@ function Dashboard({ theme, onToggleTheme }) {
         {/* ══ WEEKLY ══════════════════════════════════════════ */}
         {tab==='weekly' && (
           <div>
-            <div style={{ marginBottom:16, fontSize:13, color:'var(--muted)' }}>
-              Week {today.week+1} — ✓ toggle · × remove from day · ↩ restore · + add · 🖨️ print
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
+              <div style={{ flex:1, fontSize:13, color:'var(--muted)' }}>
+                Week {today.week+1} — ✓ toggle · × remove from day · ↩ restore · + add · 🖨️ print
+              </div>
+              <button onClick={()=>setAiTaskGenScope('week')}
+                style={{ fontSize:11, padding:'6px 12px', borderRadius:8, fontWeight:600,
+                  background:'linear-gradient(135deg,#8b5cf6,#6d28d9)', color:'#fff',
+                  border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:4,
+                  boxShadow:'0 2px 8px rgba(109,40,217,.25)', whiteSpace:'nowrap' }}>
+                ✨ AI Plan Week
+              </button>
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(210px,1fr))', gap:12 }}>
               {DAYS.map((dayName,di)=>{
@@ -5452,6 +5768,16 @@ function Dashboard({ theme, onToggleTheme }) {
         <AddTaskModal
           onSubmit={addTaskToday}
           onClose={() => setAddTaskModal(false)}
+        />
+      )}
+
+      {/* ── AI Task Gen Modal ──────────────────────────── */}
+      {aiTaskGenScope && (
+        <AITaskGenModal
+          scope={aiTaskGenScope}
+          onClose={() => setAiTaskGenScope(null)}
+          onGenerate={generateAiTasks}
+          onInsert={insertAiGeneratedTasks}
         />
       )}
 

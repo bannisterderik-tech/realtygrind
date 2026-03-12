@@ -2661,12 +2661,12 @@ function Dashboard({ theme, onToggleTheme }) {
   }
 
   // ── Showings helpers (local state only — persisted via saveBuyerRepDetails) ──
-  function addShowing(repId, address, dateShown, notes) {
+  function addShowing(repId, address, dateShown, timeShown, notes) {
     if (!address?.trim()) return
     setBuyerReps(prev => prev.map(r => {
       if (r.id !== repId) return r
       const showings = [...(r.buyerDetails?.showings || []), {
-        id: Date.now().toString(36), address: address.trim(), dateShown: dateShown || new Date().toLocaleDateString('en-CA'), notes: notes || '', offerId: null
+        id: Date.now().toString(36), address: address.trim(), dateShown: dateShown || new Date().toLocaleDateString('en-CA'), timeShown: timeShown || '', notes: notes || '', offerId: null
       }]
       return { ...r, buyerDetails: { ...(r.buyerDetails || {}), showings }, _dirty: true }
     }))
@@ -4640,12 +4640,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
                 {/* Actions row */}
                 <div className="deal-actions">
-                  {rep.status !== 'closed' ? (
-                    <button className="act-btn act-btn-blue"
-                      onClick={() => setOfferModal({ repId:rep.id, repName:rep.clientName||'Buyer' })}>
-                      📤 Offer Made
-                    </button>
-                  ) : (
+                  {rep.status === 'closed' && (
                     <span style={{ fontSize:11, color:'var(--dim)', fontStyle:'italic' }}>Agreement closed</span>
                   )}
                   <div style={{ marginLeft:'auto', display:'flex', gap:4, alignItems:'center' }}>
@@ -4784,6 +4779,9 @@ function Dashboard({ theme, onToggleTheme }) {
                                 <input className="field-input" type="date" value={s.dateShown||''}
                                   onChange={e => updateShowing(rep.id, s.id, 'dateShown', e.target.value)}
                                   style={{ width:130, padding:'4px 8px', fontSize:11 }}/>
+                                <input className="field-input" type="time" value={s.timeShown||''}
+                                  onChange={e => updateShowing(rep.id, s.id, 'timeShown', e.target.value)}
+                                  style={{ width:100, padding:'4px 8px', fontSize:11 }}/>
                                 {s.offerId ? (
                                   <span style={{ fontSize:10, color:'var(--green)', fontWeight:700, whiteSpace:'nowrap', padding:'4px 10px',
                                     background:'rgba(16,185,129,.1)', borderRadius:6, border:'1px solid rgba(16,185,129,.25)' }}>✓ Offer Made</span>
@@ -4794,6 +4792,19 @@ function Dashboard({ theme, onToggleTheme }) {
                                     📤 Make Offer
                                   </button>
                                 )}
+                                <button onClick={() => {
+                                    const date = s.dateShown || new Date().toLocaleDateString('en-CA')
+                                    const time = s.timeShown || '10:00'
+                                    const startDt = date.replace(/-/g,'') + 'T' + time.replace(':','') + '00'
+                                    const [h,m] = time.split(':').map(Number)
+                                    const endH = String(h+1).padStart(2,'0')
+                                    const endDt = date.replace(/-/g,'') + 'T' + endH + String(m).padStart(2,'0') + '00'
+                                    const title = encodeURIComponent(`Showing: ${s.address || 'Property'}`)
+                                    const loc = encodeURIComponent(s.address || '')
+                                    const details = encodeURIComponent(`Buyer: ${rep.clientName || 'Client'}${s.notes ? '\n' + s.notes : ''}`)
+                                    window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDt}/${endDt}&location=${loc}&details=${details}`, '_blank')
+                                  }} title="Add to Google Calendar"
+                                  style={{ background:'none', border:'none', cursor:'pointer', fontSize:13, padding:'2px 4px', flexShrink:0 }}>📅</button>
                                 <button onClick={() => removeShowing(rep.id, s.id)} title="Remove showing"
                                   style={{ background:'none', border:'none', cursor:'pointer', color:'var(--dim)', fontSize:12, padding:'2px 4px', flexShrink:0 }}>✕</button>
                               </div>
@@ -4806,28 +4817,34 @@ function Dashboard({ theme, onToggleTheme }) {
                           ))}
                           {/* Add showing inline form */}
                           {rep.status !== 'closed' && (
-                            <div style={{ display:'flex', gap:6, alignItems:'center', marginTop:6 }}>
+                            <div style={{ display:'flex', gap:6, alignItems:'center', marginTop:6, flexWrap:'wrap' }}>
                               <span style={{ color:'var(--dim)', fontSize:14, flexShrink:0 }}>+</span>
                               <input id={`add-showing-addr-${rep.id}`} className="field-input" placeholder="Address of house shown…"
                                 onKeyDown={e => {
                                   if (e.key === 'Enter' && e.target.value.trim()) {
                                     const dateInput = document.getElementById(`add-showing-date-${rep.id}`)
-                                    addShowing(rep.id, e.target.value, dateInput?.value || '', '')
+                                    const timeInput = document.getElementById(`add-showing-time-${rep.id}`)
+                                    addShowing(rep.id, e.target.value, dateInput?.value || '', timeInput?.value || '', '')
                                     e.target.value = ''
-                                    if (dateInput) dateInput.value = ''
+                                    if (dateInput) dateInput.value = new Date().toLocaleDateString('en-CA')
+                                    if (timeInput) timeInput.value = ''
                                   }
                                 }}
                                 style={{ flex:1, minWidth:120, padding:'5px 8px', fontSize:12 }}/>
                               <input id={`add-showing-date-${rep.id}`} className="field-input" type="date"
                                 defaultValue={new Date().toLocaleDateString('en-CA')}
                                 style={{ width:130, padding:'5px 8px', fontSize:11 }}/>
+                              <input id={`add-showing-time-${rep.id}`} className="field-input" type="time"
+                                style={{ width:100, padding:'5px 8px', fontSize:11 }}/>
                               <button onClick={() => {
                                   const addrInput = document.getElementById(`add-showing-addr-${rep.id}`)
                                   const dateInput = document.getElementById(`add-showing-date-${rep.id}`)
+                                  const timeInput = document.getElementById(`add-showing-time-${rep.id}`)
                                   if (addrInput?.value.trim()) {
-                                    addShowing(rep.id, addrInput.value, dateInput?.value || '', '')
+                                    addShowing(rep.id, addrInput.value, dateInput?.value || '', timeInput?.value || '', '')
                                     addrInput.value = ''
                                     if (dateInput) dateInput.value = new Date().toLocaleDateString('en-CA')
+                                    if (timeInput) timeInput.value = ''
                                   }
                                 }}
                                 style={{ fontSize:11, fontWeight:700, color:'var(--blue)', background:'rgba(14,165,233,.08)',

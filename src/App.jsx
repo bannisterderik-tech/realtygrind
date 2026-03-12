@@ -251,8 +251,8 @@ function AddTaskModal({ onSubmit, onClose }) {
 
 // ─── Offer Modal ──────────────────────────────────────────────────────────────
 
-function OfferModal({ repName, onSubmit, onClose }) {
-  const [addr,  setAddr]  = useState('')
+function OfferModal({ repName, onSubmit, onClose, prefillAddress }) {
+  const [addr,  setAddr]  = useState(prefillAddress || '')
   const [price, setPrice] = useState('')
   const [comm,  setComm]  = useState('')
   const [isPercent, setIsPercent] = useState(true) // default to percentage
@@ -2227,7 +2227,7 @@ function Dashboard({ theme, onToggleTheme }) {
   }
 
   // ── Pipeline helpers ───────────────────────────────────────────────────────
-  async function dbInsert(type, item, closedFrom='', dealSide=null, originalLeadSource=null) {
+  async function dbInsert(type, item, closedFrom='', dealSide=null, originalLeadSource=null, buyerRepId=null) {
     const insertObj = {
       user_id:user.id, type, address:item.address||'', price:item.price||'',
       commission:item.commission||'', status:type==='closed'?'closed':'active',
@@ -2235,12 +2235,14 @@ function Dashboard({ theme, onToggleTheme }) {
     }
     if (dealSide) insertObj.deal_side = dealSide
     if (originalLeadSource) insertObj.original_lead_source = originalLeadSource
+    if (buyerRepId) insertObj.buyer_rep_id = buyerRepId
     let {data, error} = await supabase.from('transactions').insert(insertObj).select().single()
     // If the insert failed (e.g. new columns not migrated), retry without them
-    if (error && (dealSide || originalLeadSource)) {
-      console.warn('dbInsert retrying without deal_side/original_lead_source:', error.message)
+    if (error && (dealSide || originalLeadSource || buyerRepId)) {
+      console.warn('dbInsert retrying without deal_side/original_lead_source/buyer_rep_id:', error.message)
       delete insertObj.deal_side
       delete insertObj.original_lead_source
+      delete insertObj.buyer_rep_id
       ;({data, error} = await supabase.from('transactions').insert(insertObj).select().single())
     }
     if (error) { console.error('dbInsert error:', error.message); return null }
@@ -2658,9 +2660,36 @@ function Dashboard({ theme, onToggleTheme }) {
     setBuyerReps(prev => prev.map(r => r.id === id ? {...r, _dirty: false} : r))
   }
 
-  async function submitBuyerRepOffer(addr, price, comm) {
+  // ── Showings helpers (local state only — persisted via saveBuyerRepDetails) ──
+  function addShowing(repId, address, dateShown, notes) {
+    if (!address?.trim()) return
+    setBuyerReps(prev => prev.map(r => {
+      if (r.id !== repId) return r
+      const showings = [...(r.buyerDetails?.showings || []), {
+        id: Date.now().toString(36), address: address.trim(), dateShown: dateShown || new Date().toLocaleDateString('en-CA'), notes: notes || '', offerId: null
+      }]
+      return { ...r, buyerDetails: { ...(r.buyerDetails || {}), showings }, _dirty: true }
+    }))
+  }
+  function updateShowing(repId, showingId, field, value) {
+    setBuyerReps(prev => prev.map(r => {
+      if (r.id !== repId) return r
+      const showings = (r.buyerDetails?.showings || []).map(s => s.id === showingId ? { ...s, [field]: value } : s)
+      return { ...r, buyerDetails: { ...(r.buyerDetails || {}), showings }, _dirty: true }
+    }))
+  }
+  function removeShowing(repId, showingId) {
+    setBuyerReps(prev => prev.map(r => {
+      if (r.id !== repId) return r
+      const showings = (r.buyerDetails?.showings || []).filter(s => s.id !== showingId)
+      return { ...r, buyerDetails: { ...(r.buyerDetails || {}), showings }, _dirty: true }
+    }))
+  }
+
+  async function submitBuyerRepOffer(addr, price, comm, showingId) {
     if (!offerModal || !addr) return
-    const data = await dbInsert('offer_made', {address:addr, price, commission:comm}, '', 'buyer', null)
+    const repId = offerModal.repId
+    const data = await dbInsert('offer_made', {address:addr, price, commission:comm}, '', 'buyer', null, repId)
     if (data) {
       setOffersMade(prev => [...prev, {
         id:data.id, address:data.address, price:data.price||'',
@@ -2668,6 +2697,17 @@ function Dashboard({ theme, onToggleTheme }) {
       }])
       setOffersMadeCount(prev => prev + 1)
       await awardPipelineXp('offer_made', '#0ea5e9')
+      // Link showing → offer if triggered from a showing row
+      if (showingId && repId) {
+        setBuyerReps(prev => prev.map(r => {
+          if (r.id !== repId) return r
+          const showings = (r.buyerDetails?.showings || []).map(s => s.id === showingId ? { ...s, offerId: data.id } : s)
+          const updated = { ...(r.buyerDetails || {}), showings }
+          // Persist the link immediately
+          safeDb(supabase.from('listings').update({ buyer_details: updated }).eq('id', repId).eq('user_id', user.id))
+          return { ...r, buyerDetails: updated }
+        }))
+      }
     }
     setOfferModal(null)
   }
@@ -4723,6 +4763,83 @@ function Dashboard({ theme, onToggleTheme }) {
                       </div>
                     </div>
 
+                    {/* Houses Shown */}
+                    {(()=>{
+                      const showings = bd.showings || []
+                      return (
+                        <div style={{ marginBottom:14 }}>
+                          <div className="label" style={{ marginBottom:6, fontSize:10, letterSpacing:'.08em', textTransform:'uppercase', color:'var(--text2)', fontWeight:700 }}>
+                            Houses Shown {showings.length > 0 && <span style={{ color:'var(--dim)', fontWeight:400 }}>({showings.length})</span>}
+                          </div>
+                          {showings.length === 0 && (
+                            <div style={{ fontSize:12, color:'var(--dim)', fontStyle:'italic', marginBottom:8 }}>No showings logged yet</div>
+                          )}
+                          {showings.map(s => (
+                            <div key={s.id} style={{ padding:'10px 12px', background:'var(--bg)', borderRadius:8, border:'1px solid var(--b1)', marginBottom:6 }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                                <span style={{ fontSize:14, flexShrink:0 }}>🏠</span>
+                                <input className="field-input" value={s.address} placeholder="Property address…"
+                                  onChange={e => updateShowing(rep.id, s.id, 'address', e.target.value)}
+                                  style={{ flex:1, minWidth:140, padding:'4px 8px', fontSize:12, fontWeight:600 }}/>
+                                <input className="field-input" type="date" value={s.dateShown||''}
+                                  onChange={e => updateShowing(rep.id, s.id, 'dateShown', e.target.value)}
+                                  style={{ width:130, padding:'4px 8px', fontSize:11 }}/>
+                                {s.offerId ? (
+                                  <span style={{ fontSize:10, color:'var(--green)', fontWeight:700, whiteSpace:'nowrap', padding:'4px 10px',
+                                    background:'rgba(16,185,129,.1)', borderRadius:6, border:'1px solid rgba(16,185,129,.25)' }}>✓ Offer Made</span>
+                                ) : rep.status !== 'closed' && (
+                                  <button onClick={() => setOfferModal({ repId:rep.id, repName:rep.clientName||'Buyer', prefillAddress:s.address, showingId:s.id })}
+                                    style={{ fontSize:10, fontWeight:700, color:'var(--blue)', background:'rgba(14,165,233,.08)',
+                                      border:'1px solid rgba(14,165,233,.25)', borderRadius:6, padding:'4px 10px', cursor:'pointer', whiteSpace:'nowrap' }}>
+                                    📤 Make Offer
+                                  </button>
+                                )}
+                                <button onClick={() => removeShowing(rep.id, s.id)} title="Remove showing"
+                                  style={{ background:'none', border:'none', cursor:'pointer', color:'var(--dim)', fontSize:12, padding:'2px 4px', flexShrink:0 }}>✕</button>
+                              </div>
+                              <div style={{ marginTop:6, paddingLeft:22 }}>
+                                <input className="field-input" value={s.notes||''} placeholder="Notes…"
+                                  onChange={e => updateShowing(rep.id, s.id, 'notes', e.target.value)}
+                                  style={{ width:'100%', padding:'4px 8px', fontSize:11, color:'var(--text2)', boxSizing:'border-box' }}/>
+                              </div>
+                            </div>
+                          ))}
+                          {/* Add showing inline form */}
+                          {rep.status !== 'closed' && (
+                            <div style={{ display:'flex', gap:6, alignItems:'center', marginTop:6 }}>
+                              <span style={{ color:'var(--dim)', fontSize:14, flexShrink:0 }}>+</span>
+                              <input id={`add-showing-addr-${rep.id}`} className="field-input" placeholder="Address of house shown…"
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter' && e.target.value.trim()) {
+                                    const dateInput = document.getElementById(`add-showing-date-${rep.id}`)
+                                    addShowing(rep.id, e.target.value, dateInput?.value || '', '')
+                                    e.target.value = ''
+                                    if (dateInput) dateInput.value = ''
+                                  }
+                                }}
+                                style={{ flex:1, minWidth:120, padding:'5px 8px', fontSize:12 }}/>
+                              <input id={`add-showing-date-${rep.id}`} className="field-input" type="date"
+                                defaultValue={new Date().toLocaleDateString('en-CA')}
+                                style={{ width:130, padding:'5px 8px', fontSize:11 }}/>
+                              <button onClick={() => {
+                                  const addrInput = document.getElementById(`add-showing-addr-${rep.id}`)
+                                  const dateInput = document.getElementById(`add-showing-date-${rep.id}`)
+                                  if (addrInput?.value.trim()) {
+                                    addShowing(rep.id, addrInput.value, dateInput?.value || '', '')
+                                    addrInput.value = ''
+                                    if (dateInput) dateInput.value = new Date().toLocaleDateString('en-CA')
+                                  }
+                                }}
+                                style={{ fontSize:11, fontWeight:700, color:'var(--blue)', background:'rgba(14,165,233,.08)',
+                                  border:'1px solid rgba(14,165,233,.25)', borderRadius:6, padding:'5px 12px', cursor:'pointer', whiteSpace:'nowrap' }}>
+                                Add
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
+
                     {/* Save button */}
                     <div style={{ display:'flex', justifyContent:'flex-end', paddingTop:10, borderTop:'1px solid var(--b1)' }}>
                       <button onClick={() => saveBuyerRepDetails(rep.id)}
@@ -5046,7 +5163,8 @@ function Dashboard({ theme, onToggleTheme }) {
       {offerModal && (
         <OfferModal
           repName={offerModal.repName}
-          onSubmit={submitBuyerRepOffer}
+          prefillAddress={offerModal.prefillAddress || ''}
+          onSubmit={(addr, price, comm) => submitBuyerRepOffer(addr, price, comm, offerModal.showingId || null)}
           onClose={() => setOfferModal(null)}
         />
       )}

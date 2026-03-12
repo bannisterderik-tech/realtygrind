@@ -166,6 +166,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
   const [recruitEmailSaving,  setRecruitEmailSaving]  = useState(false)
   const [slackUrl,        setSlackUrl]        = useState('')      // team Slack workspace URL
   const [slackSaving,     setSlackSaving]     = useState(false)
+  const [quickLinks,      setQuickLinks]      = useState({ email_url:'', email_label:'', crm_url:'', crm_label:'', docs_url:'', docs_label:'', mls_url:'', mls_label:'' })
+  const [qlSaving,        setQlSaving]        = useState(null)    // which key is saving
   const [logoCropSrc,     setLogoCropSrc]     = useState(null)    // object URL for crop modal
   const [logoSaving,      setLogoSaving]      = useState(false)
   const logoInputRef      = useRef(null)
@@ -235,6 +237,8 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     if (seq !== fetchMembersSeqRef.current) return
     setTeamData(team)
     setSlackUrl(team?.team_prefs?.slack_url || '')
+    const tp = team?.team_prefs || {}
+    setQuickLinks({ email_url: tp.email_url||'', email_label: tp.email_label||'', crm_url: tp.crm_url||'', crm_label: tp.crm_label||'', docs_url: tp.docs_url||'', docs_label: tp.docs_label||'', mls_url: tp.mls_url||'', mls_label: tp.mls_label||'' })
     setRecruitEmailSubject(team?.team_prefs?.recruit_email_settings?.subject || '')
     setRecruitEmailBody(team?.team_prefs?.recruit_email_settings?.body || '')
     // Load habit stats for all members
@@ -3592,6 +3596,65 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               </div>
                             )}
                           </div>
+                          )}
+
+                          {/* ── Quick Links sub-section ── */}
+                          {settingsSubTab==='integrations' && (
+                          <>
+                          <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', marginTop:8, marginBottom:4 }}>Quick Links</div>
+                          <div style={{ fontSize:11, color:'var(--muted)', marginBottom:12 }}>
+                            Add URLs and custom labels — buttons appear on every team member's dashboard.
+                          </div>
+                          {[
+                            { key:'email', icon:'📧', color:'#ea4335', defaultLabel:'Email', placeholder:'https://mail.google.com' },
+                            { key:'crm',   icon:'🏢', color:'#0176d3', defaultLabel:'CRM',   placeholder:'https://crm.example.com' },
+                            { key:'docs',  icon:'📄', color:'#4285f4', defaultLabel:'Docs',  placeholder:'https://docs.google.com' },
+                            { key:'mls',   icon:'🔑', color:'#2e7d32', defaultLabel:'MLS',   placeholder:'https://mls.example.com' },
+                          ].map(lk => (
+                            <div key={lk.key} className="card" style={{
+                              padding:'14px 18px', marginBottom:10,
+                              borderLeft:`3px solid ${lk.color}`,
+                              background:`linear-gradient(135deg, ${lk.color}0f 0%, var(--surface) 55%)`,
+                            }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                                <span style={{ fontSize:15 }}>{lk.icon}</span>
+                                <span className="serif" style={{ fontSize:14, color:'var(--text)', fontWeight:600 }}>{lk.defaultLabel}</span>
+                              </div>
+                              <div style={{ display:'flex', gap:8, marginBottom:0, flexWrap:'wrap' }}>
+                                <input className="field-input" value={quickLinks[lk.key+'_label']}
+                                  onChange={e => setQuickLinks(ql => ({ ...ql, [lk.key+'_label']: e.target.value }))}
+                                  placeholder={lk.defaultLabel}
+                                  style={{ width:120, flex:'0 0 auto' }}/>
+                                <input className="field-input" type="url" value={quickLinks[lk.key+'_url']}
+                                  onChange={e => setQuickLinks(ql => ({ ...ql, [lk.key+'_url']: e.target.value }))}
+                                  placeholder={lk.placeholder}
+                                  style={{ flex:1, minWidth:180 }}/>
+                                <button type="button" className="btn-primary" disabled={qlSaving===lk.key}
+                                  onClick={async()=>{
+                                    setQlSaving(lk.key)
+                                    try {
+                                      const newPrefs = { ...(teamData.team_prefs||{}),
+                                        [lk.key+'_url']: quickLinks[lk.key+'_url'].trim(),
+                                        [lk.key+'_label']: quickLinks[lk.key+'_label'].trim(),
+                                      }
+                                      const { error: e } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                      if (e) throw e
+                                      setTeamData(td=>({ ...td, team_prefs: newPrefs }))
+                                    } catch(e) { console.error(e) }
+                                    setQlSaving(null)
+                                  }}
+                                  style={{ fontSize:12, padding:'8px 16px', whiteSpace:'nowrap' }}>
+                                  {qlSaving===lk.key ? 'Saving…' : 'Save'}
+                                </button>
+                              </div>
+                              {quickLinks[lk.key+'_url'].trim() && (
+                                <div style={{ marginTop:8, fontSize:11, color:'var(--green)' }}>
+                                  ✓ {quickLinks[lk.key+'_label'].trim() || lk.defaultLabel} button will appear on dashboards
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          </>
                           )}
 
                           {/* ── Recruit Email sub-tab ── */}

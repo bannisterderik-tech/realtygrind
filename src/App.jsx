@@ -2548,8 +2548,18 @@ function Dashboard({ theme, onToggleTheme }) {
 
   // ── AI Task Generation ──────────────────────────────────────────────────────
   async function generateAiTasks(scope, guidance) {
+    // Get a fresh token (refresh proactively if expiring within 60s)
+    let token = null
     const { data: { session } } = await supabase.auth.getSession()
-    const token = session?.access_token
+    if (session?.access_token) {
+      const expiresAt = session.expires_at ?? 0
+      if (expiresAt - Math.floor(Date.now() / 1000) < 60) {
+        const { data } = await supabase.auth.refreshSession()
+        token = data.session?.access_token || null
+      } else {
+        token = session.access_token
+      }
+    }
     if (!token) return { error: 'Not authenticated. Please sign in again.' }
 
     // Assemble dates

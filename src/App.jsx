@@ -4724,7 +4724,7 @@ function Dashboard({ theme, onToggleTheme }) {
                   </span>
                 </div>
 
-                {/* Client name — display or edit */}
+                {/* Client name — display or edit, with pencil inline */}
                 <div style={{ display:'flex', alignItems:'center', gap:8, paddingRight:90 }}>
                   <span style={{ fontSize:16, flexShrink:0 }}>👤</span>
                   {isEditingName ? (
@@ -4741,6 +4741,11 @@ function Dashboard({ theme, onToggleTheme }) {
                       {rep.clientName || 'Unnamed client'}
                     </span>
                   )}
+                  <button className="edit-toggle" title={isEditingName ? 'Done editing' : 'Edit name'}
+                    onClick={() => setEditingRep(isEditingName ? null : rep.id)}
+                    style={{ flexShrink:0, ...(isEditingName ? { background:'var(--bg2)', color:'var(--text)', borderColor:'var(--b2)' } : {}) }}>
+                    {isEditingName ? '✓' : '✏️'}
+                  </button>
                 </div>
 
                 {/* At-a-glance summary */}
@@ -4750,26 +4755,12 @@ function Dashboard({ theme, onToggleTheme }) {
                   if (bd.preApproval) bits.push('💰 ' + (formatPrice(bd.preApproval) || bd.preApproval))
                   if (bd.mustHaves) bits.push(bd.mustHaves)
                   const showCount = (bd.showings||[]).length
-                  return (
-                    <div style={{ fontSize:12, color:'var(--muted)', lineHeight:1.5, marginTop:2 }}>
-                      {bits.length > 0 && <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{bits.join(' · ')}</div>}
-                      <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:2 }}>
-                        {showCount > 0 && <span style={{ fontSize:11, color:'var(--dim)' }}>🏠 {showCount} showing{showCount!==1?'s':''}</span>}
-                        {bd.postedToBoard ? (
-                          <span style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'rgba(16,185,129,.1)', color:'var(--green)',
-                            border:'1px solid rgba(16,185,129,.25)', fontWeight:600, whiteSpace:'nowrap' }}>
-                            ✓ On Board
-                          </span>
-                        ) : (
-                          <button onClick={e => { e.stopPropagation(); postBuyerNeedToBoard(rep) }}
-                            style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'rgba(14,165,233,.1)', color:'var(--blue)',
-                              border:'1px solid rgba(14,165,233,.25)', cursor:'pointer', fontWeight:600, whiteSpace:'nowrap' }}>
-                            📋 Post to Board
-                          </button>
-                        )}
-                      </div>
+                  if (showCount > 0) bits.push('🏠 ' + showCount + ' showing' + (showCount!==1?'s':''))
+                  return bits.length > 0 ? (
+                    <div style={{ fontSize:12, color:'var(--muted)', lineHeight:1.5, marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      {bits.join(' · ')}
                     </div>
-                  )
+                  ) : null
                 })()}
 
                 {/* Metadata line — pre-approval, dates, timeline, location, month */}
@@ -4808,15 +4799,21 @@ function Dashboard({ theme, onToggleTheme }) {
                     <span style={{ fontSize:11, color:'var(--dim)', fontStyle:'italic' }}>Agreement closed</span>
                   )}
                   <div style={{ marginLeft:'auto', display:'flex', gap:4, alignItems:'center' }}>
+                    {bd.postedToBoard ? (
+                      <span style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'rgba(16,185,129,.1)', color:'var(--green)',
+                        border:'1px solid rgba(16,185,129,.25)', fontWeight:600, whiteSpace:'nowrap' }}>
+                        ✓ On Board
+                      </span>
+                    ) : (
+                      <button onClick={e => { e.stopPropagation(); postBuyerNeedToBoard(rep) }} className="edit-toggle" title="Post to buyer needs board"
+                        style={{ fontSize:10, fontWeight:600 }}>
+                        📋
+                      </button>
+                    )}
                     <button onClick={() => setExpandedRep(isExpanded ? null : rep.id)}
                       className="edit-toggle" title={isExpanded ? 'Hide details' : 'Show details'}
                       style={ isExpanded ? { background:'var(--blue)', color:'#fff', borderColor:'var(--blue)' } : {}}>
                       {isExpanded ? '▲' : '▼'}
-                    </button>
-                    <button className="edit-toggle" title={isEditingName ? 'Done editing' : 'Edit name'}
-                      onClick={() => setEditingRep(isEditingName ? null : rep.id)}
-                      style={ isEditingName ? { background:'var(--bg2)', color:'var(--text)', borderColor:'var(--b2)' } : {}}>
-                      {isEditingName ? '✓' : '✏️'}
                     </button>
                     <button className="edit-toggle" title="Print buyer summary" onClick={() => setPrintBuyerRep(rep)}>🖨️</button>
                     <button className="edit-toggle" title="Remove" onClick={() => removeBuyerRep(rep)}

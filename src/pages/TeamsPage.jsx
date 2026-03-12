@@ -228,7 +228,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     const seq = ++fetchMembersSeqRef.current
     setLoading(true)
     try {
-    const {data:mems} = await supabase.from('profiles').select('id,full_name,xp,streak,goals,habit_prefs').eq('team_id',tid).order('xp',{ascending:false})
+    const {data:mems} = await supabase.from('profiles').select('id,full_name,xp,streak,goals,habit_prefs').eq('team_id',tid).order('full_name',{ascending:true})
     if (seq !== fetchMembersSeqRef.current) return // stale — a newer fetch was triggered
     setMembers(mems||[])
     const {data:team} = await supabase.from('teams').select('*').eq('id',tid).single()
@@ -1223,7 +1223,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       allBuyerNeeds: _allBuyerNeeds, allRecruits: _allRecruits,
     }
   }, [teamData, user?.id, members])
-  const xpEnabled = teamData?.team_prefs?.xp_enabled !== false
+  const xpEnabled = teamData ? teamData.team_prefs?.xp_enabled !== false : false
   const canViewDetail = (m) => isTeamOwner || isAdmin || (isGroupLeader && myLedGroup?.memberIds.includes(m.id))
 
   return (
@@ -1805,82 +1805,41 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                   {/* Roster tab */}
                   {teamsTab==='roster' && (
                   <>
-                  {/* Members */}
-                  <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                    {members.map((m,i)=>{
+                  {/* Members — directory card grid */}
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(170px, 1fr))', gap:12 }}>
+                    {members.map((m)=>{
                       const rank  = getRank(m.xp||0)
                       const isMe  = m.id===user.id
-                      const stats = memberStats[m.id]||{}
                       const isOwner = teamData?.created_by===m.id
                       const isAdminMember = teamAdmins.includes(m.id)
                       const bio   = m.habit_prefs?.bio || {}
                       return (
-                        <div key={m.id} className={`card${isMe?' ':' '}`}
+                        <div key={m.id} className="card"
                           onClick={(canViewDetail(m) && !memberDetailLoading && !viewingMember) ? ()=>fetchMemberDetail(m) : undefined}
                           style={{
-                            padding:18, border:`1px solid ${isMe?'rgba(217,119,6,.35)':'var(--b2)'}`,
+                            padding:16, border:`1px solid ${isMe?'rgba(217,119,6,.35)':'var(--b2)'}`,
                             background:isMe?'var(--gold3)':'var(--surface)',
                             cursor: (canViewDetail(m) && !memberDetailLoading && !viewingMember) ? 'pointer' : 'default',
                             transition:'opacity .15s',
                             opacity: (isAdminOrOwner && memberDetailLoading) ? 0.6 : 1,
+                            display:'flex', flexDirection:'column', alignItems:'center', textAlign:'center',
+                            aspectRatio:'1', justifyContent:'center', gap:6,
                           }}>
-                          <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:stats?10:0 }}>
-                            <div className="mono" style={{ width:26, fontSize:12, color:'var(--dim)', textAlign:'center', fontWeight:700 }}>
-                              {i+1}
+                          <MemberAvatar member={m} size={48} rank={rank}/>
+                          <div style={{ width:'100%' }}>
+                            <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.full_name||'Agent'}</div>
+                            <div style={{ display:'flex', gap:4, justifyContent:'center', flexWrap:'wrap', marginTop:3 }}>
+                              {isMe && <span style={{ fontSize:8, padding:'1px 5px', borderRadius:4, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>YOU</span>}
+                              {isOwner && <span style={{ fontSize:8, padding:'1px 5px', borderRadius:4, background:'rgba(139,92,246,.12)', color:'#8b5cf6', fontWeight:700 }}>OWNER</span>}
+                              {isAdminMember && !isOwner && <span style={{ fontSize:8, padding:'1px 5px', borderRadius:4, background:'rgba(14,165,233,.12)', color:'#0ea5e9', fontWeight:700 }}>ADMIN</span>}
                             </div>
-                            <MemberAvatar member={m} size={38} rank={rank}/>
-                            <div style={{ flex:1, minWidth:0 }}>
-                              <div style={{ display:'flex', alignItems:'center', gap:7, flexWrap:'wrap' }}>
-                                <span style={{ fontSize:14, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'100%' }}>{m.full_name||'Agent'}</span>
-                                {isMe && <span style={{ fontSize:9, padding:'2px 6px', borderRadius:4, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>YOU</span>}
-                                {isOwner && <span style={{ fontSize:9, padding:'2px 6px', borderRadius:4, background:'rgba(139,92,246,.12)', color:'#8b5cf6', fontWeight:700 }}>OWNER</span>}
-                                {isAdminMember && !isOwner && <span style={{ fontSize:9, padding:'2px 6px', borderRadius:4, background:'rgba(14,165,233,.12)', color:'#0ea5e9', fontWeight:700 }}>ADMIN</span>}
-                              </div>
-                              <div style={{ fontSize:11, color:'var(--muted)' }}>{rank.name}</div>
-                            </div>
-                            {xpEnabled && <div style={{ textAlign:'right', flexShrink:0 }}>
-                              <div className="serif" style={{ fontSize:22, color:rank.color, fontWeight:700, lineHeight:1 }}>
-                                {(m.xp||0).toLocaleString()}
-                              </div>
-                              <div style={{ fontSize:11, color:'#f97316' }}>🔥 {m.streak||0} streak</div>
-                            </div>}
                           </div>
-
-                          {stats && stats.totalHabits > 0 && (
-                            <div style={{ display:'flex', gap:8, flexWrap:'wrap', paddingLeft:0, marginTop:8 }}>
-                              {HABITS_FOR_DISPLAY.map(h=>{
-                                const v = stats.habits?.[h.id]||0
-                                const cs = CAT[h.cat]
-                                if (!v) return null
-                                return (
-                                  <span key={h.id} style={{ fontSize:10, padding:'2px 8px', borderRadius:5,
-                                    background:cs.light, color:cs.color, border:`1px solid ${cs.border}`,
-                                    fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}>
-                                    {h.label}: {v}
-                                  </span>
-                                )
-                              })}
-                              {stats.closed>0 && (
-                                <span style={{ fontSize:10, padding:'2px 8px', borderRadius:5,
-                                  background:'rgba(5,150,105,.1)', color:'var(--green)', border:'1px solid rgba(5,150,105,.2)',
-                                  fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}>
-                                  Closed: {stats.closed}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                          {/* Bio snippet — specialty + phone */}
-                          {(bio.specialty || bio.phone) && (
-                            <div style={{ marginTop:7, display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
-                              {bio.specialty && <span style={{ fontSize:10, padding:'2px 7px', borderRadius:4,
-                                background:'rgba(14,165,233,.1)', color:'#0ea5e9', border:'1px solid rgba(14,165,233,.2)' }}>
-                                {bio.specialty}
-                              </span>}
-                              {bio.phone && <span style={{ fontSize:10, color:'var(--muted)', fontFamily:'monospace' }}>
-                                📞 {bio.phone}
-                              </span>}
-                            </div>
-                          )}
+                          {bio.specialty && <div style={{ fontSize:10, color:'#0ea5e9', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', width:'100%' }}>{bio.specialty}</div>}
+                          {bio.phone && <div style={{ fontSize:10, color:'var(--muted)', fontFamily:'monospace' }}>📞 {bio.phone}</div>}
+                          {xpEnabled && <div style={{ marginTop:2 }}>
+                            <span className="serif" style={{ fontSize:18, color:rank.color, fontWeight:700 }}>{(m.xp||0).toLocaleString()}</span>
+                            <span style={{ fontSize:10, color:'#f97316', marginLeft:4 }}>🔥 {m.streak||0}</span>
+                          </div>}
                         </div>
                       )
                     })}

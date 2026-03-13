@@ -1943,6 +1943,8 @@ function Dashboard({ theme, onToggleTheme }) {
   const [standup,       setStandup]       = useState({ q1:'', q2:'', q3:'' })
   const [standupDone,   setStandupDone]   = useState(false)
   const [standupSaving, setStandupSaving] = useState(false)
+  const [standupModalOpen, setStandupModalOpen] = useState(false)
+  const standupAutoShown = useRef(false)
   const [pipelineView, setPipelineView] = useState('list')   // 'list' | 'board'
   const [listingsPipelineView, setListingsPipelineView] = useState('list')
   const [buyersPipelineView, setBuyersPipelineView] = useState('list')
@@ -2158,14 +2160,25 @@ function Dashboard({ theme, onToggleTheme }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dbLoading])
 
+  // ── Daily Standup popup — auto-show once per day for team members who haven't submitted ──
+  useEffect(() => {
+    if (dbLoading || !profile || standupAutoShown.current) return
+    if (!isOnTeam || isTeamOwner) return // only team members (not owner)
+    if (standupDone) return // already submitted today
+    standupAutoShown.current = true
+    setStandupModalOpen(true)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbLoading, standupDone])
+
   // ESC key closes any open modal — use refs to avoid re-attaching listener on every modal change
   const modalsRef = useRef({})
-  modalsRef.current = { offerModal, offerReceivedModal, addTaskModal, aiTaskGenScope, showPrint, plannerPrint, showWeeklyUpdate, showBuyersUpdate, aiWidgetOpen, briefingVisible }
+  modalsRef.current = { offerModal, offerReceivedModal, addTaskModal, aiTaskGenScope, showPrint, plannerPrint, showWeeklyUpdate, showBuyersUpdate, aiWidgetOpen, briefingVisible, standupModalOpen }
   useEffect(() => {
     const onKey = e => {
       if (e.key !== 'Escape') return
       const m = modalsRef.current
-      if (m.briefingVisible)   { setBriefingVisible(false); setBriefingDismissed(true) }
+      if (m.standupModalOpen)  setStandupModalOpen(false)
+      else if (m.briefingVisible)   { setBriefingVisible(false); setBriefingDismissed(true) }
       else if (m.aiWidgetOpen)      setAiWidgetOpen(false)
       else if (m.aiTaskGenScope) setAiTaskGenScope(null)
       else if (m.offerReceivedModal) setOfferReceivedModal(null)
@@ -3864,6 +3877,16 @@ function Dashboard({ theme, onToggleTheme }) {
                     fontFamily:"'JetBrains Mono',monospace" }}>{streak}-day streak</span>
                 </div>
               )}
+              <button onClick={() => briefingData ? setBriefingVisible(true) : fetchBriefing(true)}
+                disabled={briefingLoading}
+                style={{ display:'flex', alignItems:'center', gap:5, padding:'4px 12px',
+                  background:'rgba(59,130,246,.1)', border:'1px solid rgba(59,130,246,.25)', borderRadius:20,
+                  cursor: briefingLoading ? 'wait' : 'pointer', transition:'all .15s',
+                  opacity: briefingLoading ? 0.6 : 1 }}>
+                <span style={{ fontSize:12 }}>{briefingLoading ? '⏳' : '📋'}</span>
+                <span style={{ fontSize:11, fontWeight:700, color:'#3b82f6',
+                  fontFamily:"'JetBrains Mono',monospace" }}>{briefingLoading ? 'Loading…' : 'Briefing'}</span>
+              </button>
               {(() => {
                 const slk = profile?.teams?.team_prefs?.slack_url
                 return slk ? (
@@ -4029,49 +4052,6 @@ function Dashboard({ theme, onToggleTheme }) {
                 transition:'all .15s' }}>▶</button>
           </div>
 
-          {/* ── Daily Standup (team members only, not owner) ── */}
-          {isOnTeam && !isTeamOwner && (
-            <div className="card" style={{ padding:20, marginBottom:20,
-              borderLeft: standupDone ? '3px solid var(--green)' : '3px solid var(--gold2)' }}>
-              {standupDone ? (
-                <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                  <span style={{ fontSize:22 }}>✅</span>
-                  <div>
-                    <div style={{ fontSize:14, fontWeight:600, color:'var(--text)' }}>Daily standup submitted</div>
-                    <div style={{ fontSize:12, color:'var(--muted)' }}>Your team leader can see your update</div>
-                  </div>
-                  <button className="btn-outline" style={{ marginLeft:'auto', fontSize:11 }}
-                    onClick={()=>setStandupDone(false)}>Edit</button>
-                </div>
-              ) : (
-                <div>
-                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
-                    <span style={{ fontSize:16 }}>⚡</span>
-                    <div className="serif" style={{ fontSize:16, color:'var(--text)', fontWeight:600 }}>Daily Standup</div>
-                    <span style={{ fontSize:11, color:'var(--muted)', marginLeft:'auto' }}>~60 sec</span>
-                  </div>
-                  {[
-                    { key:'q1', label:'What did you accomplish yesterday?',  placeholder:'Logged 15 calls, booked 2 appointments…' },
-                    { key:'q2', label:"What's your #1 priority today?",      placeholder:'Follow up with the Hendersons, prospect 1 hr…' },
-                    { key:'q3', label:'Anything blocking you? (optional)',   placeholder:'Nothing — or describe what\'s in the way…' },
-                  ].map(({key,label,placeholder}) => (
-                    <div key={key} style={{ marginBottom:10 }}>
-                      <div className="label" style={{ marginBottom:4 }}>{label}</div>
-                      <textarea className="field-input" value={standup[key]}
-                        onChange={e=>setStandup(s=>({...s,[key]:e.target.value}))}
-                        placeholder={placeholder} rows={2}
-                        style={{ width:'100%', resize:'none', fontSize:13 }}/>
-                    </div>
-                  ))}
-                  <button className="btn-primary" onClick={submitStandup}
-                    disabled={standupSaving || !standup.q1.trim() || !standup.q2.trim()}
-                    style={{ fontSize:13, padding:'9px 24px' }}>
-                    {standupSaving ? 'Submitting…' : 'Submit Standup'}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
 
           <div className="today-grid">
 
@@ -6260,6 +6240,68 @@ function Dashboard({ theme, onToggleTheme }) {
           </div>
         )
       })()}
+
+      {/* ── Daily Standup Popup Modal (team members, once per day) ───── */}
+      {standupModalOpen && isOnTeam && !isTeamOwner && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setStandupModalOpen(false) }}
+          style={{ zIndex:1100, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <div className="modal-card" style={{ maxWidth:500, width:'95vw', animation:'fadeUp .2s ease' }}>
+            {standupDone ? (
+              <div>
+                <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
+                  <span style={{ fontSize:28 }}>✅</span>
+                  <div>
+                    <div className="serif" style={{ fontSize:18, fontWeight:700, color:'var(--text)' }}>Standup submitted</div>
+                    <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>Your team leader can see your update</div>
+                  </div>
+                </div>
+                <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+                  <button className="btn-outline" style={{ fontSize:12 }}
+                    onClick={() => setStandupDone(false)}>Edit</button>
+                  <button className="btn-gold" style={{ padding:'10px 24px', fontSize:13 }}
+                    onClick={() => setStandupModalOpen(false)}>Got it</button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <span style={{ fontSize:20 }}>⚡</span>
+                    <div>
+                      <div className="serif" style={{ fontSize:18, fontWeight:700, color:'var(--text)' }}>Daily Standup</div>
+                      <div style={{ fontSize:11, color:'var(--muted)' }}>~60 seconds • visible to your team leader</div>
+                    </div>
+                  </div>
+                  <button onClick={() => setStandupModalOpen(false)}
+                    style={{ background:'none', border:'none', color:'var(--dim)', cursor:'pointer', fontSize:18, padding:4 }}>✕</button>
+                </div>
+                {[
+                  { key:'q1', label:'What did you accomplish yesterday?', placeholder:'Logged 15 calls, booked 2 appointments…' },
+                  { key:'q2', label:"What's your #1 priority today?", placeholder:'Follow up with the Hendersons, prospect 1 hr…' },
+                  { key:'q3', label:'Anything blocking you? (optional)', placeholder:'Nothing — or describe what\'s in the way…' },
+                ].map(({key,label,placeholder}) => (
+                  <div key={key} style={{ marginBottom:12 }}>
+                    <div className="label" style={{ marginBottom:4 }}>{label}</div>
+                    <textarea className="field-input" value={standup[key]}
+                      onChange={e => setStandup(s => ({...s, [key]: e.target.value}))}
+                      placeholder={placeholder} rows={2}
+                      style={{ width:'100%', resize:'none', fontSize:13 }}/>
+                  </div>
+                ))}
+                <div style={{ display:'flex', gap:10, justifyContent:'flex-end', marginTop:4 }}>
+                  <button className="btn-outline" style={{ fontSize:12 }}
+                    onClick={() => setStandupModalOpen(false)}>Skip for now</button>
+                  <button className="btn-primary" onClick={() => { submitStandup(); }}
+                    disabled={standupSaving || !standup.q1.trim() || !standup.q2.trim()}
+                    style={{ fontSize:13, padding:'10px 24px' }}>
+                    {standupSaving ? 'Submitting…' : 'Submit Standup'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Morning Briefing Modal ───────────────────────── */}
       {briefingVisible && briefingData && (

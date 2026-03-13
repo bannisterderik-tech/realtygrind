@@ -1877,6 +1877,35 @@ function Dashboard({ theme, onToggleTheme }) {
   // Clean up toast timer on unmount to prevent setState-after-unmount
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current) }, [])
 
+  // ── Morning Briefing Agent ─────────────────────────────────────────────────
+  const [briefingData, setBriefingData] = useState(null)
+  const [briefingLoading, setBriefingLoading] = useState(false)
+  const [briefingVisible, setBriefingVisible] = useState(false)
+  const [briefingDismissed, setBriefingDismissed] = useState(false)
+  const briefingFetched = useRef(false) // prevent double-fetch in StrictMode
+
+  async function fetchBriefing(force = false) {
+    if (briefingLoading) return
+    setBriefingLoading(true)
+    try {
+      const tz = profile?.habit_prefs?.bio?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
+      const { data, error } = await supabase.functions.invoke('morning-briefing', {
+        body: { force, timezone: tz },
+      })
+      if (error || data?.error) {
+        if (data?.error === 'credits_exhausted') showToast('No AI credits remaining this month')
+        else if (data?.error === 'subscription_required') { /* silently skip for non-subscribers */ }
+        else if (data?.error !== 'disabled_by_team') showToast('Could not generate briefing')
+        return
+      }
+      if (data?.briefing) {
+        setBriefingData(data.briefing)
+        setBriefingVisible(true)
+      }
+    } catch (e) { console.error('briefing error:', e) }
+    finally { setBriefingLoading(false) }
+  }
+
   // Pipeline
   const [offersMade,       setOffersMade]       = useState([])
   const [offersReceived,   setOffersReceived]   = useState([])
@@ -2111,14 +2140,33 @@ function Dashboard({ theme, onToggleTheme }) {
     return () => clearTimeout(timer)
   }, [animCell])
 
+  // ── Morning Briefing auto-show on first load of the day ───────────────────
+  useEffect(() => {
+    if (dbLoading || !profile || briefingDismissed || briefingFetched.current) return
+    const bp = profile.habit_prefs?.morning_briefing
+    if (bp?.enabled === false) return // user opted out
+    const todayISO = new Date().toISOString().slice(0, 10)
+    briefingFetched.current = true
+    if (bp?.last_date === todayISO && bp?.last_data) {
+      // Already generated today — show cached version (free, no credit cost)
+      setBriefingData(bp.last_data)
+      setBriefingVisible(true)
+    } else {
+      // Generate fresh briefing
+      fetchBriefing(false)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbLoading])
+
   // ESC key closes any open modal — use refs to avoid re-attaching listener on every modal change
   const modalsRef = useRef({})
-  modalsRef.current = { offerModal, offerReceivedModal, addTaskModal, aiTaskGenScope, showPrint, plannerPrint, showWeeklyUpdate, showBuyersUpdate, aiWidgetOpen }
+  modalsRef.current = { offerModal, offerReceivedModal, addTaskModal, aiTaskGenScope, showPrint, plannerPrint, showWeeklyUpdate, showBuyersUpdate, aiWidgetOpen, briefingVisible }
   useEffect(() => {
     const onKey = e => {
       if (e.key !== 'Escape') return
       const m = modalsRef.current
-      if (m.aiWidgetOpen)      setAiWidgetOpen(false)
+      if (m.briefingVisible)   { setBriefingVisible(false); setBriefingDismissed(true) }
+      else if (m.aiWidgetOpen)      setAiWidgetOpen(false)
       else if (m.aiTaskGenScope) setAiTaskGenScope(null)
       else if (m.offerReceivedModal) setOfferReceivedModal(null)
       else if (m.offerModal)        setOfferModal(null)
@@ -3816,6 +3864,16 @@ function Dashboard({ theme, onToggleTheme }) {
                     fontFamily:"'JetBrains Mono',monospace" }}>{streak}-day streak</span>
                 </div>
               )}
+              <button onClick={() => briefingData ? setBriefingVisible(true) : fetchBriefing(true)}
+                disabled={briefingLoading}
+                style={{ display:'flex', alignItems:'center', gap:5, padding:'4px 12px',
+                  background:'rgba(59,130,246,.1)', border:'1px solid rgba(59,130,246,.25)', borderRadius:20,
+                  cursor: briefingLoading ? 'wait' : 'pointer', transition:'all .15s',
+                  opacity: briefingLoading ? 0.6 : 1 }}>
+                <span style={{ fontSize:12 }}>{briefingLoading ? '⏳' : '📋'}</span>
+                <span style={{ fontSize:11, fontWeight:700, color:'#3b82f6',
+                  fontFamily:"'JetBrains Mono',monospace" }}>{briefingLoading ? 'Loading…' : 'Briefing'}</span>
+              </button>
               {(() => {
                 const slk = profile?.teams?.team_prefs?.slack_url
                 return slk ? (
@@ -6212,6 +6270,145 @@ function Dashboard({ theme, onToggleTheme }) {
           </div>
         )
       })()}
+
+      {/* ── Morning Briefing Modal ───────────────────────── */}
+      {briefingVisible && briefingData && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) { setBriefingVisible(false); setBriefingDismissed(true) } }}
+          style={{ zIndex:1100, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <div className="modal-card" style={{ maxWidth:540, width:'95vw', maxHeight:'85vh', overflow:'auto', animation:'fadeUp .2s ease' }}>
+            {/* Header */}
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:18 }}>
+              <div>
+                <div style={{ fontSize:10, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace",
+                  letterSpacing:.7, textTransform:'uppercase', marginBottom:4 }}>Morning Briefing</div>
+                <div className="serif" style={{ fontSize:20, fontWeight:700, color:'var(--text)', lineHeight:1.3 }}>
+                  {briefingData.greeting}
+                </div>
+              </div>
+              <button onClick={() => { setBriefingVisible(false); setBriefingDismissed(true) }}
+                style={{ background:'none', border:'none', color:'var(--dim)', cursor:'pointer', fontSize:18, padding:4, flexShrink:0 }}>✕</button>
+            </div>
+
+            {/* Priority Actions */}
+            {briefingData.priority_actions?.length > 0 && (
+              <div style={{ marginBottom:18 }}>
+                <div className="label" style={{ marginBottom:8 }}>Priority Actions</div>
+                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                  {briefingData.priority_actions.map((action, i) => (
+                    <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'10px 12px',
+                      background:'var(--bg)', borderRadius:10,
+                      borderLeft: `3px solid ${action.urgency === 'high' ? '#dc2626' : action.urgency === 'medium' ? '#d97706' : '#9ca3af'}` }}>
+                      <span style={{ fontSize:16, flexShrink:0, marginTop:1 }}>{action.icon}</span>
+                      <div style={{ flex:1 }}>
+                        <span style={{ fontSize:13, color:'var(--text)', lineHeight:1.45 }}>{action.text}</span>
+                        <span style={{ fontSize:9, fontWeight:700, textTransform:'uppercase', marginLeft:8,
+                          padding:'2px 6px', borderRadius:4, fontFamily:"'JetBrains Mono',monospace",
+                          background: action.urgency === 'high' ? '#dc262618' : action.urgency === 'medium' ? '#d9770618' : '#9ca3af18',
+                          color: action.urgency === 'high' ? '#dc2626' : action.urgency === 'medium' ? '#d97706' : '#9ca3af',
+                        }}>{action.urgency}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Pipeline Snapshot */}
+            {briefingData.pipeline_snapshot?.summary && (
+              <div style={{ marginBottom:18 }}>
+                <div className="label" style={{ marginBottom:8 }}>Pipeline</div>
+                <div style={{ fontSize:13, color:'var(--text)', marginBottom:10, lineHeight:1.5 }}>
+                  {briefingData.pipeline_snapshot.summary}
+                </div>
+                {briefingData.pipeline_snapshot.details?.length > 0 && (
+                  <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                    {briefingData.pipeline_snapshot.details.map((d, i) => (
+                      <div key={i} style={{ padding:'8px 14px', background:'var(--bg)', borderRadius:10, textAlign:'center', flex:'1 1 80px', minWidth:80 }}>
+                        <div style={{ fontSize:20, fontWeight:700, color:'var(--text)', fontFamily:"'JetBrains Mono',monospace" }}>
+                          {d.value}{d.goal != null && <span style={{ fontSize:12, color:'var(--muted)', fontWeight:400 }}>/{d.goal}</span>}
+                        </div>
+                        <div style={{ fontSize:10, color:'var(--muted)', fontWeight:600, textTransform:'uppercase', letterSpacing:.3 }}>{d.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Streak Status */}
+            {briefingData.streak_status?.message && (
+              <div style={{ marginBottom:18, display:'flex', alignItems:'center', gap:10, padding:'10px 14px',
+                background:'rgba(251,146,60,.06)', border:'1px solid rgba(251,146,60,.15)', borderRadius:10 }}>
+                <span style={{ fontSize:22 }}>🔥</span>
+                <div>
+                  <div style={{ fontSize:18, fontWeight:700, color:'#fb923c', fontFamily:"'JetBrains Mono',monospace" }}>
+                    {briefingData.streak_status.current}-day streak
+                  </div>
+                  <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>{briefingData.streak_status.message}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Calendar Preview */}
+            {briefingData.calendar_preview?.length > 0 && (
+              <div style={{ marginBottom:18 }}>
+                <div className="label" style={{ marginBottom:8 }}>Today's Schedule</div>
+                <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                  {briefingData.calendar_preview.map((ev, i) => (
+                    <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'6px 10px' }}>
+                      <span style={{ fontSize:11, fontWeight:700, color:'var(--gold2)', fontFamily:"'JetBrains Mono',monospace",
+                        minWidth:72 }}>{ev.time}</span>
+                      <span style={{ fontSize:13, color:'var(--text)' }}>{ev.event}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Team Health (owners/admins only) */}
+            {briefingData.team_health && (
+              <div style={{ marginBottom:18 }}>
+                <div className="label" style={{ marginBottom:8 }}>Team Health</div>
+                <div style={{ fontSize:13, color:'var(--text)', marginBottom:8, lineHeight:1.5 }}>
+                  {briefingData.team_health.summary}
+                </div>
+                {briefingData.team_health.alerts?.map((alert, i) => (
+                  <div key={i} style={{ padding:'8px 12px', background:'rgba(220,38,38,.04)', border:'1px solid rgba(220,38,38,.12)',
+                    borderRadius:8, marginBottom:6 }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:'var(--text)' }}>{alert.agent}</div>
+                    <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>{alert.issue}</div>
+                    <div style={{ fontSize:12, color:'var(--gold2)', marginTop:2, fontStyle:'italic' }}>{alert.suggestion}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Motivation */}
+            {briefingData.motivation && (
+              <div style={{ padding:'12px 16px', background:'linear-gradient(135deg, rgba(180,83,9,.06) 0%, rgba(217,119,6,.04) 100%)',
+                borderRadius:10, marginBottom:18 }}>
+                <div style={{ fontSize:13, color:'var(--text)', fontStyle:'italic', lineHeight:1.55 }}>
+                  {briefingData.motivation}
+                </div>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <button onClick={() => { fetchBriefing(true); }}
+                disabled={briefingLoading}
+                style={{ background:'none', border:'none', color:'var(--muted)', cursor:'pointer', fontSize:12,
+                  fontFamily:"'JetBrains Mono',monospace", textDecoration:'underline', opacity: briefingLoading ? 0.5 : 1 }}>
+                {briefingLoading ? 'Generating…' : 'Regenerate (1 credit)'}
+              </button>
+              <button onClick={() => { setBriefingVisible(false); setBriefingDismissed(true) }}
+                className="btn-gold" style={{ padding:'10px 24px', fontSize:13 }}>
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast notification */}
       {toast && (

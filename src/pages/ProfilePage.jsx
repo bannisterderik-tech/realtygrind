@@ -1593,6 +1593,39 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                 </div>
               )}
 
+              {/* Morning Briefing toggle */}
+              <div className="card" style={{ padding:24 }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+                  <div>
+                    <div style={{ fontSize:14, fontWeight:600, color:'var(--text)', marginBottom:4 }}>📋 Morning Briefing</div>
+                    <div style={{ fontSize:12, color:'var(--muted)', lineHeight:1.5 }}>
+                      {(habitPrefs?.morning_briefing?.enabled !== false)
+                        ? 'AI briefing auto-shows when you open the app each day (1 credit).'
+                        : 'Morning briefing is disabled. Use the Briefing button to view manually.'}
+                    </div>
+                  </div>
+                  <button onClick={async ()=>{
+                    const current = habitPrefs?.morning_briefing?.enabled !== false
+                    const newPrefs = { ...habitPrefs, morning_briefing: { ...(habitPrefs?.morning_briefing || {}), enabled: !current } }
+                    try {
+                      const { error } = await supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id)
+                      if (!error) setHabitPrefs(newPrefs)
+                    } catch(e){ console.error('briefing toggle error:', e) }
+                  }} style={{
+                    width:42, height:24, borderRadius:12, cursor:'pointer', border:'none',
+                    position:'relative', flexShrink:0, transition:'background .2s',
+                    background: (habitPrefs?.morning_briefing?.enabled !== false) ? '#10b981' : 'var(--b2)',
+                  }}>
+                    <div style={{
+                      width:18, height:18, borderRadius:9,
+                      background:'#fff', position:'absolute', top:3,
+                      transition:'left .2s',
+                      left: (habitPrefs?.morning_briefing?.enabled !== false) ? 21 : 3,
+                    }}/>
+                  </button>
+                </div>
+              </div>
+
               {/* Tools Directory — solo agents only (team members get this from team settings) */}
               {!profile?.team_id && (
                 <div className="card" style={{ padding: 24 }}>

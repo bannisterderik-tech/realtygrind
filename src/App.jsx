@@ -4292,6 +4292,7 @@ function Dashboard({ theme, onToggleTheme }) {
                           cursor:'pointer', transition:'all .15s' }}>
                         🗑️
                       </button>
+                      {!(profile?.team_id && profile?.teams?.team_prefs?.ai_tools?.ai_daily_enabled === false) && (
                       <button onClick={()=>setAiTaskGenScope('today')}
                         style={{ fontSize:12, padding:'8px 14px', borderRadius:8, fontWeight:600,
                           background:'linear-gradient(135deg,#8b5cf6,#6d28d9)', color:'#fff',
@@ -4299,6 +4300,7 @@ function Dashboard({ theme, onToggleTheme }) {
                           boxShadow:'0 2px 8px rgba(109,40,217,.25)', transition:'all .15s' }}>
                         ✨ AI Plan
                       </button>
+                      )}
                     </div>
 
                     {/* Skipped tasks — restore inline */}
@@ -4537,6 +4539,7 @@ function Dashboard({ theme, onToggleTheme }) {
                   cursor:'pointer', whiteSpace:'nowrap' }}>
                 🗑️ Clear
               </button>
+              {!(profile?.team_id && profile?.teams?.team_prefs?.ai_tools?.ai_weekly_enabled === false) && (
               <button onClick={()=>setAiTaskGenScope('week')}
                 style={{ fontSize:11, padding:'6px 12px', borderRadius:8, fontWeight:600,
                   background:'linear-gradient(135deg,#8b5cf6,#6d28d9)', color:'#fff',
@@ -4544,6 +4547,7 @@ function Dashboard({ theme, onToggleTheme }) {
                   boxShadow:'0 2px 8px rgba(109,40,217,.25)', whiteSpace:'nowrap' }}>
                 ✨ AI Plan Week
               </button>
+              )}
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(210px,1fr))', gap:12 }}>
               {DAYS.map((dayName,di)=>{

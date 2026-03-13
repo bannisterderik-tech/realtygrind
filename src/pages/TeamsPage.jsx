@@ -2986,6 +2986,80 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               </button>
                             </div>
 
+                            {/* ── AI Daily Tasks toggle ── */}
+                            <div style={{ height: 1, background: 'var(--b1)', margin: '16px 0' }} />
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                              <div>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>AI Daily Tasks</div>
+                                <div style={{ fontSize: 11, color: 'var(--muted)' }}>AI-generated daily tasks that fill around defaults and calendar events (1 credit/use)</div>
+                              </div>
+                              <button
+                                onClick={async () => {
+                                  const current = teamData?.team_prefs?.ai_tools?.ai_daily_enabled !== false
+                                  const newAiTools = { ...(teamData?.team_prefs?.ai_tools || {}), ai_daily_enabled: !current }
+                                  const newPrefs = { ...(teamData?.team_prefs || {}), ai_tools: newAiTools }
+                                  try {
+                                    const { error } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                    if (error) throw error
+                                    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+                                  } catch (err) {
+                                    setError('Failed to update AI settings.')
+                                    console.error('toggleAiDaily error:', err)
+                                  }
+                                }}
+                                style={{
+                                  width: 48, height: 26, borderRadius: 13, cursor: 'pointer', border: 'none',
+                                  position: 'relative', flexShrink: 0, transition: 'background .2s',
+                                  background: (teamData?.team_prefs?.ai_tools?.ai_daily_enabled !== false)
+                                    ? '#8b5cf6' : 'var(--b2)',
+                                }}
+                              >
+                                <div style={{
+                                  width: 20, height: 20, borderRadius: 10,
+                                  background: '#fff', position: 'absolute', top: 3,
+                                  transition: 'left .2s',
+                                  left: (teamData?.team_prefs?.ai_tools?.ai_daily_enabled !== false) ? 25 : 3,
+                                }} />
+                              </button>
+                            </div>
+
+                            {/* ── AI Weekly Tasks toggle ── */}
+                            <div style={{ height: 1, background: 'var(--b1)', margin: '16px 0' }} />
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                              <div>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>AI Weekly Tasks</div>
+                                <div style={{ fontSize: 11, color: 'var(--muted)' }}>AI-generated weekly plan that distributes tasks across the week (1 credit/use)</div>
+                              </div>
+                              <button
+                                onClick={async () => {
+                                  const current = teamData?.team_prefs?.ai_tools?.ai_weekly_enabled !== false
+                                  const newAiTools = { ...(teamData?.team_prefs?.ai_tools || {}), ai_weekly_enabled: !current }
+                                  const newPrefs = { ...(teamData?.team_prefs || {}), ai_tools: newAiTools }
+                                  try {
+                                    const { error } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                    if (error) throw error
+                                    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+                                  } catch (err) {
+                                    setError('Failed to update AI settings.')
+                                    console.error('toggleAiWeekly error:', err)
+                                  }
+                                }}
+                                style={{
+                                  width: 48, height: 26, borderRadius: 13, cursor: 'pointer', border: 'none',
+                                  position: 'relative', flexShrink: 0, transition: 'background .2s',
+                                  background: (teamData?.team_prefs?.ai_tools?.ai_weekly_enabled !== false)
+                                    ? '#8b5cf6' : 'var(--b2)',
+                                }}
+                              >
+                                <div style={{
+                                  width: 20, height: 20, borderRadius: 10,
+                                  background: '#fff', position: 'absolute', top: 3,
+                                  transition: 'left .2s',
+                                  left: (teamData?.team_prefs?.ai_tools?.ai_weekly_enabled !== false) ? 25 : 3,
+                                }} />
+                              </button>
+                            </div>
+
                             {/* ── Presentation Builder toggle ── */}
                             <div style={{ height: 1, background: 'var(--b1)', margin: '16px 0' }} />
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>

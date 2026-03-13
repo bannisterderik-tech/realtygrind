@@ -277,6 +277,9 @@ function AITaskGenModal({ scope, onClose, onGenerate, onInsert, onClear }) {
   const [selected, setSelected] = useState({}) // { idx: true }
   const [error, setError]       = useState('')
   const [clearFirst, setClearFirst] = useState(false)
+  const [startHour, setStartHour] = useState('08:00')
+  const [endHour, setEndHour]     = useState('18:00')
+  const [includeWeekends, setIncludeWeekends] = useState(true)
 
   async function handleGenerate() {
     setPhase('loading')
@@ -296,7 +299,7 @@ function AITaskGenModal({ scope, onClose, onGenerate, onInsert, onClear }) {
         }
         await onClear(dates)
       }
-      const result = await onGenerate(scope, guidance)
+      const result = await onGenerate(scope, guidance, { startHour, endHour, includeWeekends })
       if (result.error) { setError(result.error); setPhase('error'); return }
       setTasks(result.tasks || [])
       setSummary(result.summary || '')
@@ -349,6 +352,48 @@ function AITaskGenModal({ scope, onClose, onGenerate, onInsert, onClear }) {
             <textarea className="field-input" value={guidance} onChange={e => setGuidance(e.target.value)}
               placeholder="e.g. Focus on buyer follow-ups, or prep for Thursday open house"
               rows={2} style={{ resize:'vertical', marginBottom:14, fontSize:13 }}/>
+            <div style={{ display:'flex', gap:12, marginBottom:14 }}>
+              <div style={{ flex:1 }}>
+                <div className="label" style={{ marginBottom:4 }}>Start of day</div>
+                <select className="field-input" value={startHour} onChange={e => setStartHour(e.target.value)}
+                  style={{ fontSize:13, padding:'8px 10px' }}>
+                  {Array.from({ length: 15 }, (_, i) => i + 5).map(h => {
+                    const val = `${String(h).padStart(2,'0')}:00`
+                    const label = h === 0 ? '12:00 AM' : h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h-12}:00 PM`
+                    return <option key={val} value={val}>{label}</option>
+                  })}
+                </select>
+              </div>
+              <div style={{ flex:1 }}>
+                <div className="label" style={{ marginBottom:4 }}>End of day</div>
+                <select className="field-input" value={endHour} onChange={e => setEndHour(e.target.value)}
+                  style={{ fontSize:13, padding:'8px 10px' }}>
+                  {Array.from({ length: 15 }, (_, i) => i + 10).map(h => {
+                    const val = `${String(h).padStart(2,'0')}:00`
+                    const label = h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h-12}:00 PM`
+                    return <option key={val} value={val}>{label}</option>
+                  })}
+                </select>
+              </div>
+            </div>
+            {scope === 'week' && (
+              <div style={{ display:'flex', gap:8, marginBottom:14 }}>
+                <button onClick={() => setIncludeWeekends(false)}
+                  style={{ flex:1, padding:'8px 0', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer',
+                    border: !includeWeekends ? '2px solid var(--gold2)' : '1px solid var(--b2)',
+                    background: !includeWeekends ? 'rgba(217,119,6,.08)' : 'transparent',
+                    color: !includeWeekends ? 'var(--gold2)' : 'var(--muted)' }}>
+                  Weekdays only
+                </button>
+                <button onClick={() => setIncludeWeekends(true)}
+                  style={{ flex:1, padding:'8px 0', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer',
+                    border: includeWeekends ? '2px solid var(--gold2)' : '1px solid var(--b2)',
+                    background: includeWeekends ? 'rgba(217,119,6,.08)' : 'transparent',
+                    color: includeWeekends ? 'var(--gold2)' : 'var(--muted)' }}>
+                  Include weekends
+                </button>
+              </div>
+            )}
             <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', marginBottom:16,
               padding:'10px 12px', borderRadius:8, background: clearFirst ? 'rgba(239,68,68,.06)' : 'var(--bg2)',
               border: clearFirst ? '1px solid rgba(239,68,68,.25)' : '1px solid var(--b1)', transition:'all .15s' }}>
@@ -2587,7 +2632,7 @@ function Dashboard({ theme, onToggleTheme }) {
   }
 
   // ── AI Task Generation ──────────────────────────────────────────────────────
-  async function generateAiTasks(scope, guidance) {
+  async function generateAiTasks(scope, guidance, timeBounds) {
     // Get a fresh token (refresh proactively if expiring within 60s)
     let token = null
     const { data: { session } } = await supabase.auth.getSession()
@@ -2680,6 +2725,9 @@ function Dashboard({ theme, onToggleTheme }) {
       activityThisMonth,
       standup: standup ? { q1: standup.q1, q2: standup.q2, q3: standup.q3 } : null,
       teamGuidance: profile?.teams?.team_prefs?.ai_schedule_guidance || null,
+      workdayStart: timeBounds?.startHour || '08:00',
+      workdayEnd: timeBounds?.endHour || '18:00',
+      includeWeekends: timeBounds?.includeWeekends !== false,
     }
 
     try {
@@ -4191,6 +4239,12 @@ function Dashboard({ theme, onToggleTheme }) {
                         style={{ fontSize:12, flex:1, justifyContent:'center' }}>
                         + Add task for {isViewingToday ? 'today' : FULL_DAYS[viewDayIdx]}
                       </button>
+                      <button onClick={() => { if(confirm('Clear all non-calendar tasks for this day?')) clearTasksForDates([viewDateStr]) }}
+                        style={{ fontSize:12, padding:'8px 10px', borderRadius:8, fontWeight:600,
+                          background:'none', color:'var(--dim)', border:'1px solid var(--b2)',
+                          cursor:'pointer', transition:'all .15s' }}>
+                        🗑️
+                      </button>
                       <button onClick={()=>setAiTaskGenScope('today')}
                         style={{ fontSize:12, padding:'8px 14px', borderRadius:8, fontWeight:600,
                           background:'linear-gradient(135deg,#8b5cf6,#6d28d9)', color:'#fff',
@@ -4424,6 +4478,22 @@ function Dashboard({ theme, onToggleTheme }) {
               <div style={{ flex:1, fontSize:13, color:'var(--muted)' }}>
                 Week {today.week+1} — ✓ toggle · × remove from day · ↩ restore · + add · 🖨️ print
               </div>
+              <button onClick={() => {
+                if (!confirm('Clear all non-calendar tasks for this week?')) return
+                const dates = []
+                for (let i = 0; i < 7; i++) {
+                  const d = new Date()
+                  d.setDate(d.getDate() + i)
+                  dates.push(d.toISOString().slice(0, 10))
+                }
+                clearTasksForDates(dates)
+                showToast('Week cleared', 'success')
+              }}
+                style={{ fontSize:11, padding:'6px 10px', borderRadius:8, fontWeight:600,
+                  background:'none', color:'var(--dim)', border:'1px solid var(--b2)',
+                  cursor:'pointer', whiteSpace:'nowrap' }}>
+                🗑️ Clear
+              </button>
               <button onClick={()=>setAiTaskGenScope('week')}
                 style={{ fontSize:11, padding:'6px 12px', borderRadius:8, fontWeight:600,
                   background:'linear-gradient(135deg,#8b5cf6,#6d28d9)', color:'#fff',

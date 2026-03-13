@@ -2411,14 +2411,8 @@ function Dashboard({ theme, onToggleTheme }) {
     const prev = customTasks.find(t => t.id === id)
     setCustomTasks(p => p.filter(t => t.id !== id))
     try {
-      // Soft-delete gcal events so they don't re-appear on next sync
-      if (prev?.googleEventId) {
-        const { error } = await supabase.from('custom_tasks').update({ is_deleted: true }).eq('id',id).eq('user_id',user.id)
-        if (error) throw error
-      } else {
-        const { error } = await supabase.from('custom_tasks').delete().eq('id',id).eq('user_id',user.id)
-        if (error) throw error
-      }
+      const { error } = await supabase.from('custom_tasks').delete().eq('id',id).eq('user_id',user.id)
+      if (error) throw error
     } catch(e) {
       console.error('deleteCustomTask error:', e)
       if (prev) setCustomTasks(p => [...p, prev])

@@ -2496,18 +2496,16 @@ function Dashboard({ theme, onToggleTheme }) {
   }
 
   async function clearGcalEvents() {
-    const gcalTasks = customTasks.filter(t => t.googleEventId)
-    if (!gcalTasks.length) { showToast('No synced events to clear'); return }
-    if (!confirm(`Remove ${gcalTasks.length} synced Google Calendar event${gcalTasks.length !== 1 ? 's' : ''} from your task list?`)) return
+    const visibleGcal = customTasks.filter(t => t.googleEventId)
     setCustomTasks(p => p.filter(t => !t.googleEventId))
     try {
-      // Soft-delete so they don't re-appear on next sync
-      const { error } = await supabase.from('custom_tasks').update({ is_deleted: true }).eq('user_id', user.id).not('google_event_id', 'is', null)
+      // Hard-delete ALL gcal rows (including soft-deleted) so a fresh sync can re-add them
+      const { error } = await supabase.from('custom_tasks').delete().eq('user_id', user.id).not('google_event_id', 'is', null)
       if (error) throw error
-      showToast(`Cleared ${gcalTasks.length} synced events`, 'success')
+      showToast('Cleared all synced events — re-sync to refresh', 'success')
     } catch (e) {
       console.error('clearGcalEvents error:', e)
-      setCustomTasks(prev => [...prev, ...gcalTasks])
+      if (visibleGcal.length) setCustomTasks(prev => [...prev, ...visibleGcal])
       showToast('Failed to clear events')
     }
   }

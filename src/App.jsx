@@ -3407,8 +3407,11 @@ function Dashboard({ theme, onToggleTheme }) {
   const activePrefsRef = useRef(activePrefs); activePrefsRef.current = activePrefs
   const xpEnabled = activePrefs?.xp_enabled !== false
 
-  // ── Effective tasks: custom defaults only (built-in presets removed — AI planner + gcal) ──
-  const builtInEffective = useMemo(() => [], [])
+  // ── Effective tasks: built-in presets (user-toggled) + custom defaults ──
+  const enabledDefaults = activePrefs?.enabled_defaults || []
+  const builtInEffective = useMemo(() =>
+    HABITS.filter(h => enabledDefaults.includes(h.id)).map(h => ({ ...h, isBuiltIn: true }))
+  , [enabledDefaults])
   const customDefaults = useMemo(() =>
     customTasks.filter(t => t.isDefault).map(t => ({ ...t, isBuiltIn:false }))
   , [customTasks])

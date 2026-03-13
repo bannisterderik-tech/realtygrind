@@ -887,6 +887,49 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                 )
               })()}
 
+              {/* Built-in Default Tasks — toggles */}
+              <div className="card" style={{ padding:22 }}>
+                <div style={{ marginBottom:16 }}>
+                  <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:2 }}>Daily Task Defaults</div>
+                  <div style={{ fontSize:12, color:'var(--muted)' }}>
+                    Toggle on tasks to include them in your daily checklist each day
+                  </div>
+                </div>
+                {HABITS.map(h => {
+                  const enabled = (habitPrefs.enabled_defaults || []).includes(h.id)
+                  return (
+                    <div key={h.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                      padding:'10px 4px', borderBottom:'1px solid var(--b1)' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                        <span style={{ fontSize:18 }}>{h.icon}</span>
+                        <div>
+                          <div style={{ fontSize:14, fontWeight:500, color:'var(--text)' }}>{h.label}</div>
+                          <div style={{ fontSize:11, color:'var(--muted)' }}>{h.xp} XP{h.counter ? ` · tracks ${h.unit}` : ''}</div>
+                        </div>
+                      </div>
+                      <button onClick={async () => {
+                        const current = habitPrefs.enabled_defaults || []
+                        const next = enabled ? current.filter(id => id !== h.id) : [...current, h.id]
+                        const newPrefs = { ...habitPrefs, enabled_defaults: next }
+                        const { error } = await supabase.from('profiles').update({ habit_prefs: newPrefs }).eq('id', user.id)
+                        if (!error) setHabitPrefs(newPrefs)
+                      }} style={{
+                        width:44, height:24, borderRadius:12, border:'none', cursor:'pointer',
+                        background: enabled ? '#10b981' : 'var(--b2)',
+                        position:'relative', transition:'background .2s',
+                      }}>
+                        <div style={{
+                          width:18, height:18, borderRadius:9, background:'#fff',
+                          position:'absolute', top:3,
+                          left: enabled ? 23 : 3,
+                          transition:'left .2s', boxShadow:'0 1px 3px rgba(0,0,0,.2)',
+                        }}/>
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+
               {/* Custom Default Tasks */}
               <div className="card" style={{ padding:22 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:isMemberOnly?8:16 }}>

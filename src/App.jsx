@@ -2490,7 +2490,12 @@ function Dashboard({ theme, onToggleTheme }) {
     const prev = customTasks.find(t => t.id === id)
     setCustomTasks(p => p.filter(t => t.id !== id))
     try {
-      const { error } = await supabase.from('custom_tasks').delete().eq('id',id).eq('user_id',user.id)
+      // Gcal events: soft-delete so they don't reappear on next sync
+      // Regular tasks: hard-delete
+      const isGcal = prev?.googleEventId
+      const { error } = isGcal
+        ? await supabase.from('custom_tasks').update({ is_deleted: true }).eq('id', id).eq('user_id', user.id)
+        : await supabase.from('custom_tasks').delete().eq('id', id).eq('user_id', user.id)
       if (error) throw error
     } catch(e) {
       console.error('deleteCustomTask error:', e)
@@ -2528,7 +2533,7 @@ function Dashboard({ theme, onToggleTheme }) {
       if (!session?.access_token) return
       supabase.functions.invoke('google-auth', { body: { action: 'status' } })
         .then(({ data }) => {
-          if (data?.connected) { setGcalConnected(true); syncGoogleCalendar() }
+          if (data?.connected) { setGcalConnected(true) } // don't auto-sync — user clicks Sync
         })
         .catch(e => console.error('gcal status check error:', e))
     })

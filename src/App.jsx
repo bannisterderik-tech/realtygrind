@@ -4480,12 +4480,8 @@ function Dashboard({ theme, onToggleTheme }) {
               </div>
               <button onClick={() => {
                 if (!confirm('Clear all non-calendar tasks for this week?')) return
-                const dates = []
-                for (let i = 0; i < 7; i++) {
-                  const d = new Date()
-                  d.setDate(d.getDate() + i)
-                  dates.push(d.toISOString().slice(0, 10))
-                }
+                const wi = today.week
+                const dates = [0,1,2,3,4,5,6].map(di => dateStrForDay(wi, di)).filter(Boolean)
                 clearTasksForDates(dates)
                 showToast('Week cleared', 'success')
               }}

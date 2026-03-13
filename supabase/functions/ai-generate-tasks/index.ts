@@ -152,11 +152,12 @@ Deno.serve(async (req) => {
     let reqBody: Record<string, unknown>
     try { reqBody = await req.json() } catch { return json({ error: 'Invalid JSON body' }, 400) }
 
-    const { scope, dates, context, guidance } = reqBody as {
+    const { scope, dates, context, guidance, timeBounds } = reqBody as {
       scope: string
       dates: string[]
       context: Record<string, unknown>
       guidance?: string
+      timeBounds?: { startHour?: number; endHour?: number }
     }
 
     if (!scope || !dates?.length || !context) {
@@ -245,9 +246,13 @@ Deno.serve(async (req) => {
 
     const currentTime = ctx.currentTime || null // "HH:MM" 24h
     const todayDate = ctx.today || dates[0]
-    const workdayStart = ctx.workdayStart || '08:00'
-    const workdayEnd = ctx.workdayEnd || '18:00'
-    const includeWeekends = ctx.includeWeekends !== false
+    const tbStart = timeBounds?.startHour
+    const tbEnd = timeBounds?.endHour
+    const workdayStart = tbStart != null ? `${String(tbStart).padStart(2,'0')}:00` : (ctx.workdayStart || '08:00')
+    const workdayEnd = tbEnd != null ? `${String(tbEnd).padStart(2,'0')}:00` : (ctx.workdayEnd || '18:00')
+    // Weekend dates are already filtered out on the client side, but reinforce in prompt
+    const hasWeekend = dates.some(d => { const dow = new Date(d + 'T12:00:00').getDay(); return dow === 0 || dow === 6 })
+    const includeWeekends = hasWeekend
 
     const systemPrompt = `You are the RealtyGrind AI Task Planner. Generate a personalized, actionable task list for a real estate agent based on their current data.
 

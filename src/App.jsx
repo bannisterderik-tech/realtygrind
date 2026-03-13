@@ -292,6 +292,8 @@ function AITaskGenModal({ scope, onClose, onGenerate, onInsert, onClear }) {
           for (let i = 0; i < 7; i++) {
             const d = new Date(now)
             d.setDate(now.getDate() + i)
+            const dow = d.getDay()
+            if (!includeWeekends && (dow === 0 || dow === 6)) continue
             dates.push(d.toISOString().slice(0, 10))
           }
         } else {
@@ -2660,10 +2662,13 @@ function Dashboard({ theme, onToggleTheme }) {
     if (scope === 'today') {
       dates.push(todayStr)
     } else {
-      // Next 7 days starting from today
+      // Next 7 days starting from today, optionally skipping weekends
+      const skipWeekends = timeBounds && timeBounds.includeWeekends === false
       for (let i = 0; i < 7; i++) {
         const day = new Date(now)
         day.setDate(now.getDate() + i)
+        const dow = day.getDay() // 0=Sun, 6=Sat
+        if (skipWeekends && (dow === 0 || dow === 6)) continue
         dates.push(day.toISOString().slice(0, 10))
       }
     }
@@ -2745,7 +2750,10 @@ function Dashboard({ theme, onToggleTheme }) {
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
             'Authorization': `Bearer ${token}`,
           },
-          body: JSON.stringify({ scope, dates, context, guidance: guidance || undefined }),
+          body: JSON.stringify({
+            scope, dates, context, guidance: guidance || undefined,
+            timeBounds: timeBounds ? { startHour: timeBounds.startHour, endHour: timeBounds.endHour } : undefined,
+          }),
         }
       )
       const data = await resp.json()

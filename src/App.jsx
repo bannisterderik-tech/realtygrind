@@ -3864,16 +3864,6 @@ function Dashboard({ theme, onToggleTheme }) {
                     fontFamily:"'JetBrains Mono',monospace" }}>{streak}-day streak</span>
                 </div>
               )}
-              <button onClick={() => briefingData ? setBriefingVisible(true) : fetchBriefing(true)}
-                disabled={briefingLoading}
-                style={{ display:'flex', alignItems:'center', gap:5, padding:'4px 12px',
-                  background:'rgba(59,130,246,.1)', border:'1px solid rgba(59,130,246,.25)', borderRadius:20,
-                  cursor: briefingLoading ? 'wait' : 'pointer', transition:'all .15s',
-                  opacity: briefingLoading ? 0.6 : 1 }}>
-                <span style={{ fontSize:12 }}>{briefingLoading ? '⏳' : '📋'}</span>
-                <span style={{ fontSize:11, fontWeight:700, color:'#3b82f6',
-                  fontFamily:"'JetBrains Mono',monospace" }}>{briefingLoading ? 'Loading…' : 'Briefing'}</span>
-              </button>
               {(() => {
                 const slk = profile?.teams?.team_prefs?.slack_url
                 return slk ? (

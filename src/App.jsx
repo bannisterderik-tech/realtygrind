@@ -2411,8 +2411,14 @@ function Dashboard({ theme, onToggleTheme }) {
     const prev = customTasks.find(t => t.id === id)
     setCustomTasks(p => p.filter(t => t.id !== id))
     try {
-      const { error } = await supabase.from('custom_tasks').delete().eq('id',id).eq('user_id',user.id)
-      if (error) throw error
+      // Soft-delete gcal events so they don't re-appear on next sync
+      if (prev?.googleEventId) {
+        const { error } = await supabase.from('custom_tasks').update({ is_deleted: true }).eq('id',id).eq('user_id',user.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('custom_tasks').delete().eq('id',id).eq('user_id',user.id)
+        if (error) throw error
+      }
     } catch(e) {
       console.error('deleteCustomTask error:', e)
       if (prev) setCustomTasks(p => [...p, prev])
@@ -2495,7 +2501,8 @@ function Dashboard({ theme, onToggleTheme }) {
     if (!confirm(`Remove ${gcalTasks.length} synced Google Calendar event${gcalTasks.length !== 1 ? 's' : ''} from your task list?`)) return
     setCustomTasks(p => p.filter(t => !t.googleEventId))
     try {
-      const { error } = await supabase.from('custom_tasks').delete().eq('user_id', user.id).not('google_event_id', 'is', null)
+      // Soft-delete so they don't re-appear on next sync
+      const { error } = await supabase.from('custom_tasks').update({ is_deleted: true }).eq('user_id', user.id).not('google_event_id', 'is', null)
       if (error) throw error
       showToast(`Cleared ${gcalTasks.length} synced events`, 'success')
     } catch (e) {
@@ -2600,7 +2607,7 @@ function Dashboard({ theme, onToggleTheme }) {
     const goals = profile?.goals || {}
     const existingForDates = customTasks
       .filter(t => t.specificDate && dates.includes(t.specificDate))
-      .map(t => ({ date: t.specificDate, label: t.label, time: t.eventTime || null }))
+      .map(t => ({ date: t.specificDate, label: t.label, time: t.eventTime || null, isCalendarEvent: !!t.googleEventId }))
 
     // Aggregate habit activity this month
     const activityThisMonth = {}

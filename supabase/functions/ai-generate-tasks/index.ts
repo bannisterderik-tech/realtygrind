@@ -198,8 +198,8 @@ Deno.serve(async (req) => {
       `\nEXISTING DAILY HABITS (already on their checklist — DO NOT duplicate):`,
       ...(ctx.activeHabits || []).map((h: string) => `- ${h}`),
 
-      (ctx.existingTasks?.length > 0) ? `\nEXISTING TASKS/EVENTS FOR TARGET DATES:` : null,
-      ...(ctx.existingTasks || []).map((t: any) => `- [${t.date}]${t.time ? ` ${t.time}` : ''} ${t.label}`),
+      (ctx.existingTasks?.length > 0) ? `\nEXISTING TASKS/EVENTS FOR TARGET DATES (these are ALREADY scheduled — work around them):` : null,
+      ...(ctx.existingTasks || []).map((t: any) => `- [${t.date}]${t.time ? ` ${t.time}` : ''} ${t.isCalendarEvent ? '📅 CALENDAR: ' : ''}${t.label}`),
 
       `\nPIPELINE THIS MONTH: ${ctx.pipeline?.offers_made || 0} offers made, ${ctx.pipeline?.offers_received || 0} received, ${ctx.pipeline?.pending || 0} pending, ${ctx.pipeline?.closed || 0} closed`,
       ctx.pipeline?.closed_volume ? `Closed volume: $${Number(ctx.pipeline.closed_volume).toLocaleString()}` : null,
@@ -250,9 +250,9 @@ RULES:
 2. Format: { "tasks": [...], "summary": "1-2 sentence overview" }
 3. Each task: { "label": string, "icon": string (single emoji), "time": "HH:MM" (24h) or null, "xp": number (10-30), "date": "YYYY-MM-DD", "rationale": string (1 sentence why) }
 4. Generate 3-8 tasks per day depending on available time.
-5. Schedule around existing tasks/events — check their times and avoid conflicts. Leave buffer gaps.
-6. Assign realistic times: prospecting = 8-10 AM, admin = afternoon, showings = 11 AM-3 PM.
-7. DO NOT duplicate existing habits or calendar events. Supplement them with specific, actionable tasks.
+5. CRITICAL: Calendar events (marked 📅 CALENDAR) are FIXED commitments. NEVER replace, move, or duplicate them. Schedule new tasks AROUND calendar events, leaving 15-30 min buffers before and after.
+6. Assign realistic times: prospecting = 8-10 AM, admin = afternoon, showings = 11 AM-3 PM. But ALWAYS check calendar events first and avoid any time conflicts.
+7. DO NOT duplicate existing habits or calendar events. Only generate NEW supplementary tasks that fill gaps in the agent's day.
 8. Make tasks SPECIFIC: use actual listing addresses, buyer names, and deal details from the context.
    GOOD: "Call Sarah Chen about 123 Oak St showing feedback"
    BAD: "Make follow-up calls"

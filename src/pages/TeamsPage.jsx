@@ -3197,6 +3197,47 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 )}
                               </div>
                             </div>
+
+                            {/* ── AI Schedule Guidance ── */}
+                            <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--b1)' }}>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>✨ AI Schedule Guidance</div>
+                              <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 }}>
+                                Provide instructions that the AI Task Planner will follow when generating daily and weekly schedules for all team members.
+                                Include focus areas, required activities, meeting cadences, or any team-specific workflows.
+                              </div>
+                              <textarea
+                                value={teamData?.team_prefs?.ai_schedule_guidance || ''}
+                                onChange={e => {
+                                  const val = e.target.value
+                                  setTeamData(td => ({
+                                    ...td,
+                                    team_prefs: { ...(td?.team_prefs || {}), ai_schedule_guidance: val }
+                                  }))
+                                }}
+                                onBlur={async e => {
+                                  const val = e.target.value.trim()
+                                  const newPrefs = { ...(teamData?.team_prefs || {}), ai_schedule_guidance: val || null }
+                                  try {
+                                    const { error } = await supabase.from('teams').update({ team_prefs: newPrefs }).eq('id', profile.team_id)
+                                    if (error) throw error
+                                    setTeamData(td => ({ ...td, team_prefs: newPrefs }))
+                                  } catch (err) {
+                                    console.error('Save AI guidance error:', err)
+                                    setError('Failed to save AI schedule guidance.')
+                                  }
+                                }}
+                                placeholder="Example: All agents should start with 30 min of prospecting calls before 9 AM. Tuesday afternoons are for team training — don't schedule showings. Prioritize follow-ups on Mondays. New agents should focus on open houses every Saturday."
+                                rows={5}
+                                style={{
+                                  width: '100%', padding: 12, borderRadius: 8, border: '1px solid var(--b2)',
+                                  background: 'var(--bg2)', color: 'var(--text)', fontSize: 13, fontFamily: 'Poppins,sans-serif',
+                                  resize: 'vertical', lineHeight: 1.5, outline: 'none',
+                                }}
+                              />
+                              <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 6 }}>
+                                Auto-saves on blur. This guidance applies to all team members when they use ✨ AI Plan.
+                              </div>
+                            </div>
                           </div>
                           )}
 

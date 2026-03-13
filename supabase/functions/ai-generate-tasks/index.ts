@@ -199,7 +199,10 @@ Deno.serve(async (req) => {
       ...(ctx.activeHabits || []).map((h: string) => `- ${h}`),
 
       (ctx.existingTasks?.length > 0) ? `\nEXISTING TASKS/EVENTS FOR TARGET DATES (these are ALREADY scheduled — work around them):` : null,
-      ...(ctx.existingTasks || []).map((t: any) => `- [${t.date}]${t.time ? ` ${t.time}` : ''} ${t.isCalendarEvent ? '📅 CALENDAR: ' : ''}${t.label}`),
+      ...(ctx.existingTasks || []).map((t: any) => {
+        const timeRange = t.time ? (t.endTime ? `${t.time}-${t.endTime}` : t.time) : ''
+        return `- [${t.date}]${timeRange ? ` ${timeRange}` : ''} ${t.isCalendarEvent ? '📅 CALENDAR (FIXED — do NOT overlap): ' : ''}${t.label}`
+      }),
 
       `\nPIPELINE THIS MONTH: ${ctx.pipeline?.offers_made || 0} offers made, ${ctx.pipeline?.offers_received || 0} received, ${ctx.pipeline?.pending || 0} pending, ${ctx.pipeline?.closed || 0} closed`,
       ctx.pipeline?.closed_volume ? `Closed volume: $${Number(ctx.pipeline.closed_volume).toLocaleString()}` : null,
@@ -233,6 +236,8 @@ Deno.serve(async (req) => {
       ...(ctx.activityThisMonth ? Object.entries(ctx.activityThisMonth).map(([k, v]) => `- ${k}: ${v} completions`) : []),
 
       ctx.standup ? `\nTODAY'S STANDUP:\n- Yesterday: ${ctx.standup.q1 || 'N/A'}\n- Today's priority: ${ctx.standup.q2 || 'N/A'}${ctx.standup.q3 ? `\n- Blockers: ${ctx.standup.q3}` : ''}` : null,
+
+      ctx.teamGuidance ? `\nTEAM LEADER INSTRUCTIONS (from your team owner — follow these directives):\n${ctx.teamGuidance}` : null,
     ].filter(Boolean).join('\n')
 
     const scopeLabel = scope === 'week' ? 'the week' : 'today'

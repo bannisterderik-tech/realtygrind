@@ -179,12 +179,13 @@ Deno.serve(async (req) => {
       const accessToken = await getFreshAccessToken()
       if (!accessToken) return json({ error: 'not_connected' })
 
+      const timezone = body.timezone || 'America/Los_Angeles'
       const now = new Date()
       const timeMin = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
       const timeMax = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString()
 
       const res = await fetch(
-        `${GCAL_BASE}/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime&maxResults=250`,
+        `${GCAL_BASE}/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime&maxResults=250&timeZone=${encodeURIComponent(timezone)}`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       )
 
@@ -209,21 +210,15 @@ Deno.serve(async (req) => {
         .filter((event: any) => !!event.start?.dateTime) // timed events only
         .map((event: any) => {
         const dateStr = event.start.dateTime.slice(0, 10)
-        // Extract local time directly from the ISO string (e.g. "2026-03-12T11:00:00-07:00")
-        // to avoid UTC conversion issues on the server
-        let timeStr: string | null = null
-        const m = event.start.dateTime.match(/T(\d{2}):(\d{2})/)
-        if (m) {
-          const h = parseInt(m[1], 10)
-          const min = m[2]
-          const ampm = h >= 12 ? 'PM' : 'AM'
-          const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
-          timeStr = `${h12}:${min} ${ampm}`
-        }
+        // With timeZone param, Google returns times in the user's local timezone
+        // Extract 24h "HH:MM" directly from ISO string (e.g. "2026-03-12T11:00:00-07:00")
+        const startMatch = event.start.dateTime.match(/T(\d{2}:\d{2})/)
+        const endMatch = event.end?.dateTime?.match(/T(\d{2}:\d{2})/)
         return {
           summary: event.summary || '',
           date: dateStr,
-          time: timeStr,
+          time: startMatch ? startMatch[1] : null, // "HH:MM" 24h
+          end_time: endMatch ? endMatch[1] : null,  // "HH:MM" 24h
           google_event_id: event.id,
         }
       }).filter((e: any) => e.summary && e.date)

@@ -1926,7 +1926,7 @@ function Dashboard({ theme, onToggleTheme }) {
     }
 
     if (ctRes.data) {
-      const toTask = t => ({ id:t.id, label:t.label, icon:t.icon, xp:t.xp, isDefault:t.is_default, specificDate:t.specific_date, googleEventId:t.google_event_id||null, eventTime:t.event_time||null })
+      const toTask = t => ({ id:t.id, label:t.label, icon:t.icon, xp:t.xp, isDefault:t.is_default, specificDate:t.specific_date, googleEventId:t.google_event_id||null, eventTime:t.event_time||null, eventEndTime:t.event_end_time||null })
       const allNonDeleted = ctRes.data.filter(t => !t.is_deleted).map(toTask)
       // Split: tasks skipped for today go to skippedTodayTasks, rest stay in customTasks
       const persistedSkips = (profRes.data?.habit_prefs?.skipped||{})[todayDate] || []
@@ -2508,7 +2508,8 @@ function Dashboard({ theme, onToggleTheme }) {
     if (gcalSyncing) return
     setGcalSyncing(true)
     try {
-      const { data, error } = await supabase.functions.invoke('google-auth', { body: { action: 'sync' } })
+      const tz = habitPrefs.bio?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Los_Angeles'
+      const { data, error } = await supabase.functions.invoke('google-auth', { body: { action: 'sync', timezone: tz } })
       if (error || data?.error) {
         if (data?.error === 'not_connected' || data?.error === 'token_revoked') {
           setGcalConnected(false)
@@ -2518,28 +2519,18 @@ function Dashboard({ theme, onToggleTheme }) {
       }
       const events = data.events || []
       console.log('[GCal] Fetched', events.length, 'events from Google Calendar')
-      // Convert 12h display time (e.g. "2:30 PM") to 24h "HH:MM" for sorting
-      const to24h = (t) => {
-        if (!t) return null
-        const m = t.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
-        if (!m) return t // already 24h or unknown format
-        let h = parseInt(m[1],10)
-        const min = m[2], ampm = m[3].toUpperCase()
-        if (ampm === 'PM' && h !== 12) h += 12
-        if (ampm === 'AM' && h === 12) h = 0
-        return `${String(h).padStart(2,'0')}:${min}`
-      }
       const batch = events.map(e => ({
         label: e.summary,
         specific_date: e.date,
         google_event_id: e.google_event_id,
-        event_time: to24h(e.time),
+        event_time: e.time || null,
+        event_end_time: e.end_time || null,
       }))
       const { data: inserted, error: rpcErr } = await supabase.rpc('sync_gcal_events', { events: batch })
       if (rpcErr) { console.error('[GCal] RPC error:', rpcErr.message); showToast('Sync failed: ' + rpcErr.message); return }
       const rows = inserted || []
       if (rows.length > 0) {
-        setCustomTasks(prev => [...prev, ...rows.map(r => ({ id:r.id, label:r.label, icon:r.icon, xp:r.xp, isDefault:false, specificDate:r.specific_date, googleEventId:r.google_event_id, eventTime:r.event_time||null }))])
+        setCustomTasks(prev => [...prev, ...rows.map(r => ({ id:r.id, label:r.label, icon:r.icon, xp:r.xp, isDefault:false, specificDate:r.specific_date, googleEventId:r.google_event_id, eventTime:r.event_time||null, eventEndTime:r.event_end_time||null }))])
       }
       console.log('[GCal] Sync complete:', rows.length, 'added')
       showToast(rows.length > 0 ? `Synced ${rows.length} event${rows.length !== 1 ? 's' : ''} from Google Calendar` : 'Calendar is up to date', 'success')
@@ -2599,7 +2590,7 @@ function Dashboard({ theme, onToggleTheme }) {
     const goals = profile?.goals || {}
     const existingForDates = customTasks
       .filter(t => t.specificDate && dates.includes(t.specificDate))
-      .map(t => ({ date: t.specificDate, label: t.label, time: t.eventTime || null, isCalendarEvent: !!t.googleEventId }))
+      .map(t => ({ date: t.specificDate, label: t.label, time: t.eventTime || null, endTime: t.eventEndTime || null, isCalendarEvent: !!t.googleEventId }))
 
     // Aggregate habit activity this month
     const activityThisMonth = {}
@@ -2653,6 +2644,7 @@ function Dashboard({ theme, onToggleTheme }) {
       buyerReps: buyerRepsCtx,
       activityThisMonth,
       standup: standup ? { q1: standup.q1, q2: standup.q2, q3: standup.q3 } : null,
+      teamGuidance: profile?.teams?.team_prefs?.ai_schedule_guidance || null,
     }
 
     try {

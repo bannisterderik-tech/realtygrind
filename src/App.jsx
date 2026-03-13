@@ -2145,8 +2145,8 @@ function Dashboard({ theme, onToggleTheme }) {
   // ── Morning Briefing auto-show on first load of the day ───────────────────
   useEffect(() => {
     if (dbLoading || !profile || briefingDismissed || briefingFetched.current) return
-    // Check team-level disable (team owner toggled off)
-    if (profile.team_id && profile.teams?.team_prefs?.morning_briefing?.enabled === false) return
+    // Check team-level disable (team owner toggled off in Teams > AI Tools)
+    if (profile.team_id && profile.teams?.team_prefs?.ai_tools?.briefing_enabled === false) return
     const bp = profile.habit_prefs?.morning_briefing
     if (bp?.enabled === false) return // user opted out (solo agents)
     const todayISO = new Date().toISOString().slice(0, 10)

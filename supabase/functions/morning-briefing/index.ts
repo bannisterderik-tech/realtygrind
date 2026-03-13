@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
       return json({ error: 'disabled_by_team', message: 'AI tools have been disabled by your team owner.' }, 403)
     }
     // Check if team owner disabled morning briefing specifically
-    if (profile.team_id && profile.teams?.team_prefs?.morning_briefing?.enabled === false) {
+    if (profile.team_id && profile.teams?.team_prefs?.ai_tools?.briefing_enabled === false) {
       return json({ error: 'disabled_by_team', message: 'Morning briefing has been disabled by your team owner.' }, 403)
     }
 

@@ -283,19 +283,16 @@ function AITaskGenModal({ scope, onClose, onGenerate, onInsert, onClear }) {
     setError('')
     try {
       if (clearFirst && onClear) {
-        const today = new Date()
+        const now = new Date()
         let dates = []
         if (scope === 'week') {
-          const dayOfWeek = today.getDay()
-          const monday = new Date(today)
-          monday.setDate(today.getDate() - ((dayOfWeek + 6) % 7))
           for (let i = 0; i < 7; i++) {
-            const d = new Date(monday)
-            d.setDate(monday.getDate() + i)
+            const d = new Date(now)
+            d.setDate(now.getDate() + i)
             dates.push(d.toISOString().slice(0, 10))
           }
         } else {
-          dates = [today.toISOString().slice(0, 10)]
+          dates = [now.toISOString().slice(0, 10)]
         }
         await onClear(dates)
       }
@@ -2605,19 +2602,18 @@ function Dashboard({ theme, onToggleTheme }) {
     }
     if (!token) return { error: 'Not authenticated. Please sign in again.' }
 
-    // Assemble dates
+    // Assemble dates — only today and future, never past
+    const now = new Date()
+    const todayStr = now.toISOString().slice(0, 10)
+    const currentTime24 = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
     const dates = []
     if (scope === 'today') {
-      dates.push(viewDateStr)
+      dates.push(todayStr)
     } else {
-      // Current week visible in planner — 7 days from the viewed date's Monday
-      const d = new Date(viewDateStr)
-      const dayOfWeek = d.getDay()
-      const monday = new Date(d)
-      monday.setDate(d.getDate() - ((dayOfWeek + 6) % 7))
+      // Next 7 days starting from today
       for (let i = 0; i < 7; i++) {
-        const day = new Date(monday)
-        day.setDate(monday.getDate() + i)
+        const day = new Date(now)
+        day.setDate(now.getDate() + i)
         dates.push(day.toISOString().slice(0, 10))
       }
     }
@@ -2665,6 +2661,8 @@ function Dashboard({ theme, onToggleTheme }) {
     const standup = habitPrefs.standup_today?.date === viewDateStr ? habitPrefs.standup_today : null
 
     const context = {
+      currentTime: currentTime24,
+      today: todayStr,
       profile: { name: profile?.full_name, specialty: bio.specialty, about: bio.about, timezone: bio.timezone },
       goals,
       activeHabits: effectiveHabits.map(h => h.label),

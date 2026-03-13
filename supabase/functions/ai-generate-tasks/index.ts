@@ -243,10 +243,14 @@ Deno.serve(async (req) => {
     const scopeLabel = scope === 'week' ? 'the week' : 'today'
     const dateList = dates.join(', ')
 
+    const currentTime = ctx.currentTime || null // "HH:MM" 24h
+    const todayDate = ctx.today || dates[0]
+
     const systemPrompt = `You are the RealtyGrind AI Task Planner. Generate a personalized, actionable task list for a real estate agent based on their current data.
 
 ${contextLines}
 
+CURRENT TIME: ${todayDate} ${currentTime || 'unknown'}
 TARGET: Generate tasks for ${scopeLabel} (dates: ${dateList}).
 ${guidance ? `\nAGENT'S FOCUS REQUEST: "${guidance}"` : ''}
 
@@ -257,6 +261,7 @@ RULES:
 4. Generate 3-8 tasks per day depending on available time.
 5. CRITICAL: Calendar events (marked 📅 CALENDAR) are FIXED commitments. NEVER replace, move, or duplicate them. Schedule new tasks AROUND calendar events, leaving 15-30 min buffers before and after.
 6. Assign realistic times: prospecting = 8-10 AM, admin = afternoon, showings = 11 AM-3 PM. But ALWAYS check calendar events first and avoid any time conflicts.
+6b. CRITICAL: For today (${todayDate}), ONLY schedule tasks AFTER ${currentTime || 'now'}. Never generate tasks in the past. For future dates, use normal business hours.
 7. DO NOT duplicate existing habits or calendar events. Only generate NEW supplementary tasks that fill gaps in the agent's day.
 8. Make tasks SPECIFIC: use actual listing addresses, buyer names, and deal details from the context.
    GOOD: "Call Sarah Chen about 123 Oak St showing feedback"

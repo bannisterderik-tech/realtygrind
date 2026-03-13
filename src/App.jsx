@@ -3248,18 +3248,11 @@ function Dashboard({ theme, onToggleTheme }) {
   const activePrefsRef = useRef(activePrefs); activePrefsRef.current = activePrefs
   const xpEnabled = activePrefs?.xp_enabled !== false
 
-  // ── Effective habits: built-ins (with edits, hidden removed) + custom defaults, ordered ──
-  const builtInEffective = useMemo(() => HABITS
-    .filter(h => !(activePrefs.hidden||[]).includes(h.id))
-    .map(h => {
-      const ed = (activePrefs.edits||{})[h.id] || {}
-      return { ...h, label:ed.label||h.label, icon:ed.icon||h.icon, xp:ed.xp||h.xp, isBuiltIn:true }
-    })
-  , [activePrefs])
-  const customDefaults = useMemo(() => isOnTeam && !isTeamOwner
-    ? []
-    : customTasks.filter(t => t.isDefault).map(t => ({ ...t, isBuiltIn:false }))
-  , [isOnTeam, isTeamOwner, customTasks])
+  // ── Effective tasks: custom defaults only (built-in presets removed — AI planner + gcal) ──
+  const builtInEffective = useMemo(() => [], [])
+  const customDefaults = useMemo(() =>
+    customTasks.filter(t => t.isDefault).map(t => ({ ...t, isBuiltIn:false }))
+  , [customTasks])
   const taskTimes = habitPrefs.taskTimes || {}
   const effectiveHabits = useMemo(() => {
     const all = [...builtInEffective, ...customDefaults].map(h => ({
@@ -3936,32 +3929,41 @@ function Dashboard({ theme, onToggleTheme }) {
 
           <div className="today-grid">
 
-            {/* Habits checklist */}
-            <div className="card" style={{ padding:24, borderTop:`2.5px solid ${isViewingToday ? (todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626') : '#3b82f6'}` }}>
+            {/* Tasks checklist */}
+            {(()=>{
+              const daySpecific = customTasks.filter(t => !t.isDefault && t.specificDate === viewDateStr)
+              const unifiedList = getOrderedTasksForDate(viewDateStr, effectiveView, daySpecific)
+              const totalTasks = unifiedList.length
+              const doneTasks = unifiedList.filter(h => {
+                if (h.isBuiltIn) return habits[h.id]?.[viewWeek]?.[viewDayIdx]
+                const ckey = `${h.id}-${viewWeek}-${viewDayIdx}`
+                return !!customDone[ckey]
+              }).length
+              const taskPct = totalTasks > 0 ? Math.round(doneTasks / totalTasks * 100) : 0
+              return (
+            <div className="card" style={{ padding:24, borderTop:`2.5px solid ${isViewingToday ? (taskPct>=80?'#10b981':taskPct>=50?'#d97706':'#dc2626') : '#3b82f6'}` }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
                 <div>
                   <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:3, letterSpacing:'-.015em' }}>
-                    {isViewingToday ? 'Daily Habits' : `${FULL_DAYS[viewDayIdx]} Habits`}
+                    {isViewingToday ? 'Daily Tasks' : `${FULL_DAYS[viewDayIdx]} Tasks`}
                   </div>
                   <div style={{ fontSize:12, color:'var(--muted)' }}>
-                    {FULL_DAYS[viewDayIdx]} · {viewBuiltInActive.length - todayChecks > 0 ? `${viewBuiltInActive.length - todayChecks} remaining` : 'All done! 🎉'}
+                    {FULL_DAYS[viewDayIdx]} · {totalTasks - doneTasks > 0 ? `${totalTasks - doneTasks} remaining` : (totalTasks > 0 ? 'All done! 🎉' : 'No tasks — use ✨ AI Plan or sync Google Calendar')}
                   </div>
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:12 }}>
                   <div style={{ textAlign:'right' }}>
-                    <div className="serif" style={{ fontSize:24, color: todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626', lineHeight:1, fontWeight:700, letterSpacing:'-.02em' }}>
-                      {todayChecks}<span style={{ fontSize:14, color:'var(--dim)', fontWeight:400 }}>/{viewBuiltInActive.length}</span>
+                    <div className="serif" style={{ fontSize:24, color: taskPct>=80?'#10b981':taskPct>=50?'#d97706':'#dc2626', lineHeight:1, fontWeight:700, letterSpacing:'-.02em' }}>
+                      {doneTasks}<span style={{ fontSize:14, color:'var(--dim)', fontWeight:400 }}>/{totalTasks}</span>
                     </div>
                     <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>completed</div>
                   </div>
-                  <Ring pct={todayPct} size={58} color={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'} sw={5}/>
+                  <Ring pct={taskPct} size={58} color={taskPct>=80?'#10b981':taskPct>=50?'#d97706':'#dc2626'} sw={5}/>
                 </div>
               </div>
 
               {/* ── Unified ordered task list (all types) ──── */}
               {(()=>{
-                const daySpecific = customTasks.filter(t => !t.isDefault && t.specificDate === viewDateStr)
-                const unifiedList = getOrderedTasksForDate(viewDateStr, effectiveView, daySpecific)
                 return (
                   <>
               <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
@@ -4161,23 +4163,11 @@ function Dashboard({ theme, onToggleTheme }) {
                       </button>
                     </div>
 
-                    {/* Skipped habits & tasks — restore inline */}
-                    {(skippedBuiltInView.length > 0 || skippedTodayTasks.length > 0) && (
+                    {/* Skipped tasks — restore inline */}
+                    {skippedTodayTasks.length > 0 && (
                       <div style={{ marginTop:16, paddingTop:14, borderTop:'1px dashed var(--b2)' }}>
                         <div style={{ fontSize:10, color:'var(--dim)', fontWeight:700, letterSpacing:1,
                           marginBottom:8, textTransform:'uppercase' }}>{isViewingToday ? 'Skipped Today' : `Skipped ${FULL_DAYS[viewDayIdx]}`}</div>
-                        {skippedBuiltInView.map(h => (
-                          <div key={h.id} style={{ display:'flex', alignItems:'center', gap:8,
-                            padding:'8px 4px', borderBottom:'1px solid var(--b1)', opacity:.55 }}>
-                            <span style={{ fontSize:15, flexShrink:0 }}>{h.icon}</span>
-                            <span style={{ flex:1, fontSize:13, color:'var(--muted)',
-                              textDecoration:'line-through', minWidth:0 }}>{h.label}</span>
-                            {xpEnabled && <span style={{ fontSize:11, color:'var(--dim)',
-                              fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>+{h.xp} XP</span>}
-                            <button className="btn-outline" style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }}
-                              onClick={()=>unSkipHabitToday(h.id)}>Restore</button>
-                          </div>
-                        ))}
                         {skippedTodayTasks.map(t => (
                           <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8,
                             padding:'8px 4px', borderBottom:'1px solid var(--b1)', opacity:.55 }}>
@@ -4196,6 +4186,8 @@ function Dashboard({ theme, onToggleTheme }) {
                 )
               })()}
             </div>
+              )
+            })()}
 
             {/* Sidebar */}
             <div style={{ display:'flex', flexDirection:'column', gap:12 }}>

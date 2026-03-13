@@ -512,23 +512,11 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
 
   async function saveHabitEdit() {
     if (!editingHabit || !editingHabit.label.trim()) return
-    if (editingHabit.isBuiltIn) {
-      const newEdits = {
-        ...(habitPrefs.edits||{}),
-        [editingHabit.id]: {
-          label: editingHabit.label.trim(),
-          icon:  editingHabit.icon.trim() || (HABITS.find(h=>h.id===editingHabit.id)?.icon||'✅'),
-          xp:    Number(editingHabit.xp)||15,
-        }
-      }
-      await saveHabitPrefs({...habitPrefs, edits: newEdits})
-    } else {
-      await updateTask(editingHabit.id, {
-        label: editingHabit.label.trim(),
-        icon:  editingHabit.icon.trim()||'✅',
-        xp:    Number(editingHabit.xp)||15,
-      })
-    }
+    await updateTask(editingHabit.id, {
+      label: editingHabit.label.trim(),
+      icon:  editingHabit.icon.trim()||'✅',
+      xp:    Number(editingHabit.xp)||15,
+    })
     setEditingHabit(null)
   }
 
@@ -540,25 +528,16 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
   const isTeamOwner = isOnTeam && profile?.teams?.created_by === user?.id
   const isMemberOnly = isOnTeam && !isTeamOwner
 
-  // Computed: unified habit list for the manager card (memoized to avoid re-computing every render)
+  // Computed: custom default tasks only (built-in presets removed — AI planner + gcal)
   const effectiveHabits = useMemo(() => {
-    const builtInEff = HABITS
-      .filter(h => !(habitPrefs.hidden||[]).includes(h.id))
-      .map(h => { const ed=(habitPrefs.edits||{})[h.id]||{}; return {...h, label:ed.label||h.label, icon:ed.icon||h.icon, xp:ed.xp||h.xp, isBuiltIn:true} })
-    const customDefs  = isMemberOnly ? [] : customTasks.map(t => ({...t, isBuiltIn:false}))
-    const allHabItems = [...builtInEff, ...customDefs]
+    const customDefs = isMemberOnly ? [] : customTasks.map(t => ({...t, isBuiltIn:false}))
     const habOrderArr = habitPrefs.order || []
     if (habOrderArr.length) {
       const idx={}; habOrderArr.forEach((id,i)=>idx[id]=i)
-      allHabItems.sort((a,b)=>(idx[a.id]??999)-(idx[b.id]??999))
+      customDefs.sort((a,b)=>(idx[a.id]??999)-(idx[b.id]??999))
     }
-    return allHabItems
+    return customDefs
   }, [habitPrefs, customTasks, isMemberOnly])
-
-  const hiddenBuiltIns = useMemo(
-    () => HABITS.filter(h => (habitPrefs.hidden||[]).includes(h.id)),
-    [habitPrefs.hidden]
-  )
 
   // ── Income Goal Calculator helpers ──────────────────────────────────────────
   function getMonthsRemaining() {
@@ -908,11 +887,11 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                 )
               })()}
 
-              {/* Daily Habits & Tasks */}
+              {/* Custom Default Tasks */}
               <div className="card" style={{ padding:22 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:isMemberOnly?8:16 }}>
                   <div>
-                    <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:2 }}>Daily Habits &amp; Tasks</div>
+                    <div className="serif" style={{ fontSize:18, color:'var(--text)', marginBottom:2 }}>Custom Default Tasks</div>
                     <div style={{ fontSize:12, color:'var(--muted)' }}>
                       {isMemberOnly
                         ? 'Set by your team leader'
@@ -1025,46 +1004,18 @@ export default function ProfilePage({ onNavigate, theme, onToggleTheme, onTaskDe
                         )}
                         <span style={{ fontSize:18, flexShrink:0 }}>{h.icon}</span>
                         <span style={{ flex:1, fontSize:13, fontWeight:500, color:'var(--text)', minWidth:0 }}>{h.label}</span>
-                        {h.isBuiltIn && (
-                          <span style={{ fontSize:9, padding:'2px 6px', borderRadius:4,
-                            background:'var(--b1)', color:'var(--dim)', fontWeight:600,
-                            letterSpacing:.5, flexShrink:0, whiteSpace:'nowrap' }}>BUILT-IN</span>
-                        )}
                         <span style={{ fontSize:11, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>+{h.xp} XP</span>
                         {!isMemberOnly && (
                           <>
                             <button className="btn-outline" style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }}
                               onClick={()=>{ setEditingHabit({...h}); setNewTaskForm(null) }}>Edit</button>
-                            {h.isBuiltIn ? (
-                              <button className="btn-del" title="Hide from checklist" onClick={()=>hideBuiltIn(h.id)}>✕</button>
-                            ) : (
-                              <button className="btn-del" onClick={()=>deleteDefaultTask(h.id)}>✕</button>
-                            )}
+                            <button className="btn-del" onClick={()=>deleteDefaultTask(h.id)}>✕</button>
                           </>
                         )}
                       </div>
                     )}
                   </div>
                 ))}
-
-                {/* Hidden built-ins — restore section (owners and solo users only) */}
-                {hiddenBuiltIns.length > 0 && !isMemberOnly && (
-                  <div style={{ marginTop:18, paddingTop:14, borderTop:'1px dashed var(--b2)' }}>
-                    <div style={{ fontSize:10, color:'var(--dim)', fontWeight:700, letterSpacing:1,
-                      marginBottom:10, textTransform:'uppercase' }}>Hidden Habits</div>
-                    {hiddenBuiltIns.map(h => (
-                      <div key={h.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 4px',
-                        borderBottom:'1px solid var(--b1)', opacity:.55 }}>
-                        <span style={{ width:24, flexShrink:0 }}/>
-                        <span style={{ fontSize:16, flexShrink:0 }}>{h.icon}</span>
-                        <span style={{ flex:1, fontSize:13, color:'var(--muted)', textDecoration:'line-through' }}>{h.label}</span>
-                        <span style={{ fontSize:11, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>+{h.xp} XP</span>
-                        <button className="btn-outline" style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }}
-                          onClick={()=>restoreBuiltIn(h.id)}>Restore</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
 
                 {/* Deleted custom tasks — restore section */}
                 {deletedTasks.length > 0 && !isMemberOnly && (

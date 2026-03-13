@@ -4025,34 +4025,6 @@ function Dashboard({ theme, onToggleTheme }) {
             </button>
           </div>
 
-          {/* ── Day Navigator ── */}
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:12, marginBottom:16,
-            padding:'10px 16px', background:'var(--surface)', border:'1px solid var(--b2)', borderRadius:10 }}>
-            {!isViewingToday && (
-              <button onClick={() => setViewDayOffset(0)}
-                style={{ background:'rgba(59,130,246,.1)', color:'#3b82f6', border:'1px solid rgba(59,130,246,.3)',
-                  borderRadius:6, fontSize:11, fontWeight:600, padding:'5px 12px', cursor:'pointer',
-                  transition:'all .15s' }}>Today</button>
-            )}
-            <button onClick={() => setViewDayOffset(o => o - 1)} disabled={!canGoBack}
-              style={{ background:'none', border:'1px solid var(--b2)', borderRadius:6, cursor:canGoBack?'pointer':'default',
-                color:canGoBack?'var(--text)':'var(--dim)', fontSize:14, padding:'4px 10px', opacity:canGoBack?1:.4,
-                transition:'all .15s' }}>◀</button>
-            <div style={{ textAlign:'center', minWidth:180 }}>
-              <div style={{ fontSize:14, fontWeight:600, color:'var(--text)', letterSpacing:'-.01em' }}>
-                {FULL_DAYS[viewDayIdx]}, {viewDate.toLocaleDateString('en-US', { month:'long', day:'numeric' })}
-              </div>
-              {!isViewingToday && (
-                <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>Week {viewWeek + 1}</div>
-              )}
-            </div>
-            <button onClick={() => setViewDayOffset(o => o + 1)} disabled={!canGoForward}
-              style={{ background:'none', border:'1px solid var(--b2)', borderRadius:6, cursor:canGoForward?'pointer':'default',
-                color:canGoForward?'var(--text)':'var(--dim)', fontSize:14, padding:'4px 10px', opacity:canGoForward?1:.4,
-                transition:'all .15s' }}>▶</button>
-          </div>
-
-
           <div className="today-grid">
 
             {/* Tasks checklist */}
@@ -4068,6 +4040,32 @@ function Dashboard({ theme, onToggleTheme }) {
               const taskPct = totalTasks > 0 ? Math.round(doneTasks / totalTasks * 100) : 0
               return (
             <div className="card" style={{ padding:24, borderTop:`2.5px solid ${isViewingToday ? (taskPct>=80?'#10b981':taskPct>=50?'#d97706':'#dc2626') : '#3b82f6'}` }}>
+              {/* Day Navigator */}
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:12, marginBottom:16,
+                padding:'8px 12px', background:'var(--bg)', borderRadius:8 }}>
+                {!isViewingToday && (
+                  <button onClick={() => setViewDayOffset(0)}
+                    style={{ background:'rgba(59,130,246,.1)', color:'#3b82f6', border:'1px solid rgba(59,130,246,.3)',
+                      borderRadius:6, fontSize:11, fontWeight:600, padding:'5px 12px', cursor:'pointer',
+                      transition:'all .15s' }}>Today</button>
+                )}
+                <button onClick={() => setViewDayOffset(o => o - 1)} disabled={!canGoBack}
+                  style={{ background:'none', border:'1px solid var(--b2)', borderRadius:6, cursor:canGoBack?'pointer':'default',
+                    color:canGoBack?'var(--text)':'var(--dim)', fontSize:14, padding:'4px 10px', opacity:canGoBack?1:.4,
+                    transition:'all .15s' }}>◀</button>
+                <div style={{ textAlign:'center', minWidth:180 }}>
+                  <div style={{ fontSize:14, fontWeight:600, color:'var(--text)', letterSpacing:'-.01em' }}>
+                    {FULL_DAYS[viewDayIdx]}, {viewDate.toLocaleDateString('en-US', { month:'long', day:'numeric' })}
+                  </div>
+                  {!isViewingToday && (
+                    <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>Week {viewWeek + 1}</div>
+                  )}
+                </div>
+                <button onClick={() => setViewDayOffset(o => o + 1)} disabled={!canGoForward}
+                  style={{ background:'none', border:'1px solid var(--b2)', borderRadius:6, cursor:canGoForward?'pointer':'default',
+                    color:canGoForward?'var(--text)':'var(--dim)', fontSize:14, padding:'4px 10px', opacity:canGoForward?1:.4,
+                    transition:'all .15s' }}>▶</button>
+              </div>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
                 <div>
                   <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:3, letterSpacing:'-.015em' }}>

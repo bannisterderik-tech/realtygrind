@@ -3882,6 +3882,8 @@ function Dashboard({ theme, onToggleTheme }) {
                     fontFamily:"'JetBrains Mono',monospace" }}>{streak}-day streak</span>
                 </div>
               )}
+              {!(profile?.team_id && profile?.teams?.team_prefs?.ai_tools?.briefing_enabled === false) &&
+               !((!profile?.team_id) && habitPrefs?.morning_briefing?.enabled === false) && (
               <button onClick={() => briefingData ? setBriefingVisible(true) : fetchBriefing(true)}
                 disabled={briefingLoading}
                 style={{ display:'flex', alignItems:'center', gap:5, padding:'4px 12px',
@@ -3892,6 +3894,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 <span style={{ fontSize:11, fontWeight:700, color:'#3b82f6',
                   fontFamily:"'JetBrains Mono',monospace" }}>{briefingLoading ? 'Loading…' : 'Briefing'}</span>
               </button>
+              )}
               {(() => {
                 const slk = profile?.teams?.team_prefs?.slack_url
                 return slk ? (

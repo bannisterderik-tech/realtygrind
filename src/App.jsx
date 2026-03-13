@@ -269,18 +269,36 @@ function AddTaskModal({ onSubmit, onClose }) {
 
 // ─── AI Task Gen Modal ────────────────────────────────────────────────────────
 
-function AITaskGenModal({ scope, onClose, onGenerate, onInsert }) {
+function AITaskGenModal({ scope, onClose, onGenerate, onInsert, onClear }) {
   const [phase, setPhase]       = useState('input') // input | loading | preview | error
   const [guidance, setGuidance] = useState('')
   const [tasks, setTasks]       = useState([])
   const [summary, setSummary]   = useState('')
   const [selected, setSelected] = useState({}) // { idx: true }
   const [error, setError]       = useState('')
+  const [clearFirst, setClearFirst] = useState(false)
 
   async function handleGenerate() {
     setPhase('loading')
     setError('')
     try {
+      if (clearFirst && onClear) {
+        const today = new Date()
+        let dates = []
+        if (scope === 'week') {
+          const dayOfWeek = today.getDay()
+          const monday = new Date(today)
+          monday.setDate(today.getDate() - ((dayOfWeek + 6) % 7))
+          for (let i = 0; i < 7; i++) {
+            const d = new Date(monday)
+            d.setDate(monday.getDate() + i)
+            dates.push(d.toISOString().slice(0, 10))
+          }
+        } else {
+          dates = [today.toISOString().slice(0, 10)]
+        }
+        await onClear(dates)
+      }
       const result = await onGenerate(scope, guidance)
       if (result.error) { setError(result.error); setPhase('error'); return }
       setTasks(result.tasks || [])
@@ -333,9 +351,28 @@ function AITaskGenModal({ scope, onClose, onGenerate, onInsert }) {
             <div className="label" style={{ marginBottom:5 }}>Focus areas <span style={{ fontWeight:400, color:'var(--dim)' }}>(optional)</span></div>
             <textarea className="field-input" value={guidance} onChange={e => setGuidance(e.target.value)}
               placeholder="e.g. Focus on buyer follow-ups, or prep for Thursday open house"
-              rows={2} style={{ resize:'vertical', marginBottom:20, fontSize:13 }}/>
+              rows={2} style={{ resize:'vertical', marginBottom:14, fontSize:13 }}/>
+            <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', marginBottom:16,
+              padding:'10px 12px', borderRadius:8, background: clearFirst ? 'rgba(239,68,68,.06)' : 'var(--bg2)',
+              border: clearFirst ? '1px solid rgba(239,68,68,.25)' : '1px solid var(--b1)', transition:'all .15s' }}>
+              <button onClick={() => setClearFirst(!clearFirst)}
+                style={{ width:18, height:18, borderRadius:4, flexShrink:0,
+                  border: clearFirst ? '2px solid #ef4444' : '2px solid var(--b2)',
+                  background: clearFirst ? 'rgba(239,68,68,.15)' : 'transparent',
+                  cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                {clearFirst && <span style={{ fontSize:10, color:'#ef4444', fontWeight:900 }}>✓</span>}
+              </button>
+              <div>
+                <div style={{ fontSize:12, fontWeight:600, color: clearFirst ? '#ef4444' : 'var(--text)' }}>
+                  🗑️ Clear existing tasks & rebuild
+                </div>
+                <div style={{ fontSize:11, color:'var(--dim)' }}>
+                  Remove current {scope === 'week' ? 'week' : 'day'} tasks (keeps calendar events) and start fresh
+                </div>
+              </div>
+            </label>
             <button className="btn-gold" onClick={handleGenerate} style={{ width:'100%', justifyContent:'center', fontSize:14, padding:'12px 0', gap:8 }}>
-              ✨ Generate Tasks
+              ✨ {clearFirst ? 'Clear & Generate' : 'Generate Tasks'}
             </button>
           </>
         )}
@@ -2667,6 +2704,24 @@ function Dashboard({ theme, onToggleTheme }) {
       console.error('generateAiTasks fetch error:', e)
       return { error: 'Network error. Please check your connection.' }
     }
+  }
+
+  // Clear all non-gcal tasks for given dates (so AI can rebuild fresh)
+  async function clearTasksForDates(dates) {
+    const toRemove = customTasks.filter(t =>
+      t.specificDate && dates.includes(t.specificDate) && !t.googleEventId
+    )
+    if (!toRemove.length) return 0
+    setCustomTasks(prev => prev.filter(t => !toRemove.find(r => r.id === t.id)))
+    try {
+      const ids = toRemove.map(t => t.id)
+      const { error } = await supabase.from('custom_tasks').delete().in('id', ids).eq('user_id', user.id)
+      if (error) throw error
+    } catch (e) {
+      console.error('clearTasksForDates error:', e)
+      setCustomTasks(prev => [...prev, ...toRemove]) // rollback
+    }
+    return toRemove.length
   }
 
   async function insertAiGeneratedTasks(tasks) {
@@ -5790,6 +5845,7 @@ function Dashboard({ theme, onToggleTheme }) {
           onClose={() => setAiTaskGenScope(null)}
           onGenerate={generateAiTasks}
           onInsert={insertAiGeneratedTasks}
+          onClear={clearTasksForDates}
         />
       )}
 

@@ -3410,7 +3410,8 @@ function Dashboard({ theme, onToggleTheme }) {
   const xpEnabled = activePrefs?.xp_enabled !== false
 
   // ── Effective tasks: built-in presets (user-toggled) + custom defaults ──
-  const enabledDefaults = activePrefs?.enabled_defaults || []
+  // enabled_defaults is always personal (from habitPrefs), not team-level
+  const enabledDefaults = habitPrefs?.enabled_defaults || []
   const builtInEffective = useMemo(() =>
     HABITS.filter(h => enabledDefaults.includes(h.id)).map(h => ({ ...h, isBuiltIn: true }))
   , [enabledDefaults])

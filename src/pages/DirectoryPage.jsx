@@ -25,6 +25,17 @@ const AI_TOOLS = [
     desc: 'AI-generated listing presentations and slideshows. Choose a style, enter your content, and present.',
     page: 'presentations',
   },
+  {
+    id: 'cma',
+    name: 'CMA Builder',
+    icon: '📊',
+    category: 'AI',
+    catColor: '#059669',
+    catBg: 'rgba(5,150,105,.1)',
+    catBorder: 'rgba(5,150,105,.25)',
+    desc: 'AI-powered Comparative Market Analysis — comp scoring, price adjustments, and client-ready reports.',
+    page: 'cma',
+  },
 ]
 
 const CALCULATORS = [

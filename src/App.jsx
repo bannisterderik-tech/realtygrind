@@ -17,6 +17,7 @@ const AdminPage       = lazy(() => import('./pages/AdminPage'))
 const TermsPage       = lazy(() => import('./pages/TermsPage'))
 const AffiliatesPage     = lazy(() => import('./pages/AffiliatesPage'))
 const PresentationsPage  = lazy(() => import('./pages/PresentationsPage'))
+const CMAPage            = lazy(() => import('./pages/CMAPage'))
 import AIChatWidget from './components/AIChatWidget'
 import { CSS, Ring, StatCard, Wordmark, Loader, ThemeToggle, getRank, fmtMoney, resolveCommission, RANKS, CAT, formatPrice, stripPrice, daysOnMarket, LEAD_SOURCES, LEAD_SOURCE_COLORS } from './design'
 import { HABITS } from './habits'
@@ -3693,7 +3694,7 @@ function Dashboard({ theme, onToggleTheme }) {
           <button className={`nav-btn mob-hide${page==='teams'?' active':''}`} onClick={()=>setPage('teams')}>👥 Teams</button>
           <button className={`nav-btn mob-hide${page==='coaching'?' active':''}`} onClick={()=>setPage('coaching')}>📝 Coaching</button>
 
-          <button className={`nav-btn mob-hide${(page==='directory'||page==='apod'||page==='ai-assistant'||page==='presentations')?' active':''}`} onClick={()=>setPage('directory')}>🔗 Tools</button>
+          <button className={`nav-btn mob-hide${(page==='directory'||page==='apod'||page==='ai-assistant'||page==='presentations'||page==='cma')?' active':''}`} onClick={()=>setPage('directory')}>🔗 Tools</button>
           <button className={`nav-btn mob-hide${page==='affiliates'?' active':''}`} onClick={()=>setPage('affiliates')}>💰 Affiliates</button>
 
           {profileAppRole === 'admin' && (
@@ -5886,6 +5887,7 @@ function Dashboard({ theme, onToggleTheme }) {
       {page==='terms'     && <ErrorBoundary key="terms" onReset={()=>setPage('dashboard')}><TermsPage     onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme}/></ErrorBoundary>}
       {page==='affiliates' && <ErrorBoundary key="affiliates" onReset={()=>setPage('dashboard')}><AffiliatesPage onNavigate={()=>setPage('billing')} theme={theme}/></ErrorBoundary>}
       {page==='presentations' && <ErrorBoundary key="presentations" onReset={()=>setPage('dashboard')}><PresentationsPage onNavigate={setPage} theme={theme} onToggleTheme={onToggleTheme} onPresentMode={setPresentMode}/></ErrorBoundary>}
+      {page==='cma' && <ErrorBoundary key="cma" onReset={()=>setPage('dashboard')}><CMAPage onNavigate={setPage} theme={theme}/></ErrorBoundary>}
       </Suspense>
       )}
       {/* AI Assistant now handled by floating widget — see useEffect redirect below */}

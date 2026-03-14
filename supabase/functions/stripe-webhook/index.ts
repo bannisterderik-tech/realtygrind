@@ -53,6 +53,10 @@ Deno.serve(async (req) => {
   const presAnnual = Deno.env.get('STRIPE_PRICE_PRESENTATIONS_ANNUAL')
   if (presMonthly) ADDON_PRICES[presMonthly] = 'presentations'
   if (presAnnual) ADDON_PRICES[presAnnual] = 'presentations'
+  const cmaMonthly = Deno.env.get('STRIPE_PRICE_CMA_MONTHLY')
+  const cmaAnnual = Deno.env.get('STRIPE_PRICE_CMA_ANNUAL')
+  if (cmaMonthly) ADDON_PRICES[cmaMonthly] = 'cma'
+  if (cmaAnnual) ADDON_PRICES[cmaAnnual] = 'cma'
 
   let event: Stripe.Event
   try {
@@ -116,7 +120,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Add-on checkout (e.g. Presentation Builder) ──
+    // ── Add-on checkout (e.g. Presentation Builder, CMA Builder) ──
     if (addonId === 'presentations' && teamId) {
       const { error } = await supabase.from('teams').update({
         presentations_addon_status: billingStatus,
@@ -129,6 +133,20 @@ Deno.serve(async (req) => {
         const prefs = team.team_prefs || {}
         const aiTools = prefs.ai_tools || {}
         aiTools.presentations_enabled = true
+        await supabase.from('teams').update({ team_prefs: { ...prefs, ai_tools: aiTools } }).eq('id', teamId)
+      }
+    } else if (addonId === 'cma' && teamId) {
+      const { error } = await supabase.from('teams').update({
+        cma_addon_status: billingStatus,
+        cma_stripe_subscription_id: session.subscription as string,
+      }).eq('id', teamId)
+      if (error) console.error('teams update error (cma addon checkout):', error.message)
+      // Also enable the tool in team_prefs
+      const { data: team } = await supabase.from('teams').select('team_prefs').eq('id', teamId).single()
+      if (team) {
+        const prefs = team.team_prefs || {}
+        const aiTools = prefs.ai_tools || {}
+        aiTools.cma_enabled = true
         await supabase.from('teams').update({ team_prefs: { ...prefs, ai_tools: aiTools } }).eq('id', teamId)
       }
     } else {
@@ -178,6 +196,11 @@ Deno.serve(async (req) => {
         presentations_addon_status: status,
       }).eq('presentations_stripe_subscription_id', sub.id)
       if (error) console.error('teams update error (addon sub updated):', error.message)
+    } else if (isAddon === 'cma') {
+      const { error } = await supabase.from('teams').update({
+        cma_addon_status: status,
+      }).eq('cma_stripe_subscription_id', sub.id)
+      if (error) console.error('teams update error (cma addon sub updated):', error.message)
     } else {
       // Base plan update
       const updateData: Record<string, unknown> = { billing_status: status }
@@ -202,17 +225,27 @@ Deno.serve(async (req) => {
     const sub        = event.data.object as Stripe.Subscription
     const customerId = sub.customer as string
 
-    // Check if this is an add-on subscription
-    const { data: addonTeam } = await supabase.from('teams')
+    // Check if this is an add-on subscription (presentations or CMA)
+    const { data: presTeam } = await supabase.from('teams')
       .select('id')
       .eq('presentations_stripe_subscription_id', sub.id)
       .single()
 
-    if (addonTeam) {
+    const { data: cmaTeam } = await supabase.from('teams')
+      .select('id')
+      .eq('cma_stripe_subscription_id', sub.id)
+      .single()
+
+    if (presTeam) {
       const { error } = await supabase.from('teams').update({
         presentations_addon_status: 'cancelled',
-      }).eq('id', addonTeam.id)
+      }).eq('id', presTeam.id)
       if (error) console.error('teams update error (addon sub deleted):', error.message)
+    } else if (cmaTeam) {
+      const { error } = await supabase.from('teams').update({
+        cma_addon_status: 'cancelled',
+      }).eq('id', cmaTeam.id)
+      if (error) console.error('teams update error (cma addon sub deleted):', error.message)
     } else {
       // Base plan deletion
       const { error } = await supabase

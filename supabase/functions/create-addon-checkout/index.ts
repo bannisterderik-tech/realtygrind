@@ -52,6 +52,8 @@ function getSafeReturnUrl(returnUrl: string | undefined): string {
 const ADDON_PRICE_MAP: Record<string, string | undefined> = {
   presentations_monthly: Deno.env.get('STRIPE_PRICE_PRESENTATIONS_MONTHLY'),
   presentations_annual:  Deno.env.get('STRIPE_PRICE_PRESENTATIONS_ANNUAL'),
+  cma_monthly:           Deno.env.get('STRIPE_PRICE_CMA_MONTHLY'),
+  cma_annual:            Deno.env.get('STRIPE_PRICE_CMA_ANNUAL'),
 }
 
 Deno.serve(async (req) => {
@@ -102,7 +104,8 @@ Deno.serve(async (req) => {
     try { body = await req.json() } catch { return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } }) }
     const { addonId, isAnnual, returnUrl } = body as { addonId: string; isAnnual: boolean; returnUrl?: string }
 
-    if (addonId !== 'presentations') {
+    const VALID_ADDONS = ['presentations', 'cma']
+    if (!VALID_ADDONS.includes(addonId)) {
       return new Response(
         JSON.stringify({ error: 'Invalid addonId' }),
         { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } }
@@ -117,7 +120,7 @@ Deno.serve(async (req) => {
     // Fetch profile + team to validate ownership
     const { data: profile } = await admin
       .from('profiles')
-      .select('*, teams(id, created_by, presentations_addon_status)')
+      .select('*, teams(id, created_by, presentations_addon_status, cma_addon_status)')
       .eq('id', user.id)
       .single()
 
@@ -146,14 +149,17 @@ Deno.serve(async (req) => {
     }
 
     // Check if already active
-    if (profile.teams?.presentations_addon_status === 'active' || profile.teams?.presentations_addon_status === 'trialing') {
+    const addonStatusField = addonId === 'cma' ? 'cma_addon_status' : 'presentations_addon_status'
+    const currentAddonStatus = profile.teams?.[addonStatusField]
+    if (currentAddonStatus === 'active' || currentAddonStatus === 'trialing') {
+      const addonLabel = addonId === 'cma' ? 'CMA Builder' : 'Presentation Builder'
       return new Response(
-        JSON.stringify({ error: 'Presentation Builder add-on is already active.' }),
+        JSON.stringify({ error: `${addonLabel} add-on is already active.` }),
         { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } }
       )
     }
 
-    const key = `presentations_${isAnnual ? 'annual' : 'monthly'}`
+    const key = `${addonId}_${isAnnual ? 'annual' : 'monthly'}`
     const priceId = ADDON_PRICE_MAP[key]
     if (!priceId) {
       console.error(`Missing price config for key: ${key}. Set the STRIPE_PRICE_PRESENTATIONS_* secrets.`)

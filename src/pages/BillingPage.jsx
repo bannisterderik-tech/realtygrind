@@ -23,14 +23,16 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
   const isTeamOwner = profile?.team_id && profile?.teams?.created_by === user?.id
   const addonStatus = profile?.teams?.presentations_addon_status
   const addonActive = addonStatus === 'active' || addonStatus === 'trialing'
+  const cmaAddonStatus = profile?.teams?.cma_addon_status
+  const cmaAddonActive = cmaAddonStatus === 'active' || cmaAddonStatus === 'trialing'
 
-  async function handleAddonCheckout() {
+  async function handleAddonCheckout(addonId = 'presentations') {
     if (addonLoading) return
     setAddonLoading(true); setError('')
     try {
       if (!supabase) { setError('Service unavailable'); return }
       const { data, error: e } = await supabase.functions.invoke('create-addon-checkout', {
-        body: { addonId: 'presentations', returnUrl: window.location.origin }
+        body: { addonId, returnUrl: window.location.origin }
       })
       if (e) {
         const body = typeof e.context === 'object' ? e.context : null
@@ -277,7 +279,50 @@ export default function BillingPage({ onNavigate, theme, onToggleTheme }) {
                         {portalLoading ? 'Opening...' : 'Manage'}
                       </button>
                     ) : (
-                      <button className="btn-gold" onClick={handleAddonCheckout} disabled={addonLoading}
+                      <button className="btn-gold" onClick={() => handleAddonCheckout('presentations')} disabled={addonLoading}
+                        style={{ fontSize:13, padding:'10px 22px', whiteSpace:'nowrap' }}>
+                        {addonLoading ? 'Redirecting...' : 'Subscribe'}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* ── CMA Builder add-on ── */}
+                  <div className="card" style={{ padding:24, display:'flex', alignItems:'center', justifyContent:'space-between',
+                    gap:16, flexWrap:'wrap', borderLeft:'3px solid #059669', marginTop:14 }}>
+                    <div style={{ flex:1, minWidth:200 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
+                        <span style={{ fontSize:20 }}>📊</span>
+                        <span className="serif" style={{ fontSize:18, color:'var(--text)' }}>CMA Builder</span>
+                        {cmaAddonActive && (
+                          <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:12,
+                            background:'rgba(16,185,129,.12)', color:'#059669', border:'1px solid rgba(16,185,129,.25)' }}>
+                            {cmaAddonStatus === 'trialing' ? 'TRIAL' : 'ACTIVE'}
+                          </span>
+                        )}
+                        {cmaAddonStatus === 'past_due' && (
+                          <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:12,
+                            background:'rgba(245,158,11,.12)', color:'#f59e0b', border:'1px solid rgba(245,158,11,.25)' }}>
+                            PAST DUE
+                          </span>
+                        )}
+                        {cmaAddonStatus === 'cancelled' && (
+                          <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:12,
+                            background:'rgba(100,100,100,.1)', color:'var(--muted)', border:'1px solid var(--b2)' }}>
+                            CANCELLED
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize:13, color:'var(--muted)', lineHeight:1.6 }}>
+                        AI-powered Comparative Market Analysis reports — comp scoring, price adjustments, and client-ready PDF output.
+                      </div>
+                    </div>
+                    {cmaAddonActive ? (
+                      <button className="btn-outline" onClick={openPortal} disabled={portalLoading}
+                        style={{ fontSize:13, padding:'10px 20px', whiteSpace:'nowrap' }}>
+                        {portalLoading ? 'Opening...' : 'Manage'}
+                      </button>
+                    ) : (
+                      <button className="btn-gold" onClick={() => handleAddonCheckout('cma')} disabled={addonLoading}
                         style={{ fontSize:13, padding:'10px 22px', whiteSpace:'nowrap' }}>
                         {addonLoading ? 'Redirecting...' : 'Subscribe'}
                       </button>

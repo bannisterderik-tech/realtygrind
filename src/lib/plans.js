@@ -67,6 +67,9 @@ export function hasActiveAddon(profile, addonName) {
   if (addonName === 'presentations') {
     return team.presentations_addon_status === 'active' || team.presentations_addon_status === 'trialing'
   }
+  if (addonName === 'cma') {
+    return team.cma_addon_status === 'active' || team.cma_addon_status === 'trialing'
+  }
   return false
 }
 

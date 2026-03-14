@@ -220,7 +220,7 @@ export default function CMAPage({ onNavigate, theme }) {
         generatingRef.current = false
       }
     }
-  }, [address, style, cmaTheme, colorScheme, searchRadius, daysBack, maxComps, propertyType, user?.id])
+  }, [address, colorScheme, searchRadius, daysBack, maxComps, propertyType, user?.id])
 
   // ── Paywall ──
   if (!hasBilling) {

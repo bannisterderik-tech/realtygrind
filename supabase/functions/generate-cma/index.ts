@@ -71,7 +71,7 @@ function adjCell(val: number | undefined): string {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// HTML Template Builder — no AI needed
+// HTML Template Builder — pixel-perfect match to approved mockup
 // ══════════════════════════════════════════════════════════════════════════════
 function buildReportHtml(opts: {
   address: string
@@ -116,6 +116,11 @@ function buildReportHtml(opts: {
   const yearBuilt = subjectData.yearBuilt ?? 'N/A'
   const pType = subjectData.propertyType || propertyType
 
+  // Assessed value + last sale from subject data
+  const assessedVal = subjectData.assessedValue || subjectData.taxAssessment
+  const lastSalePrice = subjectData.lastSalePrice as number | undefined
+  const lastSaleDate = subjectData.lastSaleDate as string | undefined
+
   const pLow = pricingStrategy.low as number
   const pHigh = pricingStrategy.high as number
   const pRec = pricingStrategy.recommended_price as number
@@ -135,7 +140,7 @@ function buildReportHtml(opts: {
   const adjComps = compsAnalyzed.slice(0, 6)
 
   // ── Comps table rows ──
-  const compsRows = topComps.map((c, i) => {
+  const compsRows = topComps.map((c, _i) => {
     const cAddr = (c.address as string || '').split(',')
     const cStreet = esc(cAddr[0] || '')
     const cCity = esc(cAddr.slice(1).join(',').trim())
@@ -143,7 +148,7 @@ function buildReportHtml(opts: {
     const cSqft = c.squareFootage as number
     const cPsf = cSqft ? Math.round(cPrice / cSqft) : 0
     const cScore = c.relevanceScore as number || 0
-    return `<tr${i % 2 ? '' : ''}>
+    return `        <tr>
           <td><div class="comp-address">${cStreet}</div><div class="comp-meta">${cCity}</div></td>
           <td><div class="comp-price">${$(cPrice)}</div><div class="comp-ppsf">$${cPsf}/sf</div></td>
           <td>${c.bedrooms || 'N/A'} / ${c.bathrooms || 'N/A'}</td>
@@ -192,25 +197,36 @@ function buildReportHtml(opts: {
 
   // ── Contact info line ──
   const contactParts: string[] = []
-  if (agentEmail) contactParts.push(esc(agentEmail))
   if (agentPhone) contactParts.push(esc(agentPhone))
+  if (agentEmail) contactParts.push(esc(agentEmail))
   if (agentLicense) contactParts.push(`Lic# ${esc(agentLicense)}`)
   const contactLine = contactParts.length > 0
-    ? `<div class="agent-contact">${contactParts.join(' · ')}</div>`
+    ? `<div class="agent-contact">${contactParts.join(' &middot; ')}</div>`
     : ''
 
-  const agentBar = `
-      <div class="cover-agent">
-        <div class="agent-info">
-          ${avatarHtml}
-          <div>
-            <div class="agent-name">${esc(agentName)}</div>
-            <div class="agent-title">${esc(teamName)}</div>
-            ${contactLine}
-          </div>
-        </div>
-        <div class="cover-branding">${logosHtml}<span style="opacity:.5">Powered by RealtyGrind AI</span></div>
+  // ── Assessed value card ──
+  const assessedCard = assessedVal
+    ? `<div class="subject-card">
+        <div class="subject-label">Assessed Value</div>
+        <div class="subject-value">${$(typeof assessedVal === 'number' ? assessedVal : (assessedVal as Record<string, unknown>)?.value as number)}</div>
+        <div class="subject-detail-row">County tax records</div>
       </div>`
+    : ''
+
+  // ── Last sale card ──
+  const lastSaleCard = lastSalePrice
+    ? `<div class="subject-card">
+        <div class="subject-label">Last Sale</div>
+        <div class="subject-value">${$(lastSalePrice)}</div>
+        <div class="subject-detail-row">${lastSaleDate ? fmtDate(lastSaleDate) : 'N/A'}${pRec && lastSalePrice ? ` &middot; +${$(pRec - lastSalePrice)} estimated appreciation` : ''}</div>
+      </div>`
+    : ''
+
+  // ── Trend color ──
+  const trendColor = mTrend === 'appreciating' ? '#34d399' : mTrend === 'declining' ? '#f87171' : '#fbbf24'
+
+  // ── Price per sqft note ──
+  const psfNote = pPsf ? ` at $${Math.round(pPsf)}/sf` : ''
 
   // ── Build full HTML ──
   return `<!DOCTYPE html>
@@ -219,6 +235,9 @@ function buildReportHtml(opts: {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CMA Report — ${esc(address)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     --primary: ${primaryColor};
@@ -239,131 +258,587 @@ function buildReportHtml(opts: {
     --bg-card: ${isDark ? '#18181b' : '#ffffff'};
     --border: ${isDark ? '#27272a' : '#e2e8f0'};
     --border-light: ${isDark ? '#1e1e24' : '#f1f5f9'};
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.05);
     --shadow: 0 4px 24px rgba(0,0,0,.06);
     --shadow-lg: 0 12px 40px rgba(0,0,0,.08);
     --radius: 16px;
     --radius-sm: 10px;
   }
 
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family: -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif; color: var(--text); background: var(--bg-subtle); line-height: 1.6; -webkit-font-smoothing: antialiased; }
-  .page { max-width: 1100px; margin: 0 auto; background: var(--bg); }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
 
+  body {
+    font-family: 'Inter', -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
+    color: var(--text);
+    background: var(--bg-subtle);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 1100px;
+    margin: 0 auto;
+    background: var(--bg);
+  }
+
+  /* ── Print — CRITICAL: makes cover page print correctly ── */
   @media print {
-    body { background: white; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+    body { background: white !important; margin: 0 !important; padding: 0 !important; }
     .page { max-width: none; box-shadow: none; }
-    .cover { min-height: auto; padding: 60px 72px 80px; }
-    .cover-agent { position: relative; bottom: auto; margin-top: 48px; }
+    .cover {
+      min-height: 0 !important;
+      height: auto !important;
+      padding: 60px 56px 40px !important;
+      page-break-after: always;
+      page-break-inside: avoid;
+      display: block !important;
+    }
+    .cover::before, .cover::after { display: none !important; }
+    .cover-agent {
+      position: relative !important;
+      bottom: auto !important;
+      left: auto !important;
+      right: auto !important;
+      margin-top: 40px !important;
+    }
+    .section { padding: 40px 56px !important; }
     .page-break { page-break-before: always; }
+    .no-print { display: none !important; }
+    .report-footer { padding: 24px 56px !important; }
   }
 
   /* ── Cover ── */
-  .cover { position: relative; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; padding: 80px 72px; background: linear-gradient(135deg, #0f172a 0%, ${primaryColor}40 40%, ${primaryColor} 100%); color: white; overflow: hidden; }
-  .cover::before { content: ''; position: absolute; top: -200px; right: -200px; width: 600px; height: 600px; border-radius: 50%; background: radial-gradient(circle, ${primaryColor}40 0%, transparent 70%); }
-  .cover::after { content: ''; position: absolute; bottom: -150px; left: -100px; width: 400px; height: 400px; border-radius: 50%; background: radial-gradient(circle, rgba(245,158,11,.12) 0%, transparent 70%); }
-  .cover-badge { display: inline-flex; align-items: center; gap: 8px; padding: 8px 18px; border-radius: 100px; background: rgba(255,255,255,.1); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.15); font-size: 13px; font-weight: 500; letter-spacing: .5px; text-transform: uppercase; color: rgba(255,255,255,.85); margin-bottom: 32px; position: relative; z-index: 1; }
-  .cover-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
-  .cover h1 { font-size: 52px; font-weight: 700; line-height: 1.15; margin-bottom: 16px; position: relative; z-index: 1; }
-  .cover .address-sub { font-size: 22px; font-weight: 300; color: rgba(255,255,255,.7); margin-bottom: 48px; position: relative; z-index: 1; }
-  .cover-meta { display: flex; gap: 40px; position: relative; z-index: 1; }
-  .cover-meta-item { display: flex; flex-direction: column; gap: 4px; }
-  .cover-meta-label { font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,.45); }
-  .cover-meta-value { font-size: 18px; font-weight: 600; color: white; }
-  .cover-agent { position: absolute; bottom: 48px; left: 72px; right: 72px; display: flex; align-items: center; justify-content: space-between; padding-top: 24px; border-top: 1px solid rgba(255,255,255,.12); z-index: 1; }
-  .agent-info { display: flex; align-items: center; gap: 14px; }
-  .agent-avatar { width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--accent)); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; }
+  .cover {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 80px 72px;
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 40%, ${primaryColor} 100%);
+    color: white;
+    overflow: hidden;
+  }
+  .cover::before {
+    content: '';
+    position: absolute;
+    top: -200px; right: -200px;
+    width: 600px; height: 600px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(59,130,246,.25) 0%, transparent 70%);
+  }
+  .cover::after {
+    content: '';
+    position: absolute;
+    bottom: -150px; left: -100px;
+    width: 400px; height: 400px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(245,158,11,.12) 0%, transparent 70%);
+  }
+  .cover-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    border-radius: 100px;
+    background: rgba(255,255,255,.1);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,.15);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.85);
+    margin-bottom: 32px;
+    position: relative;
+    z-index: 1;
+    width: fit-content;
+  }
+  .cover-badge .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: .5; transform: scale(1.3); }
+  }
+  .cover h1 {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 52px;
+    font-weight: 700;
+    line-height: 1.15;
+    margin-bottom: 16px;
+    position: relative;
+    z-index: 1;
+  }
+  .cover .address-sub {
+    font-size: 22px;
+    font-weight: 300;
+    color: rgba(255,255,255,.7);
+    margin-bottom: 48px;
+    position: relative;
+    z-index: 1;
+  }
+  .cover-meta {
+    display: flex;
+    gap: 40px;
+    position: relative;
+    z-index: 1;
+  }
+  .cover-meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .cover-meta-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.45);
+  }
+  .cover-meta-value {
+    font-size: 18px;
+    font-weight: 600;
+    color: white;
+  }
+  .cover-agent {
+    position: absolute;
+    bottom: 48px;
+    left: 72px;
+    right: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 24px;
+    border-top: 1px solid rgba(255,255,255,.12);
+    z-index: 1;
+  }
+  .agent-info {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .agent-avatar {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 17px;
+    color: white;
+    flex-shrink: 0;
+  }
+  .agent-photo {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(255,255,255,.2);
+    flex-shrink: 0;
+  }
   .agent-name { font-weight: 600; font-size: 15px; }
   .agent-title { font-size: 13px; color: rgba(255,255,255,.5); }
   .agent-contact { font-size: 11px; color: rgba(255,255,255,.4); margin-top: 2px; }
-  .agent-photo { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255,255,255,.2); }
-  .cover-branding { font-size: 13px; color: rgba(255,255,255,.4); font-weight: 500; display: flex; align-items: center; gap: 10px; flex-direction: column; align-items: flex-end; }
-  .cover-logos { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
-  .cover-logo-img { max-height: 36px; max-width: 120px; object-fit: contain; }
+  .cover-branding {
+    font-size: 13px;
+    color: rgba(255,255,255,.4);
+    font-weight: 500;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+  }
+  .cover-logos {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .cover-logo-img {
+    max-height: 36px;
+    max-width: 120px;
+    object-fit: contain;
+  }
 
-  /* ── Sections ── */
-  .section { padding: 56px 72px; }
-  .section + .section { border-top: 1px solid var(--border-light); }
-  .section-header { display: flex; align-items: center; gap: 14px; margin-bottom: 32px; }
-  .section-icon { width: 42px; height: 42px; border-radius: 12px; background: var(--primary-bg); border: 1px solid var(--primary-border); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
-  .section-title { font-size: 22px; font-weight: 700; color: var(--text); }
-  .section-subtitle { font-size: 13px; color: var(--text-muted); font-weight: 400; }
+  /* ── Section layout ── */
+  .section {
+    padding: 56px 72px;
+  }
+  .section + .section {
+    border-top: 1px solid var(--border-light);
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 32px;
+  }
+  .section-icon {
+    width: 42px; height: 42px;
+    border-radius: 12px;
+    background: var(--primary-bg);
+    border: 1px solid var(--primary-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .section-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .section-subtitle {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-weight: 400;
+  }
 
-  /* ── Subject ── */
-  .subject-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  .subject-card { padding: 24px; border-radius: var(--radius-sm); background: var(--bg-subtle); border: 1px solid var(--border); }
-  .subject-card.highlight { background: var(--primary-bg); border-color: var(--primary-border); }
-  .subject-label { font-size: 11px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
-  .subject-value { font-size: 28px; font-weight: 800; color: var(--text); }
+  /* ── Subject property ── */
+  .subject-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .subject-card {
+    padding: 24px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+  }
+  .subject-card.highlight {
+    background: var(--primary-bg);
+    border-color: var(--primary-border);
+  }
+  .subject-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  .subject-value {
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--text);
+  }
   .subject-value.price { color: var(--primary); }
-  .subject-detail-row { font-size: 14px; color: var(--text-secondary); margin-top: 4px; }
-  .property-features { display: flex; gap: 32px; margin-top: 6px; }
-  .property-feature { display: flex; flex-direction: column; align-items: center; }
-  .property-feature-value { font-size: 26px; font-weight: 800; color: var(--text); }
-  .property-feature-label { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+  .subject-detail-row {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+  .property-features {
+    display: flex;
+    gap: 32px;
+    margin-top: 6px;
+  }
+  .property-feature {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .property-feature-value {
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--text);
+  }
+  .property-feature-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
 
   /* ── Comps table ── */
-  .comps-table { width: 100%; border-collapse: separate; border-spacing: 0; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); font-size: 13.5px; }
+  .comps-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    font-size: 13.5px;
+  }
   .comps-table thead { background: var(--bg-subtle); }
-  .comps-table th { padding: 14px 16px; font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; color: var(--text-muted); text-align: left; border-bottom: 1px solid var(--border); }
-  .comps-table th:last-child, .comps-table td:last-child { text-align: right; }
-  .comps-table td { padding: 16px; border-bottom: 1px solid var(--border-light); vertical-align: middle; }
+  .comps-table th {
+    padding: 14px 16px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .6px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .comps-table th:last-child,
+  .comps-table td:last-child { text-align: right; }
+  .comps-table td {
+    padding: 16px;
+    border-bottom: 1px solid var(--border-light);
+    vertical-align: middle;
+  }
   .comps-table tr:last-child td { border-bottom: none; }
-  .comp-address { font-weight: 600; color: var(--text); margin-bottom: 2px; }
-  .comp-meta { font-size: 12px; color: var(--text-muted); }
-  .comp-price { font-weight: 700; color: var(--text); font-size: 15px; }
-  .comp-ppsf { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
-  .score-badge { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%; font-weight: 800; font-size: 13px; }
+  .comps-table tbody tr:hover { background: var(--bg-subtle); }
+  .comp-address {
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+  .comp-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .comp-price {
+    font-weight: 700;
+    color: var(--text);
+    font-size: 15px;
+  }
+  .comp-ppsf {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+  .score-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    font-weight: 800;
+    font-size: 13px;
+  }
   .score-high { background: var(--green-bg); color: var(--green); }
   .score-mid { background: rgba(245,158,11,.1); color: #d97706; }
   .score-low { background: var(--red-bg); color: var(--red); }
 
   /* ── Adjustment table ── */
-  .adj-table { width: 100%; border-collapse: separate; border-spacing: 0; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); font-size: 13px; }
+  .adj-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    font-size: 13px;
+  }
   .adj-table thead { background: var(--bg-subtle); }
-  .adj-table th { padding: 12px 16px; font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; color: var(--text-muted); text-align: center; border-bottom: 1px solid var(--border); }
+  .adj-table th {
+    padding: 12px 16px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .6px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+  }
   .adj-table th:first-child { text-align: left; }
-  .adj-table td { padding: 12px 16px; text-align: center; border-bottom: 1px solid var(--border-light); }
+  .adj-table td {
+    padding: 12px 16px;
+    text-align: center;
+    border-bottom: 1px solid var(--border-light);
+  }
   .adj-table td:first-child { text-align: left; font-weight: 600; }
   .adj-table tr:last-child td { border-bottom: none; }
   .adj-table .total-row { background: var(--primary-bg); font-weight: 700; }
   .adj-positive { color: var(--green); font-weight: 600; }
   .adj-negative { color: var(--red); font-weight: 600; }
 
-  /* ── Stats ── */
-  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-  .stat-card { padding: 24px; border-radius: var(--radius-sm); background: var(--bg-subtle); border: 1px solid var(--border); text-align: center; }
-  .stat-value { font-size: 32px; font-weight: 800; color: var(--primary); margin-bottom: 4px; }
-  .stat-label { font-size: 12px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; color: var(--text-muted); }
-  .stat-note { font-size: 12px; color: var(--text-secondary); margin-top: 6px; }
+  /* ── Stats cards ── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  .stat-card {
+    padding: 24px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    text-align: center;
+  }
+  .stat-value {
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--primary);
+    margin-bottom: 4px;
+  }
+  .stat-label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .stat-note {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 6px;
+  }
 
-  /* ── Pricing ── */
-  .price-ladder { display: flex; align-items: stretch; gap: 0; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
-  .price-tier { flex: 1; padding: 32px 24px; text-align: center; border-right: 1px solid var(--border); background: var(--bg); }
+  /* ── Pricing strategy ── */
+  .price-ladder {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .price-tier {
+    flex: 1;
+    padding: 32px 24px;
+    text-align: center;
+    border-right: 1px solid var(--border);
+    background: var(--bg);
+  }
   .price-tier:last-child { border-right: none; }
-  .price-tier.recommended { background: linear-gradient(180deg, ${primaryColor}0f 0%, ${primaryColor}05 100%); border: 2px solid var(--primary); border-radius: var(--radius); position: relative; z-index: 1; margin: -1px; box-shadow: var(--shadow); }
-  .price-tier-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; }
+  .price-tier.recommended {
+    background: linear-gradient(180deg, ${primaryColor}0f 0%, ${primaryColor}05 100%);
+    border: 2px solid var(--primary);
+    border-radius: var(--radius);
+    position: relative;
+    z-index: 1;
+    margin: -1px;
+    box-shadow: var(--shadow);
+  }
+  .price-tier-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
   .price-tier.recommended .price-tier-label { color: var(--primary); }
-  .rec-badge { display: inline-block; padding: 4px 12px; border-radius: 100px; background: var(--primary); color: white; font-size: 10px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase; margin-bottom: 12px; }
-  .price-tier-value { font-size: 34px; font-weight: 800; color: var(--text); margin-bottom: 8px; }
-  .price-tier.recommended .price-tier-value { color: var(--primary); font-size: 38px; }
-  .price-tier-note { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
-  .strategy-narrative { margin-top: 28px; padding: 28px; border-radius: var(--radius-sm); background: var(--bg-subtle); border: 1px solid var(--border); font-size: 15px; line-height: 1.7; color: var(--text-secondary); }
+  .rec-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 100px;
+    background: var(--primary);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .price-tier-value {
+    font-size: 34px;
+    font-weight: 800;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+  .price-tier.recommended .price-tier-value {
+    color: var(--primary);
+    font-size: 38px;
+  }
+  .price-tier-note {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+  .strategy-narrative {
+    margin-top: 28px;
+    padding: 28px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+  }
   .strategy-narrative strong { color: var(--text); }
 
-  /* ── Summary ── */
-  .summary-box { padding: 36px; border-radius: var(--radius); background: linear-gradient(135deg, #0f172a, ${primaryColor}80); color: white; }
-  .summary-box h3 { font-size: 24px; font-weight: 700; margin-bottom: 16px; }
-  .summary-box p { font-size: 15px; line-height: 1.8; color: rgba(255,255,255,.8); }
-  .key-point { display: flex; align-items: flex-start; gap: 12px; margin-top: 16px; padding: 16px; border-radius: var(--radius-sm); background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08); }
-  .key-point-icon { width: 28px; height: 28px; border-radius: 8px; background: rgba(59,130,246,.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 14px; }
-  .key-point p { font-size: 14px; color: rgba(255,255,255,.75); line-height: 1.6; }
+  /* ── Executive summary ── */
+  .summary-box {
+    padding: 36px;
+    border-radius: var(--radius);
+    background: linear-gradient(135deg, #0f172a, #1e3a5f);
+    color: white;
+  }
+  .summary-box h3 {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 16px;
+  }
+  .summary-box p {
+    font-size: 15px;
+    line-height: 1.8;
+    color: rgba(255,255,255,.8);
+  }
+  .key-point {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-top: 16px;
+    padding: 16px;
+    border-radius: var(--radius-sm);
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.08);
+  }
+  .key-point-icon {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: rgba(59,130,246,.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 14px;
+  }
+  .key-point p {
+    font-size: 14px;
+    color: rgba(255,255,255,.75);
+    line-height: 1.6;
+  }
 
   /* ── Footer ── */
-  .report-footer { padding: 32px 72px; background: var(--bg-subtle); border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
-  .footer-left { font-size: 12px; color: var(--text-muted); }
-  .footer-right { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); font-weight: 500; }
-  .rg-logo { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; background: var(--primary-bg); border: 1px solid var(--primary-border); color: var(--primary); font-weight: 700; font-size: 11px; letter-spacing: .3px; }
+  .report-footer {
+    padding: 32px 72px;
+    background: var(--bg-subtle);
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .footer-left {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+  .footer-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+  .rg-logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: var(--primary-bg);
+    border: 1px solid var(--primary-border);
+    color: var(--primary);
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: .3px;
+  }
 
+  /* ── Responsive ── */
   @media (max-width: 768px) {
     .cover { padding: 48px 32px; }
     .cover h1 { font-size: 32px; }
@@ -384,65 +859,147 @@ function buildReportHtml(opts: {
 <body>
 <div class="page">
 
-  <!-- COVER -->
+  <!-- ═══════════════════════════════════════════════════════
+       COVER PAGE
+       ═══════════════════════════════════════════════════════ -->
   <div class="cover">
-    <div class="cover-badge"><span class="dot"></span> Comparative Market Analysis</div>
+    <div class="cover-badge">
+      <span class="dot"></span>
+      Comparative Market Analysis
+    </div>
+
     <h1>${esc(streetAddr)}</h1>
     <div class="address-sub">${esc(cityStateZip)}</div>
+
     <div class="cover-meta">
-      <div class="cover-meta-item"><div class="cover-meta-label">Property Type</div><div class="cover-meta-value">${esc(String(pType))}</div></div>
-      <div class="cover-meta-item"><div class="cover-meta-label">Report Date</div><div class="cover-meta-value">${reportDate}</div></div>
-      <div class="cover-meta-item"><div class="cover-meta-label">Comps Analyzed</div><div class="cover-meta-value">${mCount}</div></div>
-      <div class="cover-meta-item"><div class="cover-meta-label">Market Trend</div><div class="cover-meta-value" style="color: ${mTrend === 'appreciating' ? '#34d399' : mTrend === 'declining' ? '#f87171' : '#fbbf24'};">${mTrend.charAt(0).toUpperCase() + mTrend.slice(1)}</div></div>
+      <div class="cover-meta-item">
+        <div class="cover-meta-label">Property Type</div>
+        <div class="cover-meta-value">${esc(String(pType))}</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="cover-meta-label">Report Date</div>
+        <div class="cover-meta-value">${reportDate}</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="cover-meta-label">Comps Analyzed</div>
+        <div class="cover-meta-value">${mCount}</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="cover-meta-label">Market Trend</div>
+        <div class="cover-meta-value" style="color: ${trendColor};">${mTrend.charAt(0).toUpperCase() + mTrend.slice(1)}</div>
+      </div>
     </div>
-    ${agentBar}
+
+    <div class="cover-agent">
+      <div class="agent-info">
+        ${avatarHtml}
+        <div>
+          <div class="agent-name">${esc(agentName)}</div>
+          <div class="agent-title">${esc(teamName)}</div>
+          ${contactLine}
+        </div>
+      </div>
+      <div class="cover-branding">
+        ${logosHtml}
+        <span style="opacity:.5">Powered by RealtyGrind AI</span>
+      </div>
+    </div>
   </div>
 
-  <!-- SUBJECT PROPERTY -->
+  <!-- ═══════════════════════════════════════════════════════
+       SUBJECT PROPERTY
+       ═══════════════════════════════════════════════════════ -->
   <div class="section">
     <div class="section-header">
       <div class="section-icon">🏠</div>
-      <div><div class="section-title">Subject Property</div><div class="section-subtitle">${esc(address)}</div></div>
+      <div>
+        <div class="section-title">Subject Property</div>
+        <div class="section-subtitle">${esc(address)}</div>
+      </div>
     </div>
+
     <div class="subject-grid">
       <div class="subject-card highlight">
         <div class="subject-label">Estimated Value Range</div>
         <div class="subject-value price">${$(pLow)} – ${$(pHigh)}</div>
-        <div class="subject-detail-row">AI-adjusted based on ${mCount} comparable sales</div>
+        <div class="subject-detail-row">AI-adjusted based on ${mCount} comparable sales${psfNote}</div>
       </div>
       <div class="subject-card">
         <div class="subject-label">Property Details</div>
         <div class="property-features">
-          <div class="property-feature"><div class="property-feature-value">${beds}</div><div class="property-feature-label">Beds</div></div>
-          <div class="property-feature"><div class="property-feature-value">${baths}</div><div class="property-feature-label">Baths</div></div>
-          <div class="property-feature"><div class="property-feature-value">${sqft}</div><div class="property-feature-label">Sq Ft</div></div>
-          <div class="property-feature"><div class="property-feature-value">${lot}</div><div class="property-feature-label">Lot SF</div></div>
-          <div class="property-feature"><div class="property-feature-value">${yearBuilt}</div><div class="property-feature-label">Built</div></div>
+          <div class="property-feature">
+            <div class="property-feature-value">${beds}</div>
+            <div class="property-feature-label">Beds</div>
+          </div>
+          <div class="property-feature">
+            <div class="property-feature-value">${baths}</div>
+            <div class="property-feature-label">Baths</div>
+          </div>
+          <div class="property-feature">
+            <div class="property-feature-value">${sqft}</div>
+            <div class="property-feature-label">Sq Ft</div>
+          </div>
+          <div class="property-feature">
+            <div class="property-feature-value">${lot}</div>
+            <div class="property-feature-label">Lot SF</div>
+          </div>
+          <div class="property-feature">
+            <div class="property-feature-value">${yearBuilt}</div>
+            <div class="property-feature-label">Built</div>
+          </div>
         </div>
       </div>
+      ${assessedCard}
+      ${lastSaleCard}
     </div>
   </div>
 
-  <!-- COMPARABLE SALES -->
+  <!-- ═══════════════════════════════════════════════════════
+       COMPARABLE SALES
+       ═══════════════════════════════════════════════════════ -->
   <div class="section page-break">
     <div class="section-header">
       <div class="section-icon">📊</div>
-      <div><div class="section-title">Comparable Sales</div><div class="section-subtitle">Top ${topComps.length} comps selected by AI · Sold within ${daysBack} days · ${searchRadius} mile radius</div></div>
+      <div>
+        <div class="section-title">Comparable Sales</div>
+        <div class="section-subtitle">Top ${topComps.length} comps selected by AI &middot; Sold within ${daysBack} days &middot; ${searchRadius} mile radius</div>
+      </div>
     </div>
+
     <table class="comps-table">
-      <thead><tr><th>Address</th><th>Sold Price</th><th>Beds / Baths</th><th>Sq Ft</th><th>Sold Date</th><th>Distance</th><th>Score</th></tr></thead>
-      <tbody>${compsRows}</tbody>
+      <thead>
+        <tr>
+          <th>Address</th>
+          <th>Sold Price</th>
+          <th>Beds / Baths</th>
+          <th>Sq Ft</th>
+          <th>Sold Date</th>
+          <th>Distance</th>
+          <th>Score</th>
+        </tr>
+      </thead>
+      <tbody>
+${compsRows}
+      </tbody>
     </table>
   </div>
 
-  <!-- ADJUSTMENT ANALYSIS -->
+  <!-- ═══════════════════════════════════════════════════════
+       ADJUSTMENT ANALYSIS
+       ═══════════════════════════════════════════════════════ -->
   <div class="section">
     <div class="section-header">
       <div class="section-icon">⚖️</div>
-      <div><div class="section-title">Adjustment Analysis</div><div class="section-subtitle">AI-calculated adjustments relative to subject property</div></div>
+      <div>
+        <div class="section-title">Adjustment Analysis</div>
+        <div class="section-subtitle">AI-calculated adjustments relative to subject property</div>
+      </div>
     </div>
+
     <table class="adj-table">
-      <thead><tr><th>Feature</th>${adjHeaders}</tr></thead>
+      <thead>
+        <tr><th>Feature</th>${adjHeaders}</tr>
+      </thead>
       <tbody>
         ${adjSoldRow}
         ${adjRow('Sq Ft Adj', 'sqft')}
@@ -454,26 +1011,50 @@ function buildReportHtml(opts: {
     </table>
   </div>
 
-  <!-- MARKET CONTEXT -->
+  <!-- ═══════════════════════════════════════════════════════
+       MARKET CONTEXT
+       ═══════════════════════════════════════════════════════ -->
   <div class="section page-break">
     <div class="section-header">
       <div class="section-icon">📈</div>
-      <div><div class="section-title">Market Context</div><div class="section-subtitle">${esc(cityStateZip)} · Last ${daysBack} days · ${mType.charAt(0).toUpperCase() + mType.slice(1)} market</div></div>
+      <div>
+        <div class="section-title">Market Context</div>
+        <div class="section-subtitle">${esc(cityStateZip)} &middot; Last ${daysBack} days &middot; ${mType.charAt(0).toUpperCase() + mType.slice(1)} market</div>
+      </div>
     </div>
+
     <div class="stats-row">
-      <div class="stat-card"><div class="stat-value">${$(mAvg)}</div><div class="stat-label">Avg Sale Price</div></div>
-      <div class="stat-card"><div class="stat-value">${$(mMedian)}</div><div class="stat-label">Median Price</div></div>
-      <div class="stat-card"><div class="stat-value">${$(mPsf)}</div><div class="stat-label">Avg $/Sq Ft</div></div>
-      <div class="stat-card"><div class="stat-value">${mDom || 'N/A'}</div><div class="stat-label">Avg Days on Market</div></div>
+      <div class="stat-card">
+        <div class="stat-value">${$(mAvg)}</div>
+        <div class="stat-label">Avg Sale Price</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${$(mMedian)}</div>
+        <div class="stat-label">Median Price</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${$(mPsf)}</div>
+        <div class="stat-label">Avg $/Sq Ft</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${mDom || 'N/A'}</div>
+        <div class="stat-label">Avg Days on Market</div>
+      </div>
     </div>
   </div>
 
-  <!-- PRICING STRATEGY -->
+  <!-- ═══════════════════════════════════════════════════════
+       PRICING STRATEGY
+       ═══════════════════════════════════════════════════════ -->
   <div class="section">
     <div class="section-header">
       <div class="section-icon">🎯</div>
-      <div><div class="section-title">Pricing Strategy</div><div class="section-subtitle">AI-recommended pricing based on adjusted comp analysis</div></div>
+      <div>
+        <div class="section-title">Pricing Strategy</div>
+        <div class="section-subtitle">AI-recommended pricing based on adjusted comp analysis</div>
+      </div>
     </div>
+
     <div class="price-ladder">
       <div class="price-tier">
         <div class="price-tier-label">Aggressive</div>
@@ -495,7 +1076,9 @@ function buildReportHtml(opts: {
     <div class="strategy-narrative"><strong>Pricing Rationale:</strong> ${pReasoning}</div>
   </div>
 
-  <!-- EXECUTIVE SUMMARY -->
+  <!-- ═══════════════════════════════════════════════════════
+       EXECUTIVE SUMMARY
+       ═══════════════════════════════════════════════════════ -->
   <div class="section">
     <div class="summary-box">
       <h3>Executive Summary</h3>
@@ -504,7 +1087,9 @@ function buildReportHtml(opts: {
     </div>
   </div>
 
-  <!-- FOOTER -->
+  <!-- ═══════════════════════════════════════════════════════
+       FOOTER
+       ═══════════════════════════════════════════════════════ -->
   <div class="report-footer">
     <div class="footer-left">
       ${teamLogos.length > 0 ? `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">${teamLogos.map(l => `<img src="${esc(l)}" alt="" style="max-height:28px;max-width:100px;object-fit:contain;">`).join('')}</div>` : ''}
@@ -516,6 +1101,7 @@ function buildReportHtml(opts: {
         ${agentName ? `<div style="font-weight:600;color:var(--text);font-size:13px;">${esc(agentName)}</div>` : ''}
         ${agentPhone ? `<div>${esc(agentPhone)}</div>` : ''}
         ${agentEmail ? `<div>${esc(agentEmail)}</div>` : ''}
+        ${agentLicense ? `<div style="font-size:11px;color:var(--text-muted);">Lic# ${esc(agentLicense)}</div>` : ''}
       </div>
       <span class="rg-logo">RG</span>
     </div>

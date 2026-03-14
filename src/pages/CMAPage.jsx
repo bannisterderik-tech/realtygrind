@@ -306,7 +306,7 @@ export default function CMAPage({ onNavigate, theme }) {
               if (w) {
                 w.document.write(activeReport.html)
                 w.document.close()
-                setTimeout(() => w.print(), 500)
+                setTimeout(() => w.print(), 1200)
               }
             }} style={{ fontSize: 12, padding: '6px 14px' }}>
               Print / PDF

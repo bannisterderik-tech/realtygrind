@@ -214,12 +214,33 @@ HTML SECTIONS:
 
 DESIGN: Standalone HTML+CSS, no external deps, system fonts, print media queries, cover page min-height:100vh, score badges (80+ green, 60-79 amber, <60 red), $ formatting with commas, ${isDark ? 'dark backgrounds (#0a0a14, #12121a), light text (#e4e4e7)' : 'light backgrounds, dark text'}, accent color: ${primaryColor}. NO JavaScript, NO script tags, NO external images/fonts (except team logo if provided).`
 
-    const fetchController = new AbortController()
-    const fetchTimeout = setTimeout(() => fetchController.abort(), 180000)
+    // ── Claude Call 1: Analysis JSON ──────────────────────────────────────
+    const analysisPrompt = `You are a real estate CMA analyst. Analyze the subject property and comparable sales, then return ONLY valid JSON (no markdown, no code fences).
 
-    let aiResponse: Response
+SUBJECT PROPERTY:
+Address: ${address}
+${JSON.stringify(subjectData, null, 2)}
+
+COMPARABLE SALES (${compsRaw.length} comps):
+${JSON.stringify(compsRaw, null, 2)}
+
+Return this exact JSON structure:
+{
+  "comps_analyzed": [
+    { "address": "string", "salePrice": number, "saleDate": "string", "bedrooms": number, "bathrooms": number, "squareFootage": number, "lotSize": number, "yearBuilt": number, "distance": number, "relevanceScore": 0-100, "adjustedPrice": number, "adjustments": { "sqft": number, "bedrooms": number, "bathrooms": number, "lotSize": number, "age": number, "condition": number, "total": number }, "notes": "string" }
+  ],
+  "pricing_strategy": { "recommended_price": number, "low": number, "high": number, "price_per_sqft": number, "strategy": "aggressive/competitive/conservative", "reasoning": "2-3 sentences" },
+  "market_context": { "avg_sale_price": number, "median_sale_price": number, "avg_price_per_sqft": number, "avg_dom": number, "price_trend": "appreciating/stable/declining", "market_type": "seller's/balanced/buyer's", "comp_count": number },
+  "executive_summary": "3-5 sentence professional summary"
+}
+
+Sort comps by relevanceScore descending. Use top 6-8 most relevant for pricing. Adjustments in dollars.`
+
+    console.log(`CMA ${reportId}: Starting Claude analysis...`)
+
+    let analysisData: Record<string, unknown> = {}
     try {
-      aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
+      const res1 = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -228,62 +249,110 @@ DESIGN: Standalone HTML+CSS, no external deps, system fonts, print media queries
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 24000,
-          messages: [{ role: 'user', content: combinedPrompt }],
-          stream: false,
+          max_tokens: 4096,
+          messages: [{ role: 'user', content: analysisPrompt }],
         }),
-        signal: fetchController.signal,
       })
-    } catch (fetchErr) {
-      clearTimeout(fetchTimeout)
-      await markFailed('Claude API fetch error')
-      return json({ error: 'AI service unavailable' }, 502)
-    }
-    clearTimeout(fetchTimeout)
-
-    if (!aiResponse.ok) {
-      const errBody = await aiResponse.text()
-      await markFailed(`Claude error: ${aiResponse.status} ${errBody}`)
-      return json({ error: 'AI generation failed' }, 502)
-    }
-
-    const aiData = await aiResponse.json()
-    let fullText = ''
-    if (aiData.content && Array.isArray(aiData.content)) {
-      for (const block of aiData.content) {
-        if (block.type === 'text') fullText += block.text
+      if (!res1.ok) {
+        const errText = await res1.text()
+        await markFailed(`Claude analysis error: ${res1.status} ${errText}`)
+        return json({ error: 'AI analysis failed' }, 502)
       }
-    }
-
-    // Extract analysis JSON from <analysis> tags
-    const analysisMatch = fullText.match(/<analysis>([\s\S]*?)<\/analysis>/)
-    let compsAnalyzed: unknown[] = []
-    let pricingStrategy: Record<string, unknown> = {}
-    let marketContext: Record<string, unknown> = {}
-    if (analysisMatch) {
-      try {
-        const analysis = JSON.parse(analysisMatch[1].trim())
-        compsAnalyzed = analysis.comps_analyzed || []
-        pricingStrategy = analysis.pricing_strategy || {}
-        marketContext = analysis.market_context || {}
-      } catch {
-        console.warn('Failed to parse analysis JSON, continuing with HTML only')
+      const data1 = await res1.json()
+      let text1 = ''
+      for (const block of (data1.content || [])) {
+        if (block.type === 'text') text1 += block.text
       }
+      // Strip markdown code fences if present
+      text1 = text1.replace(/^```json?\s*/i, '').replace(/\s*```$/i, '').trim()
+      analysisData = JSON.parse(text1)
+      console.log(`CMA ${reportId}: Analysis complete, ${(analysisData.comps_analyzed as unknown[])?.length || 0} comps scored`)
+    } catch (err) {
+      await markFailed(`Analysis parse error: ${String(err)}`)
+      return json({ error: 'AI analysis failed' }, 502)
     }
 
-    // Extract HTML from <report> tags
-    const reportMatch = fullText.match(/<report>([\s\S]*?)<\/report>/)
-    let reportHtml = reportMatch ? reportMatch[1].trim() : ''
+    const compsAnalyzed = (analysisData.comps_analyzed as unknown[]) || []
+    const pricingStrategy = (analysisData.pricing_strategy as Record<string, unknown>) || {}
+    const marketContext = (analysisData.market_context as Record<string, unknown>) || {}
+    const executiveSummary = (analysisData.executive_summary as string) || ''
 
-    // Fallback: if no <report> tags, try to find raw HTML
-    if (!reportHtml) {
-      const htmlStart = fullText.indexOf('<!DOCTYPE') !== -1 ? fullText.indexOf('<!DOCTYPE') : fullText.indexOf('<html')
-      if (htmlStart !== -1) {
-        reportHtml = fullText.slice(htmlStart).trim()
+    // ── Claude Call 2: HTML Report ─────────────────────────────────────────
+    const htmlPrompt = `You are a premium HTML report builder. Generate a complete standalone HTML document for a Comparative Market Analysis report. Return ONLY the HTML — no markdown, no code fences, no explanation. Start with <!DOCTYPE html>.
+
+SUBJECT PROPERTY:
+Address: ${address}
+Beds: ${subjectData.bedrooms || 'N/A'} | Baths: ${subjectData.bathrooms || 'N/A'} | SqFt: ${subjectData.squareFootage || 'N/A'} | Lot: ${subjectData.lotSize || 'N/A'} | Year: ${subjectData.yearBuilt || 'N/A'} | Type: ${subjectData.propertyType || propertyType}
+
+ANALYSIS DATA:
+${JSON.stringify(analysisData, null, 2)}
+
+BRANDING:
+- Primary color: ${primaryColor}
+- Theme: ${cmaTheme} (${isDark ? 'dark background' : 'light background'})
+- Style: ${style}
+- Team name: ${teamName || 'N/A'}
+- Agent name: ${agentName || 'N/A'}
+- Agent email: ${agentEmail || 'N/A'}
+- Agent phone: ${agentPhone || 'N/A'}
+- Agent license: ${agentLicense || 'N/A'}
+${teamLogo ? `- Team logo URL: ${teamLogo}` : ''}
+
+HTML SECTIONS:
+1. COVER PAGE - Gradient background using primary color, large address, "Comparative Market Analysis" subtitle, date, agent/team branding, logo if available
+2. SUBJECT PROPERTY - Card grid: beds, baths, sqft, lot size, year built, property type
+3. COMPARABLE SALES TABLE - Top 6-8 comps: Address, Sale Price, Sale Date, Bed/Bath, SqFt, $/SqFt, Distance, Score (color-coded badge). Alternate row colors.
+4. ADJUSTMENT ANALYSIS - Dollar adjustments for top 5-6 comps. Green=positive, red=negative.
+5. MARKET CONTEXT - 4-card grid: Avg Sale Price, Median Price, Avg $/SqFt, Days on Market
+6. PRICING STRATEGY - Price ladder: Low/Recommended/High. Highlight recommended. Include reasoning.
+7. EXECUTIVE SUMMARY - Colored box with summary text and bullet takeaways.
+8. FOOTER - Disclaimer, "Powered by RealtyGrind", date.
+
+DESIGN: Standalone HTML+CSS, no external deps, system fonts, print media queries, cover page min-height:100vh, score badges (80+ green, 60-79 amber, <60 red), $ formatting with commas, ${isDark ? 'dark backgrounds (#0a0a14, #12121a), light text (#e4e4e7)' : 'light backgrounds, dark text'}, accent color: ${primaryColor}. NO JavaScript, NO script tags, NO external images/fonts (except team logo if provided).`
+
+    console.log(`CMA ${reportId}: Starting Claude HTML generation...`)
+
+    let reportHtml = ''
+    try {
+      const res2 = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': anthropicKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 12000,
+          messages: [{ role: 'user', content: htmlPrompt }],
+        }),
+      })
+      if (!res2.ok) {
+        const errText = await res2.text()
+        await markFailed(`Claude HTML error: ${res2.status} ${errText}`)
+        return json({ error: 'AI report generation failed' }, 502)
       }
+      const data2 = await res2.json()
+      for (const block of (data2.content || [])) {
+        if (block.type === 'text') reportHtml += block.text
+      }
+      // Strip markdown code fences if present
+      reportHtml = reportHtml.replace(/^```html?\s*/i, '').replace(/\s*```$/i, '').trim()
+      // Find HTML start if there's preamble text
+      const htmlStart = reportHtml.indexOf('<!DOCTYPE') !== -1 ? reportHtml.indexOf('<!DOCTYPE') : reportHtml.indexOf('<html')
+      if (htmlStart > 0) reportHtml = reportHtml.slice(htmlStart)
+
+      console.log(`CMA ${reportId}: HTML generated, ${reportHtml.length} chars, stop_reason: ${data2.stop_reason}`)
+      if (data2.stop_reason === 'max_tokens') {
+        console.warn(`CMA ${reportId}: HTML was truncated! Closing tags...`)
+        reportHtml += '</body></html>'
+      }
+    } catch (err) {
+      await markFailed(`HTML generation error: ${String(err)}`)
+      return json({ error: 'Report generation failed' }, 502)
     }
 
-    if (!reportHtml) {
+    if (!reportHtml || reportHtml.length < 100) {
       await markFailed('Empty HTML from AI')
       return json({ error: 'Report generation returned empty result' }, 500)
     }

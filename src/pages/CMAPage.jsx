@@ -22,18 +22,14 @@ async function getFreshToken(forceRefresh = false) {
   return data.session?.access_token || null
 }
 
-const STYLES = [
-  { value: 'modern',  label: 'Modern' },
-  { value: 'classic', label: 'Classic' },
-  { value: 'minimal', label: 'Minimal' },
-  { value: 'bold',    label: 'Bold' },
-]
 const COLOR_PRESETS = [
   { value: '#2563eb', label: 'Blue' },
+  { value: '#1d4ed8', label: 'Navy' },
   { value: '#d97706', label: 'Gold' },
   { value: '#059669', label: 'Green' },
   { value: '#7c3aed', label: 'Purple' },
   { value: '#dc2626', label: 'Red' },
+  { value: '#0891b2', label: 'Teal' },
   { value: '#374151', label: 'Neutral' },
 ]
 
@@ -49,9 +45,8 @@ export default function CMAPage({ onNavigate, theme }) {
 
   // Form state
   const [address, setAddress]       = useState('')
-  const [style, setStyle]           = useState('modern')
-  const [cmaTheme, setCmaTheme]     = useState('light')
   const [colorScheme, setColorScheme] = useState('#2563eb')
+  const [hexInput, setHexInput]     = useState('#2563eb')
   const [searchRadius, setSearchRadius] = useState(2)
   const [daysBack, setDaysBack]     = useState(180)
   const [maxComps, setMaxComps]     = useState(15)
@@ -87,9 +82,8 @@ export default function CMAPage({ onNavigate, theme }) {
 
   function resetForm() {
     setAddress('')
-    setStyle('modern')
-    setCmaTheme('light')
     setColorScheme('#2563eb')
+    setHexInput('#2563eb')
     setSearchRadius(2)
     setDaysBack(180)
     setMaxComps(15)
@@ -142,7 +136,7 @@ export default function CMAPage({ onNavigate, theme }) {
               'Authorization': `Bearer ${token}`,
             },
             body: JSON.stringify({
-              address, style, theme: cmaTheme, colorScheme,
+              address, style: 'modern', theme: 'light', colorScheme,
               searchRadius, daysBack, maxComps, propertyType,
             }),
           }
@@ -409,49 +403,63 @@ export default function CMAPage({ onNavigate, theme }) {
           </div>
         </div>
 
-        {/* Report Style */}
+        {/* Report Color */}
         <div className="card" style={{ padding: 24, marginBottom: 24 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>🎨</span> Report Style
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>🎨</span> Report Color
           </div>
-          {/* Style picker */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-            {STYLES.map(s => (
-              <button key={s.value} onClick={() => setStyle(s.value)} style={{
-                padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                background: style === s.value ? 'var(--gold)' : 'var(--surface)',
-                color: style === s.value ? '#fff' : 'var(--muted)',
-                border: `1px solid ${style === s.value ? 'var(--gold)' : 'var(--b2)'}`,
-                transition: 'all .15s',
-              }}>
-                {s.label}
-              </button>
-            ))}
-          </div>
-          {/* Theme toggle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-            <span style={{ fontSize: 12, color: 'var(--muted)' }}>Theme:</span>
-            <button onClick={() => setCmaTheme(t => t === 'light' ? 'dark' : 'light')} style={{
-              width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer', position: 'relative',
-              background: cmaTheme === 'dark' ? 'var(--gold)' : 'var(--b2)', transition: 'background .2s',
-            }}>
-              <div style={{
-                width: 18, height: 18, borderRadius: 9, background: '#fff',
-                position: 'absolute', top: 3, left: cmaTheme === 'dark' ? 23 : 3,
-                transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.2)',
-              }} />
-            </button>
-            <span style={{ fontSize: 12, color: 'var(--muted)' }}>{cmaTheme === 'dark' ? 'Dark' : 'Light'}</span>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>
+            Choose an accent color for your report&apos;s cover, headings, and highlights.
           </div>
           {/* Color presets */}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
             {COLOR_PRESETS.map(c => (
-              <button key={c.value} onClick={() => setColorScheme(c.value)} title={c.label} style={{
-                width: 32, height: 32, borderRadius: 8, border: `2px solid ${colorScheme === c.value ? '#fff' : 'transparent'}`,
-                background: c.value, cursor: 'pointer', outline: colorScheme === c.value ? `2px solid ${c.value}` : 'none',
-                transition: 'all .15s',
+              <button key={c.value} onClick={() => { setColorScheme(c.value); setHexInput(c.value) }} title={c.label} style={{
+                width: 36, height: 36, borderRadius: 10, border: `2.5px solid ${colorScheme === c.value ? '#fff' : 'transparent'}`,
+                background: c.value, cursor: 'pointer', outline: colorScheme === c.value ? `2.5px solid ${c.value}` : 'none',
+                outlineOffset: 1, transition: 'all .15s',
               }} />
             ))}
+          </div>
+          {/* Color wheel + hex input */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="color"
+                value={colorScheme}
+                onChange={e => { setColorScheme(e.target.value); setHexInput(e.target.value) }}
+                style={{
+                  width: 44, height: 44, border: 'none', borderRadius: 10, cursor: 'pointer',
+                  padding: 0, background: 'none',
+                }}
+                title="Pick a custom color"
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 500 }}>HEX</span>
+              <input
+                className="field-input"
+                value={hexInput}
+                onChange={e => {
+                  const v = e.target.value
+                  setHexInput(v)
+                  if (/^#[0-9a-fA-F]{6}$/.test(v)) setColorScheme(v)
+                }}
+                onBlur={() => {
+                  if (!/^#[0-9a-fA-F]{6}$/.test(hexInput)) setHexInput(colorScheme)
+                }}
+                placeholder="#2563eb"
+                maxLength={7}
+                style={{
+                  width: 100, padding: '8px 12px', fontSize: 14, fontFamily: "'JetBrains Mono', monospace",
+                  textTransform: 'uppercase', letterSpacing: '.5px',
+                }}
+              />
+            </div>
+            <div style={{
+              width: 32, height: 32, borderRadius: 8, background: colorScheme,
+              border: '1px solid var(--b2)', flexShrink: 0,
+            }} />
           </div>
         </div>
 

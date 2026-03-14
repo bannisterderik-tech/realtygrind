@@ -206,7 +206,7 @@ export default function CMAPage({ onNavigate, theme }) {
           } catch { /* ignore polling errors */ }
         }, 4000)
 
-        // Timeout after 3 minutes
+        // Timeout after 5 minutes
         setTimeout(() => {
           if (pollRef.current) {
             clearInterval(pollRef.current)
@@ -215,7 +215,7 @@ export default function CMAPage({ onNavigate, theme }) {
             generatingRef.current = false
             setError('Generation timed out. Check back in a moment.')
           }
-        }, 180000)
+        }, 300000)
         return
       }
     } catch (err) {

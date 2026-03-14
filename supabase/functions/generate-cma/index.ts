@@ -112,17 +112,24 @@ async function handleBackgroundGeneration(
       console.warn('RentCast property fetch failed (continuing):', err)
     }
 
-    // Fetch comparable sales
+    // Fetch comparable sales — use lat/lng from subject + saleDateRange filter
     let compsRaw: unknown[] = []
+    const subjectLat = subjectData.latitude as number | undefined
+    const subjectLng = subjectData.longitude as number | undefined
     try {
-      const compsRes = await fetch(
-        `https://api.rentcast.io/v1/salesComparables?address=${encodedAddr}&limit=${maxComps}&squareFootageRange=500&radius=${searchRadius}&daysOld=${daysBack}&propertyType=${encodeURIComponent(propertyType)}`,
-        { headers: rcHeaders }
-      )
+      // Prefer lat/lng for radius search (more accurate), fall back to address
+      const compsUrl = subjectLat && subjectLng
+        ? `https://api.rentcast.io/v1/properties?latitude=${subjectLat}&longitude=${subjectLng}&radius=${searchRadius}&saleDateRange=${daysBack}&propertyType=${encodeURIComponent(propertyType)}&limit=${maxComps}`
+        : `https://api.rentcast.io/v1/properties?address=${encodedAddr}&radius=${searchRadius}&saleDateRange=${daysBack}&propertyType=${encodeURIComponent(propertyType)}&limit=${maxComps}`
+      const compsRes = await fetch(compsUrl, { headers: rcHeaders })
       if (compsRes.ok) {
         const compsBody = await compsRes.json()
-        // RentCast returns { comparables: [...] } wrapper
-        compsRaw = Array.isArray(compsBody) ? compsBody : (compsBody?.comparables || [])
+        const allComps = Array.isArray(compsBody) ? compsBody : []
+        // Filter out the subject property itself
+        const subjectAddr = (subjectData.formattedAddress as string || address).toLowerCase()
+        compsRaw = allComps.filter((c: Record<string, unknown>) =>
+          (c.formattedAddress as string || '').toLowerCase() !== subjectAddr
+        )
       } else {
         console.warn('RentCast comps lookup returned', compsRes.status)
       }
@@ -135,134 +142,13 @@ async function handleBackgroundGeneration(
       return json({ error: 'No comparable sales found' }, 400)
     }
 
-    // ── Step 2: Claude AI analysis ────────────────────────────────────────
+    // ── Step 2: Single Claude call — analysis + HTML in one shot ──────────
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
     if (!anthropicKey) {
       await markFailed('ANTHROPIC_API_KEY not configured')
       return json({ error: 'AI service not configured' }, 500)
     }
 
-    const analysisPrompt = `You are a real estate CMA analyst. Analyze the subject property and comparable sales data below.
-
-SUBJECT PROPERTY:
-${JSON.stringify(subjectData, null, 2)}
-
-COMPARABLE SALES (${compsRaw.length} comps):
-${JSON.stringify(compsRaw, null, 2)}
-
-Provide a JSON response with exactly this structure:
-{
-  "comps_analyzed": [
-    {
-      "address": "string",
-      "salePrice": number,
-      "saleDate": "string",
-      "bedrooms": number,
-      "bathrooms": number,
-      "squareFootage": number,
-      "lotSize": number,
-      "yearBuilt": number,
-      "distance": number,
-      "relevanceScore": number (0-100, how similar to subject),
-      "adjustedPrice": number (price after adjustments),
-      "adjustments": {
-        "sqft": number (dollar adjustment),
-        "bedrooms": number,
-        "bathrooms": number,
-        "lotSize": number,
-        "age": number,
-        "condition": number,
-        "total": number
-      },
-      "notes": "string (brief note on why this comp is relevant or not)"
-    }
-  ],
-  "pricing_strategy": {
-    "recommended_price": number,
-    "low": number,
-    "high": number,
-    "price_per_sqft": number,
-    "strategy": "string (aggressive/competitive/conservative)",
-    "reasoning": "string (2-3 sentence explanation)"
-  },
-  "market_context": {
-    "avg_sale_price": number,
-    "median_sale_price": number,
-    "avg_price_per_sqft": number,
-    "avg_dom": number (average days on market, estimate if not available),
-    "absorption_rate": "string (e.g. '2.3 months')",
-    "price_trend": "string (appreciating/stable/declining)",
-    "market_type": "string (seller's/balanced/buyer's)",
-    "comp_count": number
-  },
-  "executive_summary": "string (3-5 sentence professional summary of the analysis)"
-}
-
-Sort comps by relevanceScore descending. Use the top 6-8 most relevant comps for pricing. Adjustments should be in dollars. Be precise and professional.
-Output ONLY valid JSON, no markdown fencing.`
-
-    const fetchController = new AbortController()
-    const fetchTimeout = setTimeout(() => fetchController.abort(), 120000)
-
-    let analysisResponse: Response
-    try {
-      analysisResponse = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': anthropicKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 8192,
-          messages: [{ role: 'user', content: analysisPrompt }],
-          stream: false,
-        }),
-        signal: fetchController.signal,
-      })
-    } catch (fetchErr) {
-      clearTimeout(fetchTimeout)
-      await markFailed('Claude API fetch error')
-      return json({ error: 'AI service unavailable' }, 502)
-    }
-    clearTimeout(fetchTimeout)
-
-    if (!analysisResponse.ok) {
-      const errBody = await analysisResponse.text()
-      await markFailed(`Claude analysis error: ${analysisResponse.status} ${errBody}`)
-      return json({ error: 'AI analysis failed' }, 502)
-    }
-
-    const analysisData = await analysisResponse.json()
-    let analysisText = ''
-    if (analysisData.content && Array.isArray(analysisData.content)) {
-      for (const block of analysisData.content) {
-        if (block.type === 'text') analysisText += block.text
-      }
-    }
-
-    // Strip markdown fencing if present
-    analysisText = analysisText.trim()
-    if (analysisText.startsWith('```json')) analysisText = analysisText.slice(7)
-    else if (analysisText.startsWith('```')) analysisText = analysisText.slice(3)
-    if (analysisText.endsWith('```')) analysisText = analysisText.slice(0, -3)
-    analysisText = analysisText.trim()
-
-    let analysis: Record<string, unknown>
-    try {
-      analysis = JSON.parse(analysisText)
-    } catch {
-      await markFailed('Failed to parse AI analysis JSON')
-      return json({ error: 'AI analysis returned invalid data' }, 500)
-    }
-
-    const compsAnalyzed = (analysis.comps_analyzed || []) as unknown[]
-    const pricingStrategy = (analysis.pricing_strategy || {}) as Record<string, unknown>
-    const marketContext = (analysis.market_context || {}) as Record<string, unknown>
-    const executiveSummary = (analysis.executive_summary || '') as string
-
-    // ── Step 3: Generate HTML report ────────────────────────────────────────
     const isDark = cmaTheme === 'dark'
     const primaryColor = colorScheme || '#2563eb'
 
@@ -275,14 +161,35 @@ Output ONLY valid JSON, no markdown fencing.`
     const agentPhone = profileData?.agentPhone || ''
     const agentLicense = profileData?.agentLicense || ''
 
-    const htmlPrompt = `You are a premium HTML report builder for real estate CMAs (Comparative Market Analysis). Generate a complete, self-contained HTML document for a CMA report.
+    const combinedPrompt = `You are a real estate CMA analyst AND premium HTML report builder. You will perform TWO tasks in a single response.
 
 SUBJECT PROPERTY:
 Address: ${address}
 ${JSON.stringify(subjectData, null, 2)}
 
-ANALYSIS DATA:
-${JSON.stringify(analysis, null, 2)}
+COMPARABLE SALES (${compsRaw.length} comps):
+${JSON.stringify(compsRaw, null, 2)}
+
+═══ TASK 1: ANALYSIS (output as JSON block) ═══
+Analyze comps and output a JSON block wrapped in <analysis> tags:
+<analysis>
+{
+  "comps_analyzed": [
+    { "address": "string", "salePrice": number, "saleDate": "string", "bedrooms": number, "bathrooms": number, "squareFootage": number, "lotSize": number, "yearBuilt": number, "distance": number, "relevanceScore": number (0-100), "adjustedPrice": number, "adjustments": { "sqft": number, "bedrooms": number, "bathrooms": number, "lotSize": number, "age": number, "condition": number, "total": number }, "notes": "string" }
+  ],
+  "pricing_strategy": { "recommended_price": number, "low": number, "high": number, "price_per_sqft": number, "strategy": "aggressive/competitive/conservative", "reasoning": "2-3 sentences" },
+  "market_context": { "avg_sale_price": number, "median_sale_price": number, "avg_price_per_sqft": number, "avg_dom": number, "absorption_rate": "string", "price_trend": "appreciating/stable/declining", "market_type": "seller's/balanced/buyer's", "comp_count": number },
+  "executive_summary": "3-5 sentence professional summary"
+}
+</analysis>
+
+Sort comps by relevanceScore descending. Use top 6-8 most relevant for pricing. Adjustments in dollars.
+
+═══ TASK 2: HTML REPORT (output after analysis) ═══
+Using your analysis above, generate a complete standalone HTML document wrapped in <report> tags:
+<report>
+<!DOCTYPE html>...
+</report>
 
 BRANDING:
 - Primary color: ${primaryColor}
@@ -295,48 +202,24 @@ BRANDING:
 - Agent license: ${agentLicense || 'N/A'}
 ${teamLogo ? `- Team logo URL: ${teamLogo}` : ''}
 
-Generate a complete HTML document with these sections:
+HTML SECTIONS:
+1. COVER PAGE - Gradient background using primary color, large address, "Comparative Market Analysis" subtitle, date, agent/team branding, logo if available
+2. SUBJECT PROPERTY - Card grid: beds, baths, sqft, lot size, year built, property type
+3. COMPARABLE SALES TABLE - Top 6-8 comps: Address, Sale Price, Sale Date, Bed/Bath, SqFt, $/SqFt, Distance, Score (color-coded badge). Alternate row colors.
+4. ADJUSTMENT ANALYSIS - Dollar adjustments for top 5-6 comps. Green=positive, red=negative.
+5. MARKET CONTEXT - 4-card grid: Avg Sale Price, Median Price, Avg $/SqFt, Days on Market
+6. PRICING STRATEGY - Price ladder: Low/Recommended/High. Highlight recommended. Include reasoning.
+7. EXECUTIVE SUMMARY - Colored box with summary text and bullet takeaways.
+8. FOOTER - Disclaimer, "Powered by RealtyGrind", date.
 
-1. COVER PAGE - Dark gradient background using primary color, large address text, "Comparative Market Analysis" subtitle, date, agent/team branding, team logo if available
+DESIGN: Standalone HTML+CSS, no external deps, system fonts, print media queries, cover page min-height:100vh, score badges (80+ green, 60-79 amber, <60 red), $ formatting with commas, ${isDark ? 'dark backgrounds (#0a0a14, #12121a), light text (#e4e4e7)' : 'light backgrounds, dark text'}, accent color: ${primaryColor}. NO JavaScript, NO script tags, NO external images/fonts (except team logo if provided).`
 
-2. SUBJECT PROPERTY - Card grid showing key property details (beds, baths, sqft, lot size, year built, property type). Clean modern cards with icons.
+    const fetchController = new AbortController()
+    const fetchTimeout = setTimeout(() => fetchController.abort(), 180000)
 
-3. COMPARABLE SALES TABLE - Show top 6-8 comps in a professional table with columns: Address, Sale Price, Sale Date, Bed/Bath, SqFt, $/SqFt, Distance, Score (with color-coded badge). Alternate row colors.
-
-4. ADJUSTMENT ANALYSIS - Table showing dollar adjustments for top 5-6 comps: columns for each adjustment category (SqFt, Beds, Baths, Lot, Age, Total) with the adjusted price. Use green for positive and red for negative adjustments.
-
-5. MARKET CONTEXT - 4-card grid showing key market stats: Average Sale Price, Median Price, Avg $/SqFt, Days on Market, with secondary stats below each.
-
-6. PRICING STRATEGY - Visual price ladder showing Low/Recommended/High prices. Highlight the recommended price prominently. Include the AI strategy reasoning.
-
-7. EXECUTIVE SUMMARY - Dark/colored box with the executive summary text, key takeaways as bullet points.
-
-8. FOOTER - Small disclaimer text, "Powered by RealtyGrind", generation date.
-
-DESIGN REQUIREMENTS:
-- Complete standalone HTML with embedded CSS (no external dependencies)
-- Professional, clean design suitable for client presentations
-- Each section should be wrapped in a <div class="page section-name"> for PDF page breaks
-- Use CSS print media queries for clean printing
-- The cover page should be full-page height (min-height: 100vh)
-- Typography: Use system fonts (-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif)
-- Responsive table design that doesn't overflow
-- Score badges: 80+ green, 60-79 amber, below 60 red
-- Currency formatting with $ and commas
-- ${isDark ? 'Dark theme: dark backgrounds (#0a0a14, #12121a), light text (#e4e4e7)' : 'Light theme: white/light gray backgrounds, dark text'}
-- Primary accent color: ${primaryColor}
-- Do NOT include any JavaScript
-- Do NOT use any <script> tags
-- Do NOT use any external images or fonts (only the team logo URL if provided)
-
-Output ONLY the complete HTML document. No markdown fencing, no explanation.`
-
-    const htmlController = new AbortController()
-    const htmlTimeout = setTimeout(() => htmlController.abort(), 120000)
-
-    let htmlResponse: Response
+    let aiResponse: Response
     try {
-      htmlResponse = await fetch('https://api.anthropic.com/v1/messages', {
+      aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -345,39 +228,60 @@ Output ONLY the complete HTML document. No markdown fencing, no explanation.`
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 16384,
-          messages: [{ role: 'user', content: htmlPrompt }],
+          max_tokens: 24000,
+          messages: [{ role: 'user', content: combinedPrompt }],
           stream: false,
         }),
-        signal: htmlController.signal,
+        signal: fetchController.signal,
       })
     } catch (fetchErr) {
-      clearTimeout(htmlTimeout)
-      await markFailed('Claude HTML generation fetch error')
+      clearTimeout(fetchTimeout)
+      await markFailed('Claude API fetch error')
       return json({ error: 'AI service unavailable' }, 502)
     }
-    clearTimeout(htmlTimeout)
+    clearTimeout(fetchTimeout)
 
-    if (!htmlResponse.ok) {
-      const errBody = await htmlResponse.text()
-      await markFailed(`Claude HTML error: ${htmlResponse.status} ${errBody}`)
-      return json({ error: 'Report generation failed' }, 502)
+    if (!aiResponse.ok) {
+      const errBody = await aiResponse.text()
+      await markFailed(`Claude error: ${aiResponse.status} ${errBody}`)
+      return json({ error: 'AI generation failed' }, 502)
     }
 
-    const htmlData = await htmlResponse.json()
-    let reportHtml = ''
-    if (htmlData.content && Array.isArray(htmlData.content)) {
-      for (const block of htmlData.content) {
-        if (block.type === 'text') reportHtml += block.text
+    const aiData = await aiResponse.json()
+    let fullText = ''
+    if (aiData.content && Array.isArray(aiData.content)) {
+      for (const block of aiData.content) {
+        if (block.type === 'text') fullText += block.text
       }
     }
 
-    // Strip markdown fencing if present
-    reportHtml = reportHtml.trim()
-    if (reportHtml.startsWith('```html')) reportHtml = reportHtml.slice(7)
-    else if (reportHtml.startsWith('```')) reportHtml = reportHtml.slice(3)
-    if (reportHtml.endsWith('```')) reportHtml = reportHtml.slice(0, -3)
-    reportHtml = reportHtml.trim()
+    // Extract analysis JSON from <analysis> tags
+    const analysisMatch = fullText.match(/<analysis>([\s\S]*?)<\/analysis>/)
+    let compsAnalyzed: unknown[] = []
+    let pricingStrategy: Record<string, unknown> = {}
+    let marketContext: Record<string, unknown> = {}
+    if (analysisMatch) {
+      try {
+        const analysis = JSON.parse(analysisMatch[1].trim())
+        compsAnalyzed = analysis.comps_analyzed || []
+        pricingStrategy = analysis.pricing_strategy || {}
+        marketContext = analysis.market_context || {}
+      } catch {
+        console.warn('Failed to parse analysis JSON, continuing with HTML only')
+      }
+    }
+
+    // Extract HTML from <report> tags
+    const reportMatch = fullText.match(/<report>([\s\S]*?)<\/report>/)
+    let reportHtml = reportMatch ? reportMatch[1].trim() : ''
+
+    // Fallback: if no <report> tags, try to find raw HTML
+    if (!reportHtml) {
+      const htmlStart = fullText.indexOf('<!DOCTYPE') !== -1 ? fullText.indexOf('<!DOCTYPE') : fullText.indexOf('<html')
+      if (htmlStart !== -1) {
+        reportHtml = fullText.slice(htmlStart).trim()
+      }
+    }
 
     if (!reportHtml) {
       await markFailed('Empty HTML from AI')
@@ -387,7 +291,7 @@ Output ONLY the complete HTML document. No markdown fencing, no explanation.`
     // Post-process: strip any <script> tags the AI may have included
     reportHtml = reportHtml.replace(/<script[\s\S]*?<\/script>/gi, '')
 
-    // ── Step 4: Save to database ────────────────────────────────────────────
+    // ── Step 3: Save to database ────────────────────────────────────────────
     const { error: updateErr } = await admin.from('cma_reports').update({
       subject_data: subjectData,
       comps_raw: compsRaw,

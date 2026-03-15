@@ -1947,6 +1947,9 @@ function Dashboard({ theme, onToggleTheme }) {
   // Clean up toast timer on unmount to prevent setState-after-unmount
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current) }, [])
 
+  // ── Mortgage Rates (national avg, cached) ─────────────────────────────────
+  const [mortgageRates, setMortgageRates] = useState(null)
+
   // ── Morning Briefing Agent ─────────────────────────────────────────────────
   const [briefingData, setBriefingData] = useState(null)
   const [briefingLoading, setBriefingLoading] = useState(false)
@@ -2255,6 +2258,11 @@ function Dashboard({ theme, onToggleTheme }) {
     } finally {
       setDbLoading(false)
     }
+
+    // Mortgage rates — fire-and-forget (non-blocking, separate from main data)
+    supabase.from('mortgage_rates').select('*').eq('id', 1).single()
+      .then(({ data }) => { if (data?.conventional_30) setMortgageRates(data) })
+      .catch(() => {})
   }
 
   // ── TC Checklist handlers ─────────────────────────────────────────────────
@@ -4259,6 +4267,47 @@ function Dashboard({ theme, onToggleTheme }) {
           </div>
         </div>
         </>)}
+
+        {/* ── Mortgage Rates Bar ───────────────────────────────── */}
+        {mortgageRates && (
+          <div style={{
+            display:'flex', alignItems:'center', gap:10, flexWrap:'wrap',
+            padding:'10px 16px', marginBottom:14, borderRadius:10,
+            background:'var(--surface)', border:'1px solid var(--border)',
+          }}>
+            <div style={{ display:'flex', alignItems:'center', gap:6, marginRight:4 }}>
+              <span style={{ fontSize:13 }}>📊</span>
+              <span style={{ fontSize:10, fontWeight:700, color:'var(--muted)',
+                fontFamily:"'JetBrains Mono',monospace", letterSpacing:.5, textTransform:'uppercase' }}>
+                Rates
+              </span>
+            </div>
+            {[
+              { label:'Conv 30yr', value: mortgageRates.conventional_30, color:'#3b82f6' },
+              { label:'Conv 15yr', value: mortgageRates.conventional_15, color:'#6366f1' },
+              { label:'FHA',       value: mortgageRates.fha_30,          color:'#10b981' },
+              { label:'VA',        value: mortgageRates.va_30,           color:'#14b8a6' },
+              { label:'Jumbo',     value: mortgageRates.jumbo_30,        color:'#f59e0b' },
+              { label:'DSCR',      value: mortgageRates.dscr,            color:'#ef4444' },
+            ].map(r => (
+              <div key={r.label} style={{
+                display:'flex', alignItems:'center', gap:5, padding:'3px 10px',
+                background:`${r.color}10`, border:`1px solid ${r.color}30`, borderRadius:16,
+              }}>
+                <span style={{ fontSize:10, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace" }}>
+                  {r.label}
+                </span>
+                <span style={{ fontSize:11, fontWeight:700, color:r.color,
+                  fontFamily:"'JetBrains Mono',monospace" }}>
+                  {r.value ? `${Number(r.value).toFixed(2)}%` : '—'}
+                </span>
+              </div>
+            ))}
+            <span style={{ fontSize:9, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace", marginLeft:'auto' }}>
+              {mortgageRates.updated_at ? new Date(mortgageRates.updated_at).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : ''} · Natl Avg
+            </span>
+          </div>
+        )}
 
         {/* ── Stats row (hidden for TCs) ──────────────────────── */}
         {!isTC && (<>

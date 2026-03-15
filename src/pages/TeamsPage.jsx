@@ -2842,9 +2842,10 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                               </div>
                                               <button onClick={async ()=>{
                                                 try {
-                                                  await supabase.from('team_members').update({role:'member'}).eq('user_id',m.id).eq('team_id',profile.team_id)
+                                                  const {error} = await supabase.from('team_members').update({role:'member'}).eq('user_id',m.id).eq('team_id',profile.team_id)
+                                                  if (error) { console.error('Remove TC error:', error.message); setError('Failed to remove TC role — you may not have permission.'); return }
                                                   setMembers(prev=>prev.map(p=>p.id===m.id?{...p,team_member_role:'member'}:p))
-                                                } catch(err) { console.error('Remove TC error:', err) }
+                                                } catch(err) { console.error('Remove TC error:', err); setError('Failed to remove TC role.') }
                                               }} style={{ fontSize:11, padding:'6px 14px', borderRadius:6, cursor:'pointer', flexShrink:0,
                                                 border:'1px solid rgba(220,38,38,.3)', background:'rgba(220,38,38,.07)', color:'var(--red)', fontWeight:600 }}>
                                                 Remove TC Role
@@ -2873,9 +2874,10 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                               </div>
                                               <button onClick={async ()=>{
                                                 try {
-                                                  await supabase.from('team_members').update({role:'tc'}).eq('user_id',m.id).eq('team_id',profile.team_id)
+                                                  const {error} = await supabase.from('team_members').update({role:'tc'}).eq('user_id',m.id).eq('team_id',profile.team_id)
+                                                  if (error) { console.error('Assign TC error:', error.message); setError('Failed to assign TC role — you may not have permission.'); return }
                                                   setMembers(prev=>prev.map(p=>p.id===m.id?{...p,team_member_role:'tc'}:p))
-                                                } catch(err) { console.error('Assign TC error:', err) }
+                                                } catch(err) { console.error('Assign TC error:', err); setError('Failed to assign TC role.') }
                                               }} style={{ fontSize:11, padding:'6px 14px', borderRadius:6, cursor:'pointer', flexShrink:0,
                                                 border:'1px solid rgba(14,165,233,.3)', background:'rgba(14,165,233,.07)', color:'#0ea5e9', fontWeight:600 }}>
                                                 Make TC

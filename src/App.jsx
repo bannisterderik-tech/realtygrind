@@ -701,6 +701,37 @@ const DEFAULT_CHECKLIST = [
   { id:'close', label:'Closing day',                     done:false },
 ]
 
+// TC-specific checklist — comprehensive contract-to-close items for Transaction Coordinators
+const TC_DEFAULT_CHECKLIST = [
+  { id:'tc-ratified',  label:'Ratified contract received & reviewed',       done:false },
+  { id:'tc-open-esc',  label:'Open escrow / title order',                   done:false },
+  { id:'tc-em-track',  label:'Earnest money receipt confirmed',             done:false },
+  { id:'tc-disc',      label:'Disclosure package sent to buyer',            done:false },
+  { id:'tc-disc-sign', label:'Disclosures signed by all parties',           done:false },
+  { id:'tc-hoi',       label:'Homeowner\'s insurance ordered',              done:false },
+  { id:'tc-insp-ord',  label:'Home inspection ordered & scheduled',         done:false },
+  { id:'tc-insp-rpt',  label:'Inspection report reviewed',                  done:false },
+  { id:'tc-insp-rep',  label:'Repair request / amendment sent',             done:false },
+  { id:'tc-insp-res',  label:'Inspection resolution signed',                done:false },
+  { id:'tc-app-ord',   label:'Appraisal ordered',                           done:false },
+  { id:'tc-app-rcv',   label:'Appraisal received & reviewed',               done:false },
+  { id:'tc-app-con',   label:'Appraisal contingency removed',               done:false },
+  { id:'tc-loan-app',  label:'Loan application verified',                   done:false },
+  { id:'tc-cond',      label:'Lender conditions cleared',                   done:false },
+  { id:'tc-ctc',       label:'Clear to close received',                     done:false },
+  { id:'tc-title-rpt', label:'Title report reviewed — no issues',           done:false },
+  { id:'tc-survey',    label:'Survey ordered (if required)',                 done:false },
+  { id:'tc-hoa',       label:'HOA docs / estoppel ordered (if applicable)', done:false },
+  { id:'tc-warranty',  label:'Home warranty ordered (if applicable)',        done:false },
+  { id:'tc-cd-rev',    label:'Closing disclosure reviewed & approved',      done:false },
+  { id:'tc-util',      label:'Utility transfers coordinated',               done:false },
+  { id:'tc-walk',      label:'Final walkthrough scheduled',                 done:false },
+  { id:'tc-keys',      label:'Key exchange / lockbox coordinated',          done:false },
+  { id:'tc-close-pkg', label:'Closing package sent to title company',       done:false },
+  { id:'tc-comm',      label:'Commission disbursement confirmed',           done:false },
+  { id:'tc-closed',    label:'Transaction closed — file complete',          done:false },
+]
+
 // ─── Print Daily Modal ────────────────────────────────────────────────────────
 
 function PrintDailyModal({ habits, counters, today, todayDate, effectiveToday, customTasks, customDone, offersMade, offersReceived, pendingDeals, closedDeals, buyerReps, onClose, target }) {
@@ -1918,6 +1949,12 @@ function Dashboard({ theme, onToggleTheme }) {
   const [offersReceivedCount, setOffersReceivedCount] = useState(0) // historical — includes archived
   const [closedCount,    setClosedCount]    = useState(0) // historical — includes archived (for goal tracking)
 
+  // ── TC Dashboard state ──────────────────────────────────────────────────────
+  const isTC = profile?.team_member_role === 'tc'
+  const [tcDeals, setTcDeals] = useState([]) // pending deals assigned to this TC
+  const [tcExpandedChecklist, setTcExpandedChecklist] = useState(null) // deal id or null
+  const [tcLoading, setTcLoading] = useState(false)
+
   const [showCommSummary, setShowCommSummary] = useState(false)
   const [showPrint,        setShowPrint]        = useState(false)
   const [showWeeklyUpdate, setShowWeeklyUpdate] = useState(false)
@@ -2107,11 +2144,104 @@ function Dashboard({ theme, onToggleTheme }) {
         setStandupDone(true)
       }
     }
+    // ── Load TC Dashboard data (if user is a TC) ────────────────────────────
+    // Runs after main data load so isTC is based on profile.team_member_role
+    if (profile?.team_member_role === 'tc') {
+      try {
+        const { data: tcRows } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('tc_id', user.id)
+          .in('type', ['pending'])
+          .order('created_at', { ascending: false })
+          .limit(200)
+        if (mountedRef.current && tcRows) {
+          // Fetch agent names for these deals
+          const agentIds = [...new Set(tcRows.map(t => t.user_id).filter(Boolean))]
+          let nameMap = {}
+          if (agentIds.length > 0) {
+            const { data: agents } = await supabase.from('profiles').select('id,full_name').in('id', agentIds)
+            nameMap = Object.fromEntries((agents||[]).map(a => [a.id, a.full_name || 'Agent']))
+          }
+          setTcDeals(tcRows.map(t => ({
+            id: t.id,
+            address: t.address || '',
+            price: t.price || '',
+            commission: t.commission || '',
+            dealSide: t.deal_side || '',
+            agentName: nameMap[t.user_id] || 'Agent',
+            agentId: t.user_id,
+            createdAt: t.created_at,
+            checklist: t.checklist || [],
+            tcChecklist: t.tc_checklist || [],
+          })))
+        }
+      } catch (tcErr) {
+        console.error('TC deals load error:', tcErr)
+      }
+    }
+
     } catch (err) {
       console.error('Dashboard loadAll error:', err)
       setDbError('Could not load your data. Check your connection and try again.')
     } finally {
       setDbLoading(false)
+    }
+  }
+
+  // ── TC Checklist handlers ─────────────────────────────────────────────────
+  async function tcToggleChecklistItem(dealId, itemId) {
+    setTcDeals(prev => prev.map(d => {
+      if (d.id !== dealId) return d
+      const updated = (d.tcChecklist || []).map(i =>
+        i.id === itemId ? { ...i, done: !i.done, completedAt: !i.done ? new Date().toISOString() : null } : i
+      )
+      return { ...d, tcChecklist: updated }
+    }))
+    const deal = tcDeals.find(d => d.id === dealId)
+    if (deal) {
+      const updated = (deal.tcChecklist || []).map(i =>
+        i.id === itemId ? { ...i, done: !i.done, completedAt: !i.done ? new Date().toISOString() : null } : i
+      )
+      safeDb(supabase.from('transactions').update({ tc_checklist: updated }).eq('id', dealId))
+    }
+  }
+
+  async function tcAddChecklistItem(dealId, label) {
+    const newItem = { id: `tc-custom-${Date.now()}`, label: label.trim(), done: false }
+    setTcDeals(prev => prev.map(d => {
+      if (d.id !== dealId) return d
+      return { ...d, tcChecklist: [...(d.tcChecklist || []), newItem] }
+    }))
+    const deal = tcDeals.find(d => d.id === dealId)
+    if (deal) {
+      const updated = [...(deal.tcChecklist || []), newItem]
+      safeDb(supabase.from('transactions').update({ tc_checklist: updated }).eq('id', dealId))
+    }
+  }
+
+  async function tcRemoveChecklistItem(dealId, itemId) {
+    setTcDeals(prev => prev.map(d => {
+      if (d.id !== dealId) return d
+      return { ...d, tcChecklist: (d.tcChecklist || []).filter(i => i.id !== itemId) }
+    }))
+    const deal = tcDeals.find(d => d.id === dealId)
+    if (deal) {
+      const updated = (deal.tcChecklist || []).filter(i => i.id !== itemId)
+      safeDb(supabase.from('transactions').update({ tc_checklist: updated }).eq('id', dealId))
+    }
+  }
+
+  async function tcUpdateDueDate(dealId, itemId, dueDate) {
+    setTcDeals(prev => prev.map(d => {
+      if (d.id !== dealId) return d
+      const updated = (d.tcChecklist || []).map(i => i.id === itemId ? { ...i, dueDate } : i)
+      return { ...d, tcChecklist: updated }
+    }))
+    const deal = tcDeals.find(d => d.id === dealId)
+    if (deal) {
+      const updated = (deal.tcChecklist || []).map(i => i.id === itemId ? { ...i, dueDate } : i)
+      safeDb(supabase.from('transactions').update({ tc_checklist: updated }).eq('id', dealId))
     }
   }
 
@@ -2926,6 +3056,28 @@ function Dashboard({ theme, onToggleTheme }) {
     }
   }
 
+  // ── TC auto-assignment helper ───────────────────────────────────────────────
+  // When a deal goes pending, auto-assign the team's first TC and populate
+  // the TC-specific checklist on the transaction.
+  async function assignTCToDeal(dealId) {
+    if (!profileTeamId || !dealId || String(dealId).startsWith('tmp-')) return
+    try {
+      const { data: tcs } = await supabase
+        .from('team_members')
+        .select('user_id')
+        .eq('team_id', profileTeamId)
+        .eq('role', 'tc')
+        .limit(1)
+      if (tcs?.length > 0) {
+        const tcId = tcs[0].user_id
+        const tcCl = TC_DEFAULT_CHECKLIST.map(i=>({...i}))
+        await supabase.from('transactions').update({ tc_id: tcId, tc_checklist: tcCl }).eq('id', dealId)
+      }
+    } catch (err) {
+      console.error('TC auto-assign error:', err)
+    }
+  }
+
   async function handleOfferStatus(row, newStatus, srcSetter) {
     const inferredSide = srcSetter === setOffersReceived ? 'seller' : 'buyer'
     if (newStatus === 'pending') {
@@ -2934,6 +3086,8 @@ function Dashboard({ theme, onToggleTheme }) {
       if (row.id && !String(row.id).startsWith('tmp-')) {
         const {error} = await supabase.from('transactions').update(updateObj).eq('id',row.id).eq('user_id',user.id)
         if (error) { console.error('transition error:', error.message); showToast('Failed to update deal'); return }
+        // Auto-assign TC
+        assignTCToDeal(row.id)
       }
       srcSetter(prev => prev.filter(r => r.id !== row.id))
       setPendingDeals(prev=>[...prev,{...row,closedFrom:'Offers',dealSide:row.dealSide||inferredSide,checklist:cl}])
@@ -3205,12 +3359,14 @@ function Dashboard({ theme, onToggleTheme }) {
         await supabase.from('transactions').update({type:'pending',closed_from:'Listing',checklist:cl}).eq('id',existingOffer.id).eq('user_id',user.id)
         setOffersReceived(prev=>prev.filter(r=>r.id!==existingOffer.id))
         setPendingDeals(prev=>[...prev,{...existingOffer,closedFrom:'Listing',checklist:cl}])
+        assignTCToDeal(existingOffer.id)
       } else {
         const data = await dbInsert('pending', {address:listing.address, price:lPrice, commission:lComm}, 'Listing', 'seller', lSource)
         if (data) {
           const cl = DEFAULT_CHECKLIST.map(i=>({...i}))
           setPendingDeals(prev=>[...prev,{id:data.id,address:listing.address,price:lPrice,commission:lComm,status:'active',closedFrom:'Listing',dealSide:'seller',originalLeadSource:lSource||'',checklist:cl}])
           safeDb(supabase.from('transactions').update({checklist:cl}).eq('id',data.id))
+          assignTCToDeal(data.id)
         }
       }
       setWentPendingCount(prev => prev + 1)
@@ -3979,7 +4135,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
         {/* ── Primary Tabs ────────────────────────────────── */}
         <div className="primary-tabs">
-          {[{id:'calendar',l:'📅 Calendar'},{id:'potential',l:'💡 Potential',count:potentialListings.length},{id:'listings',l:'🏡 Listings',count:listings.length},{id:'buyers',l:'🤝 Buyers',count:buyerReps.length},{id:'closed',l:'📦 Archived',count:archivedDeals.length}].map(t=>(
+          {[{id:'calendar',l:'📅 Calendar'},{id:'potential',l:'💡 Potential',count:potentialListings.length},{id:'listings',l:'🏡 Listings',count:listings.length},{id:'buyers',l:'🤝 Buyers',count:buyerReps.length},{id:'closed',l:'📦 Archived',count:archivedDeals.length},...(isTC?[{id:'tc-dashboard',l:'📋 TC Dashboard',count:tcDeals.length}]:[])].map(t=>(
             <button key={t.id} className={`primary-tab${primaryTab===t.id?' on':''}`} onClick={()=>setPrimaryTab(t.id)}>
               {t.l}{t.count!=null && <span className="ptab-count">{t.count}</span>}
             </button>
@@ -5862,6 +6018,184 @@ function Dashboard({ theme, onToggleTheme }) {
               </div>
             )
           })()}
+        </div>
+        </>)}
+
+        {/* ══ TC DASHBOARD TAB ═══════════════════════════════════ */}
+        {primaryTab==='tc-dashboard' && isTC && (<>
+        <div style={{ marginTop:36 }}>
+          <div className="section-divider"/>
+          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14, gap:12, flexWrap:'wrap' }}>
+            <div>
+              <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:4 }}>
+                <div style={{ width:36, height:36, borderRadius:10, background:'rgba(14,165,233,.1)', border:'1px solid rgba(14,165,233,.25)',
+                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:17, flexShrink:0 }}>📋</div>
+                <span className="serif" style={{ fontSize:20, color:'var(--text)', fontWeight:600 }}>TC Dashboard</span>
+                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, fontSize:20, color:'#0ea5e9', lineHeight:1 }}>
+                  {tcDeals.length}
+                </span>
+              </div>
+              <div className="section-sub" style={{ marginBottom:0 }}>
+                Pending deals assigned to you · manage contract-to-close checklists
+              </div>
+            </div>
+          </div>
+
+          {/* Summary stats */}
+          {tcDeals.length > 0 && (() => {
+            const totalItems = tcDeals.reduce((s,d) => s + (d.tcChecklist?.length || 0), 0)
+            const doneItems = tcDeals.reduce((s,d) => s + (d.tcChecklist?.filter(i=>i.done)?.length || 0), 0)
+            const overdueItems = tcDeals.reduce((s,d) => s + (d.tcChecklist?.filter(i => !i.done && i.dueDate && new Date(i.dueDate+'T23:59:59') < new Date())?.length || 0), 0)
+            const pct = totalItems > 0 ? Math.round((doneItems/totalItems)*100) : 0
+            return (
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))', gap:10, marginBottom:20 }}>
+                <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid #0ea5e9' }}>
+                  <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>PENDING DEALS</div>
+                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:22, fontWeight:700, color:'#0ea5e9' }}>{tcDeals.length}</div>
+                </div>
+                <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid #10b981' }}>
+                  <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>TASKS DONE</div>
+                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:22, fontWeight:700, color:'#10b981' }}>{doneItems}/{totalItems}</div>
+                </div>
+                <div className="card" style={{ padding:14, textAlign:'center', borderTop:`2.5px solid ${pct===100?'#10b981':'var(--gold2)'}` }}>
+                  <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>COMPLETION</div>
+                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:22, fontWeight:700, color: pct===100?'#10b981':'var(--gold2)' }}>{pct}%</div>
+                </div>
+                {overdueItems > 0 && (
+                  <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid #ef4444' }}>
+                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>OVERDUE</div>
+                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:22, fontWeight:700, color:'#ef4444' }}>{overdueItems}</div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* Deal cards */}
+          {tcDeals.length === 0 && (
+            <div className="card" style={{ textAlign:'center', padding:'32px 20px', color:'var(--dim)', fontSize:13 }}>
+              No pending deals assigned to you yet. When team members mark deals as pending, they'll appear here with your TC checklist.
+            </div>
+          )}
+
+          <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+            {tcDeals.map(deal => {
+              const cl = deal.tcChecklist || []
+              const done = cl.filter(i=>i.done).length
+              const total = cl.length
+              const pct = total > 0 ? Math.round((done/total)*100) : 0
+              const isExpanded = tcExpandedChecklist === deal.id
+              const priceNum = parseFloat(String(deal.price||'').replace(/[^0-9.]/g,''))
+              const overdue = cl.filter(i => !i.done && i.dueDate && new Date(i.dueDate+'T23:59:59') < new Date()).length
+
+              return (
+                <div key={deal.id} className="card" style={{ padding:0, overflow:'hidden',
+                  border: overdue > 0 ? '1px solid rgba(239,68,68,.3)' : '1px solid var(--b2)' }}>
+                  {/* Deal header */}
+                  <div style={{ padding:'16px 20px', cursor:'pointer', display:'flex', alignItems:'center', gap:14 }}
+                    onClick={() => setTcExpandedChecklist(prev => prev === deal.id ? null : deal.id)}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, flexWrap:'wrap' }}>
+                        <span className="serif" style={{ fontSize:16, color:'var(--text)', fontWeight:600 }}>{deal.address || 'No address'}</span>
+                        <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700,
+                          background: deal.dealSide==='seller' ? 'rgba(139,92,246,.1)' : 'rgba(14,165,233,.1)',
+                          color: deal.dealSide==='seller' ? '#8b5cf6' : '#0ea5e9',
+                          border: `1px solid ${deal.dealSide==='seller' ? 'rgba(139,92,246,.25)' : 'rgba(14,165,233,.25)'}`,
+                        }}>
+                          {deal.dealSide === 'seller' ? 'SELLER' : 'BUYER'}
+                        </span>
+                        {overdue > 0 && (
+                          <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700,
+                            background:'rgba(239,68,68,.1)', color:'#ef4444', border:'1px solid rgba(239,68,68,.25)' }}>
+                            {overdue} OVERDUE
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ display:'flex', alignItems:'center', gap:10, fontSize:12, color:'var(--muted)', flexWrap:'wrap' }}>
+                        <span>Agent: <strong style={{ color:'var(--text)' }}>{deal.agentName}</strong></span>
+                        {priceNum > 0 && <><span className="sep"/><span style={{ color:'var(--gold2)', fontWeight:600 }}>{formatPrice(deal.price)}</span></>}
+                        <span className="sep"/><span>📋 {done}/{total}</span>
+                      </div>
+                    </div>
+                    {/* Progress ring */}
+                    <div style={{ position:'relative', width:44, height:44, flexShrink:0 }}>
+                      <svg width="44" height="44" viewBox="0 0 44 44" style={{ transform:'rotate(-90deg)' }}>
+                        <circle cx="22" cy="22" r="18" fill="none" stroke="var(--b2)" strokeWidth="3"/>
+                        <circle cx="22" cy="22" r="18" fill="none"
+                          stroke={pct === 100 ? '#10b981' : pct > 50 ? '#0ea5e9' : '#f59e0b'}
+                          strokeWidth="3" strokeLinecap="round"
+                          strokeDasharray={`${2*Math.PI*18}`}
+                          strokeDashoffset={`${2*Math.PI*18*(1-pct/100)}`}
+                          style={{ transition:'stroke-dashoffset .3s' }}/>
+                      </svg>
+                      <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center',
+                        fontSize:10, fontWeight:700, fontFamily:"'JetBrains Mono',monospace",
+                        color: pct===100 ? '#10b981' : 'var(--text)' }}>
+                        {pct}%
+                      </div>
+                    </div>
+                    <div style={{ fontSize:16, color:'var(--muted)', transition:'transform .2s',
+                      transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div style={{ height:3, background:'var(--b1)' }}>
+                    <div style={{ width:`${pct}%`, height:'100%', transition:'width .3s ease',
+                      background: pct===100 ? '#10b981' : pct > 50 ? '#0ea5e9' : '#f59e0b' }}/>
+                  </div>
+
+                  {/* Expanded checklist */}
+                  {isExpanded && (
+                    <div style={{ padding:'14px 20px 18px', background:'var(--bg2)', borderTop:'1px solid var(--b1)' }}>
+                      {cl.length === 0 && (
+                        <div style={{ fontSize:12, color:'var(--dim)', fontStyle:'italic', marginBottom:8 }}>
+                          No checklist items yet — items are auto-populated when deals are assigned.
+                        </div>
+                      )}
+                      {cl.map(item => {
+                        const isOverdue = !item.done && item.dueDate && new Date(item.dueDate+'T23:59:59') < new Date()
+                        return (
+                          <div key={item.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 0',
+                            borderBottom:'1px solid var(--b1)' }}>
+                            <button onClick={()=>tcToggleChecklistItem(deal.id,item.id)}
+                              style={{ background:'none', border:'none', cursor:'pointer', fontSize:15, padding:0, lineHeight:1, flexShrink:0 }}>
+                              {item.done ? '✅' : '☐'}
+                            </button>
+                            <span style={{ flex:1, fontSize:12,
+                              color: item.done ? 'var(--dim)' : isOverdue ? '#ef4444' : 'var(--text)',
+                              textDecoration: item.done ? 'line-through' : 'none',
+                              fontWeight: isOverdue ? 600 : 400 }}>
+                              {item.label}
+                              {isOverdue && <span style={{ fontSize:9, marginLeft:6, color:'#ef4444' }}>OVERDUE</span>}
+                            </span>
+                            {item.done && item.completedAt && (
+                              <span style={{ fontSize:9, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>
+                                {new Date(item.completedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'})}
+                              </span>
+                            )}
+                            <input type="date" value={item.dueDate||''} title="Due date"
+                              onChange={e=>tcUpdateDueDate(deal.id,item.id,e.target.value)}
+                              style={{ background:'none', border:'1px solid var(--b1)', borderRadius:4, padding:'2px 4px',
+                                fontSize:9, color: item.dueDate ? (isOverdue ? '#ef4444' : 'var(--text)') : 'var(--dim)',
+                                fontFamily:"'JetBrains Mono',monospace", cursor:'pointer', width:95, flexShrink:0 }}/>
+                            <button onClick={()=>tcRemoveChecklistItem(deal.id,item.id)}
+                              style={{ background:'none', border:'none', cursor:'pointer', color:'var(--dim)', fontSize:11,
+                                padding:'2px', opacity:.5 }} title="Remove">✕</button>
+                          </div>
+                        )
+                      })}
+                      {/* Add task */}
+                      <div style={{ marginTop:8 }}>
+                        <input className="field-input" placeholder="+ Add task…"
+                          onKeyDown={e => { if (e.key==='Enter' && e.target.value.trim()) { tcAddChecklistItem(deal.id,e.target.value); e.target.value='' } }}
+                          style={{ padding:'6px 10px', fontSize:11, width:'100%', boxSizing:'border-box' }}/>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </div>
         </>)}
 

@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { Loader, Wordmark, ThemeToggle, Ring, getRank, CAT, StatCard, fmtMoney, resolveCommission } from '../design'
 import { HABITS } from '../habits'
-import { canUseTeams, getMaxMembers, getPlan, isActiveBilling } from '../lib/plans'
+import { canUseTeams, getMaxMembers, getMaxTCSeats, getPlan, isActiveBilling } from '../lib/plans'
 import { ALL_APPS } from './DirectoryPage'
 import AvatarCropModal from '../components/AvatarCropModal'
 import { getTodayStr } from '../lib/dateUtils'
@@ -232,7 +232,11 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
     try {
     const {data:mems} = await supabase.from('profiles').select('id,full_name,xp,streak,goals,habit_prefs').eq('team_id',tid).order('full_name',{ascending:true})
     if (seq !== fetchMembersSeqRef.current) return // stale — a newer fetch was triggered
-    setMembers(mems||[])
+    // Fetch team_members roles (owner/member/tc) to display TC badges
+    const {data:tmRows} = await supabase.from('team_members').select('user_id,role').eq('team_id',tid)
+    const roleMap = Object.fromEntries((tmRows||[]).map(r=>[r.user_id, r.role]))
+    const memsWithRoles = (mems||[]).map(m=>({...m, team_member_role: roleMap[m.id]||'member'}))
+    setMembers(memsWithRoles)
     const {data:team} = await supabase.from('teams').select('*').eq('id',tid).single()
     if (seq !== fetchMembersSeqRef.current) return
     setTeamData(team)
@@ -1816,6 +1820,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                       const isMe  = m.id===user.id
                       const isOwner = teamData?.created_by===m.id
                       const isAdminMember = teamAdmins.includes(m.id)
+                      const isTCMember = m.team_member_role === 'tc'
                       const bio   = m.habit_prefs?.bio || {}
                       return (
                         <div key={m.id} className="card"
@@ -1836,6 +1841,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               {isMe && <span style={{ fontSize:8, padding:'1px 5px', borderRadius:4, background:'var(--gold4)', color:'var(--gold)', fontWeight:700 }}>YOU</span>}
                               {isOwner && <span style={{ fontSize:8, padding:'1px 5px', borderRadius:4, background:'rgba(139,92,246,.12)', color:'#8b5cf6', fontWeight:700 }}>OWNER</span>}
                               {isAdminMember && !isOwner && <span style={{ fontSize:8, padding:'1px 5px', borderRadius:4, background:'rgba(14,165,233,.12)', color:'#0ea5e9', fontWeight:700 }}>ADMIN</span>}
+                              {isTCMember && <span style={{ fontSize:8, padding:'1px 5px', borderRadius:4, background:'rgba(14,165,233,.12)', color:'#0ea5e9', fontWeight:700 }}>TC</span>}
                             </div>
                           </div>
                           {bio.specialty && <div style={{ fontSize:10, color:'#0ea5e9', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', width:'100%' }}>{bio.specialty}</div>}
@@ -2644,6 +2650,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                             {[
                               { id:'invites', label:'✉️ Invites' },
                               { id:'admins',  label:'👑 Admins' },
+                              { id:'tc',      label:'📋 Transaction Coordinators' },
                               { id:'groups',  label:'🫂 Groups' },
                               { id:'ai',      label:'🤖 AI Tools' },
                               { id:'general',  label:'⚙️ General' },
@@ -2779,6 +2786,110 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                                 <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic' }}>No other members yet.</div>
                               )}
                             </div>
+                          </div>
+                          )}
+
+                          {/* ── Transaction Coordinators sub-tab ── */}
+                          {settingsSubTab==='tc' && (
+                          <div>
+                            <div className="serif" style={{ fontSize:20, color:'var(--text)', marginBottom:6 }}>📋 Transaction Coordinators</div>
+                            <div style={{ fontSize:13, color:'var(--muted)', marginBottom:8, lineHeight:1.6 }}>
+                              Transaction Coordinators (TCs) get a dedicated view of all pending deals assigned to them. When team members mark deals as pending, the TC is auto-assigned and receives a comprehensive contract-to-close checklist to manage through closing.
+                            </div>
+                            {(() => {
+                              const ownerPlan = profile?.plan || 'solo'
+                              const maxTC = getMaxTCSeats(ownerPlan)
+                              const currentTCs = members.filter(m => m.team_member_role === 'tc')
+                              const nonTCMembers = members.filter(m => m.id !== user?.id && m.team_member_role !== 'tc' && teamData?.created_by !== m.id)
+                              return (
+                                <>
+                                  <div className="card" style={{ padding:'14px 18px', marginBottom:16, display:'flex', alignItems:'center', justifyContent:'space-between',
+                                    background:'linear-gradient(135deg, rgba(14,165,233,.06) 0%, var(--surface) 55%)', borderLeft:'3px solid #0ea5e9' }}>
+                                    <div>
+                                      <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>TC Seats</div>
+                                      <div style={{ fontSize:12, color:'var(--muted)' }}>{currentTCs.length} of {maxTC} seats used</div>
+                                    </div>
+                                    <div style={{ display:'flex', gap:4 }}>
+                                      {Array.from({length: maxTC}).map((_,i) => (
+                                        <div key={i} style={{ width:12, height:12, borderRadius:'50%',
+                                          background: i < currentTCs.length ? '#0ea5e9' : 'var(--b2)',
+                                          border: '1.5px solid ' + (i < currentTCs.length ? '#0ea5e9' : 'var(--b3)') }}/>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  {currentTCs.length > 0 && (
+                                    <div style={{ marginBottom:16 }}>
+                                      <div style={{ fontSize:10, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', marginBottom:8 }}>Active TCs</div>
+                                      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                                        {currentTCs.map(m => {
+                                          const rank = getRank(m.xp||0)
+                                          return (
+                                            <div key={m.id} className="card" style={{ padding:'12px 16px', display:'flex', alignItems:'center', gap:12 }}>
+                                              <MemberAvatar member={m} size={32} rank={rank}/>
+                                              <div style={{ flex:1, minWidth:0 }}>
+                                                <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.full_name||'Agent'}</div>
+                                                <div style={{ fontSize:11, color:'#0ea5e9', fontWeight:600 }}>Transaction Coordinator</div>
+                                              </div>
+                                              <button onClick={async ()=>{
+                                                try {
+                                                  await supabase.from('team_members').update({role:'member'}).eq('user_id',m.id).eq('team_id',profile.team_id)
+                                                  setMembers(prev=>prev.map(p=>p.id===m.id?{...p,team_member_role:'member'}:p))
+                                                } catch(err) { console.error('Remove TC error:', err) }
+                                              }} style={{ fontSize:11, padding:'6px 14px', borderRadius:6, cursor:'pointer', flexShrink:0,
+                                                border:'1px solid rgba(220,38,38,.3)', background:'rgba(220,38,38,.07)', color:'var(--red)', fontWeight:600 }}>
+                                                Remove TC Role
+                                              </button>
+                                            </div>
+                                          )
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {currentTCs.length < maxTC ? (
+                                    <div>
+                                      <div style={{ fontSize:10, color:'var(--muted)', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', marginBottom:8 }}>
+                                        Assign TC Role
+                                      </div>
+                                      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                                        {nonTCMembers.map(m => {
+                                          const rank = getRank(m.xp||0)
+                                          return (
+                                            <div key={m.id} className="card" style={{ padding:'12px 16px', display:'flex', alignItems:'center', gap:12 }}>
+                                              <MemberAvatar member={m} size={32} rank={rank}/>
+                                              <div style={{ flex:1, minWidth:0 }}>
+                                                <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.full_name||'Agent'}</div>
+                                                <div style={{ fontSize:11, color:'var(--muted)' }}>{rank.name}</div>
+                                              </div>
+                                              <button onClick={async ()=>{
+                                                try {
+                                                  await supabase.from('team_members').update({role:'tc'}).eq('user_id',m.id).eq('team_id',profile.team_id)
+                                                  setMembers(prev=>prev.map(p=>p.id===m.id?{...p,team_member_role:'tc'}:p))
+                                                } catch(err) { console.error('Assign TC error:', err) }
+                                              }} style={{ fontSize:11, padding:'6px 14px', borderRadius:6, cursor:'pointer', flexShrink:0,
+                                                border:'1px solid rgba(14,165,233,.3)', background:'rgba(14,165,233,.07)', color:'#0ea5e9', fontWeight:600 }}>
+                                                Make TC
+                                              </button>
+                                            </div>
+                                          )
+                                        })}
+                                        {nonTCMembers.length === 0 && (
+                                          <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic' }}>No available members to assign as TC.</div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="card" style={{ padding:'14px 18px', background:'rgba(245,158,11,.06)', borderLeft:'3px solid #f59e0b' }}>
+                                      <div style={{ fontSize:13, color:'var(--text)', fontWeight:600 }}>All TC seats filled</div>
+                                      <div style={{ fontSize:12, color:'var(--muted)', marginTop:4 }}>
+                                        {ownerPlan === 'team' ? 'Upgrade to Brokerage plan for up to 5 TC seats.' : 'Maximum TC seats reached for your plan.'}
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
+                              )
+                            })()}
                           </div>
                           )}
 

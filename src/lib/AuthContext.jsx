@@ -98,6 +98,19 @@ export function AuthProvider({ children }) {
         return
       }
 
+      // ── Fetch team member role (owner/member/tc) ──────────────────────────
+      if (data?.team_id) {
+        try {
+          const { data: tmRow } = await supabase
+            .from('team_members')
+            .select('role')
+            .eq('user_id', userId)
+            .eq('team_id', data.team_id)
+            .single()
+          if (tmRow) data.team_member_role = tmRow.role
+        } catch (_) { /* non-fatal */ }
+      }
+
       // ── Auto-join team for users invited via email ──────────────────────────
       // team_id is stored in user_metadata by the invite edge function.
       // On first login, profile.team_id is null — auto-join here.
@@ -128,6 +141,13 @@ export function AuthProvider({ children }) {
             .select('*, teams(name, invite_code, created_by, team_prefs, presentations_addon_status, pres_generations_used, pres_generations_reset, cma_addon_status, cma_generations_used, cma_generations_reset)')
             .eq('id', userId)
             .single()
+          // Attach team member role
+          if (updated?.team_id) {
+            try {
+              const { data: tmRow } = await supabase.from('team_members').select('role').eq('user_id', userId).eq('team_id', updated.team_id).single()
+              if (tmRow) updated.team_member_role = tmRow.role
+            } catch (_) { /* non-fatal */ }
+          }
           if (mountedRef.current) {
             setProfile(updated ?? null)
             setLoading(false)

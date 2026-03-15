@@ -52,6 +52,26 @@ export function isTeamMember(profile, userId) {
   return profile.teams.created_by !== userId
 }
 
+// ── Transaction Coordinator helpers ─────────────────────────────────────────
+// TC seats are available on team and brokerage plans.
+// Team plan: up to 2 TC seats. Brokerage plan: up to 5 TC seats.
+export const TC_SEAT_LIMITS = { solo: 0, team: 2, brokerage: 5 }
+
+export function getMaxTCSeats(planId) {
+  return TC_SEAT_LIMITS[planId] ?? 0
+}
+
+export function isTransactionCoordinator(teamMemberRole) {
+  return teamMemberRole === 'tc'
+}
+
+export function canManageTCs(profile, userId) {
+  if (!profile) return false
+  if (isPlatformAdmin(profile)) return true
+  // Only team owner can manage TC seats
+  return profile?.teams?.created_by === userId && canUseTeams(profile)
+}
+
 // ── AI credit limits per plan (1 credit = 1 AI message) ─────────────────────
 export const AI_CREDIT_LIMITS = { solo: 50, team: 250, brokerage: 500 }
 
@@ -77,6 +97,10 @@ export function getPlanBadge(profile, userId) {
   // Platform admin — special badge, no plan needed
   if (isPlatformAdmin(profile)) {
     return { label:'Admin', color:'#8b5cf6' }
+  }
+  // Transaction Coordinator — special badge
+  if (profile?.team_member_role === 'tc') {
+    return { label:'Transaction Coordinator', color:'#0ea5e9' }
   }
   // Team member (non-owner) — show they're covered
   if (userId && isTeamMember(profile, userId)) {

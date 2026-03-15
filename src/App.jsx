@@ -1951,8 +1951,9 @@ function Dashboard({ theme, onToggleTheme }) {
 
   // ── TC Dashboard state ──────────────────────────────────────────────────────
   const isTC = profile?.team_member_role === 'tc'
-  // Auto-switch to TC Dashboard when TC role is detected
-  useEffect(() => { if (isTC) setPrimaryTab('tc-dashboard') }, [isTC])
+  // Synchronously override tab for TCs — no useEffect flash
+  const TC_TABS = new Set(['tc-dashboard', 'calendar'])
+  const activeTab = isTC && !TC_TABS.has(primaryTab) ? 'tc-dashboard' : primaryTab
   const [tcDeals, setTcDeals] = useState([]) // pending deals assigned to this TC
   const [tcExpandedChecklist, setTcExpandedChecklist] = useState(null) // deal id or null
   const [tcLoading, setTcLoading] = useState(false)
@@ -4190,7 +4191,7 @@ function Dashboard({ theme, onToggleTheme }) {
         {/* ── Primary Tabs ────────────────────────────────── */}
         <div className="primary-tabs">
           {[{id:'calendar',l:'📅 Calendar'},{id:'potential',l:'💡 Potential',count:potentialListings.length},{id:'listings',l:'🏡 Listings',count:listings.length},{id:'buyers',l:'🤝 Buyers',count:buyerReps.length},{id:'closed',l:'📦 Archived',count:archivedDeals.length}].map(t=>(
-            <button key={t.id} className={`primary-tab${primaryTab===t.id?' on':''}`} onClick={()=>setPrimaryTab(t.id)}>
+            <button key={t.id} className={`primary-tab${activeTab===t.id?' on':''}`} onClick={()=>setPrimaryTab(t.id)}>
               {t.l}{t.count!=null && <span className="ptab-count">{t.count}</span>}
             </button>
           ))}
@@ -4201,7 +4202,7 @@ function Dashboard({ theme, onToggleTheme }) {
         {isTC && (
         <div className="primary-tabs">
           {[{id:'tc-dashboard',l:'📋 TC Dashboard',count:tcDeals.length},{id:'calendar',l:'📅 Calendar'}].map(t=>(
-            <button key={t.id} className={`primary-tab${primaryTab===t.id?' on':''}`} onClick={()=>setPrimaryTab(t.id)}>
+            <button key={t.id} className={`primary-tab${activeTab===t.id?' on':''}`} onClick={()=>setPrimaryTab(t.id)}>
               {t.l}{t.count!=null && <span className="ptab-count">{t.count}</span>}
             </button>
           ))}
@@ -4209,7 +4210,7 @@ function Dashboard({ theme, onToggleTheme }) {
         )}
 
         {/* ══ CALENDAR TAB ═════════════════════════════════════ */}
-        {primaryTab==='calendar' && (<>
+        {activeTab==='calendar' && (<>
 
         {/* ── Sub-Tabs ─────────────────────────────────────── */}
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
@@ -4980,7 +4981,7 @@ function Dashboard({ theme, onToggleTheme }) {
         </>)}
 
         {/* ══ POTENTIAL LISTINGS TAB ═════════════════════════════ */}
-        {!isTC && primaryTab==='potential' && (<>
+        {!isTC && activeTab==='potential' && (<>
         <div style={{ marginTop:36 }}>
           <div className="section-divider"/>
           <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14, gap:12, flexWrap:'wrap' }}>
@@ -5170,7 +5171,7 @@ function Dashboard({ theme, onToggleTheme }) {
         </>)}
 
         {/* ══ LISTINGS TAB ═════════════════════════════════════ */}
-        {!isTC && primaryTab==='listings' && (<>
+        {!isTC && activeTab==='listings' && (<>
 
         {/* ══ LISTINGS ════════════════════════════════════════ */}
         <div style={{ marginTop:36 }}>
@@ -5490,7 +5491,7 @@ function Dashboard({ theme, onToggleTheme }) {
         </>)}
 
         {/* ══ BUYERS TAB ═══════════════════════════════════════ */}
-        {!isTC && primaryTab==='buyers' && (<>
+        {!isTC && activeTab==='buyers' && (<>
 
         {/* ══ BUYER REP AGREEMENTS ════════════════════════════ */}
         <div style={{ marginTop:36 }}>
@@ -6088,7 +6089,7 @@ function Dashboard({ theme, onToggleTheme }) {
         </>)}
 
         {/* ══ TC DASHBOARD TAB ═══════════════════════════════════ */}
-        {isTC && primaryTab==='tc-dashboard' && (<>
+        {isTC && activeTab==='tc-dashboard' && (<>
         <div style={{ marginTop:36 }}>
           <div className="section-divider"/>
           <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14, gap:12, flexWrap:'wrap' }}>

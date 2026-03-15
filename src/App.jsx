@@ -3088,7 +3088,10 @@ function Dashboard({ theme, onToggleTheme }) {
       if (tcs?.length > 0) {
         const tcId = tcs[0].user_id
         const tcCl = TC_DEFAULT_CHECKLIST.map(i=>({...i}))
-        await supabase.from('transactions').update({ tc_id: tcId, tc_checklist: tcCl }).eq('id', dealId)
+        const { error } = await supabase.from('transactions').update({ tc_id: tcId, tc_checklist: tcCl }).eq('id', dealId)
+        if (error) console.error('TC auto-assign update failed:', error.message)
+      } else {
+        console.log('assignTCToDeal: no TC found for team', profileTeamId)
       }
     } catch (err) {
       console.error('TC auto-assign error:', err)

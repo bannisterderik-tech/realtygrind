@@ -733,6 +733,41 @@ const TC_DEFAULT_CHECKLIST = [
   { id:'tc-closed',    label:'Transaction closed — file complete',          done:false },
 ]
 
+// TC Transaction Stages — ordered progression through a real estate deal
+const TC_STAGES = [
+  { key:'ratified',       label:'Ratified',       color:'#8b5cf6', icon:'📝' },
+  { key:'processing',     label:'Processing',     color:'#0ea5e9', icon:'⚙️' },
+  { key:'inspection',     label:'Inspection',     color:'#f59e0b', icon:'🔍' },
+  { key:'appraisal',      label:'Appraisal',      color:'#f97316', icon:'🏠' },
+  { key:'financing',      label:'Financing',      color:'#6366f1', icon:'🏦' },
+  { key:'clear_to_close', label:'Clear to Close',  color:'#10b981', icon:'✅' },
+  { key:'closing',        label:'Closing',         color:'#14b8a6', icon:'🔑' },
+  { key:'closed',         label:'Closed',          color:'#22c55e', icon:'🎉' },
+]
+
+const TC_DEADLINES = [
+  { key:'close_date',           label:'Close / Settlement Date',       icon:'📅' },
+  { key:'inspection_deadline',  label:'Inspection Contingency',        icon:'🔍' },
+  { key:'appraisal_deadline',   label:'Appraisal Contingency',         icon:'🏠' },
+  { key:'financing_deadline',   label:'Financing Contingency',         icon:'🏦' },
+]
+
+const DEFAULT_TC_MILESTONES = {
+  stage: 'ratified',
+  close_date: '',
+  inspection_deadline: '',
+  appraisal_deadline: '',
+  financing_deadline: '',
+  conditions_added: false,
+  conditions_cleared: false,
+  extension_filed: false,
+  extension_new_date: '',
+  extension_notes: '',
+  closed_at: null,
+  fallen_through: false,
+  fallen_through_reason: '',
+}
+
 // ─── Print Daily Modal ────────────────────────────────────────────────────────
 
 function PrintDailyModal({ habits, counters, today, todayDate, effectiveToday, customTasks, customDone, offersMade, offersReceived, pendingDeals, closedDeals, buyerReps, onClose, target }) {
@@ -2206,6 +2241,7 @@ function Dashboard({ theme, onToggleTheme }) {
             createdAt: t.created_at,
             checklist: t.checklist || [],
             tcChecklist: t.tc_checklist || [],
+            milestones: { ...DEFAULT_TC_MILESTONES, ...(t.tc_milestones || {}) },
           })))
         }
       } catch (tcErr) {
@@ -2275,6 +2311,42 @@ function Dashboard({ theme, onToggleTheme }) {
       const updated = (deal.tcChecklist || []).map(i => i.id === itemId ? { ...i, dueDate } : i)
       safeDb(supabase.from('transactions').update({ tc_checklist: updated }).eq('id', dealId))
     }
+  }
+
+  // ── TC Milestone handlers ──────────────────────────────────────────────────
+  async function tcUpdateMilestone(dealId, updates) {
+    setTcDeals(prev => prev.map(d => {
+      if (d.id !== dealId) return d
+      const newMilestones = { ...d.milestones, ...updates }
+      return { ...d, milestones: newMilestones }
+    }))
+    const deal = tcDeals.find(d => d.id === dealId)
+    if (deal) {
+      const newMilestones = { ...deal.milestones, ...updates }
+      safeDb(supabase.from('transactions').update({ tc_milestones: newMilestones }).eq('id', dealId))
+    }
+  }
+
+  async function tcSetStage(dealId, stage) {
+    const updates = { stage }
+    if (stage === 'closed') updates.closed_at = new Date().toISOString()
+    tcUpdateMilestone(dealId, updates)
+  }
+
+  async function tcFileExtension(dealId, newDate, notes) {
+    tcUpdateMilestone(dealId, {
+      extension_filed: true,
+      extension_new_date: newDate,
+      extension_notes: notes,
+    })
+  }
+
+  async function tcMarkFallenThrough(dealId, reason) {
+    tcUpdateMilestone(dealId, {
+      fallen_through: true,
+      fallen_through_reason: reason,
+      stage: 'fallen_through',
+    })
   }
 
   async function submitStandup() {
@@ -6146,11 +6218,18 @@ function Dashboard({ theme, onToggleTheme }) {
             const doneItems = tcDeals.reduce((s,d) => s + (d.tcChecklist?.filter(i=>i.done)?.length || 0), 0)
             const overdueItems = tcDeals.reduce((s,d) => s + (d.tcChecklist?.filter(i => !i.done && i.dueDate && new Date(i.dueDate+'T23:59:59') < new Date())?.length || 0), 0)
             const pct = totalItems > 0 ? Math.round((doneItems/totalItems)*100) : 0
+            const closingSoon = tcDeals.filter(d => {
+              const cd = d.milestones?.close_date
+              if (!cd || d.milestones?.stage === 'closed' || d.milestones?.fallen_through) return false
+              const days = Math.ceil((new Date(cd+'T23:59:59') - new Date()) / 86400000)
+              return days >= 0 && days <= 7
+            }).length
+            const extensionCount = tcDeals.filter(d => d.milestones?.extension_filed).length
             return (
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))', gap:10, marginBottom:20 }}>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))', gap:10, marginBottom:20 }}>
                 <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid #0ea5e9' }}>
-                  <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>PENDING DEALS</div>
-                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:22, fontWeight:700, color:'#0ea5e9' }}>{tcDeals.length}</div>
+                  <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>ACTIVE DEALS</div>
+                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:22, fontWeight:700, color:'#0ea5e9' }}>{tcDeals.filter(d=>!d.milestones?.fallen_through).length}</div>
                 </div>
                 <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid #10b981' }}>
                   <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>TASKS DONE</div>
@@ -6160,10 +6239,22 @@ function Dashboard({ theme, onToggleTheme }) {
                   <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>COMPLETION</div>
                   <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:22, fontWeight:700, color: pct===100?'#10b981':'var(--gold2)' }}>{pct}%</div>
                 </div>
+                {closingSoon > 0 && (
+                  <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid #f59e0b' }}>
+                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>CLOSING SOON</div>
+                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:22, fontWeight:700, color:'#f59e0b' }}>{closingSoon}</div>
+                  </div>
+                )}
                 {overdueItems > 0 && (
                   <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid #ef4444' }}>
                     <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>OVERDUE</div>
                     <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:22, fontWeight:700, color:'#ef4444' }}>{overdueItems}</div>
+                  </div>
+                )}
+                {extensionCount > 0 && (
+                  <div className="card" style={{ padding:14, textAlign:'center', borderTop:'2.5px solid #f97316' }}>
+                    <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, marginBottom:4 }}>EXTENSIONS</div>
+                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:22, fontWeight:700, color:'#f97316' }}>{extensionCount}</div>
                   </div>
                 )}
               </div>
@@ -6209,10 +6300,18 @@ function Dashboard({ theme, onToggleTheme }) {
               const isExpanded = tcExpandedChecklist === deal.id
               const priceNum = parseFloat(String(deal.price||'').replace(/[^0-9.]/g,''))
               const overdue = cl.filter(i => !i.done && i.dueDate && new Date(i.dueDate+'T23:59:59') < new Date()).length
+              const ms = deal.milestones || DEFAULT_TC_MILESTONES
+              const currentStage = TC_STAGES.find(s => s.key === ms.stage) || TC_STAGES[0]
+              const stageIdx = TC_STAGES.findIndex(s => s.key === ms.stage)
+              const isFallen = ms.fallen_through
+
+              // Compute days until close
+              const daysUntilClose = ms.close_date ? Math.ceil((new Date(ms.close_date+'T23:59:59') - new Date()) / 86400000) : null
 
               return (
                 <div key={deal.id} className="card" style={{ padding:0, overflow:'hidden',
-                  border: overdue > 0 ? '1px solid rgba(239,68,68,.3)' : '1px solid var(--b2)' }}>
+                  border: isFallen ? '1px solid rgba(107,114,128,.4)' : overdue > 0 ? '1px solid rgba(239,68,68,.3)' : ms.stage === 'closed' ? '1px solid rgba(34,197,94,.3)' : '1px solid var(--b2)',
+                  opacity: isFallen ? 0.6 : 1 }}>
                   {/* Deal header */}
                   <div style={{ padding:'16px 20px', cursor:'pointer', display:'flex', alignItems:'center', gap:14 }}
                     onClick={() => setTcExpandedChecklist(prev => prev === deal.id ? null : deal.id)}>
@@ -6226,7 +6325,20 @@ function Dashboard({ theme, onToggleTheme }) {
                         }}>
                           {deal.dealSide === 'seller' ? 'SELLER' : 'BUYER'}
                         </span>
-                        {overdue > 0 && (
+                        {/* Stage badge */}
+                        <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700,
+                          background: isFallen ? 'rgba(107,114,128,.1)' : `${currentStage.color}18`,
+                          color: isFallen ? '#6b7280' : currentStage.color,
+                          border: `1px solid ${isFallen ? 'rgba(107,114,128,.25)' : currentStage.color+'40'}` }}>
+                          {isFallen ? '❌ FALLEN THROUGH' : `${currentStage.icon} ${currentStage.label.toUpperCase()}`}
+                        </span>
+                        {ms.extension_filed && (
+                          <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700,
+                            background:'rgba(249,115,22,.1)', color:'#f97316', border:'1px solid rgba(249,115,22,.25)' }}>
+                            📎 EXTENSION
+                          </span>
+                        )}
+                        {overdue > 0 && !isFallen && (
                           <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, fontWeight:700,
                             background:'rgba(239,68,68,.1)', color:'#ef4444', border:'1px solid rgba(239,68,68,.25)' }}>
                             {overdue} OVERDUE
@@ -6237,6 +6349,11 @@ function Dashboard({ theme, onToggleTheme }) {
                         <span>Agent: <strong style={{ color:'var(--text)' }}>{deal.agentName}</strong></span>
                         {priceNum > 0 && <><span className="sep"/><span style={{ color:'var(--gold2)', fontWeight:600 }}>{formatPrice(deal.price)}</span></>}
                         <span className="sep"/><span>📋 {done}/{total}</span>
+                        {daysUntilClose !== null && !isFallen && ms.stage !== 'closed' && (
+                          <><span className="sep"/><span style={{ color: daysUntilClose < 0 ? '#ef4444' : daysUntilClose <= 7 ? '#f59e0b' : '#10b981', fontWeight:600 }}>
+                            {daysUntilClose < 0 ? `${Math.abs(daysUntilClose)}d past close` : daysUntilClose === 0 ? 'Closing TODAY' : `${daysUntilClose}d to close`}
+                          </span></>
+                        )}
                       </div>
                     </div>
                     {/* Progress ring */}
@@ -6260,57 +6377,187 @@ function Dashboard({ theme, onToggleTheme }) {
                       transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</div>
                   </div>
 
-                  {/* Progress bar */}
-                  <div style={{ height:3, background:'var(--b1)' }}>
-                    <div style={{ width:`${pct}%`, height:'100%', transition:'width .3s ease',
-                      background: pct===100 ? '#10b981' : pct > 50 ? '#0ea5e9' : '#f59e0b' }}/>
+                  {/* Stage progression bar */}
+                  <div style={{ display:'flex', height:3, background:'var(--b1)' }}>
+                    {TC_STAGES.map((s, i) => (
+                      <div key={s.key} style={{ flex:1, height:'100%', transition:'background .3s',
+                        background: i <= stageIdx ? (isFallen ? '#6b7280' : currentStage.color) : 'transparent' }}/>
+                    ))}
                   </div>
 
-                  {/* Expanded checklist */}
+                  {/* Expanded panel */}
                   {isExpanded && (
-                    <div style={{ padding:'14px 20px 18px', background:'var(--bg2)', borderTop:'1px solid var(--b1)' }}>
-                      {cl.length === 0 && (
-                        <div style={{ fontSize:12, color:'var(--dim)', fontStyle:'italic', marginBottom:8 }}>
-                          No checklist items yet — items are auto-populated when deals are assigned.
+                    <div style={{ background:'var(--bg2)', borderTop:'1px solid var(--b1)' }}>
+
+                      {/* ── Stage Selector ── */}
+                      <div style={{ padding:'14px 20px 10px' }}>
+                        <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, fontWeight:600, marginBottom:8 }}>STAGE</div>
+                        <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+                          {TC_STAGES.map((s, i) => {
+                            const isActive = s.key === ms.stage
+                            const isPast = i < stageIdx
+                            return (
+                              <button key={s.key} onClick={(e) => { e.stopPropagation(); tcSetStage(deal.id, s.key) }}
+                                style={{ fontSize:10, padding:'4px 8px', borderRadius:6, cursor:'pointer', transition:'all .15s',
+                                  border: isActive ? `1.5px solid ${s.color}` : '1px solid var(--b1)',
+                                  background: isActive ? `${s.color}18` : isPast ? 'rgba(34,197,94,.06)' : 'transparent',
+                                  color: isActive ? s.color : isPast ? '#10b981' : 'var(--muted)',
+                                  fontWeight: isActive ? 700 : 400 }}>
+                                {s.icon} {s.label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+
+                      {/* ── Key Deadlines ── */}
+                      <div style={{ padding:'10px 20px' }}>
+                        <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, fontWeight:600, marginBottom:8 }}>KEY DEADLINES</div>
+                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:8 }}>
+                          {TC_DEADLINES.map(dl => {
+                            const val = ms[dl.key] || ''
+                            const isPast = val && new Date(val+'T23:59:59') < new Date()
+                            const daysLeft = val ? Math.ceil((new Date(val+'T23:59:59') - new Date()) / 86400000) : null
+                            return (
+                              <div key={dl.key} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 10px',
+                                borderRadius:8, border:'1px solid var(--b1)', background:'var(--surface)' }}>
+                                <span style={{ fontSize:13, flexShrink:0 }}>{dl.icon}</span>
+                                <div style={{ flex:1, minWidth:0 }}>
+                                  <div style={{ fontSize:9, color:'var(--muted)', letterSpacing:.4, marginBottom:2 }}>{dl.label}</div>
+                                  <input type="date" value={val}
+                                    onChange={e => tcUpdateMilestone(deal.id, { [dl.key]: e.target.value })}
+                                    style={{ background:'none', border:'none', padding:0, fontSize:11,
+                                      color: val ? (isPast ? '#ef4444' : 'var(--text)') : 'var(--dim)',
+                                      fontFamily:"'JetBrains Mono',monospace", cursor:'pointer', width:'100%' }}/>
+                                </div>
+                                {val && daysLeft !== null && (
+                                  <span style={{ fontSize:9, fontWeight:700, flexShrink:0, padding:'2px 5px', borderRadius:4,
+                                    fontFamily:"'JetBrains Mono',monospace",
+                                    background: isPast ? 'rgba(239,68,68,.1)' : daysLeft <= 7 ? 'rgba(249,115,22,.1)' : 'rgba(34,197,94,.08)',
+                                    color: isPast ? '#ef4444' : daysLeft <= 7 ? '#f97316' : '#10b981' }}>
+                                    {isPast ? `${Math.abs(daysLeft)}d ago` : daysLeft === 0 ? 'TODAY' : `${daysLeft}d`}
+                                  </span>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+
+                      {/* ── Conditions & Extensions ── */}
+                      <div style={{ padding:'10px 20px', display:'flex', gap:8, flexWrap:'wrap' }}>
+                        <button onClick={(e) => { e.stopPropagation(); tcUpdateMilestone(deal.id, { conditions_added: !ms.conditions_added }) }}
+                          style={{ fontSize:10, padding:'5px 10px', borderRadius:6, cursor:'pointer', transition:'all .15s',
+                            border: ms.conditions_added ? '1.5px solid #f59e0b' : '1px solid var(--b1)',
+                            background: ms.conditions_added ? 'rgba(245,158,11,.1)' : 'transparent',
+                            color: ms.conditions_added ? '#f59e0b' : 'var(--muted)', fontWeight: ms.conditions_added ? 700 : 400 }}>
+                          {ms.conditions_added ? '⚠️ Conditions Added' : '+ Conditions'}
+                        </button>
+                        {ms.conditions_added && (
+                          <button onClick={(e) => { e.stopPropagation(); tcUpdateMilestone(deal.id, { conditions_cleared: !ms.conditions_cleared }) }}
+                            style={{ fontSize:10, padding:'5px 10px', borderRadius:6, cursor:'pointer', transition:'all .15s',
+                              border: ms.conditions_cleared ? '1.5px solid #10b981' : '1px solid var(--b1)',
+                              background: ms.conditions_cleared ? 'rgba(16,185,129,.1)' : 'transparent',
+                              color: ms.conditions_cleared ? '#10b981' : 'var(--muted)', fontWeight: ms.conditions_cleared ? 700 : 400 }}>
+                            {ms.conditions_cleared ? '✅ Conditions Cleared' : 'Mark Cleared'}
+                          </button>
+                        )}
+                        <button onClick={(e) => {
+                          e.stopPropagation()
+                          if (ms.extension_filed) {
+                            tcUpdateMilestone(deal.id, { extension_filed: false, extension_new_date: '', extension_notes: '' })
+                          } else {
+                            const newDate = prompt('Extension new close date (YYYY-MM-DD):')
+                            if (newDate) {
+                              const notes = prompt('Extension notes (optional):') || ''
+                              tcFileExtension(deal.id, newDate, notes)
+                            }
+                          }
+                        }}
+                          style={{ fontSize:10, padding:'5px 10px', borderRadius:6, cursor:'pointer', transition:'all .15s',
+                            border: ms.extension_filed ? '1.5px solid #f97316' : '1px solid var(--b1)',
+                            background: ms.extension_filed ? 'rgba(249,115,22,.1)' : 'transparent',
+                            color: ms.extension_filed ? '#f97316' : 'var(--muted)', fontWeight: ms.extension_filed ? 700 : 400 }}>
+                          {ms.extension_filed ? `📎 Extension → ${ms.extension_new_date || '?'}` : '+ File Extension'}
+                        </button>
+                        {ms.extension_filed && ms.extension_notes && (
+                          <span style={{ fontSize:10, color:'var(--muted)', padding:'5px 0', fontStyle:'italic' }}>
+                            "{ms.extension_notes}"
+                          </span>
+                        )}
+                        {!isFallen && ms.stage !== 'closed' && (
+                          <button onClick={(e) => {
+                            e.stopPropagation()
+                            const reason = prompt('Reason deal fell through:')
+                            if (reason) tcMarkFallenThrough(deal.id, reason)
+                          }}
+                            style={{ fontSize:10, padding:'5px 10px', borderRadius:6, cursor:'pointer',
+                              border:'1px solid var(--b1)', background:'transparent', color:'var(--dim)', marginLeft:'auto' }}>
+                            Mark Fallen Through
+                          </button>
+                        )}
+                        {isFallen && (
+                          <button onClick={(e) => { e.stopPropagation(); tcUpdateMilestone(deal.id, { fallen_through: false, fallen_through_reason: '', stage: 'ratified' }) }}
+                            style={{ fontSize:10, padding:'5px 10px', borderRadius:6, cursor:'pointer',
+                              border:'1px solid var(--b1)', background:'transparent', color:'#0ea5e9', marginLeft:'auto' }}>
+                            Reactivate Deal
+                          </button>
+                        )}
+                      </div>
+                      {isFallen && ms.fallen_through_reason && (
+                        <div style={{ padding:'0 20px 10px', fontSize:11, color:'#6b7280', fontStyle:'italic' }}>
+                          Reason: "{ms.fallen_through_reason}"
                         </div>
                       )}
-                      {cl.map(item => {
-                        const isOverdue = !item.done && item.dueDate && new Date(item.dueDate+'T23:59:59') < new Date()
-                        return (
-                          <div key={item.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 0',
-                            borderBottom:'1px solid var(--b1)' }}>
-                            <button onClick={()=>tcToggleChecklistItem(deal.id,item.id)}
-                              style={{ background:'none', border:'none', cursor:'pointer', fontSize:15, padding:0, lineHeight:1, flexShrink:0 }}>
-                              {item.done ? '✅' : '☐'}
-                            </button>
-                            <span style={{ flex:1, fontSize:12,
-                              color: item.done ? 'var(--dim)' : isOverdue ? '#ef4444' : 'var(--text)',
-                              textDecoration: item.done ? 'line-through' : 'none',
-                              fontWeight: isOverdue ? 600 : 400 }}>
-                              {item.label}
-                              {isOverdue && <span style={{ fontSize:9, marginLeft:6, color:'#ef4444' }}>OVERDUE</span>}
-                            </span>
-                            {item.done && item.completedAt && (
-                              <span style={{ fontSize:9, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>
-                                {new Date(item.completedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'})}
-                              </span>
-                            )}
-                            <input type="date" value={item.dueDate||''} title="Due date"
-                              onChange={e=>tcUpdateDueDate(deal.id,item.id,e.target.value)}
-                              style={{ background:'none', border:'1px solid var(--b1)', borderRadius:4, padding:'2px 4px',
-                                fontSize:9, color: item.dueDate ? (isOverdue ? '#ef4444' : 'var(--text)') : 'var(--dim)',
-                                fontFamily:"'JetBrains Mono',monospace", cursor:'pointer', width:95, flexShrink:0 }}/>
-                            <button onClick={()=>tcRemoveChecklistItem(deal.id,item.id)}
-                              style={{ background:'none', border:'none', cursor:'pointer', color:'var(--dim)', fontSize:11,
-                                padding:'2px', opacity:.5 }} title="Remove">✕</button>
+
+                      {/* ── Checklist ── */}
+                      <div style={{ padding:'10px 20px 18px', borderTop:'1px solid var(--b1)' }}>
+                        <div style={{ fontSize:10, color:'var(--muted)', letterSpacing:.8, fontWeight:600, marginBottom:8 }}>
+                          CHECKLIST ({done}/{total})
+                        </div>
+                        {cl.length === 0 && (
+                          <div style={{ fontSize:12, color:'var(--dim)', fontStyle:'italic', marginBottom:8 }}>
+                            No checklist items yet — items are auto-populated when deals are assigned.
                           </div>
-                        )
-                      })}
-                      {/* Add task */}
-                      <div style={{ marginTop:8 }}>
-                        <input className="field-input" placeholder="+ Add task…"
-                          onKeyDown={e => { if (e.key==='Enter' && e.target.value.trim()) { tcAddChecklistItem(deal.id,e.target.value); e.target.value='' } }}
-                          style={{ padding:'6px 10px', fontSize:11, width:'100%', boxSizing:'border-box' }}/>
+                        )}
+                        {cl.map(item => {
+                          const isOverdue = !item.done && item.dueDate && new Date(item.dueDate+'T23:59:59') < new Date()
+                          return (
+                            <div key={item.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 0',
+                              borderBottom:'1px solid var(--b1)' }}>
+                              <button onClick={()=>tcToggleChecklistItem(deal.id,item.id)}
+                                style={{ background:'none', border:'none', cursor:'pointer', fontSize:15, padding:0, lineHeight:1, flexShrink:0 }}>
+                                {item.done ? '✅' : '☐'}
+                              </button>
+                              <span style={{ flex:1, fontSize:12,
+                                color: item.done ? 'var(--dim)' : isOverdue ? '#ef4444' : 'var(--text)',
+                                textDecoration: item.done ? 'line-through' : 'none',
+                                fontWeight: isOverdue ? 600 : 400 }}>
+                                {item.label}
+                                {isOverdue && <span style={{ fontSize:9, marginLeft:6, color:'#ef4444' }}>OVERDUE</span>}
+                              </span>
+                              {item.done && item.completedAt && (
+                                <span style={{ fontSize:9, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace", flexShrink:0 }}>
+                                  {new Date(item.completedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'})}
+                                </span>
+                              )}
+                              <input type="date" value={item.dueDate||''} title="Due date"
+                                onChange={e=>tcUpdateDueDate(deal.id,item.id,e.target.value)}
+                                style={{ background:'none', border:'1px solid var(--b1)', borderRadius:4, padding:'2px 4px',
+                                  fontSize:9, color: item.dueDate ? (isOverdue ? '#ef4444' : 'var(--text)') : 'var(--dim)',
+                                  fontFamily:"'JetBrains Mono',monospace", cursor:'pointer', width:95, flexShrink:0 }}/>
+                              <button onClick={()=>tcRemoveChecklistItem(deal.id,item.id)}
+                                style={{ background:'none', border:'none', cursor:'pointer', color:'var(--dim)', fontSize:11,
+                                  padding:'2px', opacity:.5 }} title="Remove">✕</button>
+                            </div>
+                          )
+                        })}
+                        {/* Add task */}
+                        <div style={{ marginTop:8 }}>
+                          <input className="field-input" placeholder="+ Add task…"
+                            onKeyDown={e => { if (e.key==='Enter' && e.target.value.trim()) { tcAddChecklistItem(deal.id,e.target.value); e.target.value='' } }}
+                            style={{ padding:'6px 10px', fontSize:11, width:'100%', boxSizing:'border-box' }}/>
+                        </div>
                       </div>
                     </div>
                   )}

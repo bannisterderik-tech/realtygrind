@@ -2797,7 +2797,7 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
                               Transaction Coordinators (TCs) get a dedicated view of all pending deals assigned to them. When team members mark deals as pending, the TC is auto-assigned and receives a comprehensive contract-to-close checklist to manage through closing.
                             </div>
                             {(() => {
-                              const ownerPlan = profile?.plan || 'solo'
+                              const ownerPlan = profile?.app_role === 'admin' ? 'brokerage' : (profile?.plan || 'solo')
                               const maxTC = getMaxTCSeats(ownerPlan)
                               const currentTCs = members.filter(m => m.team_member_role === 'tc')
                               const nonTCMembers = members.filter(m => m.id !== user?.id && m.team_member_role !== 'tc' && teamData?.created_by !== m.id)

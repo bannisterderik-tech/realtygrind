@@ -539,7 +539,9 @@ input[type="range"].crop-zoom::-moz-range-thumb { width:20px; height:20px; borde
   grid-template-columns: 1fr 228px;
   gap: 20px;
   align-items: start;
+  overflow: hidden;
 }
+.today-grid > * { min-width: 0; overflow: hidden; }
 
 /* Horizontal-scroll wrapper for wide grids on mobile */
 .resp-table { overflow-x: auto; -webkit-overflow-scrolling: touch; }

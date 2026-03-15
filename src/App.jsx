@@ -141,6 +141,7 @@ const weekRowStyle = (checked, cs) => ({
   display:'flex', alignItems:'center', gap:6, flex:1, textAlign:'left',
   background:checked?cs.light:'transparent', border:`1px solid ${checked?cs.border:'transparent'}`,
   borderRadius:7, padding:'5px 7px', cursor:'pointer', transition:'all .15s',
+  overflow:'hidden', minWidth:0,
 })
 const weekCheckBox = (checked, color) => (
   <div style={{ width:11, height:11, borderRadius:3, flexShrink:0,

@@ -4197,8 +4197,19 @@ function Dashboard({ theme, onToggleTheme }) {
         </div>
         </>)}
 
+        {/* ── TC Primary Tabs (TC Dashboard + Calendar) ── */}
+        {isTC && (
+        <div className="primary-tabs">
+          {[{id:'tc-dashboard',l:'📋 TC Dashboard',count:tcDeals.length},{id:'calendar',l:'📅 Calendar'}].map(t=>(
+            <button key={t.id} className={`primary-tab${primaryTab===t.id?' on':''}`} onClick={()=>setPrimaryTab(t.id)}>
+              {t.l}{t.count!=null && <span className="ptab-count">{t.count}</span>}
+            </button>
+          ))}
+        </div>
+        )}
+
         {/* ══ CALENDAR TAB ═════════════════════════════════════ */}
-        {!isTC && primaryTab==='calendar' && (<>
+        {primaryTab==='calendar' && (<>
 
         {/* ── Sub-Tabs ─────────────────────────────────────── */}
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
@@ -6077,7 +6088,7 @@ function Dashboard({ theme, onToggleTheme }) {
         </>)}
 
         {/* ══ TC DASHBOARD TAB ═══════════════════════════════════ */}
-        {isTC && (<>
+        {isTC && primaryTab==='tc-dashboard' && (<>
         <div style={{ marginTop:36 }}>
           <div className="section-divider"/>
           <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14, gap:12, flexWrap:'wrap' }}>

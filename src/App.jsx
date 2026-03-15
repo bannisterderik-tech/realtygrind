@@ -2164,8 +2164,14 @@ function Dashboard({ theme, onToggleTheme }) {
       }
     }
     // ── Load TC Dashboard data (if user is a TC) ────────────────────────────
-    // Runs after main data load so isTC is based on profile.team_member_role
-    if (profile?.team_member_role === 'tc') {
+    // Check TC role directly from DB since AuthContext profile may not have
+    // team_member_role set yet when loadAll runs (timing issue).
+    let isLoadAllTC = profile?.team_member_role === 'tc'
+    if (!isLoadAllTC && profRes.data?.team_id) {
+      const { data: tmRow } = await supabase.from('team_members').select('role').eq('user_id', user.id).eq('team_id', profRes.data.team_id).single()
+      if (tmRow?.role === 'tc') isLoadAllTC = true
+    }
+    if (isLoadAllTC) {
       try {
         // Auto-assign any unassigned pending deals from team to this TC
         const { data: rpcResult, error: rpcErr } = await supabase.rpc('assign_pending_deals_to_tc')

@@ -4013,7 +4013,7 @@ function Dashboard({ theme, onToggleTheme }) {
            the DOM, so there is nothing to accidentally show twice. */}
       {page === 'dashboard' ? (
       <ErrorBoundary key="dashboard" onReset={()=>window.location.reload()}>
-      {dbLoading ? <Loader/> : (
+      {(dbLoading || !profile) ? <Loader/> : (
       <div className="page-inner">
 
         {/* ── Network Error Banner (loadAll catch) ── */}

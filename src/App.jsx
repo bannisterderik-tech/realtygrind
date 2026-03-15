@@ -2260,8 +2260,9 @@ function Dashboard({ theme, onToggleTheme }) {
     }
 
     // Mortgage rates — fire-and-forget (non-blocking, separate from main data)
-    supabase.from('mortgage_rates').select('*').eq('id', 1).single()
-      .then(({ data }) => { if (data?.conventional_30) setMortgageRates(data) })
+    // Calls edge function which returns cached rates or fetches fresh from FRED if stale (>6hrs)
+    supabase.functions.invoke('fetch-mortgage-rates', { body: {} })
+      .then(({ data }) => { if (data?.rates?.conventional_30) setMortgageRates(data.rates) })
       .catch(() => {})
   }
 

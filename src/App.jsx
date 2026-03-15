@@ -2307,6 +2307,8 @@ function Dashboard({ theme, onToggleTheme }) {
   // ── Morning Briefing auto-show on first load of the day ───────────────────
   useEffect(() => {
     if (dbLoading || !profile || briefingDismissed || briefingFetched.current) return
+    // TCs don't get briefings — they have their own dashboard
+    if (profile.team_member_role === 'tc') return
     // Check team-level disable (team owner toggled off in Teams > AI Tools)
     if (profile.team_id && profile.teams?.team_prefs?.ai_tools?.briefing_enabled === false) return
     const bp = profile.habit_prefs?.morning_briefing

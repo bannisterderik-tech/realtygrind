@@ -2304,24 +2304,20 @@ function Dashboard({ theme, onToggleTheme }) {
     return () => clearTimeout(timer)
   }, [animCell])
 
-  // ── Morning Briefing auto-show on first load of the day ───────────────────
+  // ── Morning Briefing: pre-load cached data (never auto-show) ───────────────
+  // Only pre-loads today's cached briefing so clicking the button is instant.
+  // The modal is never shown automatically — user must click the Briefing button.
   useEffect(() => {
-    if (dbLoading || !profile || briefingDismissed || briefingFetched.current) return
-    // TCs don't get briefings — they have their own dashboard
+    if (dbLoading || !profile || briefingFetched.current) return
     if (profile.team_member_role === 'tc') return
-    // Check team-level disable (team owner toggled off in Teams > AI Tools)
     if (profile.team_id && profile.teams?.team_prefs?.ai_tools?.briefing_enabled === false) return
     const bp = profile.habit_prefs?.morning_briefing
-    if (bp?.enabled === false) return // user opted out (solo agents)
-    const todayISO = new Date().toISOString().slice(0, 10)
+    if (bp?.enabled === false) return
     briefingFetched.current = true
+    const todayISO = new Date().toISOString().slice(0, 10)
     if (bp?.last_date === todayISO && bp?.last_data) {
-      // Already generated today — show cached version (free, no credit cost)
+      // Pre-load cached data so the button shows it instantly (no auto-show)
       setBriefingData(bp.last_data)
-      setBriefingVisible(true)
-    } else {
-      // Generate fresh briefing
-      fetchBriefing(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dbLoading])

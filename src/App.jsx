@@ -4354,7 +4354,7 @@ function Dashboard({ theme, onToggleTheme }) {
               {(()=>{
                 return (
                   <>
-              <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+              <div style={{ display:'flex', flexDirection:'column', gap:2, minWidth:0, overflow:'hidden' }}>
                 {unifiedList.map((h, idx) => {
                   if (h.isBuiltIn) {
                     const done = habits[h.id][viewWeek]?.[viewDayIdx]

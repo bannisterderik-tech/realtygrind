@@ -1831,7 +1831,7 @@ function Dashboard({ theme, onToggleTheme }) {
     _setPage(p)
     requestAnimationFrame(() => { navigatingRef.current = false })
   }, [])
-  const [primaryTab, setPrimaryTab] = useState('calendar')
+  const [primaryTab, setPrimaryTab] = useState(profile?.team_member_role === 'tc' ? 'tc-dashboard' : 'calendar')
   const [tab,  setTab]  = useState('today')
   const [dbLoading, setDbLoading] = useState(true)
   const [dbError,   setDbError]   = useState(null)
@@ -3848,19 +3848,19 @@ function Dashboard({ theme, onToggleTheme }) {
 
           {/* Dashboard + Teams — hidden on mobile */}
           <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
-          <button className={`nav-btn mob-hide${page==='dashboard'?' active':''}`} onClick={()=>setPage('dashboard')}>🏠 Dashboard</button>
+          <button className={`nav-btn mob-hide${page==='dashboard'?' active':''}`} onClick={()=>setPage('dashboard')}>{isTC ? '📋 TC Dashboard' : '🏠 Dashboard'}</button>
           <button className={`nav-btn mob-hide${page==='teams'?' active':''}`} onClick={()=>setPage('teams')}>👥 Teams</button>
-          <button className={`nav-btn mob-hide${page==='coaching'?' active':''}`} onClick={()=>setPage('coaching')}>📝 Coaching</button>
+          {!isTC && <button className={`nav-btn mob-hide${page==='coaching'?' active':''}`} onClick={()=>setPage('coaching')}>📝 Coaching</button>}
 
-          <button className={`nav-btn mob-hide${(page==='directory'||page==='apod'||page==='ai-assistant'||page==='presentations'||page==='cma')?' active':''}`} onClick={()=>setPage('directory')}>🔗 Tools</button>
-          <button className={`nav-btn mob-hide${page==='affiliates'?' active':''}`} onClick={()=>setPage('affiliates')}>💰 Affiliates</button>
+          {!isTC && <button className={`nav-btn mob-hide${(page==='directory'||page==='apod'||page==='ai-assistant'||page==='presentations'||page==='cma')?' active':''}`} onClick={()=>setPage('directory')}>🔗 Tools</button>}
+          {!isTC && <button className={`nav-btn mob-hide${page==='affiliates'?' active':''}`} onClick={()=>setPage('affiliates')}>💰 Affiliates</button>}
 
           {profileAppRole === 'admin' && (
             <button className={`nav-btn mob-hide${page==='admin'?' active':''}`} onClick={()=>setPage('admin')} style={{ fontSize:11, letterSpacing:'.03em' }}>⚙️ Admin</button>
           )}
 
-          {/* Rank + Streak chips — hidden on mobile, hidden when XP disabled */}
-          {xpEnabled && <>
+          {/* Rank + Streak chips — hidden on mobile, hidden when XP disabled, hidden for TCs */}
+          {xpEnabled && !isTC && <>
           <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
           <div className="mob-hide" style={{ background:'rgba(255,255,255,.06)', border:`1px solid ${rank.color}38`,
             borderRadius:9, padding:'5px 11px', display:'flex', alignItems:'center', gap:9 }}>
@@ -3924,12 +3924,14 @@ function Dashboard({ theme, onToggleTheme }) {
           boxShadow:'0 8px 24px rgba(0,0,0,.4)'
         }}>
           {[
-            { p:'dashboard', icon:'🏠', label:'Home' },
+            { p:'dashboard', icon: isTC ? '📋' : '🏠', label: isTC ? 'TC Dashboard' : 'Home' },
             { p:'teams',     icon:'👥', label:'Teams' },
-            { p:'coaching',  icon:'📝', label:'Coaching' },
-            { p:'directory', icon:'🔗', label:'Tools' },
-            { p:'affiliates', icon:'💰', label:'Affiliates' },
-            { p:'billing',   icon:'💳', label:'Billing' },
+            ...(!isTC ? [
+              { p:'coaching',  icon:'📝', label:'Coaching' },
+              { p:'directory', icon:'🔗', label:'Tools' },
+              { p:'affiliates', icon:'💰', label:'Affiliates' },
+              { p:'billing',   icon:'💳', label:'Billing' },
+            ] : []),
             { p:'profile',   icon:'👤', label:'Profile' },
             ...(profileAppRole === 'admin' ? [{ p:'admin', icon:'⚙️', label:'Admin' }] : []),
           ].map(({p, icon, label})=>(
@@ -4010,6 +4012,38 @@ function Dashboard({ theme, onToggleTheme }) {
           </div>
         )}
 
+        {/* ── TC-only: simplified header + jump straight to TC Dashboard ── */}
+        {isTC ? (<>
+          <div className="card" style={{
+            padding:'24px 28px', marginBottom:22,
+            background:'linear-gradient(135deg, rgba(14,165,233,.06) 0%, var(--surface) 55%)',
+            borderLeft:'3px solid #0ea5e9',
+            display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:16,
+          }}>
+            <div>
+              <div style={{ fontSize:10, color:'var(--muted)', fontFamily:"'JetBrains Mono',monospace",
+                letterSpacing:.7, textTransform:'uppercase', marginBottom:6 }}>
+                {timeGreeting}, {profileFullName?.split(' ')[0]||'Coordinator'} · {dateStr.split(',').slice(1).join(',').trim()}
+              </div>
+              <div className="serif" style={{ fontSize:42, color:'var(--text)', lineHeight:1, letterSpacing:'-.02em', fontWeight:600, marginBottom:12 }}>
+                {dateStr.split(',')[0]}<span style={{ color:'#0ea5e9' }}>.</span>
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ fontSize:11, padding:'4px 12px', borderRadius:20,
+                  background:'rgba(14,165,233,.1)', border:'1px solid rgba(14,165,233,.25)',
+                  color:'#0ea5e9', fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>
+                  📋 Transaction Coordinator
+                </span>
+              </div>
+            </div>
+            <div style={{ textAlign:'right', flexShrink:0 }}>
+              <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:28, fontWeight:700, color:'#0ea5e9' }}>
+                {tcDeals.length}
+              </div>
+              <div style={{ fontSize:11, color:'var(--muted)' }}>pending deal{tcDeals.length !== 1 ? 's' : ''}</div>
+            </div>
+          </div>
+        </>) : (<>
         {/* ── Hero Header ─────────────────────────────────────── */}
         <div className="card" style={{
           padding:'24px 28px', marginBottom:22,
@@ -4103,8 +4137,10 @@ function Dashboard({ theme, onToggleTheme }) {
               color={todayPct>=80?'#10b981':todayPct>=50?'#d97706':'#dc2626'}/>
           </div>
         </div>
+        </>)}
 
-        {/* ── Stats row ──────────────────────────────────────── */}
+        {/* ── Stats row (hidden for TCs) ──────────────────────── */}
+        {!isTC && (<>
         <div className="stat-grid" style={{ marginBottom:18 }}>
           <StatCard icon="⚡" label="Today" value={`${todayPct}%`}
             color={todayPct>=80?'var(--green)':todayPct>=50?'var(--gold)':'var(--red)'}
@@ -4137,12 +4173,13 @@ function Dashboard({ theme, onToggleTheme }) {
 
         {/* ── Primary Tabs ────────────────────────────────── */}
         <div className="primary-tabs">
-          {[{id:'calendar',l:'📅 Calendar'},{id:'potential',l:'💡 Potential',count:potentialListings.length},{id:'listings',l:'🏡 Listings',count:listings.length},{id:'buyers',l:'🤝 Buyers',count:buyerReps.length},{id:'closed',l:'📦 Archived',count:archivedDeals.length},...(isTC?[{id:'tc-dashboard',l:'📋 TC Dashboard',count:tcDeals.length}]:[])].map(t=>(
+          {[{id:'calendar',l:'📅 Calendar'},{id:'potential',l:'💡 Potential',count:potentialListings.length},{id:'listings',l:'🏡 Listings',count:listings.length},{id:'buyers',l:'🤝 Buyers',count:buyerReps.length},{id:'closed',l:'📦 Archived',count:archivedDeals.length}].map(t=>(
             <button key={t.id} className={`primary-tab${primaryTab===t.id?' on':''}`} onClick={()=>setPrimaryTab(t.id)}>
               {t.l}{t.count!=null && <span className="ptab-count">{t.count}</span>}
             </button>
           ))}
         </div>
+        </>)}
 
         {/* ══ CALENDAR TAB ═════════════════════════════════════ */}
         {primaryTab==='calendar' && (<>

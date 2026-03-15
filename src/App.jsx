@@ -1831,7 +1831,7 @@ function Dashboard({ theme, onToggleTheme }) {
     _setPage(p)
     requestAnimationFrame(() => { navigatingRef.current = false })
   }, [])
-  const [primaryTab, setPrimaryTab] = useState(profile?.team_member_role === 'tc' ? 'tc-dashboard' : 'calendar')
+  const [primaryTab, setPrimaryTab] = useState('calendar')
   const [tab,  setTab]  = useState('today')
   const [dbLoading, setDbLoading] = useState(true)
   const [dbError,   setDbError]   = useState(null)
@@ -1951,6 +1951,8 @@ function Dashboard({ theme, onToggleTheme }) {
 
   // ── TC Dashboard state ──────────────────────────────────────────────────────
   const isTC = profile?.team_member_role === 'tc'
+  // Auto-switch to TC Dashboard when TC role is detected
+  useEffect(() => { if (isTC) setPrimaryTab('tc-dashboard') }, [isTC])
   const [tcDeals, setTcDeals] = useState([]) // pending deals assigned to this TC
   const [tcExpandedChecklist, setTcExpandedChecklist] = useState(null) // deal id or null
   const [tcLoading, setTcLoading] = useState(false)
@@ -2120,6 +2122,20 @@ function Dashboard({ theme, onToggleTheme }) {
         return row
       })
       setPendingDeals(pendingRows)
+      // Backfill tc_id for pending deals that don't have a TC assigned yet
+      if (profileTeamId) {
+        const unassigned = txRes.data.filter(t => t.type === 'pending' && active(t) && !t.tc_id)
+        if (unassigned.length > 0) {
+          const { data: tcs } = await supabase.from('team_members').select('user_id').eq('team_id', profileTeamId).eq('role', 'tc').limit(1)
+          if (tcs?.length > 0) {
+            const tcId = tcs[0].user_id
+            const tcCl = TC_DEFAULT_CHECKLIST.map(i=>({...i}))
+            for (const t of unassigned) {
+              safeDb(supabase.from('transactions').update({ tc_id: tcId, tc_checklist: tcCl }).eq('id', t.id))
+            }
+          }
+        }
+      }
       setClosedDeals(   txRes.data.filter(t=>t.type==='closed' && active(t)).map(m))
       setArchivedDeals( txRes.data.filter(t=>t.type==='closed' && t.status==='archived').map(m))
       setClosedCount(txRes.data.filter(t=>t.type==='closed').length)
@@ -4182,7 +4198,7 @@ function Dashboard({ theme, onToggleTheme }) {
         </>)}
 
         {/* ══ CALENDAR TAB ═════════════════════════════════════ */}
-        {primaryTab==='calendar' && (<>
+        {!isTC && primaryTab==='calendar' && (<>
 
         {/* ── Sub-Tabs ─────────────────────────────────────── */}
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
@@ -4953,7 +4969,7 @@ function Dashboard({ theme, onToggleTheme }) {
         </>)}
 
         {/* ══ POTENTIAL LISTINGS TAB ═════════════════════════════ */}
-        {primaryTab==='potential' && (<>
+        {!isTC && primaryTab==='potential' && (<>
         <div style={{ marginTop:36 }}>
           <div className="section-divider"/>
           <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14, gap:12, flexWrap:'wrap' }}>
@@ -5143,7 +5159,7 @@ function Dashboard({ theme, onToggleTheme }) {
         </>)}
 
         {/* ══ LISTINGS TAB ═════════════════════════════════════ */}
-        {primaryTab==='listings' && (<>
+        {!isTC && primaryTab==='listings' && (<>
 
         {/* ══ LISTINGS ════════════════════════════════════════ */}
         <div style={{ marginTop:36 }}>
@@ -5463,7 +5479,7 @@ function Dashboard({ theme, onToggleTheme }) {
         </>)}
 
         {/* ══ BUYERS TAB ═══════════════════════════════════════ */}
-        {primaryTab==='buyers' && (<>
+        {!isTC && primaryTab==='buyers' && (<>
 
         {/* ══ BUYER REP AGREEMENTS ════════════════════════════ */}
         <div style={{ marginTop:36 }}>
@@ -5956,7 +5972,7 @@ function Dashboard({ theme, onToggleTheme }) {
         </>)}
 
         {/* ══ ARCHIVED TAB ═══════════════════════════════════════ */}
-        {primaryTab==='closed' && (<>
+        {!isTC && primaryTab==='closed' && (<>
         <div style={{ marginTop:36 }}>
           <div className="section-divider"/>
           <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14, gap:12, flexWrap:'wrap' }}>
@@ -6061,7 +6077,7 @@ function Dashboard({ theme, onToggleTheme }) {
         </>)}
 
         {/* ══ TC DASHBOARD TAB ═══════════════════════════════════ */}
-        {primaryTab==='tc-dashboard' && isTC && (<>
+        {isTC && (<>
         <div style={{ marginTop:36 }}>
           <div className="section-divider"/>
           <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14, gap:12, flexWrap:'wrap' }}>

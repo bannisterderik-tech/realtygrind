@@ -182,79 +182,144 @@ Deno.serve(async (req) => {
     // ── 8. Build system prompt ───────────────────────────────────────────────
     const ctx = context as any
     const todayStr = new Date().toISOString().slice(0, 10)
-
-    const contextLines = [
-      `AGENT: ${ctx.profile?.name || 'Agent'}`,
-      ctx.profile?.specialty ? `SPECIALTY: ${ctx.profile.specialty}` : null,
-      ctx.profile?.about ? `ABOUT: ${ctx.profile.about}` : null,
-      ctx.profile?.timezone ? `TIMEZONE: ${ctx.profile.timezone}` : null,
-
-      `\nGOALS:`,
-      ctx.goals?.prospecting ? `- Daily prospecting target: ${ctx.goals.prospecting} calls` : null,
-      ctx.goals?.appointments ? `- Daily appointments target: ${ctx.goals.appointments}` : null,
-      ctx.goals?.showing ? `- Daily showings target: ${ctx.goals.showing}` : null,
-      ctx.goals?.closed || ctx.goals?.monthly_closings ? `- Monthly closings target: ${ctx.goals.closed || ctx.goals.monthly_closings}` : null,
-      ctx.goals?.annual_volume ? `- Annual volume goal: $${ctx.goals.annual_volume}` : null,
-
-      `\nEXISTING DAILY HABITS (already on their checklist — DO NOT duplicate):`,
-      ...(ctx.activeHabits || []).map((h: string) => `- ${h}`),
-
-      (ctx.existingTasks?.length > 0) ? `\nEXISTING TASKS/EVENTS FOR TARGET DATES (these are ALREADY scheduled — work around them):` : null,
-      ...(ctx.existingTasks || []).map((t: any) => {
-        const timeRange = t.time ? (t.endTime ? `${t.time}-${t.endTime}` : t.time) : ''
-        return `- [${t.date}]${timeRange ? ` ${timeRange}` : ''} ${t.isCalendarEvent ? '📅 CALENDAR (FIXED — do NOT overlap): ' : ''}${t.label}`
-      }),
-
-      `\nPIPELINE THIS MONTH: ${ctx.pipeline?.offers_made || 0} offers made, ${ctx.pipeline?.offers_received || 0} received, ${ctx.pipeline?.pending || 0} pending, ${ctx.pipeline?.closed || 0} closed`,
-      ctx.pipeline?.closed_volume ? `Closed volume: $${Number(ctx.pipeline.closed_volume).toLocaleString()}` : null,
-
-      (ctx.pendingDeals?.length > 0) ? `\nPENDING DEALS:` : null,
-      ...(ctx.pendingDeals || []).slice(0, 10).map((d: any) => {
-        let line = `- ${d.address} | $${d.price}`
-        if (d.checklist_overdue?.length) line += ` | ⚠ OVERDUE: ${d.checklist_overdue.join(', ')}`
-        return line
-      }),
-
-      (ctx.listings?.length > 0) ? `\nACTIVE LISTINGS:` : null,
-      ...(ctx.listings || []).slice(0, 20).map((l: any) => {
-        const parts = [`- ${l.address}`, `$${l.price}`, `${l.status}`]
-        if (l.dom != null) parts.push(`${l.dom}d DOM`)
-        if (l.expires_date) parts.push(`Expires: ${l.expires_date}`)
-        return parts.join(' | ')
-      }),
-
-      (ctx.buyerReps?.length > 0) ? `\nBUYER REP AGREEMENTS:` : null,
-      ...(ctx.buyerReps || []).slice(0, 15).map((b: any) => {
-        const parts = [`- ${b.clientName}`]
-        if (b.dateExpires) parts.push(`Expires: ${b.dateExpires}`)
-        if (b.lastCallDate) parts.push(`Last Call: ${b.lastCallDate}`)
-        if (b.locationPrefs) parts.push(`Location: ${b.locationPrefs}`)
-        if (b.timeline) parts.push(`Timeline: ${b.timeline}`)
-        return parts.join(' | ')
-      }),
-
-      ctx.activityThisMonth ? `\nACTIVITY THIS MONTH:` : null,
-      ...(ctx.activityThisMonth ? Object.entries(ctx.activityThisMonth).map(([k, v]) => `- ${k}: ${v} completions`) : []),
-
-      ctx.standup ? `\nTODAY'S STANDUP:\n- Yesterday: ${ctx.standup.q1 || 'N/A'}\n- Today's priority: ${ctx.standup.q2 || 'N/A'}${ctx.standup.q3 ? `\n- Blockers: ${ctx.standup.q3}` : ''}` : null,
-
-      ctx.teamGuidance ? `\nTEAM LEADER INSTRUCTIONS (from your team owner — follow these directives):\n${ctx.teamGuidance}` : null,
-    ].filter(Boolean).join('\n')
+    const isTC = ctx.isTC === true
 
     const scopeLabel = scope === 'week' ? 'the week' : 'today'
     const dateList = dates.join(', ')
-
     const currentTime = ctx.currentTime || null // "HH:MM" 24h
     const todayDate = ctx.today || dates[0]
     const tbStart = timeBounds?.startHour
     const tbEnd = timeBounds?.endHour
     const workdayStart = tbStart != null ? `${String(tbStart).padStart(2,'0')}:00` : (ctx.workdayStart || '08:00')
     const workdayEnd = tbEnd != null ? `${String(tbEnd).padStart(2,'0')}:00` : (ctx.workdayEnd || '18:00')
-    // Weekend dates are already filtered out on the client side, but reinforce in prompt
     const hasWeekend = dates.some(d => { const dow = new Date(d + 'T12:00:00').getDay(); return dow === 0 || dow === 6 })
     const includeWeekends = hasWeekend
 
-    const systemPrompt = `You are the RealtyGrind AI Task Planner. Generate a personalized, actionable task list for a real estate agent based on their current data.
+    let contextLines: string
+    let systemPrompt: string
+
+    if (isTC) {
+      // ── TC-specific context ──────────────────────────────────────────────
+      const tcLines = [
+        `TRANSACTION COORDINATOR: ${ctx.profile?.name || 'TC'}`,
+        ctx.profile?.timezone ? `TIMEZONE: ${ctx.profile.timezone}` : null,
+
+        (ctx.existingTasks?.length > 0) ? `\nEXISTING TASKS/EVENTS FOR TARGET DATES (already scheduled — work around them):` : null,
+        ...(ctx.existingTasks || []).map((t: any) => {
+          const timeRange = t.time ? (t.endTime ? `${t.time}-${t.endTime}` : t.time) : ''
+          return `- [${t.date}]${timeRange ? ` ${timeRange}` : ''} ${t.isCalendarEvent ? '📅 CALENDAR (FIXED): ' : ''}${t.label}`
+        }),
+
+        (ctx.tcDeals?.length > 0) ? `\nASSIGNED DEALS (${ctx.tcDeals.length} total):` : `\nNo deals currently assigned.`,
+        ...(ctx.tcDeals || []).map((d: any) => {
+          let line = `- ${d.address || 'Unknown'} | $${d.price || '?'} | Agent: ${d.agentName || 'Unknown'} | Type: ${d.type || 'pending'}`
+          if (d.closingDate) line += ` | Closing: ${d.closingDate}`
+          if (d.checklist?.length) {
+            const overdue = d.checklist.filter((i: any) => i.dueDate && new Date(i.dueDate) < new Date())
+            const upcoming = d.checklist.filter((i: any) => !i.dueDate || new Date(i.dueDate) >= new Date())
+            if (overdue.length) line += ` | ⚠ OVERDUE: ${overdue.map((i: any) => i.label).join(', ')}`
+            if (upcoming.length) line += ` | TODO: ${upcoming.slice(0, 5).map((i: any) => `${i.label}${i.dueDate ? ` (due ${i.dueDate})` : ''}`).join(', ')}`
+          }
+          return line
+        }),
+
+        ctx.teamGuidance ? `\nTEAM LEADER INSTRUCTIONS:\n${ctx.teamGuidance}` : null,
+      ].filter(Boolean).join('\n')
+
+      systemPrompt = `You are the RealtyGrind AI Task Planner for a Transaction Coordinator (TC). Generate a personalized, actionable task list focused on transaction management and deal coordination.
+
+${tcLines}
+
+CURRENT TIME: ${todayDate} ${currentTime || 'unknown'}
+WORK HOURS: ${workdayStart} to ${workdayEnd} — ALL tasks must be scheduled within this window.
+${!includeWeekends ? 'WEEKDAYS ONLY: Do NOT generate tasks for Saturday or Sunday.' : 'Include weekends if dates fall on Sat/Sun.'}
+TARGET: Generate tasks for ${scopeLabel} (dates: ${dateList}).
+${guidance ? `\nTC'S FOCUS REQUEST: "${guidance}"` : ''}
+
+RULES:
+1. Output ONLY valid JSON. No markdown, no code fences, no explanation outside the JSON.
+2. Format: { "tasks": [...], "summary": "1-2 sentence overview" }
+3. Each task: { "label": string, "icon": string (single emoji), "time": "HH:MM" (24h) or null, "xp": number (10-30), "date": "YYYY-MM-DD", "rationale": string (1 sentence why) }
+4. Generate 3-8 tasks per day depending on available time and number of assigned deals.
+5. CRITICAL: Calendar events (marked 📅 CALENDAR) are FIXED commitments. Schedule around them with 15-30 min buffers.
+6. CRITICAL: ALL task times MUST be between ${workdayStart} and ${workdayEnd}. Never schedule outside these hours.
+6b. CRITICAL: For today (${todayDate}), ONLY schedule tasks AFTER ${currentTime || 'now'}.
+7. DO NOT duplicate existing calendar events or tasks.
+8. Make tasks SPECIFIC: reference actual deal addresses, agent names, and checklist items.
+   GOOD: "Follow up on 123 Oak St appraisal — confirm appraiser scheduled with Agent Smith"
+   BAD: "Check on deals"
+9. TC Priority logic:
+   - Overdue checklist items → immediate follow-up tasks
+   - Upcoming due dates within 3 days → preparation/reminder tasks
+   - Deals approaching closing → title search, doc review, closing coordination tasks
+   - Multiple deals for same agent → batch communication tasks
+   - General TC duties: document tracking, deadline monitoring, lender coordination, title company follow-ups
+10. For weekly scope: urgent items Mon, document follow-ups Tue/Wed, closing prep Thu, wrap-up/next-week prep Fri.
+11. XP: admin tasks = 10, follow-up = 15, high-impact (closing coordination, critical deadlines) = 20-30.
+12. Use relevant emojis: 📋 checklists, 📞 calls, ✉️ emails, 📄 documents, ⏰ deadlines, 🏠 deals, 🔍 review, etc.
+
+RESPOND WITH ONLY THE JSON OBJECT. No other text.`
+    } else {
+      // ── Agent context (original) ─────────────────────────────────────────
+      contextLines = [
+        `AGENT: ${ctx.profile?.name || 'Agent'}`,
+        ctx.profile?.specialty ? `SPECIALTY: ${ctx.profile.specialty}` : null,
+        ctx.profile?.about ? `ABOUT: ${ctx.profile.about}` : null,
+        ctx.profile?.timezone ? `TIMEZONE: ${ctx.profile.timezone}` : null,
+
+        `\nGOALS:`,
+        ctx.goals?.prospecting ? `- Daily prospecting target: ${ctx.goals.prospecting} calls` : null,
+        ctx.goals?.appointments ? `- Daily appointments target: ${ctx.goals.appointments}` : null,
+        ctx.goals?.showing ? `- Daily showings target: ${ctx.goals.showing}` : null,
+        ctx.goals?.closed || ctx.goals?.monthly_closings ? `- Monthly closings target: ${ctx.goals.closed || ctx.goals.monthly_closings}` : null,
+        ctx.goals?.annual_volume ? `- Annual volume goal: $${ctx.goals.annual_volume}` : null,
+
+        `\nEXISTING DAILY HABITS (already on their checklist — DO NOT duplicate):`,
+        ...(ctx.activeHabits || []).map((h: string) => `- ${h}`),
+
+        (ctx.existingTasks?.length > 0) ? `\nEXISTING TASKS/EVENTS FOR TARGET DATES (these are ALREADY scheduled — work around them):` : null,
+        ...(ctx.existingTasks || []).map((t: any) => {
+          const timeRange = t.time ? (t.endTime ? `${t.time}-${t.endTime}` : t.time) : ''
+          return `- [${t.date}]${timeRange ? ` ${timeRange}` : ''} ${t.isCalendarEvent ? '📅 CALENDAR (FIXED — do NOT overlap): ' : ''}${t.label}`
+        }),
+
+        `\nPIPELINE THIS MONTH: ${ctx.pipeline?.offers_made || 0} offers made, ${ctx.pipeline?.offers_received || 0} received, ${ctx.pipeline?.pending || 0} pending, ${ctx.pipeline?.closed || 0} closed`,
+        ctx.pipeline?.closed_volume ? `Closed volume: $${Number(ctx.pipeline.closed_volume).toLocaleString()}` : null,
+
+        (ctx.pendingDeals?.length > 0) ? `\nPENDING DEALS:` : null,
+        ...(ctx.pendingDeals || []).slice(0, 10).map((d: any) => {
+          let line = `- ${d.address} | $${d.price}`
+          if (d.checklist_overdue?.length) line += ` | ⚠ OVERDUE: ${d.checklist_overdue.join(', ')}`
+          return line
+        }),
+
+        (ctx.listings?.length > 0) ? `\nACTIVE LISTINGS:` : null,
+        ...(ctx.listings || []).slice(0, 20).map((l: any) => {
+          const parts = [`- ${l.address}`, `$${l.price}`, `${l.status}`]
+          if (l.dom != null) parts.push(`${l.dom}d DOM`)
+          if (l.expires_date) parts.push(`Expires: ${l.expires_date}`)
+          return parts.join(' | ')
+        }),
+
+        (ctx.buyerReps?.length > 0) ? `\nBUYER REP AGREEMENTS:` : null,
+        ...(ctx.buyerReps || []).slice(0, 15).map((b: any) => {
+          const parts = [`- ${b.clientName}`]
+          if (b.dateExpires) parts.push(`Expires: ${b.dateExpires}`)
+          if (b.lastCallDate) parts.push(`Last Call: ${b.lastCallDate}`)
+          if (b.locationPrefs) parts.push(`Location: ${b.locationPrefs}`)
+          if (b.timeline) parts.push(`Timeline: ${b.timeline}`)
+          return parts.join(' | ')
+        }),
+
+        ctx.activityThisMonth ? `\nACTIVITY THIS MONTH:` : null,
+        ...(ctx.activityThisMonth ? Object.entries(ctx.activityThisMonth).map(([k, v]) => `- ${k}: ${v} completions`) : []),
+
+        ctx.standup ? `\nTODAY'S STANDUP:\n- Yesterday: ${ctx.standup.q1 || 'N/A'}\n- Today's priority: ${ctx.standup.q2 || 'N/A'}${ctx.standup.q3 ? `\n- Blockers: ${ctx.standup.q3}` : ''}` : null,
+
+        ctx.teamGuidance ? `\nTEAM LEADER INSTRUCTIONS (from your team owner — follow these directives):\n${ctx.teamGuidance}` : null,
+      ].filter(Boolean).join('\n')
+
+      systemPrompt = `You are the RealtyGrind AI Task Planner. Generate a personalized, actionable task list for a real estate agent based on their current data.
 
 ${contextLines}
 
@@ -288,6 +353,7 @@ RULES:
 12. Use relevant emojis: 📞 calls, ✉️ emails, 🏠 listings, 🔑 showings, 📊 analysis, 📱 social, etc.
 
 RESPOND WITH ONLY THE JSON OBJECT. No other text.`
+    }
 
     // ── 9. Call Claude API (non-streaming) ───────────────────────────────────
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')

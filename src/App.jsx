@@ -2961,6 +2961,12 @@ function Dashboard({ theme, onToggleTheme }) {
       workdayStart: timeBounds?.startHour || '08:00',
       workdayEnd: timeBounds?.endHour || '18:00',
       includeWeekends: timeBounds?.includeWeekends !== false,
+      isTC,
+      tcDeals: isTC ? tcDeals.map(d => ({
+        address: d.address, price: d.price, agentName: d.agentName,
+        type: d.type, closingDate: d.closingDate,
+        checklist: Array.isArray(d.checklist) ? d.checklist.filter(i => !i.done).map(i => ({ label: i.label, dueDate: i.dueDate })) : [],
+      })) : [],
     }
 
     try {

@@ -383,7 +383,7 @@ input[type="range"].crop-zoom::-moz-range-thumb { width:20px; height:20px; borde
 .habit-row {
   display: flex; align-items: center; gap: 12px; padding: 10px 13px;
   border-radius: 10px; border: 1px solid transparent; transition: background .18s, border-color .18s;
-  overflow: hidden;
+  overflow: hidden; max-width: 100%; box-sizing: border-box;
 }
 .habit-row:hover { background: var(--bg2); border-color: var(--b1); }
 .habit-row.done { background: var(--bg2); border-color: var(--b1); opacity: .88; }

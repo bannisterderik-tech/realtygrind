@@ -3863,7 +3863,8 @@ function Dashboard({ theme, onToggleTheme }) {
         <div style={{ display:'flex', alignItems:'center', gap:7 }}>
           <ThemeToggle theme={theme} onToggle={onToggleTheme}/>
 
-          {/* Dashboard + Teams — hidden on mobile */}
+          {/* Nav items — hidden until profile loads to prevent TC flash */}
+          {profile && <>
           <span className="mob-hide" style={{ width:1, height:18, background:'rgba(255,255,255,.08)', display:'block' }}/>
           <button className={`nav-btn mob-hide${page==='dashboard'?' active':''}`} onClick={()=>setPage('dashboard')}>{isTC ? '📋 TC Dashboard' : '🏠 Dashboard'}</button>
           <button className={`nav-btn mob-hide${page==='teams'?' active':''}`} onClick={()=>setPage('teams')}>👥 Teams</button>
@@ -3902,6 +3903,7 @@ function Dashboard({ theme, onToggleTheme }) {
             style={{ fontSize:11, fontWeight:700, color:planBadge.color, letterSpacing:.4 }}>
             {planBadge.label}
           </button>
+          </>}
           <button className={`nav-btn${page==='profile'?' active':''}`} onClick={()=>setPage('profile')}
             style={{ display:'flex', alignItems:'center', gap:6 }}>
             {profile?.goals?.avatar_url ? (

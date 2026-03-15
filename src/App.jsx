@@ -4832,7 +4832,7 @@ function Dashboard({ theme, onToggleTheme }) {
 
                 return (
                   <div key={di} className="card" style={{
-                    padding:16,
+                    padding:16, minWidth:0, overflow:'hidden',
                     border: isToday ? `2px solid ${dc}55` : '1px solid var(--b2)',
                     background: isToday ? `color-mix(in srgb, var(--surface) 92%, ${dc})` : 'var(--surface)',
                   }}>
@@ -4853,13 +4853,13 @@ function Dashboard({ theme, onToggleTheme }) {
                       const recHabits = [...activeBuiltIn.map(h=>({...h,isBuiltIn:true})), ...activeDefaults.map(t=>({...t,isBuiltIn:false}))]
                       const weekUnified = getOrderedTasksForDate(dateStr, recHabits, activeDayTasks)
                       return (
-                    <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:3, minWidth:0, overflow:'hidden' }}>
                       {weekUnified.map((h, idx)=>{
                         if (h.isBuiltIn) {
                           const checked = habits[h.id][wi][di]
                           const cs = CAT[h.cat]
                           return (
-                            <div key={h.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
+                            <div key={h.id} style={{ display:'flex', alignItems:'center', gap:2, minWidth:0, overflow:'hidden' }}>
                               <div className="week-reorder">
                                 <button className="reorder-btn" disabled={idx===0} onClick={()=>moveTask(dateStr,weekUnified,h.id,-1)}>▲</button>
                                 <button className="reorder-btn" disabled={idx===weekUnified.length-1} onClick={()=>moveTask(dateStr,weekUnified,h.id,1)}>▼</button>
@@ -4881,7 +4881,7 @@ function Dashboard({ theme, onToggleTheme }) {
                             ? { light:'rgba(66,133,244,.1)', color:'#4285f4', border:'rgba(66,133,244,.3)' }
                             : { light:'rgba(139,92,246,.1)', color:'#8b5cf6', border:'rgba(139,92,246,.3)' }
                           return (
-                            <div key={h.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
+                            <div key={h.id} style={{ display:'flex', alignItems:'center', gap:2, minWidth:0, overflow:'hidden' }}>
                               <div className="week-reorder">
                                 <button className="reorder-btn" disabled={idx===0} onClick={()=>moveTask(dateStr,weekUnified,h.id,-1)}>▲</button>
                                 <button className="reorder-btn" disabled={idx===weekUnified.length-1} onClick={()=>moveTask(dateStr,weekUnified,h.id,1)}>▼</button>
@@ -4899,7 +4899,7 @@ function Dashboard({ theme, onToggleTheme }) {
                           const checked = !!(customDone[`${h.id}-${wi}-${di}`])
                           const cs = { light:'rgba(6,182,212,.1)', color:'#06b6d4', border:'rgba(6,182,212,.3)' }
                           return (
-                            <div key={h.id} style={{ display:'flex', alignItems:'center', gap:2 }}>
+                            <div key={h.id} style={{ display:'flex', alignItems:'center', gap:2, minWidth:0, overflow:'hidden' }}>
                               <div className="week-reorder">
                                 <button className="reorder-btn" disabled={idx===0} onClick={()=>moveTask(dateStr,weekUnified,h.id,-1)}>▲</button>
                                 <button className="reorder-btn" disabled={idx===weekUnified.length-1} onClick={()=>moveTask(dateStr,weekUnified,h.id,1)}>▼</button>

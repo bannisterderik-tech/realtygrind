@@ -1398,6 +1398,8 @@ function PipelineSection({ title, icon, accentColor, xpLabel, rows, setRows, onS
           const r2 = await safeDb(supabase.from('transactions').delete().eq('id', row.id).eq('user_id', userId))
           if (!r2.ok) { setRows(prev => [...prev, row]); return }
         }
+        // Move to archived deals state so it appears in the Archived tab
+        if (onArchiveToClosed) onArchiveToClosed(row)
       } else {
         const r = await safeDb(supabase.from('transactions').delete().eq('id', row.id).eq('user_id', userId))
         if (!r.ok) { setRows(prev => [...prev, row]); return }
@@ -2165,13 +2167,18 @@ function Dashboard({ theme, onToggleTheme }) {
     // Runs after main data load so isTC is based on profile.team_member_role
     if (profile?.team_member_role === 'tc') {
       try {
-        const { data: tcRows } = await supabase
+        // Auto-assign any unassigned pending deals from team to this TC
+        const { data: rpcResult, error: rpcErr } = await supabase.rpc('assign_pending_deals_to_tc')
+        console.log('TC auto-assign RPC result:', rpcResult, 'error:', rpcErr?.message || 'none')
+        // Then fetch TC's assigned deals
+        const { data: tcRows, error: tcErr } = await supabase
           .from('transactions')
           .select('*')
           .eq('tc_id', user.id)
           .in('type', ['pending'])
           .order('created_at', { ascending: false })
           .limit(200)
+        console.log('TC deals query:', tcRows?.length || 0, 'rows, error:', tcErr?.message || 'none')
         if (mountedRef.current && tcRows) {
           // Fetch agent names for these deals
           const agentIds = [...new Set(tcRows.map(t => t.user_id).filter(Boolean))]
@@ -3077,19 +3084,25 @@ function Dashboard({ theme, onToggleTheme }) {
   // When a deal goes pending, auto-assign the team's first TC and populate
   // the TC-specific checklist on the transaction.
   async function assignTCToDeal(dealId) {
-    if (!profileTeamId || !dealId || String(dealId).startsWith('tmp-')) return
+    console.log('assignTCToDeal called:', { dealId, profileTeamId })
+    if (!profileTeamId || !dealId || String(dealId).startsWith('tmp-')) {
+      console.log('assignTCToDeal: skipped (no teamId or tmp deal)')
+      return
+    }
     try {
-      const { data: tcs } = await supabase
+      const { data: tcs, error: tcQueryErr } = await supabase
         .from('team_members')
         .select('user_id')
         .eq('team_id', profileTeamId)
         .eq('role', 'tc')
         .limit(1)
+      console.log('assignTCToDeal: found TCs:', tcs, 'error:', tcQueryErr?.message || 'none')
       if (tcs?.length > 0) {
         const tcId = tcs[0].user_id
         const tcCl = TC_DEFAULT_CHECKLIST.map(i=>({...i}))
         const { error } = await supabase.from('transactions').update({ tc_id: tcId, tc_checklist: tcCl }).eq('id', dealId)
         if (error) console.error('TC auto-assign update failed:', error.message)
+        else console.log('assignTCToDeal: assigned tc_id', tcId, 'to deal', dealId)
       } else {
         console.log('assignTCToDeal: no TC found for team', profileTeamId)
       }
@@ -3159,9 +3172,11 @@ function Dashboard({ theme, onToggleTheme }) {
   }
 
   // ── Archive closed deal from pipeline (moves it to Archived tab) ─────────
-  async function archiveDealFromPipeline(dealId) {
-    const deal = closedDeals.find(d => d.id === dealId)
+  // Accepts either a deal object (from PipelineSection remove) or a dealId string
+  async function archiveDealFromPipeline(dealOrId) {
+    const deal = typeof dealOrId === 'object' ? dealOrId : closedDeals.find(d => d.id === dealOrId)
     if (!deal) return
+    const dealId = deal.id
     setClosedDeals(prev => prev.filter(d => d.id !== dealId))
     setArchivedDeals(prev => [...prev, {...deal, status:'archived'}])
     await safeDb(supabase.from('transactions').update({status:'archived'}).eq('id', dealId).eq('user_id', user.id))

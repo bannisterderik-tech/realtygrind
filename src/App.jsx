@@ -2094,7 +2094,7 @@ function Dashboard({ theme, onToggleTheme }) {
         listDate:l.list_date||'', expiresDate:l.expires_date||''
       })
       const allListings = allL.filter(l => (l.unit_count ?? 1) !== 0)
-      setListings(allListings.filter(l => l.status !== 'potential' && l.status !== 'closed').map(mapListing))
+      setListings(allListings.filter(l => l.status !== 'potential' && l.status !== 'closed' && l.status !== 'pending').map(mapListing))
       setPotentialListings(allListings.filter(l => l.status === 'potential').map(mapListing))
       setBuyerReps(allL.filter(l => l.unit_count === 0).map(r => ({
         id:r.id, clientName:r.address||'', status:r.status||'active', monthYear:r.month_year||'',
@@ -3352,6 +3352,7 @@ function Dashboard({ theme, onToggleTheme }) {
     const addr = (listing.address||'').toLowerCase()
     if (newStatus === 'pending') {
       await updateListing(listing.id, 'status', 'pending')
+      setListings(prev => prev.filter(l => l.id !== listing.id))
       // If an offer_received already exists for this address, promote it
       const existingOffer = offersReceived.find(d=>(d.address||'').toLowerCase()===addr)
       if (existingOffer) {
@@ -3373,6 +3374,7 @@ function Dashboard({ theme, onToggleTheme }) {
       await awardPipelineXp('went_pending', '#f59e0b')
     } else if (newStatus === 'closed') {
       await updateListing(listing.id, 'status', 'closed')
+      setListings(prev => prev.filter(l => l.id !== listing.id))
       // If a pending deal exists for this address, promote it to closed
       const existingPending = pendingDeals.find(d=>(d.address||'').toLowerCase()===addr)
       if (existingPending) {

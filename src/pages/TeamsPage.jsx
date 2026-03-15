@@ -283,17 +283,26 @@ export default function TeamsPage({ onNavigate, theme, onToggleTheme }) {
       })
       setMemberStats(stats)
 
-      // Load active listings for all members
-      const { data: listRows } = await supabase
-        .from('listings')
-        .select('id,address,status,price,commission,user_id')
-        .in('user_id', ids)
-        .gt('unit_count', 0)
-        .order('created_at', { ascending: false })
-        .limit(500)
-      if (seq !== fetchMembersSeqRef.current) return
+      // Load listings + pending/closed transactions for all members
       const nameMap = Object.fromEntries((mems||[]).map(m=>[m.id, m.full_name||'Agent']))
-      setTeamListings((listRows||[]).map(l=>({ ...l, agentName: nameMap[l.user_id]||'Agent' })))
+      const [{ data: listRows }, { data: txRows }] = await Promise.all([
+        supabase.from('listings').select('id,address,status,price,commission,user_id')
+          .in('user_id', ids).gt('unit_count', 0).order('created_at', { ascending: false }).limit(500),
+        supabase.from('transactions').select('id,address,price,commission,user_id,type,status')
+          .in('user_id', ids).in('type', ['pending','closed']).neq('status','archived')
+          .order('created_at', { ascending: false }).limit(500),
+      ])
+      if (seq !== fetchMembersSeqRef.current) return
+      // Merge listings (exclude pending/closed — those come from transactions)
+      const listingsOnly = (listRows||[])
+        .filter(l => l.status !== 'pending' && l.status !== 'closed')
+        .map(l=>({ ...l, agentName: nameMap[l.user_id]||'Agent' }))
+      // Map transactions to the same shape as listings for the team board
+      const txAsList = (txRows||[]).map(t=>({
+        id: t.id, address: t.address, status: t.type, price: t.price, commission: t.commission,
+        user_id: t.user_id, agentName: nameMap[t.user_id]||'Agent'
+      }))
+      setTeamListings([...listingsOnly, ...txAsList])
     }
     } catch (err) {
       console.error('fetchMembers error:', err)

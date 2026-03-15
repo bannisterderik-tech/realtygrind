@@ -1958,6 +1958,7 @@ function Dashboard({ theme, onToggleTheme }) {
   const activeTab = isTC && !TC_TABS.has(primaryTab) ? 'tc-dashboard' : primaryTab
   const [tcDeals, setTcDeals] = useState([]) // pending deals assigned to this TC
   const [tcExpandedChecklist, setTcExpandedChecklist] = useState(null) // deal id or null
+  const [tcAgentFilter, setTcAgentFilter] = useState('all') // 'all' or agent user_id
   const [tcLoading, setTcLoading] = useState(false)
 
   const [showCommSummary, setShowCommSummary] = useState(false)
@@ -6164,15 +6165,38 @@ function Dashboard({ theme, onToggleTheme }) {
             )
           })()}
 
+          {/* Agent filter */}
+          {tcDeals.length > 0 && (() => {
+            const agents = [...new Map(tcDeals.map(d => [d.agentId, d.agentName])).entries()]
+            if (agents.length <= 1) return null
+            return (
+              <div style={{ marginBottom:16, display:'flex', alignItems:'center', gap:10 }}>
+                <span style={{ fontSize:12, color:'var(--muted)', fontWeight:600, letterSpacing:.5 }}>FILTER BY AGENT</span>
+                <select value={tcAgentFilter} onChange={e => setTcAgentFilter(e.target.value)}
+                  style={{ padding:'6px 12px', borderRadius:8, border:'1px solid var(--b2)', background:'var(--surface)', color:'var(--text)', fontSize:13, cursor:'pointer' }}>
+                  <option value="all">All Agents ({tcDeals.length})</option>
+                  {agents.map(([id, name]) => (
+                    <option key={id} value={id}>{name} ({tcDeals.filter(d=>d.agentId===id).length})</option>
+                  ))}
+                </select>
+              </div>
+            )
+          })()}
+
           {/* Deal cards */}
-          {tcDeals.length === 0 && (
+          {(() => {
+            const filtered = tcAgentFilter === 'all' ? tcDeals : tcDeals.filter(d => d.agentId === tcAgentFilter)
+            return (<>
+          {filtered.length === 0 && (
             <div className="card" style={{ textAlign:'center', padding:'32px 20px', color:'var(--dim)', fontSize:13 }}>
-              No pending deals assigned to you yet. When team members mark deals as pending, they'll appear here with your TC checklist.
+              {tcDeals.length === 0
+                ? 'No pending deals assigned to you yet. When team members mark deals as pending, they\'ll appear here with your TC checklist.'
+                : 'No deals for this agent.'}
             </div>
           )}
 
           <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-            {tcDeals.map(deal => {
+            {filtered.map(deal => {
               const cl = deal.tcChecklist || []
               const done = cl.filter(i=>i.done).length
               const total = cl.length
@@ -6289,6 +6313,8 @@ function Dashboard({ theme, onToggleTheme }) {
               )
             })}
           </div>
+          </>)
+          })()}
         </div>
         </>)}
 

@@ -2846,10 +2846,10 @@ function Dashboard({ theme, onToggleTheme }) {
     })
   }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-sync Google Calendar when Calendar tab is opened
+  // Auto-sync Google Calendar when Month View tab is opened
   useEffect(() => {
     if (tab === 'calendar' && gcalConnected && !gcalSyncing) {
-      syncGoogleCalendar()
+      syncGoogleCalendar({ silent: true })
     }
   }, [tab, gcalConnected]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2902,7 +2902,7 @@ function Dashboard({ theme, onToggleTheme }) {
     }
   }
 
-  async function syncGoogleCalendar() {
+  async function syncGoogleCalendar({ silent = false } = {}) {
     if (gcalSyncing) return
     setGcalSyncing(true)
     try {
@@ -2931,7 +2931,7 @@ function Dashboard({ theme, onToggleTheme }) {
         setCustomTasks(prev => [...prev, ...rows.map(r => ({ id:r.id, label:r.label, icon:r.icon, xp:r.xp, isDefault:false, specificDate:r.specific_date, googleEventId:r.google_event_id, eventTime:r.event_time||null, eventEndTime:r.event_end_time||null }))])
       }
       console.log('[GCal] Sync complete:', rows.length, 'added')
-      showToast(rows.length > 0 ? `Synced ${rows.length} event${rows.length !== 1 ? 's' : ''} from Google Calendar` : 'Calendar is up to date', 'success')
+      if (!silent || rows.length > 0) showToast(rows.length > 0 ? `Synced ${rows.length} event${rows.length !== 1 ? 's' : ''} from Google Calendar` : 'Calendar is up to date', 'success')
     } catch (e) { console.error('syncGoogleCalendar error:', e); showToast('Failed to sync calendar') }
     finally { setGcalSyncing(false) }
   }
@@ -4376,7 +4376,7 @@ function Dashboard({ theme, onToggleTheme }) {
         {/* ── Sub-Tabs ─────────────────────────────────────── */}
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
           <div className="tabs" style={{ flex:1 }}>
-            {[{id:'today',l:'Today'},{id:'weekly',l:'Week View'},{id:'calendar',l:'Calendar'}].map(t=>(
+            {[{id:'today',l:'Today'},{id:'weekly',l:'Week View'},{id:'calendar',l:'Month View'}].map(t=>(
               <button key={t.id} className={`tab-item${tab===t.id?' on':''}`} onClick={()=>setTab(t.id)}>{t.l}</button>
             ))}
           </div>
@@ -4910,7 +4910,7 @@ function Dashboard({ theme, onToggleTheme }) {
                 {/* Calendar grid */}
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2 }}>
                   {cells.map((dayNum, idx) => {
-                    if (dayNum === null) return <div key={idx} style={{ minHeight:72, background:'var(--b1)', borderRadius:6, opacity:.3 }}/>
+                    if (dayNum === null) return <div key={idx} style={{ aspectRatio:'1', background:'var(--b1)', borderRadius:6, opacity:.3 }}/>
                     const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`
                     const isToday = dayNum === todayDate
                     const dayEvents = gcalByDate[ds] || []
@@ -4926,7 +4926,7 @@ function Dashboard({ theme, onToggleTheme }) {
                     return (
                       <div key={idx} onClick={() => { setViewDayOffset(dayNum - todayDate); setTab('today') }}
                         style={{
-                          minHeight:72, borderRadius:6, padding:'4px 5px', cursor:'pointer',
+                          aspectRatio:'1', borderRadius:6, padding:'4px 5px', cursor:'pointer',
                           background: isToday ? 'rgba(66,133,244,.08)' : 'var(--surface)',
                           border: isToday ? '2px solid rgba(66,133,244,.5)' : '1px solid var(--b2)',
                           display:'flex', flexDirection:'column', overflow:'hidden',

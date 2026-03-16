@@ -2967,8 +2967,10 @@ function Dashboard({ theme, onToggleTheme }) {
     if (!token) return { error: 'Not authenticated. Please sign in again.' }
 
     // Assemble dates — only today and future, never past
+    // IMPORTANT: use local date strings (not toISOString which is UTC and shifts dates forward)
     const now = new Date()
-    const todayStr = now.toISOString().slice(0, 10)
+    const localDateStr = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+    const todayStr = localDateStr(now)
     const currentTime24 = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
     const dates = []
     if (scope === 'today') {
@@ -2981,7 +2983,7 @@ function Dashboard({ theme, onToggleTheme }) {
         day.setDate(now.getDate() + i)
         const dow = day.getDay() // 0=Sun, 6=Sat
         if (skipWeekends && (dow === 0 || dow === 6)) continue
-        dates.push(day.toISOString().slice(0, 10))
+        dates.push(localDateStr(day))
       }
     }
 

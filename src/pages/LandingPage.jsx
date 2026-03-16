@@ -491,7 +491,7 @@ export default function LandingPage({ theme, onToggleTheme, onGetStarted, onSubs
         bullets={[
           ['📅','Google Calendar sync with one click'],
           ['📋','Weekly planner with day-by-day habit tracking'],
-          ['🗓️','Heatmap view for long-term consistency patterns'],
+          ['🗓️','Monthly calendar view synced with Google Calendar'],
           ['🖨️','Print any view as a PDF for offline use'],
         ]}>
         <MockupFrame theme={theme} title="Week View">

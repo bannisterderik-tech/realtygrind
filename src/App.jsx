@@ -2846,6 +2846,13 @@ function Dashboard({ theme, onToggleTheme }) {
     })
   }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-sync Google Calendar when Calendar tab is opened
+  useEffect(() => {
+    if (tab === 'calendar' && gcalConnected && !gcalSyncing) {
+      syncGoogleCalendar()
+    }
+  }, [tab, gcalConnected]) // eslint-disable-line react-hooks/exhaustive-deps
+
   function connectGoogleCalendar() {
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
     if (!clientId) { showToast('Set VITE_GOOGLE_CLIENT_ID in .env'); return }
@@ -4369,7 +4376,7 @@ function Dashboard({ theme, onToggleTheme }) {
         {/* ── Sub-Tabs ─────────────────────────────────────── */}
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
           <div className="tabs" style={{ flex:1 }}>
-            {[{id:'today',l:'Today'},{id:'weekly',l:'Week View'},{id:'heatmap',l:'Heatmap'}].map(t=>(
+            {[{id:'today',l:'Today'},{id:'weekly',l:'Week View'},{id:'calendar',l:'Calendar'}].map(t=>(
               <button key={t.id} className={`tab-item${tab===t.id?' on':''}`} onClick={()=>setTab(t.id)}>{t.l}</button>
             ))}
           </div>
@@ -4854,50 +4861,144 @@ function Dashboard({ theme, onToggleTheme }) {
           </>
         )}
 
-        {/* ══ HEATMAP ════════════════════════════════════════ */}
-        {tab==='heatmap' && (
-          <div>
-            <div className="card" style={{ padding:16, marginBottom:18 }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-                <span className="label" style={{ letterSpacing:.8 }}>📊 Month Heatmap</span>
-                <span style={{ fontSize:10, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace" }}>
-                  {personalRecords.perfectDays} perfect · {personalRecords.activeDays} active
-                </span>
-              </div>
-              <div style={{ display:'grid', gridTemplateColumns:'28px repeat(7,1fr)', gap:3, alignItems:'center' }}>
-                <div/>
-                {DAYS.map(d=><div key={d} style={{ textAlign:'center', fontSize:9, color:'var(--dim)', fontWeight:600 }}>{d}</div>)}
-                {weekHeatmap.map((week, wi) => (
-                  <React.Fragment key={wi}>
-                    <div style={{ fontSize:9, color:'var(--dim)', fontWeight:600, textAlign:'right', paddingRight:4 }}>W{wi+1}</div>
-                    {week.map((pct, di) => {
-                      const isT = wi === today.week && di === today.day
-                      const bg = pct < 0 ? 'var(--b1)' : pct === 0 ? 'rgba(220,38,38,.12)' : pct < 50 ? 'rgba(251,191,36,.2)' : pct < 100 ? 'rgba(16,185,129,.2)' : 'rgba(16,185,129,.45)'
-                      return (
-                        <div key={di} title={pct>=0?`${pct}% complete`:'No data'} style={{
-                          aspectRatio:'1', borderRadius:4, background:bg,
-                          border:isT?'2px solid var(--gold)':'1px solid transparent',
-                          display:'flex', alignItems:'center', justifyContent:'center',
-                          fontSize:8, color:pct>=100?'#fff':pct>=50?'#10b981':'var(--dim)', fontWeight:700,
-                        }}>
-                          {pct >= 0 ? (pct===100?'★':pct>0?pct:'') : ''}
+        {/* ══ CALENDAR ═════════════════════════════════════════ */}
+        {tab==='calendar' && (() => {
+          const now = new Date()
+          const year = now.getFullYear(), month = now.getMonth()
+          const firstDow = new Date(year, month, 1).getDay() // 0=Sun
+          const daysInMonth = new Date(year, month + 1, 0).getDate()
+          const todayDate = now.getDate()
+          const calWeeks = Math.ceil((firstDow + daysInMonth) / 7)
+          // Build calendar cells
+          const cells = []
+          for (let r = 0; r < calWeeks; r++) {
+            for (let c = 0; c < 7; c++) {
+              const dayNum = r * 7 + c - firstDow + 1
+              cells.push(dayNum >= 1 && dayNum <= daysInMonth ? dayNum : null)
+            }
+          }
+          // Group gcal events by date string
+          const gcalByDate = {}
+          customTasks.filter(t => t.googleEventId && t.specificDate).forEach(t => {
+            if (!gcalByDate[t.specificDate]) gcalByDate[t.specificDate] = []
+            gcalByDate[t.specificDate].push(t)
+          })
+          // Also group non-gcal day-specific tasks
+          const tasksByDate = {}
+          customTasks.filter(t => !t.isDefault && !t.googleEventId && t.specificDate).forEach(t => {
+            if (!tasksByDate[t.specificDate]) tasksByDate[t.specificDate] = []
+            tasksByDate[t.specificDate].push(t)
+          })
+
+          return (
+            <div>
+              <div className="card" style={{ padding:16 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+                  <span className="label" style={{ letterSpacing:.8 }}>
+                    📅 {new Date(year, month).toLocaleDateString('en-US', { month:'long', year:'numeric' })}
+                  </span>
+                  <span style={{ fontSize:10, color:'var(--dim)', fontFamily:"'JetBrains Mono',monospace" }}>
+                    {personalRecords.perfectDays} perfect · {personalRecords.activeDays} active
+                  </span>
+                </div>
+                {/* Day-of-week headers */}
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2, marginBottom:4 }}>
+                  {DAYS.map(d => (
+                    <div key={d} style={{ textAlign:'center', fontSize:10, color:'var(--dim)', fontWeight:700, padding:'4px 0' }}>{d}</div>
+                  ))}
+                </div>
+                {/* Calendar grid */}
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2 }}>
+                  {cells.map((dayNum, idx) => {
+                    if (dayNum === null) return <div key={idx} style={{ minHeight:72, background:'var(--b1)', borderRadius:6, opacity:.3 }}/>
+                    const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`
+                    const isToday = dayNum === todayDate
+                    const dayEvents = gcalByDate[ds] || []
+                    const dayTasks = tasksByDate[ds] || []
+                    // Habit completion for this day
+                    const wi = Math.floor((dayNum - 1) / 7)
+                    const di = new Date(year, month, dayNum).getDay()
+                    const skipped = (habitPrefs.skipped || {})[ds] || []
+                    const activeH = builtInEffective.filter(h => !skipped.includes(String(h.id)))
+                    const doneH = activeH.filter(h => habits[h.id]?.[wi]?.[di]).length
+                    const habitPct = activeH.length > 0 ? Math.round(doneH / activeH.length * 100) : -1
+
+                    return (
+                      <div key={idx} onClick={() => { setViewDayOffset(dayNum - todayDate); setTab('today') }}
+                        style={{
+                          minHeight:72, borderRadius:6, padding:'4px 5px', cursor:'pointer',
+                          background: isToday ? 'rgba(66,133,244,.08)' : 'var(--surface)',
+                          border: isToday ? '2px solid rgba(66,133,244,.5)' : '1px solid var(--b2)',
+                          display:'flex', flexDirection:'column', overflow:'hidden',
+                          transition:'background .15s',
+                        }}
+                        onMouseEnter={e => { if (!isToday) e.currentTarget.style.background = 'var(--b1)' }}
+                        onMouseLeave={e => { if (!isToday) e.currentTarget.style.background = 'var(--surface)' }}
+                      >
+                        {/* Day number + habit dot */}
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:2 }}>
+                          <span style={{
+                            fontSize:12, fontWeight: isToday ? 800 : 600,
+                            color: isToday ? '#4285f4' : 'var(--text)',
+                            fontFamily:"'JetBrains Mono',monospace",
+                          }}>{dayNum}</span>
+                          {habitPct >= 0 && (
+                            <div style={{
+                              width:7, height:7, borderRadius:'50%',
+                              background: habitPct === 0 ? 'rgba(220,38,38,.5)' : habitPct < 50 ? 'rgba(251,191,36,.7)' : habitPct < 100 ? 'rgba(16,185,129,.6)' : '#10b981',
+                            }} title={`${habitPct}% habits`}/>
+                          )}
                         </div>
-                      )
-                    })}
-                  </React.Fragment>
-                ))}
-              </div>
-              <div style={{ display:'flex', gap:12, justifyContent:'center', marginTop:10 }}>
-                {[{c:'rgba(220,38,38,.12)',l:'0%'},{c:'rgba(251,191,36,.2)',l:'1-49%'},{c:'rgba(16,185,129,.2)',l:'50-99%'},{c:'rgba(16,185,129,.45)',l:'100%'}].map(({c,l})=>(
-                  <div key={l} style={{ display:'flex', alignItems:'center', gap:4 }}>
-                    <div style={{ width:10, height:10, borderRadius:2, background:c }}/>
-                    <span style={{ fontSize:9, color:'var(--dim)' }}>{l}</span>
+                        {/* Google Calendar events */}
+                        {dayEvents.slice(0, 3).map((ev, i) => (
+                          <div key={ev.id || i} style={{
+                            fontSize:8, lineHeight:'11px', padding:'1px 3px', marginBottom:1,
+                            borderRadius:3, background:'rgba(66,133,244,.12)', color:'#4285f4',
+                            overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis',
+                            fontWeight:600,
+                          }} title={`${ev.eventTime ? fmtTime(ev.eventTime) + ' ' : ''}${ev.label}`}>
+                            {ev.eventTime ? fmtTime(ev.eventTime).replace(/ /g,'\u00a0') + ' ' : ''}{ev.label}
+                          </div>
+                        ))}
+                        {dayEvents.length > 3 && (
+                          <div style={{ fontSize:7, color:'#4285f4', fontWeight:700, paddingLeft:3 }}>+{dayEvents.length - 3} more</div>
+                        )}
+                        {/* Non-gcal tasks */}
+                        {dayTasks.slice(0, Math.max(0, 3 - dayEvents.length)).map((t, i) => (
+                          <div key={t.id || i} style={{
+                            fontSize:8, lineHeight:'11px', padding:'1px 3px', marginBottom:1,
+                            borderRadius:3, background:'rgba(16,185,129,.1)', color:'#10b981',
+                            overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis',
+                          }}>{t.label}</div>
+                        ))}
+                      </div>
+                    )
+                  })}
+                </div>
+                {/* Legend */}
+                <div style={{ display:'flex', gap:14, justifyContent:'center', marginTop:12, flexWrap:'wrap' }}>
+                  {[
+                    { c:'rgba(66,133,244,.12)', tc:'#4285f4', l:'Google Calendar' },
+                    { c:'rgba(16,185,129,.1)', tc:'#10b981', l:'Tasks' },
+                  ].map(({c,tc,l}) => (
+                    <div key={l} style={{ display:'flex', alignItems:'center', gap:4 }}>
+                      <div style={{ width:10, height:10, borderRadius:2, background:c, border:`1px solid ${tc}33` }}/>
+                      <span style={{ fontSize:9, color:'var(--dim)' }}>{l}</span>
+                    </div>
+                  ))}
+                  <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                    <div style={{ width:7, height:7, borderRadius:'50%', background:'#10b981' }}/>
+                    <span style={{ fontSize:9, color:'var(--dim)' }}>Habits done</span>
                   </div>
-                ))}
+                  <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                    <div style={{ width:7, height:7, borderRadius:'50%', background:'rgba(220,38,38,.5)' }}/>
+                    <span style={{ fontSize:9, color:'var(--dim)' }}>Habits missed</span>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )
+        })()}
 
         {/* ══ WEEKLY ══════════════════════════════════════════ */}
         {tab==='weekly' && (
